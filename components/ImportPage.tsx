@@ -54,6 +54,7 @@ interface ImportState {
 const ImportPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'daily' | 'weekly'>('daily');
   const [file, setFile] = useState<File | null>(null);
+  const [isXLSXReady, setIsXLSXReady] = useState<boolean>(typeof XLSX !== 'undefined');
   
   // System Data State
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -84,6 +85,24 @@ const ImportPage: React.FC = () => {
 
   useEffect(() => {
     refreshSystemData();
+  }, []);
+
+  useEffect(() => {
+    if (typeof XLSX !== 'undefined') {
+      setIsXLSXReady(true);
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    script.async = true;
+    script.onload = () => setIsXLSXReady(true);
+    script.onerror = () => console.error('Failed to load XLSX library');
+    document.body.appendChild(script);
+
+    return () => {
+      document.body.removeChild(script);
+    };
   }, []);
 
   useEffect(() => {
@@ -121,43 +140,77 @@ const ImportPage: React.FC = () => {
 
   const parseExcelDate = (val: any): string => {
     if (!val) return '';
+
+    const buildISODate = (year: number, month: number, day: number) => {
+      const fullYear = year < 100 ? 2000 + year : year;
+      if (fullYear < 2000 || fullYear > 2100) return '';
+      const d = new Date(fullYear, month - 1, day);
+      if (d.getFullYear() !== fullYear || d.getMonth() !== month - 1 || d.getDate() !== day) return '';
+      const mm = month.toString().padStart(2, '0');
+      const dd = day.toString().padStart(2, '0');
+      return `${fullYear}-${mm}-${dd}`;
+    };
+
     try {
-        if (typeof val === 'number') {
-          const date = new Date(Math.round((val - 25569) * 86400 * 1000));
-          if (date.getFullYear() < 2000 || date.getFullYear() > 2100) return '';
-          return date.toISOString().split('T')[0];
+      // Excel serial number
+      if (typeof val === 'number') {
+        const date = new Date(Math.round((val - 25569) * 86400 * 1000));
+        return buildISODate(date.getFullYear(), date.getMonth() + 1, date.getDate());
+      }
+
+      const strVal = String(val).trim();
+
+      // Numeric strings (Excel serial values or yyyymmdd)
+      if (/^-?\d+(?:\.\d+)?$/.test(strVal)) {
+        const asNumber = Number(strVal);
+
+        // Try serial number interpretation first
+        const serialDate = new Date(Math.round((asNumber - 25569) * 86400 * 1000));
+        const serialISO = buildISODate(serialDate.getFullYear(), serialDate.getMonth() + 1, serialDate.getDate());
+        if (serialISO) return serialISO;
+
+        // Try yyyymmdd compact format (e.g., 20240131)
+        if (strVal.length === 8) {
+          const year = parseInt(strVal.slice(0, 4), 10);
+          const month = parseInt(strVal.slice(4, 6), 10);
+          const day = parseInt(strVal.slice(6, 8), 10);
+          const compactISO = buildISODate(year, month, day);
+          if (compactISO) return compactISO;
         }
-        const strVal = String(val).trim();
-        // Handle DD/MM/YYYY
-        if (strVal.includes('/')) {
-          const parts = strVal.split('/');
-          if (parts.length === 3) {
-            const d = parseInt(parts[0]);
-            const m = parseInt(parts[1]);
-            const y = parseInt(parts[2]);
-            if (!isNaN(d) && !isNaN(m) && !isNaN(y)) {
-                // Adjust for short years if needed, though usually Excel gives full year
-                const fullY = y < 100 ? 2000 + y : y;
-                const dateObj = new Date(fullY, m - 1, d);
-                if (dateObj.getFullYear() === fullY && dateObj.getMonth() === m - 1 && dateObj.getDate() === d) {
-                    const mm = m.toString().padStart(2, '0');
-                    const dd = d.toString().padStart(2, '0');
-                    return `${fullY}-${mm}-${dd}`;
-                }
-            }
-          }
+      }
+
+      // Handle delimited strings (/, -, .)
+      const delimiters = ['/', '-', '.'];
+      for (const delim of delimiters) {
+        if (!strVal.includes(delim)) continue;
+
+        const parts = strVal.split(delim).map(p => parseInt(p.trim(), 10));
+        if (parts.length !== 3 || parts.some(p => isNaN(p))) continue;
+
+        const [a, b, c] = parts;
+
+        // Try interpreting with year in first or last position, choosing the first valid match
+        const candidates: Array<[number, number, number]> = [
+          [a, b, c], // e.g. YYYY-MM-DD or DD-MM-YYYY
+          [c, b, a], // e.g. DD-MM-YYYY with reversed year
+          [c, a, b]  // e.g. MM-DD-YYYY
+        ];
+
+        for (const [year, month, day] of candidates) {
+          const iso = buildISODate(year, month, day);
+          if (iso) return iso;
         }
-        // Handle YYYY-MM-DD
-        if (strVal.includes('-')) {
-            const parts = strVal.split('-');
-            if (parts.length === 3) return strVal;
-        }
-        
-        const native = new Date(val);
-        if (!isNaN(native.getTime()) && native.getFullYear() > 2000) {
-            return native.toISOString().split('T')[0];
-        }
-    } catch (e) { return ''; }
+      }
+
+      // Native Date parsing fallback
+      const native = new Date(val);
+      if (!isNaN(native.getTime()) && native.getFullYear() > 2000) {
+        return buildISODate(native.getFullYear(), native.getMonth() + 1, native.getDate());
+      }
+    } catch (e) {
+      return '';
+    }
+
     return '';
   };
 
@@ -211,8 +264,9 @@ const ImportPage: React.FC = () => {
   };
 
   const startImport = async () => {
-    if (!file || typeof XLSX === 'undefined') {
-        if (typeof XLSX === 'undefined') alert("Library loading...");
+    if (!file) return;
+    if (!isXLSXReady || typeof XLSX === 'undefined') {
+        alert("Loading file parser. Please try again in a moment.");
         return;
     }
     setImportState(prev => ({ ...prev, status: 'processing' }));
@@ -221,7 +275,7 @@ const ImportPage: React.FC = () => {
     reader.onload = (e) => {
       try {
         const data = e.target?.result;
-        const workbook = XLSX.read(data, { type: 'binary' });
+        const workbook = XLSX.read(data, { type: 'array' });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
         
@@ -234,40 +288,43 @@ const ImportPage: React.FC = () => {
           return;
         }
 
-        // 2. Locate Header Row
+        // 2. Locate Header Row (pick the row with the strongest header match within the first 20 rows)
         let headerRowIndex = -1;
-        const colIndices: Record<string, number> = {};
+        let bestMatchCount = 0;
+        let colIndices: Record<string, number> = {};
 
-        // Look for a row containing strict mandatory columns
         for (let i = 0; i < Math.min(rawRows.length, 20); i++) {
-            const row = rawRows[i].map(cell => String(cell).toLowerCase().trim());
+            const normalizedRow = rawRows[i].map(cell => String(cell).toLowerCase().trim());
             let matchCount = 0;
-            
-            // Check matches
+
             REQUIRED_DAILY_COLUMNS.forEach(col => {
-                if (col.keys.some(k => row.includes(k.toLowerCase()))) {
+                if (col.keys.some(k => normalizedRow.some(cell => cell.includes(k.toLowerCase())))) {
                     matchCount++;
                 }
             });
 
-            // If we found at least 4 known columns, this is the header
-            if (matchCount >= 4) {
-                headerRowIndex = i;
-                
-                // Map columns
+            if (matchCount > bestMatchCount) {
+                const candidate: Record<string, number> = {};
                 REQUIRED_DAILY_COLUMNS.forEach(col => {
-                    // Find index of this column in the header row
-                    const idx = row.findIndex(cell => col.keys.some(k => k.toLowerCase() === cell));
-                    colIndices[col.field] = idx; 
+                    const idx = normalizedRow.findIndex(cell => col.keys.some(k => cell.includes(k.toLowerCase())));
+                    candidate[col.field] = idx;
                 });
-                break;
+
+                bestMatchCount = matchCount;
+                headerRowIndex = i;
+                colIndices = candidate;
             }
         }
 
-        if (headerRowIndex === -1) {
+        if (headerRowIndex === -1 || bestMatchCount < 3) {
             alert("Could not detect header row. Please check column names (Date, Driver, etc.)");
             setImportState(prev => ({ ...prev, status: 'idle' }));
             return;
+        }
+
+        // Ensure we have a usable Date column reference; if not found, default to first column
+        if (colIndices.date === -1 || colIndices.date === undefined) {
+            colIndices.date = 0;
         }
 
         // 3. Process Data Rows (Stop at Table End)
@@ -328,7 +385,7 @@ const ImportPage: React.FC = () => {
         setImportState(prev => ({ ...prev, status: 'idle' }));
       }
     };
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
   };
 
   // -------------------------------------------------------------------------
@@ -606,7 +663,7 @@ const ImportPage: React.FC = () => {
                 <h3 className="text-xl font-bold text-slate-700">Drop Daily Entry CSV</h3>
                 <p className="text-slate-400 mt-2 font-medium">Smart detection of tables & dates.</p>
               </div>
-              <button onClick={startImport} disabled={!file} className="mt-8 px-8 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 disabled:opacity-50 disabled:shadow-none hover:bg-indigo-700 transition-all">
+              <button onClick={startImport} disabled={!file || !isXLSXReady} className="mt-8 px-8 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 disabled:opacity-50 disabled:shadow-none hover:bg-indigo-700 transition-all">
                  Start Validation
               </button>
            </div>
