@@ -1,5 +1,4 @@
-
-import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord } from '../types';
+import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary } from '../types';
 
 const DAILY_KEY = 'driver_app_daily_entries';
 const WEEKLY_KEY = 'driver_app_weekly_wallets';
@@ -7,6 +6,8 @@ const DRIVER_KEY = 'driver_app_drivers';
 const LEAVE_KEY = 'driver_app_leaves';
 const ASSET_KEY = 'driver_app_assets';
 const SHIFT_KEY = 'driver_app_shifts';
+const RENTAL_SLAB_KEY = 'driver_app_rental_slabs';
+const COMPANY_SUMMARY_KEY = 'driver_app_company_summaries';
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -36,8 +37,6 @@ export const storageService = {
   saveDailyEntriesBulk: async (newEntries: DailyEntry[]): Promise<void> => {
     await delay(200);
     const currentEntries = await storageService.getDailyEntries();
-    // In a real DB we might upsert, here we append. 
-    // The validation logic in ImportPage ensures no duplicates before calling this.
     const updatedEntries = [...newEntries, ...currentEntries];
     localStorage.setItem(DAILY_KEY, JSON.stringify(updatedEntries));
   },
@@ -164,12 +163,58 @@ export const storageService = {
     return assets;
   },
 
+  // --- Rental Slabs ---
+  getRentalSlabs: async (): Promise<RentalSlab[]> => {
+    await delay(100);
+    const data = localStorage.getItem(RENTAL_SLAB_KEY);
+    if (data) return JSON.parse(data);
+    
+    // Default Slabs - Updated to user request
+    const defaults: RentalSlab[] = [
+        { id: '1', minTrips: 45, maxTrips: 49, rentAmount: 950, notes: 'Base rent' },
+        { id: '2', minTrips: 50, maxTrips: 54, rentAmount: 885, notes: 'Reduced rent' },
+        { id: '3', minTrips: 55, maxTrips: 59, rentAmount: 842, notes: 'Incentive rent' },
+        { id: '4', minTrips: 60, maxTrips: 64, rentAmount: 772, notes: 'Performance tier 1' },
+        { id: '5', minTrips: 65, maxTrips: 69, rentAmount: 670, notes: 'Performance tier 2' },
+        { id: '6', minTrips: 70, maxTrips: null, rentAmount: 550, notes: 'Top performer rate' }
+        
+
+
+
+
+
+    ];
+    localStorage.setItem(RENTAL_SLAB_KEY, JSON.stringify(defaults));
+    return defaults;
+  },
+
+  saveRentalSlabs: async (slabs: RentalSlab[]): Promise<void> => {
+    await delay(100);
+    localStorage.setItem(RENTAL_SLAB_KEY, JSON.stringify(slabs));
+  },
+
+  // --- Company Summaries (Weekly) ---
+  getCompanySummaries: async (): Promise<CompanyWeeklySummary[]> => {
+    await delay(100);
+    const data = localStorage.getItem(COMPANY_SUMMARY_KEY);
+    return data ? JSON.parse(data) : [];
+  },
+
+  saveCompanySummary: async (summary: CompanyWeeklySummary): Promise<CompanyWeeklySummary> => {
+    await delay(200);
+    const summaries = await storageService.getCompanySummaries();
+    // If we are overriding, we filter out the old one by date range
+    const filtered = summaries.filter(s => s.startDate !== summary.startDate);
+    const updated = [summary, ...filtered];
+    localStorage.setItem(COMPANY_SUMMARY_KEY, JSON.stringify(updated));
+    return summary;
+  },
+
   // --- Aggregation ---
   getSummary: async (): Promise<{ driverSummaries: DriverSummary[], global: GlobalSummary }> => {
     const dailyEntries = await storageService.getDailyEntries();
     const weeklyWallets = await storageService.getWeeklyWallets();
     
-    // Get unique drivers from entries (including old drivers who might not be in Driver table)
     const drivers = Array.from(new Set([
       ...dailyEntries.map(d => d.driver),
       ...weeklyWallets.map(w => w.driver)

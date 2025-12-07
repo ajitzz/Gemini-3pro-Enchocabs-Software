@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { HashRouter, Routes, Route, NavLink } from 'react-router-dom';
-import { LayoutDashboard, Calendar, Wallet, Menu, X, Users, Coffee, Upload, Settings } from 'lucide-react';
+import { LayoutDashboard, Calendar, Wallet, Menu, X, Users, Coffee, Upload, Settings, Briefcase, FileText } from 'lucide-react';
 import DailyEntryPage from './components/DailyEntryPage';
 import WeeklyWalletPage from './components/WeeklyWalletPage';
 import DashboardPage from './components/DashboardPage';
@@ -8,6 +8,8 @@ import RegistrationPage from './components/RegistrationPage';
 import LeavePage from './components/LeavePage';
 import ImportPage from './components/ImportPage';
 import ManageDefaultsPage from './components/ManageDefaultsPage';
+import CompanySettlementPage from './components/CompanySettlementPage';
+import DriverBillingsPage from './components/DriverBillingsPage';
 
 const App: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -49,7 +51,7 @@ const App: React.FC = () => {
               </div>
               <div>
                 <h1 className="text-lg font-bold text-white tracking-tight leading-none">Driver<span className="text-indigo-500">Tracker</span></h1>
-                <p className="text-[10px] text-slate-500 font-medium tracking-wider uppercase mt-1">Admin Console</p>
+                <p className="text-xs text-slate-500 font-medium tracking-wider uppercase mt-1">Admin Console</p>
               </div>
             </div>
             <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-white transition-colors">
@@ -73,6 +75,8 @@ const App: React.FC = () => {
                 <NavItem to="/registration" icon={Users} label="Registration" />
                 <NavItem to="/defaults" icon={Settings} label="Manage Defaults" />
                 <NavItem to="/leaves" icon={Coffee} label="Leaves" />
+                <NavItem to="/settlement" icon={Briefcase} label="Company Settlement" />
+                <NavItem to="/billings" icon={FileText} label="Driver Billings" />
                 <NavItem to="/import" icon={Upload} label="Import Data" />
               </nav>
             </div>
@@ -113,6 +117,8 @@ const App: React.FC = () => {
             <Route path="/registration" element={<RegistrationPage />} />
             <Route path="/defaults" element={<ManageDefaultsPage />} />
             <Route path="/leaves" element={<LeavePage />} />
+            <Route path="/settlement" element={<CompanySettlementPage />} />
+            <Route path="/billings" element={<DriverBillingsPage />} />
             <Route path="/import" element={<ImportPage />} />
           </Routes>
         </main>

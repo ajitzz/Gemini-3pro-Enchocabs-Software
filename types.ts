@@ -85,6 +85,47 @@ export interface GlobalSummary {
   payableToDrivers: number;
 }
 
+export interface RentalSlab {
+  id: string;
+  minTrips: number;
+  maxTrips: number | null; // null means infinity (e.g. 125+)
+  rentAmount: number;
+  notes: string;
+}
+
+export interface CompanyWeeklySummary {
+  id: string;
+  startDate: string; // ISO string
+  endDate: string;   // ISO string
+  fileName: string;
+  importedAt: string;
+  note: string;
+  rows: CompanySummaryRow[];
+}
+
+export interface CompanySummaryRow {
+  vehicleNumber: string;
+  onroadDays: number;
+  dailyRentApplied: number;
+  weeklyIndemnityFees: number;
+  netWeeklyLeaseRental: number;
+  performanceDay: number;
+  uberTrips: number;
+  totalEarning: number;
+  uberCashCollection: number;
+  toll: number;
+  driverSubscriptionCharge: number;
+  uberIncentive: number;
+  uberWeekOs: number;
+  olaWeekOs: number; // Added for formula correctness
+  vehicleLevelAdjustment: number;
+  tds: number;
+  challan: number;
+  accident: number;
+  deadMile: number;
+  currentOs: number;
+}
+
 // --- Import Types ---
 export interface ImportError {
   row: number;
