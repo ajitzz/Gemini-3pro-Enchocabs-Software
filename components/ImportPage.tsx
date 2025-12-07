@@ -54,7 +54,7 @@ interface ImportState {
 const ImportPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'daily' | 'weekly'>('daily');
   const [file, setFile] = useState<File | null>(null);
-  
+   const [isXLSXReady, setIsXLSXReady] = useState<boolean>(typeof XLSX !== 'undefined');
   // System Data State
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [existingEntries, setExistingEntries] = useState<DailyEntry[]>([]);
@@ -85,6 +85,25 @@ const ImportPage: React.FC = () => {
   useEffect(() => {
     refreshSystemData();
   }, []);
+
+  useEffect(() => {
+    if (typeof XLSX !== 'undefined') {
+      setIsXLSXReady(true);
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    script.async = true;
+    script.onload = () => setIsXLSXReady(true);
+    script.onerror = () => console.error('Failed to load XLSX library');
+    document.body.appendChild(script);
+
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, []);
+
 
   useEffect(() => {
     if (currentConflict?.type === 'DRIVER_MISSING') {
@@ -211,8 +230,9 @@ const ImportPage: React.FC = () => {
   };
 
   const startImport = async () => {
-    if (!file || typeof XLSX === 'undefined') {
-        if (typeof XLSX === 'undefined') alert("Library loading...");
+       if (!file) return;
+    if (!isXLSXReady || typeof XLSX === 'undefined') {
+        alert("Loading file parser. Please try again in a moment.");
         return;
     }
     setImportState(prev => ({ ...prev, status: 'processing' }));
@@ -221,7 +241,7 @@ const ImportPage: React.FC = () => {
     reader.onload = (e) => {
       try {
         const data = e.target?.result;
-        const workbook = XLSX.read(data, { type: 'binary' });
+        const workbook = XLSX.read(data, { type: 'array' });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
         
@@ -328,7 +348,7 @@ const ImportPage: React.FC = () => {
         setImportState(prev => ({ ...prev, status: 'idle' }));
       }
     };
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
   };
 
   // -------------------------------------------------------------------------
@@ -606,7 +626,7 @@ const ImportPage: React.FC = () => {
                 <h3 className="text-xl font-bold text-slate-700">Drop Daily Entry CSV</h3>
                 <p className="text-slate-400 mt-2 font-medium">Smart detection of tables & dates.</p>
               </div>
-              <button onClick={startImport} disabled={!file} className="mt-8 px-8 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 disabled:opacity-50 disabled:shadow-none hover:bg-indigo-700 transition-all">
+  <button onClick={startImport} disabled={!file || !isXLSXReady} className="mt-8 px-8 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 disabled:opacity-50 disabled:shadow-none hover:bg-indigo-700 transition-all">
                  Start Validation
               </button>
            </div>
