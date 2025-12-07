@@ -46,6 +46,7 @@ const DailyEntryPage: React.FC = () => {
     collection: 0,
     fuel: 0,
     due: 0,
+    payout: 0, // New field
     qrCode: '',
     notes: ''
   };
@@ -126,6 +127,7 @@ const DailyEntryPage: React.FC = () => {
       collection: Number(formData.collection),
       fuel: Number(formData.fuel),
       due: Number(formData.due),
+      payout: Number(formData.payout), // New field
       qrCode: formData.qrCode,
       notes: formData.notes
     };
@@ -152,7 +154,7 @@ const DailyEntryPage: React.FC = () => {
   const handleEdit = (entry: DailyEntry) => {
     setFormData(entry);
     setEditingId(entry.id);
-    if ((entry.fuel && entry.fuel !== 0) || (entry.due && entry.due !== 0)) {
+    if ((entry.fuel && entry.fuel !== 0) || (entry.due && entry.due !== 0) || (entry.payout && entry.payout !== 0)) {
         setShowOptionalFields(true);
     } else {
         setShowOptionalFields(false);
@@ -263,11 +265,11 @@ const DailyEntryPage: React.FC = () => {
                className="text-sm font-medium text-indigo-600 flex items-center gap-1.5 hover:text-indigo-800 transition-colors focus:outline-none bg-indigo-50 px-3 py-1.5 rounded-lg"
              >
                {showOptionalFields ? <ChevronUp size={16}/> : <ChevronDown size={16} />}
-               <span>{showOptionalFields ? 'Hide' : 'Add'} Fuel & Due Adjustment</span>
+               <span>{showOptionalFields ? 'Hide' : 'Add'} Fuel, Due & Payout</span>
              </button>
           </div>
 
-          {/* Optional Fields (Fuel / Due) */}
+          {/* Optional Fields (Fuel / Due / Payout) */}
           {showOptionalFields && (
             <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 bg-slate-50 p-6 rounded-2xl border border-slate-100 animate-fade-in">
               <InputField label="Fuel Given (₹)" name="fuel" type="number" value={formData.fuel} onChange={handleInputChange} className="border-amber-200 focus:ring-amber-500 text-amber-700" />
@@ -275,8 +277,11 @@ const DailyEntryPage: React.FC = () => {
                  <InputField label="Due (+/-)" name="due" type="number" value={formData.due} onChange={handleInputChange} />
                  <p className="text-[10px] text-slate-400 mt-1 ml-1">+ Driver Owes / - You Owe</p>
               </div>
-              <div className="lg:col-span-2 flex items-center">
-                 <p className="text-xs text-slate-400 leading-relaxed max-w-md">Use these fields only if there are specific adjustments or fuel advances given directly for this shift.</p>
+              <div className="lg:col-span-1">
+                 <InputField label="Payout (Paid to Driver)" name="payout" type="number" value={formData.payout} onChange={handleInputChange} className="border-emerald-200 focus:ring-emerald-500 text-emerald-700" />
+              </div>
+              <div className="lg:col-span-1 flex items-center">
+                 <p className="text-xs text-slate-400 leading-relaxed">Use these fields for specific adjustments or payments made directly.</p>
               </div>
             </div>
           )}
@@ -344,15 +349,16 @@ const DailyEntryPage: React.FC = () => {
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Collection</th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Fuel</th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Due</th>
+                <th className="px-6 py-4 font-semibold text-right tracking-wider">Payout</th>
                 <th className="px-6 py-4 font-semibold text-left tracking-wider">Notes</th>
                 <th className="px-6 py-4 font-semibold text-center tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {loading ? (
-                <tr><td colSpan={10} className="px-6 py-12 text-center text-slate-400">Loading entries...</td></tr>
+                <tr><td colSpan={11} className="px-6 py-12 text-center text-slate-400">Loading entries...</td></tr>
               ) : filteredEntries.length === 0 ? (
-                <tr><td colSpan={10} className="px-6 py-12 text-center text-slate-400">No entries found matching criteria.</td></tr>
+                <tr><td colSpan={11} className="px-6 py-12 text-center text-slate-400">No entries found matching criteria.</td></tr>
               ) : (
                 filteredEntries.map(entry => (
                   <tr key={entry.id} className="hover:bg-slate-50/80 transition-colors group">
@@ -377,6 +383,7 @@ const DailyEntryPage: React.FC = () => {
                         {entry.due > 0 ? '+' : ''}{entry.due}
                       </span>
                     </td>
+                    <td className="px-6 py-4 text-right text-indigo-600 font-medium">{entry.payout ? `₹${entry.payout}` : '-'}</td>
                     <td className="px-6 py-4 text-slate-400 text-xs max-w-[150px] truncate" title={entry.notes}>
                       {entry.notes || '-'}
                     </td>

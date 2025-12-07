@@ -171,18 +171,12 @@ export const storageService = {
     
     // Default Slabs - Updated to user request
     const defaults: RentalSlab[] = [
-        { id: '1', minTrips: 45, maxTrips: 49, rentAmount: 950, notes: 'Base rent' },
-        { id: '2', minTrips: 50, maxTrips: 54, rentAmount: 885, notes: 'Reduced rent' },
-        { id: '3', minTrips: 55, maxTrips: 59, rentAmount: 842, notes: 'Incentive rent' },
-        { id: '4', minTrips: 60, maxTrips: 64, rentAmount: 772, notes: 'Performance tier 1' },
-        { id: '5', minTrips: 65, maxTrips: 69, rentAmount: 670, notes: 'Performance tier 2' },
-        { id: '6', minTrips: 70, maxTrips: null, rentAmount: 550, notes: 'Top performer rate' }
-        
-
-
-
-
-
+        { id: '1', minTrips: 0, maxTrips: 64, rentAmount: 950, notes: 'Base rent' },
+        { id: '2', minTrips: 65, maxTrips: 79, rentAmount: 885, notes: 'Reduced rent' },
+        { id: '3', minTrips: 80, maxTrips: 94, rentAmount: 842, notes: 'Incentive rent' },
+        { id: '4', minTrips: 95, maxTrips: 109, rentAmount: 772, notes: 'Performance tier 1' },
+        { id: '5', minTrips: 110, maxTrips: 124, rentAmount: 700, notes: 'Performance tier 2' },
+        { id: '6', minTrips: 125, maxTrips: null, rentAmount: 550, notes: 'Top performer rate' }
     ];
     localStorage.setItem(RENTAL_SLAB_KEY, JSON.stringify(defaults));
     return defaults;
@@ -228,9 +222,11 @@ export const storageService = {
       const totalRent = driverDaily.reduce((sum, d) => sum + (d.rent || 0), 0);
       const totalFuel = driverDaily.reduce((sum, d) => sum + (d.fuel || 0), 0);
       const totalDue = driverDaily.reduce((sum, d) => sum + (d.due || 0), 0);
+      const totalPayout = driverDaily.reduce((sum, d) => sum + (d.payout || 0), 0); // New Field Sum
       const totalWalletWeek = driverWeekly.reduce((sum, w) => sum + (w.walletWeek || 0), 0);
 
-      const finalTotal = totalCollection - totalRent - totalFuel + totalDue + totalWalletWeek;
+      // Formula: Total = Collection - Rent - Fuel + Due + WalletWeek - Payout
+      const finalTotal = totalCollection - totalRent - totalFuel + totalDue + totalWalletWeek - totalPayout;
 
       return {
         driver,
@@ -238,6 +234,7 @@ export const storageService = {
         totalRent,
         totalFuel,
         totalDue,
+        totalPayout,
         totalWalletWeek,
         finalTotal
       };
@@ -248,6 +245,7 @@ export const storageService = {
       totalRent: driverSummaries.reduce((sum, d) => sum + d.totalRent, 0),
       totalFuel: driverSummaries.reduce((sum, d) => sum + d.totalFuel, 0),
       totalDue: driverSummaries.reduce((sum, d) => sum + d.totalDue, 0),
+      totalPayout: driverSummaries.reduce((sum, d) => sum + d.totalPayout, 0),
       totalWalletWeek: driverSummaries.reduce((sum, d) => sum + d.totalWalletWeek, 0),
       pendingFromDrivers: driverSummaries.filter(d => d.finalTotal < 0).reduce((sum, d) => sum + Math.abs(d.finalTotal), 0),
       payableToDrivers: driverSummaries.filter(d => d.finalTotal > 0).reduce((sum, d) => sum + d.finalTotal, 0),

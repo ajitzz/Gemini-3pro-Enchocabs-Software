@@ -86,7 +86,7 @@ const ImportPage: React.FC = () => {
     refreshSystemData();
   }, []);
 
-  useEffect(() => {
+ useEffect(() => {
     if (typeof XLSX !== 'undefined') {
       setIsXLSXReady(true);
       return;
@@ -103,7 +103,6 @@ const ImportPage: React.FC = () => {
       document.body.removeChild(script);
     };
   }, []);
-
 
   useEffect(() => {
     if (currentConflict?.type === 'DRIVER_MISSING') {
@@ -140,43 +139,77 @@ const ImportPage: React.FC = () => {
 
   const parseExcelDate = (val: any): string => {
     if (!val) return '';
+    
+    const buildISODate = (year: number, month: number, day: number) => {
+      const fullYear = year < 100 ? 2000 + year : year;
+      if (fullYear < 2000 || fullYear > 2100) return '';
+      const d = new Date(fullYear, month - 1, day);
+      if (d.getFullYear() !== fullYear || d.getMonth() !== month - 1 || d.getDate() !== day) return '';
+      const mm = month.toString().padStart(2, '0');
+      const dd = day.toString().padStart(2, '0');
+      return `${fullYear}-${mm}-${dd}`;
+    };
+
     try {
-        if (typeof val === 'number') {
-          const date = new Date(Math.round((val - 25569) * 86400 * 1000));
-          if (date.getFullYear() < 2000 || date.getFullYear() > 2100) return '';
-          return date.toISOString().split('T')[0];
+       // Excel serial number
+      if (typeof val === 'number') {
+        const date = new Date(Math.round((val - 25569) * 86400 * 1000));
+        return buildISODate(date.getFullYear(), date.getMonth() + 1, date.getDate());
+      }
+
+      const strVal = String(val).trim();
+
+      // Numeric strings (Excel serial values or yyyymmdd)
+      if (/^-?\d+(?:\.\d+)?$/.test(strVal)) {
+        const asNumber = Number(strVal);
+
+        // Try serial number interpretation first
+        const serialDate = new Date(Math.round((asNumber - 25569) * 86400 * 1000));
+        const serialISO = buildISODate(serialDate.getFullYear(), serialDate.getMonth() + 1, serialDate.getDate());
+        if (serialISO) return serialISO;
+
+        // Try yyyymmdd compact format (e.g., 20240131)
+        if (strVal.length === 8) {
+          const year = parseInt(strVal.slice(0, 4), 10);
+          const month = parseInt(strVal.slice(4, 6), 10);
+          const day = parseInt(strVal.slice(6, 8), 10);
+          const compactISO = buildISODate(year, month, day);
+          if (compactISO) return compactISO;
         }
-        const strVal = String(val).trim();
-        // Handle DD/MM/YYYY
-        if (strVal.includes('/')) {
-          const parts = strVal.split('/');
-          if (parts.length === 3) {
-            const d = parseInt(parts[0]);
-            const m = parseInt(parts[1]);
-            const y = parseInt(parts[2]);
-            if (!isNaN(d) && !isNaN(m) && !isNaN(y)) {
-                // Adjust for short years if needed, though usually Excel gives full year
-                const fullY = y < 100 ? 2000 + y : y;
-                const dateObj = new Date(fullY, m - 1, d);
-                if (dateObj.getFullYear() === fullY && dateObj.getMonth() === m - 1 && dateObj.getDate() === d) {
-                    const mm = m.toString().padStart(2, '0');
-                    const dd = d.toString().padStart(2, '0');
-                    return `${fullY}-${mm}-${dd}`;
-                }
-            }
-          }
-        }
-        // Handle YYYY-MM-DD
-        if (strVal.includes('-')) {
-            const parts = strVal.split('-');
-            if (parts.length === 3) return strVal;
-        }
-        
-        const native = new Date(val);
-        if (!isNaN(native.getTime()) && native.getFullYear() > 2000) {
-            return native.toISOString().split('T')[0];
-        }
-    } catch (e) { return ''; }
+  }
+
+      // Handle slash/dash/dot separated strings with explicit day & month recognition (DD/MM/YYYY, MM/DD/YYYY, YYYY/MM/DD)
+      const datePattern = /^(\d{1,4})[\/.-](\d{1,2})[\/.-](\d{1,4})$/;
+      const match = strVal.match(datePattern);
+      if (match) {
+        const a = parseInt(match[1], 10);
+        const b = parseInt(match[2], 10);
+        const c = parseInt(match[3], 10);
+
+        // Try DD/MM/YYYY first for the provided sample files
+        const ddmmyyyy = buildISODate(c >= 100 ? c : 2000 + c, b, a);
+        if (ddmmyyyy) return ddmmyyyy;
+
+        // Try YYYY/MM/DD
+        const yyyymmdd = buildISODate(a, b, c);
+        if (yyyymmdd) return yyyymmdd;
+
+        // Fallback to MM/DD/YYYY
+        const mmddyyyy = buildISODate(c >= 100 ? c : 2000 + c, a, b);
+        if (mmddyyyy) return mmddyyyy;
+      }
+
+      // Native Date parsing fallback
+      const native = new Date(val);
+      if (!isNaN(native.getTime()) && native.getFullYear() > 2000) {
+        return buildISODate(native.getFullYear(), native.getMonth() + 1, native.getDate());
+      }
+    } catch (e) {
+      return '';
+    }
+  
+
+
     return '';
   };
 
@@ -256,61 +289,79 @@ const ImportPage: React.FC = () => {
 
         // 2. Locate Header Row
         let headerRowIndex = -1;
-        const colIndices: Record<string, number> = {};
+let bestMatchCount = 0;
+        let colIndices: Record<string, number> = {};
 
-        // Look for a row containing strict mandatory columns
-        for (let i = 0; i < Math.min(rawRows.length, 20); i++) {
-            const row = rawRows[i].map(cell => String(cell).toLowerCase().trim());
+       for (let i = 0; i < Math.min(rawRows.length, 30); i++) {
+            const normalizedRow = rawRows[i].map(cell => String(cell).toLowerCase().trim());
             let matchCount = 0;
             
-            // Check matches
+
             REQUIRED_DAILY_COLUMNS.forEach(col => {
-                if (col.keys.some(k => row.includes(k.toLowerCase()))) {
+              if (col.keys.some(k => normalizedRow.some(cell => cell.includes(k.toLowerCase())))) {
                     matchCount++;
                 }
             });
 
-            // If we found at least 4 known columns, this is the header
-            if (matchCount >= 4) {
-                headerRowIndex = i;
-                
-                // Map columns
+if (matchCount > bestMatchCount) {
+                const candidate: Record<string, number> = {};
                 REQUIRED_DAILY_COLUMNS.forEach(col => {
-                    // Find index of this column in the header row
-                    const idx = row.findIndex(cell => col.keys.some(k => k.toLowerCase() === cell));
-                    colIndices[col.field] = idx; 
+                  
+               const idx = normalizedRow.findIndex(cell => col.keys.some(k => cell.includes(k.toLowerCase())));
+                    candidate[col.field] = idx;
                 });
-                break;
+ bestMatchCount = matchCount;
+                headerRowIndex = i;
+                colIndices = candidate;
             }
         }
 
-        if (headerRowIndex === -1) {
+if (headerRowIndex === -1 || bestMatchCount < 3) {
             alert("Could not detect header row. Please check column names (Date, Driver, etc.)");
             setImportState(prev => ({ ...prev, status: 'idle' }));
             return;
         }
+          // Ensure we have a usable Date column reference; if not found, default to first column
+        if (colIndices.date === -1 || colIndices.date === undefined) {
+            colIndices.date = 0;
+        }
+
 
         // 3. Process Data Rows (Stop at Table End)
         const processedQueue: any[] = [];
+           const skippedFromParse: SkippedRow[] = [];
         let blankStreak = 0;
+        const isGarbageRow = (row: any[]) => {
+            // Consider rows with only a weekday label or metadata as empty so we can find table end quickly
+            const nonEmpty = row.filter(c => String(c || '').trim() !== '');
+            if (nonEmpty.length === 0) return true;
+            if (nonEmpty.length === 1) {
+              const val = String(nonEmpty[0]).toLowerCase();
+              const weekdays = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+              if (weekdays.includes(val)) return true;
+            }
+            return false;
+        };
+
 
         for (let i = headerRowIndex + 1; i < rawRows.length; i++) {
             const row = rawRows[i];
+            
             
             // Safety: Pad row if short
             while (row.length < Object.keys(colIndices).length) row.push("");
 
             // Stop Conditions
-            // A. Check for "Total" row (Table footer)
-            const firstCell = String(row[0] || '').toLowerCase();
-            if (firstCell.includes('total')) break;
+          // A. Check for section headers of other tables
+            const firstCellRaw = String(row[0] || '').toLowerCase();
+            if (firstCellRaw.includes('driver summary') || firstCellRaw.includes('weekly status') || firstCellRaw.includes('profit') || firstCellRaw.includes('loss')) break;
+            if (firstCellRaw.includes('total')) break;
 
-            // B. Check for Blank Streak (End of block)
-            const isEmpty = row.every(c => !c || String(c).trim() === '');
-            if (isEmpty) {
+          // B. Check for Blank/Garbage Streak (End of block)
+            if (isGarbageRow(row)) {
                 blankStreak++;
-                if (blankStreak > 3) break; // Assume end of table after 3 empty rows
-                continue; 
+                if (blankStreak > 3) break; // Assume end of table after 3 empty/garbage rows
+                continue;
             } else {
                 blankStreak = 0;
             }
@@ -331,16 +382,19 @@ const ImportPage: React.FC = () => {
             
             if (parsedDate) {
                processedQueue.push({ ...rowObj, date: parsedDate }); // Store parsed ISO date
-            }
+             } else if (Object.values(rowObj).some(v => String(v || '').trim() !== '')) {
+               skippedFromParse.push(createSkippedRow(rowObj, i, 'Invalid or missing date'));
+                }
         }
 
         if (processedQueue.length === 0) {
-             alert("No valid data rows found after header.");
-             setImportState(prev => ({ ...prev, status: 'idle' }));
+            setImportState(prev => ({ ...prev, skippedRows: [...prev.skippedRows, ...skippedFromParse], status: 'idle' }));
+             alert(`No valid data rows found after header. ${skippedFromParse.length > 0 ? 'Rows failed date parsing. Please verify the Date column (e.g., DD/MM/YYYY).' : ''}`);
              return;
         }
 
-        setImportState(prev => ({ ...prev, queue: processedQueue, status: 'processing' }));
+        setImportState(prev => ({ ...prev, queue: processedQueue, skippedRows: [...prev.skippedRows, ...skippedFromParse], status: 'processing' }));
+
 
       } catch (err) {
         console.error(err);

@@ -10,6 +10,7 @@ export interface DailyEntry {
   collection: number;
   fuel: number;
   due: number; // positive = driver owes me, negative = I owe driver
+  payout: number; // New field: Amount paid out to driver
   notes?: string;
 }
 
@@ -71,6 +72,7 @@ export interface DriverSummary {
   totalRent: number;
   totalFuel: number;
   totalDue: number;
+  totalPayout: number;
   totalWalletWeek: number;
   finalTotal: number;
 }
@@ -80,6 +82,7 @@ export interface GlobalSummary {
   totalRent: number;
   totalFuel: number;
   totalDue: number;
+  totalPayout: number;
   totalWalletWeek: number;
   pendingFromDrivers: number;
   payableToDrivers: number;
@@ -117,7 +120,7 @@ export interface CompanySummaryRow {
   driverSubscriptionCharge: number;
   uberIncentive: number;
   uberWeekOs: number;
-  olaWeekOs: number; // Added for formula correctness
+  olaWeekOs: number; 
   vehicleLevelAdjustment: number;
   tds: number;
   challan: number;
