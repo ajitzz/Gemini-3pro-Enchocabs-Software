@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { storageService } from '../services/storageService';
 import { RentalSlab, CompanyWeeklySummary, CompanySummaryRow, HeaderMapping } from '../types';
@@ -27,6 +26,10 @@ const CompanySettlementPage: React.FC = () => {
   const [currentWeekNote, setCurrentWeekNote] = useState('');
   const [processingSummary, setProcessingSummary] = useState(false);
   
+  // New: Single Date Selection Logic
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [computedWeek, setComputedWeek] = useState<{start: string, end: string, label: string}>({start: '', end: '', label: ''});
+
   // Popup States
   const [popupType, setPopupType] = useState<'NONE' | 'PENALTY' | 'OVERRIDE'>('NONE');
   const [popupMessage, setPopupMessage] = useState('');
@@ -38,6 +41,7 @@ const CompanySettlementPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
+    updateWeekFromDate(new Date().toISOString().split('T')[0]);
   }, []);
 
   const loadData = async () => {
@@ -51,6 +55,22 @@ const CompanySettlementPage: React.FC = () => {
     setSummaries(summaryData.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()));
     setHeaderMappings(mappingData);
     setLoading(false);
+  };
+
+  const updateWeekFromDate = (dateStr: string) => {
+      setSelectedDate(dateStr);
+      if (!dateStr) return;
+      const d = new Date(dateStr);
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+      const monday = new Date(d.setDate(diff));
+      const sunday = new Date(d.setDate(diff + 6));
+      
+      const start = monday.toISOString().split('T')[0];
+      const end = sunday.toISOString().split('T')[0];
+      const label = `${monday.toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric'})} – ${sunday.toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric'})}`;
+      
+      setComputedWeek({ start, end, label });
   };
 
   // --- RENTAL PLAN HANDLERS ---
@@ -108,18 +128,6 @@ const CompanySettlementPage: React.FC = () => {
 
   // --- COMPANY SUMMARY HANDLERS ---
 
-  const getCurrentWeekRange = () => {
-      const d = new Date();
-      const day = d.getDay(), diff = d.getDate() - day + (day === 0 ? -6 : 1);
-      const monday = new Date(d.setDate(diff));
-      const sunday = new Date(d.setDate(diff + 6));
-      return { 
-          start: monday.toISOString().split('T')[0], 
-          end: sunday.toISOString().split('T')[0],
-          label: `${monday.toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric'})} – ${sunday.toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric'})}`
-      };
-  };
-
   const handleSummaryFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files?.[0]) {
           setCurrentWeekFile(e.target.files[0]);
@@ -129,6 +137,10 @@ const CompanySettlementPage: React.FC = () => {
 
   const processSummaryFile = async () => {
       if (!currentWeekFile) return;
+      if (!computedWeek.start || !computedWeek.end) {
+          setErrors(["Please select a valid date to determine the week."]);
+          return;
+      }
       setProcessingSummary(true);
       setErrors([]);
 
@@ -201,15 +213,9 @@ const CompanySettlementPage: React.FC = () => {
           };
 
           // Normalize Data using Mappings
-          // We use the colIndices map to extract data from raw array-like objects if needed, 
-          // but sheet_to_json returns objects keyed by header string.
-          // Since we know the header row, sheet_to_json keys are the Excel Headers.
-          // We map: row[Mapping.excelHeader] -> Object[Mapping.internalKey]
-          
           const rows: CompanySummaryRow[] = rawRows
             .map((r: any) => {
                 // Check if row is empty/invalid
-                // We use Vehicle Number as a primary key check
                 const vehicleKey = headerMappings.find(m => m.internalKey === 'vehicleNumber')?.excelHeader || '';
                 if (!r[vehicleKey]) return null;
 
@@ -268,12 +274,12 @@ const CompanySettlementPage: React.FC = () => {
       const newErrors: string[] = [];
       
       // --- VALIDATION 3: EXISTING RECORD (SOFT) ---
-      const week = getCurrentWeekRange();
-      const existing = summaries.find(s => s.startDate === week.start);
+      // Use manually selected Start Date for existence check
+      const existing = summaries.find(s => s.startDate === computedWeek.start);
       
       if (popupType !== 'OVERRIDE') {
           if (existing) {
-              setPopupMessage("A settlement already exists for this company and week range. Do you want to override it?");
+              setPopupMessage(`A settlement already exists for the week starting ${computedWeek.start}. Do you want to override it?`);
               setPopupType('OVERRIDE');
               setPendingData(rows);
               return; // Pause
@@ -369,11 +375,11 @@ const CompanySettlementPage: React.FC = () => {
   };
 
   const finalizeSummarySave = async (rows: CompanySummaryRow[]) => {
-      const week = getCurrentWeekRange();
+      // Use COMPUTED dates from single selection
       const newSummary: CompanyWeeklySummary = {
           id: crypto.randomUUID(),
-          startDate: week.start,
-          endDate: week.end,
+          startDate: computedWeek.start,
+          endDate: computedWeek.end,
           fileName: currentWeekFile?.name || 'Unknown',
           importedAt: new Date().toISOString(),
           note: currentWeekNote,
@@ -425,7 +431,7 @@ const CompanySettlementPage: React.FC = () => {
                          <strong>Instructions:</strong> Match the internal "Standard Name" used by the system with the exact "Header Name" found in your Excel files. This allows the import to work even if column names change.
                       </p>
                       <table className="w-full text-sm text-left">
-                          <thead className="bg-slate-50 text-slate-500 uppercase font-bold text-xs sticky top-0">
+                          <thead className="bg-white text-slate-500 uppercase font-bold text-xs sticky top-0">
                               <tr>
                                   <th className="px-4 py-3 border-b">Standard Name (Internal)</th>
                                   <th className="px-4 py-3 border-b">Excel Header Name (Editable)</th>
@@ -564,7 +570,19 @@ const CompanySettlementPage: React.FC = () => {
                           Current Week Import
                           <span className="bg-indigo-50 text-indigo-600 text-xs px-2 py-1 rounded-md uppercase tracking-wider font-bold">Active</span>
                       </h4>
-                      <p className="text-slate-500 mt-1 flex items-center gap-2"><Calendar size={16} /> {getCurrentWeekRange().label}</p>
+                      <div className="mt-4 flex flex-col gap-2">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Select Date in Week</label>
+                          <div className="flex items-center gap-4 bg-slate-50 p-2 rounded-xl border border-slate-200">
+                             <input 
+                                type="date" 
+                                value={selectedDate} 
+                                onChange={e => updateWeekFromDate(e.target.value)} 
+                                className="bg-transparent text-sm font-medium text-slate-700 outline-none p-1"
+                             />
+                             <div className="h-4 w-px bg-slate-300"></div>
+                             <span className="text-xs font-bold text-indigo-600">{computedWeek.label}</span>
+                          </div>
+                      </div>
                   </div>
               </div>
 
@@ -602,12 +620,8 @@ const CompanySettlementPage: React.FC = () => {
               {errors.length > 0 && (
                   <div className="mt-6 bg-rose-50 border border-rose-100 rounded-xl p-4 animate-fade-in">
                       <h5 className="text-rose-700 font-bold flex items-center gap-2 mb-2"><AlertTriangle size={18} /> Validation Errors</h5>
-                      <ul className="list-none text-sm text-rose-600 space-y-2">
-                          {errors.map((err, i) => (
-                              <li key={i} className="bg-white p-3 rounded-lg border border-rose-100 shadow-sm text-xs font-mono whitespace-pre-wrap">
-                                 {err}
-                              </li>
-                          ))}
+                      <ul className="list-disc list-inside text-sm text-rose-600 space-y-1">
+                          {errors.map((err, i) => <li key={i}>{err}</li>)}
                       </ul>
                   </div>
               )}
@@ -689,7 +703,7 @@ const CompanySettlementPage: React.FC = () => {
                                 {selectedSummary.rows.map((row, i) => (
                                     <tr key={i} className="hover:bg-slate-50 transition-colors">
                                         <td className="px-4 py-3 font-bold text-slate-700 sticky left-0 bg-white z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">{row.vehicleNumber}</td>
-                                        <td className="px-4  bg-white  py-3">{row.onroadDays}</td>
+                                        <td className="px-4 py-3">{row.onroadDays}</td>
                                         <td className="px-4 py-3">{row.dailyRentApplied}</td>
                                         <td className="px-4 py-3">{row.weeklyIndemnityFees}</td>
                                         <td className="px-4 py-3 font-bold text-indigo-600 bg-indigo-50/10">{row.netWeeklyLeaseRental}</td>
