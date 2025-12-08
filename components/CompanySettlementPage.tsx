@@ -26,9 +26,10 @@ const CompanySettlementPage: React.FC = () => {
   const [currentWeekNote, setCurrentWeekNote] = useState('');
   const [processingSummary, setProcessingSummary] = useState(false);
   
-  // New: Single Date Selection Logic
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  // New: Single Date Selection Logic - Empty by default
+  const [selectedDate, setSelectedDate] = useState(''); 
   const [computedWeek, setComputedWeek] = useState<{start: string, end: string, label: string}>({start: '', end: '', label: ''});
+  const [weekExists, setWeekExists] = useState(false);
 
   // Popup States
   const [popupType, setPopupType] = useState<'NONE' | 'PENALTY' | 'OVERRIDE'>('NONE');
@@ -41,7 +42,7 @@ const CompanySettlementPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
-    updateWeekFromDate(new Date().toISOString().split('T')[0]);
+    // Removed default date setting to force user selection
   }, []);
 
   const loadData = async () => {
@@ -59,7 +60,11 @@ const CompanySettlementPage: React.FC = () => {
 
   const updateWeekFromDate = (dateStr: string) => {
       setSelectedDate(dateStr);
-      if (!dateStr) return;
+      if (!dateStr) {
+          setComputedWeek({start: '', end: '', label: ''});
+          setWeekExists(false);
+          return;
+      }
       const d = new Date(dateStr);
       const day = d.getDay();
       const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
@@ -71,6 +76,15 @@ const CompanySettlementPage: React.FC = () => {
       const label = `${monday.toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric'})} – ${sunday.toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric'})}`;
       
       setComputedWeek({ start, end, label });
+      
+      // Check for duplication
+      const exists = summaries.some(s => s.startDate === start);
+      setWeekExists(exists);
+      if (exists) {
+          setErrors(["Week range already imported. Duplicates not allowed."]);
+      } else {
+          setErrors([]);
+      }
   };
 
   // --- RENTAL PLAN HANDLERS ---
@@ -137,10 +151,19 @@ const CompanySettlementPage: React.FC = () => {
 
   const processSummaryFile = async () => {
       if (!currentWeekFile) return;
-      if (!computedWeek.start || !computedWeek.end) {
-          setErrors(["Please select a valid date to determine the week."]);
+      
+      // Strict Date Check
+      if (!selectedDate || !computedWeek.start) {
+          setErrors(["Date selection is mandatory. Please pick a date to determine the week."]);
           return;
       }
+
+      // Strict Duplication Check
+      if (weekExists) {
+          setErrors([`Week ${computedWeek.label} is already imported. Duplicates not accepted.`]);
+          return;
+      }
+
       setProcessingSummary(true);
       setErrors([]);
 
@@ -274,17 +297,9 @@ const CompanySettlementPage: React.FC = () => {
       const newErrors: string[] = [];
       
       // --- VALIDATION 3: EXISTING RECORD (SOFT) ---
-      // Use manually selected Start Date for existence check
-      const existing = summaries.find(s => s.startDate === computedWeek.start);
-      
-      if (popupType !== 'OVERRIDE') {
-          if (existing) {
-              setPopupMessage(`A settlement already exists for the week starting ${computedWeek.start}. Do you want to override it?`);
-              setPopupType('OVERRIDE');
-              setPendingData(rows);
-              return; // Pause
-          }
-      }
+      // We check strict duplication now at start, but if user is overriding via special flow (removed for strict dupe check, but kept existing logic structure just in case)
+      // Since prompt says "Duplication cannot be Accepted", I will skip the Override check here and rely on the pre-check.
+      // However, if logic flow reaches here, we assume it's a valid new import.
 
       rows.forEach(row => {
           // --- VALIDATION 4: NET LEASE FORMULA (HARD) ---
@@ -571,16 +586,17 @@ const CompanySettlementPage: React.FC = () => {
                           <span className="bg-indigo-50 text-indigo-600 text-xs px-2 py-1 rounded-md uppercase tracking-wider font-bold">Active</span>
                       </h4>
                       <div className="mt-4 flex flex-col gap-2">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Select Date in Week</label>
-                          <div className="flex items-center gap-4 bg-slate-50 p-2 rounded-xl border border-slate-200">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Select Date in Week *</label>
+                          <div className={`flex items-center gap-4 p-2 rounded-xl border ${!selectedDate ? 'border-rose-200 bg-rose-50' : 'border-slate-200 bg-slate-50'}`}>
                              <input 
                                 type="date" 
                                 value={selectedDate} 
                                 onChange={e => updateWeekFromDate(e.target.value)} 
+                                required
                                 className="bg-transparent text-sm font-medium text-slate-700 outline-none p-1"
                              />
                              <div className="h-4 w-px bg-slate-300"></div>
-                             <span className="text-xs font-bold text-indigo-600">{computedWeek.label}</span>
+                             <span className="text-xs font-bold text-indigo-600">{computedWeek.label || 'Please select date'}</span>
                           </div>
                       </div>
                   </div>
@@ -607,12 +623,18 @@ const CompanySettlementPage: React.FC = () => {
                       </div>
                       <button 
                           onClick={processSummaryFile}
-                          disabled={!currentWeekFile || processingSummary}
-                          className={`w-full py-3 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all ${!currentWeekFile ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200'}`}
+                          disabled={!currentWeekFile || processingSummary || !selectedDate || weekExists}
+                          className={`w-full py-3 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all ${(!currentWeekFile || !selectedDate || weekExists) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200'}`}
                       >
                           {processingSummary ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"/> : <CheckCircle size={20} />}
                           Import & Validate
                       </button>
+                      {weekExists && (
+                          <div className="flex items-center gap-2 text-rose-600 text-xs font-bold bg-rose-50 p-2 rounded-lg justify-center">
+                              <AlertTriangle size={14}/>
+                              Week already imported!
+                          </div>
+                      )}
                   </div>
               </div>
 

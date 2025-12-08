@@ -31,15 +31,29 @@ const WeeklyWalletPage: React.FC = () => {
   const [filterDriver, setFilterDriver] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  // Helper to get Monday of the week for a given date
   const getMonday = (d: Date) => {
     d = new Date(d);
     const day = d.getDay(),
       diff = d.getDate() - day + (day === 0 ? -6 : 1);
-    return new Date(d.setDate(diff)).toISOString().split('T')[0];
+    return new Date(d.setDate(diff));
+  };
+
+  const getWeekRange = (dateStr: string) => {
+      if (!dateStr) return { start: '', end: '', label: '' };
+      const d = new Date(dateStr);
+      const monday = getMonday(d);
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+      return {
+          start: monday.toISOString().split('T')[0],
+          end: sunday.toISOString().split('T')[0],
+          label: `${monday.toLocaleDateString('en-GB', {day: '2-digit', month: 'short'})} - ${sunday.toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric'})}`
+      };
   };
 
   const initialFormState: Partial<WeeklyWallet> = {
-    weekStartDate: getMonday(new Date()),
+    weekStartDate: '', // Explicitly empty
     driver: '',
     earnings: 0,
     refund: 0,
@@ -51,9 +65,12 @@ const WeeklyWalletPage: React.FC = () => {
   };
 
   const [formData, setFormData] = useState<Partial<WeeklyWallet>>(initialFormState);
+  // Separate state for the date picker display
+  const [selectedDate, setSelectedDate] = useState(''); // Explicitly empty
 
   useEffect(() => {
     loadData();
+    // Removed default date setting
   }, []);
 
   const loadData = async () => {
@@ -73,6 +90,17 @@ const WeeklyWalletPage: React.FC = () => {
     ((formData.diff || 0) + (formData.cash || 0) + (formData.charges || 0))
   );
 
+  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const dateVal = e.target.value;
+      setSelectedDate(dateVal);
+      if (dateVal) {
+          const range = getWeekRange(dateVal);
+          setFormData(prev => ({ ...prev, weekStartDate: range.start, weekEndDate: range.end }));
+      } else {
+          setFormData(prev => ({ ...prev, weekStartDate: '', weekEndDate: '' }));
+      }
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     setFormData(prev => ({
@@ -83,16 +111,18 @@ const WeeklyWalletPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.weekStartDate || !formData.driver) return;
+    if (!formData.weekStartDate) {
+        alert("Please select a date to determine the week range.");
+        return;
+    }
+    if (!formData.driver) return;
 
-    const start = new Date(formData.weekStartDate);
-    const end = new Date(start);
-    end.setDate(start.getDate() + 6);
-
+    const range = getWeekRange(selectedDate);
+    
     const newWallet: WeeklyWallet = {
       id: formData.id || crypto.randomUUID(),
-      weekStartDate: formData.weekStartDate,
-      weekEndDate: end.toISOString().split('T')[0],
+      weekStartDate: range.start,
+      weekEndDate: range.end,
       driver: formData.driver || 'Unknown',
       earnings: Number(formData.earnings),
       refund: Number(formData.refund),
@@ -111,6 +141,7 @@ const WeeklyWalletPage: React.FC = () => {
 
   const handleEdit = (wallet: WeeklyWallet) => {
     setFormData(wallet);
+    setSelectedDate(wallet.weekStartDate); // Set picker to start date
     setEditingId(wallet.id);
     setIsFormOpen(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -118,6 +149,7 @@ const WeeklyWalletPage: React.FC = () => {
 
   const resetForm = () => {
     setFormData(initialFormState);
+    setSelectedDate('');
     setEditingId(null);
     setIsFormOpen(false);
   };
@@ -132,6 +164,13 @@ const WeeklyWalletPage: React.FC = () => {
   const filteredWallets = wallets.filter(w => 
     filterDriver === '' || w.driver.toLowerCase().includes(filterDriver.toLowerCase())
   );
+  
+  // Format Date Range for Display
+  const formatWeekRange = (start: string, end: string) => {
+      const s = new Date(start);
+      const e = new Date(end);
+      return `${s.toLocaleDateString('en-GB', {day: '2-digit', month: 'short'})} - ${e.toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric'})}`;
+  };
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 animate-fade-in">
@@ -182,10 +221,19 @@ const WeeklyWalletPage: React.FC = () => {
                     </div>
                  </div>
                  <div className="lg:col-span-4">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1 mb-1.5 block">Week Starting (Mon)</label>
-                    <div className="relative">
-                       <input type="date" name="weekStartDate" value={formData.weekStartDate} onChange={handleInputChange} required className="w-full pl-10 pr-4 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-900 font-medium focus:ring-2 focus:ring-indigo-500 outline-none" />
-                       <Calendar className="absolute left-3.5 top-3.5 text-slate-400 pointer-events-none" size={16} />
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1 mb-1.5 block">Select Date in Week</label>
+                    <div className={`relative flex items-center gap-3 p-1 rounded-xl border ${!selectedDate ? 'border-rose-200 bg-rose-50' : 'border-transparent'}`}>
+                       <input 
+                         type="date" 
+                         value={selectedDate} 
+                         onChange={handleDateChange} 
+                         required 
+                         className="flex-1 pl-4 pr-4 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-900 font-medium focus:ring-2 focus:ring-indigo-500 outline-none" 
+                       />
+                       <div className="bg-indigo-50 px-3 py-2 rounded-lg border border-indigo-100 min-w-[140px] text-center">
+                          <span className="text-[10px] text-indigo-400 font-bold uppercase block">Week Range</span>
+                          <span className="text-xs text-indigo-700 font-bold">{getWeekRange(selectedDate).label || 'Select Date'}</span>
+                       </div>
                     </div>
                  </div>
                  <div className="lg:col-span-2">
@@ -281,7 +329,7 @@ const WeeklyWalletPage: React.FC = () => {
           <table className="w-full text-sm text-left">
             <thead className="text-xs text-slate-500 uppercase bg-slate-50/50 border-b border-slate-100">
               <tr>
-                <th className="px-6 py-4 font-semibold tracking-wider">Week Start</th>
+                <th className="px-6 py-4 font-semibold tracking-wider">Week Range</th>
                 <th className="px-6 py-4 font-semibold tracking-wider">Driver</th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Earnings</th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Refund</th>
@@ -303,7 +351,7 @@ const WeeklyWalletPage: React.FC = () => {
                       <td className="px-6 py-4 text-slate-600 font-medium whitespace-nowrap">
                          <div className="flex items-center gap-2">
                             <Calendar size={14} className="text-slate-400" />
-                            {w.weekStartDate}
+                            {formatWeekRange(w.weekStartDate, w.weekEndDate)}
                          </div>
                       </td>
                       <td className="px-6 py-4 font-bold text-slate-800">{w.driver}</td>

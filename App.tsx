@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { HashRouter, Routes, Route, NavLink } from 'react-router-dom';
-import { LayoutDashboard, Calendar, Wallet, Menu, X, Users, Coffee, Upload, Settings, Briefcase, FileText } from 'lucide-react';
+import { LayoutDashboard, Calendar, Wallet, Menu, X, Users, Coffee, Upload, Settings, Briefcase, FileText, Calculator } from 'lucide-react';
 import DailyEntryPage from './components/DailyEntryPage';
 import WeeklyWalletPage from './components/WeeklyWalletPage';
 import DashboardPage from './components/DashboardPage';
@@ -10,6 +10,7 @@ import ImportPage from './components/ImportPage';
 import ManageDefaultsPage from './components/ManageDefaultsPage';
 import CompanySettlementPage from './components/CompanySettlementPage';
 import DriverBillingsPage from './components/DriverBillingsPage';
+import RevenuePage from './components/RevenuePage';
 
 const App: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -77,6 +78,7 @@ const App: React.FC = () => {
                 <NavItem to="/leaves" icon={Coffee} label="Leaves" />
                 <NavItem to="/settlement" icon={Briefcase} label="Company Settlement" />
                 <NavItem to="/billings" icon={FileText} label="Driver Billings" />
+                <NavItem to="/revenue" icon={Calculator} label="Revenue Calculation" />
                 <NavItem to="/import" icon={Upload} label="Import Data" />
               </nav>
             </div>
@@ -119,6 +121,7 @@ const App: React.FC = () => {
             <Route path="/leaves" element={<LeavePage />} />
             <Route path="/settlement" element={<CompanySettlementPage />} />
             <Route path="/billings" element={<DriverBillingsPage />} />
+            <Route path="/revenue" element={<RevenuePage />} />
             <Route path="/import" element={<ImportPage />} />
           </Routes>
         </main>
