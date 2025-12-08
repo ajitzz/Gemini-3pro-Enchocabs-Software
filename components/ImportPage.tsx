@@ -16,7 +16,8 @@ const REQUIRED_DAILY_COLUMNS = [
   { field: 'rent', label: 'Rent', keys: ['Rent', 'Rental'], required: true },
   { field: 'collection', label: 'Collection', keys: ['Collection', 'Amount Collected', 'Collected'], required: false },
   { field: 'fuel', label: 'Fuel', keys: ['Fuel', 'Fuel Expense', 'Fuel Cost', 'Encho Fuel'], required: false },
-  { field: 'due', label: 'Due', keys: ['Due', 'Balance', 'Pending', 'Due Amount'], required: false }
+  { field: 'due', label: 'Due', keys: ['Due', 'Balance', 'Pending', 'Due Amount'], required: false },
+  { field: 'payout', label: 'Payout', keys: ['Payout', 'Pay Out', 'Paid', 'Payout Amount', 'Pay to Driver'], required: false }
 ];
 
 type ImportStatus = 'idle' | 'processing' | 'paused' | 'complete';
@@ -39,6 +40,7 @@ interface SkippedRow {
   collection: string;
   fuel: string;
   due: string;
+  payout: string;
   rejectReason: string;
 }
 
@@ -234,6 +236,7 @@ const ImportPage: React.FC = () => {
       collection: cleanCell(rowObj.collection),
       fuel: cleanCell(rowObj.fuel),
       due: cleanCell(rowObj.due),
+        payout: cleanCell(rowObj.payout),
       rejectReason: reason
     };
   };
@@ -455,7 +458,7 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
     );
 
     if (duplicate || batchDuplicate) {
-      const newEntryObj = {
+        const newEntryObj = {
           driver: driverName,
           date: dateStr,
           vehicle: mapped.vehicle,
@@ -464,6 +467,7 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
           collection: getNumber(mapped.collection),
           fuel: getNumber(mapped.fuel),
           due: getNumber(mapped.due),
+           payout: getNumber(mapped.payout),
           qrCode: mapped.qrCode
       };
       
@@ -486,8 +490,9 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
       qrCode: mapped.qrCode,
       rent: getNumber(mapped.rent),
       collection: getNumber(mapped.collection),
-      fuel: getNumber(mapped.fuel), 
-      due: getNumber(mapped.due),   
+      fuel: getNumber(mapped.fuel),
+      due: getNumber(mapped.due),
+      payout: getNumber(mapped.payout),  
       notes: 'Imported'
     };
 

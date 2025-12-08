@@ -1,3 +1,4 @@
+
 export interface DailyEntry {
   id: string;
   date: string; // ISO string YYYY-MM-DD
@@ -127,6 +128,13 @@ export interface CompanySummaryRow {
   accident: number;
   deadMile: number;
   currentOs: number;
+}
+
+export interface HeaderMapping {
+  internalKey: keyof CompanySummaryRow; // The standard name used in code
+  label: string; // Human readable standard name
+  excelHeader: string; // The configured header in the Excel file
+  required: boolean;
 }
 
 // --- Import Types ---

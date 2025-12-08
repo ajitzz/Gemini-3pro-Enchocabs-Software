@@ -1,27 +1,25 @@
+
 import React, { useEffect, useState } from 'react';
 import { storageService } from '../services/storageService';
-import { RentalSlab, CompanyWeeklySummary, CompanySummaryRow } from '../types';
-import { Briefcase, Save, Plus, Trash2, Edit3, X, Settings, ChevronDown, ChevronUp, Upload, FileText, AlertTriangle, CheckCircle, Calendar, Eye } from 'lucide-react';
+import { RentalSlab, CompanyWeeklySummary, CompanySummaryRow, HeaderMapping } from '../types';
+import { Briefcase, Save, Plus, Trash2, Edit3, X, Settings, ChevronDown, ChevronUp, Upload, FileText, AlertTriangle, CheckCircle, Calendar, Eye, Table } from 'lucide-react';
 
 declare const XLSX: any;
-
-const REQUIRED_SUMMARY_COLUMNS = [
-  "Vehicle Number", "Onroad Days", "Daily Rent Applied", "Weekly Indemnity Fees", 
-  "Net Weekly Lease Rental", "Performance Day", "Uber Trips", "Total Earning", 
-  "Uber Cash Collection", "Toll", "Driver subscription charge", "Uber Incentive", 
-  "Uber Week O/s", "OLA Week O/s", "Vehicle Level Adjustment", "TDS", "Challan", "Accident", 
-  "DeadMile", "Current O/S"
-];
 
 const CompanySettlementPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [slabs, setSlabs] = useState<RentalSlab[]>([]);
+  const [headerMappings, setHeaderMappings] = useState<HeaderMapping[]>([]);
   
   // Rental Plan States
   const [isExpanded, setIsExpanded] = useState(false);
   const [isManageMode, setIsManageMode] = useState(false); 
   const [editingSlabId, setEditingSlabId] = useState<string | null>(null);
   const [tempSlab, setTempSlab] = useState<Partial<RentalSlab>>({});
+
+  // Header Config State
+  const [isConfiguringHeaders, setIsConfiguringHeaders] = useState(false);
+  const [tempMappings, setTempMappings] = useState<HeaderMapping[]>([]);
 
   // Company Summary States
   const [summaries, setSummaries] = useState<CompanyWeeklySummary[]>([]);
@@ -44,12 +42,14 @@ const CompanySettlementPage: React.FC = () => {
 
   const loadData = async () => {
     setLoading(true);
-    const [slabData, summaryData] = await Promise.all([
-        storageService.getRentalSlabs(),
-        storageService.getCompanySummaries()
+    const [slabData, summaryData, mappingData] = await Promise.all([
+        storageService.getCompanyRentalSlabs(), 
+        storageService.getCompanySummaries(),
+        storageService.getHeaderMappings()
     ]);
     setSlabs(slabData.sort((a, b) => a.minTrips - b.minTrips));
     setSummaries(summaryData.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()));
+    setHeaderMappings(mappingData);
     setLoading(false);
   };
 
@@ -71,7 +71,7 @@ const CompanySettlementPage: React.FC = () => {
     if (editingSlabId && tempSlab) {
         const updatedSlabs = slabs.map(s => s.id === editingSlabId ? { ...s, ...tempSlab } as RentalSlab : s);
         const finalSlabs = updatedSlabs.sort((a, b) => a.minTrips - b.minTrips);
-        await storageService.saveRentalSlabs(finalSlabs);
+        await storageService.saveCompanyRentalSlabs(finalSlabs); // Save to Company storage
         setSlabs(finalSlabs);
         setEditingSlabId(null);
         setTempSlab({});
@@ -81,12 +81,30 @@ const CompanySettlementPage: React.FC = () => {
   const deleteSlab = async (id: string) => {
     if (confirm("Are you sure you want to delete this rental slab?")) {
         const newSlabs = slabs.filter(s => s.id !== id);
-        await storageService.saveRentalSlabs(newSlabs);
+        await storageService.saveCompanyRentalSlabs(newSlabs);
         setSlabs(newSlabs);
     }
   };
 
   const handleInputChange = (field: keyof RentalSlab, value: any) => setTempSlab(prev => ({ ...prev, [field]: value }));
+
+  // --- HEADER CONFIGURATION HANDLERS ---
+  const openHeaderConfig = () => {
+      setTempMappings(JSON.parse(JSON.stringify(headerMappings))); // Deep copy
+      setIsConfiguringHeaders(true);
+  };
+
+  const handleHeaderChange = (index: number, val: string) => {
+      const newM = [...tempMappings];
+      newM[index].excelHeader = val;
+      setTempMappings(newM);
+  };
+
+  const saveHeaderConfig = async () => {
+      await storageService.saveHeaderMappings(tempMappings);
+      setHeaderMappings(tempMappings);
+      setIsConfiguringHeaders(false);
+  };
 
   // --- COMPANY SUMMARY HANDLERS ---
 
@@ -121,27 +139,37 @@ const CompanySettlementPage: React.FC = () => {
           const sheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[sheetName];
 
-          // Read first 20 rows to find header
+          // Read first 20 rows to find header using DYNAMIC MAPPINGS
           const initialRows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
           let headerRowIndex = -1;
+          const colIndices: Record<string, number> = {};
+
+          // Filter only required fields to check for existence
+          const requiredFields = headerMappings.filter(m => m.required);
           
           // Smart Header Detection
           for (let i = 0; i < Math.min(initialRows.length, 20); i++) {
-              const row = initialRows[i].map(cell => String(cell).trim());
-              // Check if this row contains most of our required columns
-              const matchCount = REQUIRED_SUMMARY_COLUMNS.reduce((count, col) => {
-                  return row.includes(col) ? count + 1 : count;
+              const row = initialRows[i].map(cell => String(cell).trim().toLowerCase());
+              // Check if this row contains most of our configured headers
+              const matchCount = requiredFields.reduce((count, mapping) => {
+                  return row.includes(mapping.excelHeader.toLowerCase()) ? count + 1 : count;
               }, 0);
 
-              // Threshold: if 50% of columns match, assume it's the header
-              if (matchCount >= REQUIRED_SUMMARY_COLUMNS.length / 2) {
+              // Threshold: if 50% of required columns match, assume it's the header
+              if (matchCount >= requiredFields.length / 2) {
                   headerRowIndex = i;
+                  
+                  // Build Map: InternalKey -> Column Index
+                  headerMappings.forEach(mapping => {
+                      const idx = row.indexOf(mapping.excelHeader.toLowerCase());
+                      colIndices[mapping.internalKey] = idx;
+                  });
                   break;
               }
           }
 
           if (headerRowIndex === -1) {
-             setErrors(["Could not detect valid header row. Please check column names."]);
+             setErrors(["Could not detect valid header row based on current mapping configuration. Please check your Excel file or update Header Mappings."]);
              setProcessingSummary(false);
              return;
           }
@@ -156,10 +184,9 @@ const CompanySettlementPage: React.FC = () => {
           }
 
           // --- VALIDATION 1: REQUIRED COLUMNS ---
-          const headers = Object.keys(rawRows[0]);
-          const missingCols = REQUIRED_SUMMARY_COLUMNS.filter(c => !headers.includes(c));
+          const missingCols = requiredFields.filter(m => colIndices[m.internalKey] === undefined || colIndices[m.internalKey] === -1);
           if (missingCols.length > 0) {
-              setErrors([`Missing required columns: ${missingCols.join(', ')}`]);
+              setErrors([`Missing required columns in file: ${missingCols.map(m => m.excelHeader).join(', ')}`]);
               setProcessingSummary(false);
               return;
           }
@@ -173,31 +200,31 @@ const CompanySettlementPage: React.FC = () => {
               return isNaN(n) ? 0 : n;
           };
 
-          // Normalize Data
+          // Normalize Data using Mappings
+          // We use the colIndices map to extract data from raw array-like objects if needed, 
+          // but sheet_to_json returns objects keyed by header string.
+          // Since we know the header row, sheet_to_json keys are the Excel Headers.
+          // We map: row[Mapping.excelHeader] -> Object[Mapping.internalKey]
+          
           const rows: CompanySummaryRow[] = rawRows
-            .filter((r: any) => r["Vehicle Number"]) // Filter empty rows
-            .map((r: any) => ({
-              vehicleNumber: String(r["Vehicle Number"]),
-              onroadDays: getNum(r["Onroad Days"]),
-              dailyRentApplied: getNum(r["Daily Rent Applied"]),
-              weeklyIndemnityFees: getNum(r["Weekly Indemnity Fees"]),
-              netWeeklyLeaseRental: getNum(r["Net Weekly Lease Rental"]),
-              performanceDay: getNum(r["Performance Day"]),
-              uberTrips: getNum(r["Uber Trips"]),
-              totalEarning: getNum(r["Total Earning"]),
-              uberCashCollection: getNum(r["Uber Cash Collection"]),
-              toll: getNum(r["Toll_1"] !== undefined ? r["Toll_1"] : r["Toll"]),
-              driverSubscriptionCharge: getNum(r["Driver subscription charge"]),
-              uberIncentive: getNum(r["Uber Incentive"]),
-              uberWeekOs: getNum(r["Uber Week O/s"]),
-              olaWeekOs: getNum(r["OLA Week O/s"]), // New Column
-              vehicleLevelAdjustment: getNum(r["Vehicle Level Adjustment"]),
-              tds: getNum(r["TDS"]),
-              challan: getNum(r["Challan"]),
-              accident: getNum(r["Accident"]),
-              deadMile: getNum(r["DeadMile"]),
-              currentOs: getNum(r["Current O/S"]),
-          }));
+            .map((r: any) => {
+                // Check if row is empty/invalid
+                // We use Vehicle Number as a primary key check
+                const vehicleKey = headerMappings.find(m => m.internalKey === 'vehicleNumber')?.excelHeader || '';
+                if (!r[vehicleKey]) return null;
+
+                const newRow: any = {};
+                headerMappings.forEach(mapping => {
+                    const rawVal = r[mapping.excelHeader];
+                    if (mapping.internalKey === 'vehicleNumber') {
+                         newRow[mapping.internalKey] = String(rawVal || '');
+                    } else {
+                         newRow[mapping.internalKey] = getNum(rawVal);
+                    }
+                });
+                return newRow;
+            })
+            .filter((r: any) => r !== null) as CompanySummaryRow[];
 
           if (rows.length === 0) {
               setErrors(["No valid vehicle data found."]);
@@ -271,9 +298,7 @@ const CompanySettlementPage: React.FC = () => {
           }
 
           // --- VALIDATION 6: WALLET SETTLEMENT (HARD) ---
-          // Updated Formula: -(Total Earning + Cash + Toll + Subscription) = Week O/S
-          // Revert to previous logic: -(Sum)
-          
+          // Formula: -(Total Earning + Cash + Toll + Subscription)
           const expectedWeekOs = -(row.totalEarning + row.uberCashCollection + row.toll + row.driverSubscriptionCharge);
           
           if (Math.abs(expectedWeekOs - row.uberWeekOs) > 5) {
@@ -325,7 +350,6 @@ const CompanySettlementPage: React.FC = () => {
           if (slab && slab.rentAmount !== row.dailyRentApplied) 
               newErrors.push(`Trip Slab Error ${row.vehicleNumber}: Trips ${row.uberTrips} -> Rent ${slab.rentAmount} vs ${row.dailyRentApplied}`);
           
-          // Updated Hard Check to match new formula
           const expectedWeekOs = -(row.totalEarning + row.uberCashCollection + row.toll + row.driverSubscriptionCharge);
           if (Math.abs(expectedWeekOs - row.uberWeekOs) > 5) 
               newErrors.push(`Wallet Settlement Error ${row.vehicleNumber}: -(${row.totalEarning}+${row.uberCashCollection}+${row.toll}+${row.driverSubscriptionCharge}) = ${expectedWeekOs} vs ${row.uberWeekOs}`);
@@ -368,15 +392,76 @@ const CompanySettlementPage: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 animate-fade-in pb-20">
-      <div className="flex items-center space-x-4 mb-6">
-        <div className="p-3 bg-emerald-900/10 rounded-xl text-emerald-700 shadow-sm border border-emerald-100">
-           <Briefcase size={28} />
-        </div>
-        <div>
-          <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Company Settlement</h2>
-          <p className="text-slate-500 mt-1 font-medium">Manage rental plans and settlement rules.</p>
-        </div>
+      <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-4">
+            <div className="p-3 bg-emerald-900/10 rounded-xl text-emerald-700 shadow-sm border border-emerald-100">
+              <Briefcase size={28} />
+            </div>
+            <div>
+              <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Company Settlement</h2>
+              <p className="text-slate-500 mt-1 font-medium">Manage rental plans and settlement rules.</p>
+            </div>
+          </div>
+          
+          {/* Header Config Button */}
+          <button 
+             onClick={openHeaderConfig}
+             className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-colors shadow-sm text-sm font-bold"
+          >
+             <Settings size={18} /> Configure Headers
+          </button>
       </div>
+
+      {/* HEADER CONFIGURATION MODAL */}
+      {isConfiguringHeaders && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col">
+                  <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                      <h3 className="text-xl font-bold text-slate-800">Map Excel Columns</h3>
+                      <button onClick={() => setIsConfiguringHeaders(false)} className="text-slate-400 hover:text-slate-600"><X size={24}/></button>
+                  </div>
+                  <div className="flex-1 overflow-auto p-6">
+                      <p className="text-sm text-slate-500 mb-4 bg-blue-50 p-3 rounded-lg border border-blue-100">
+                         <strong>Instructions:</strong> Match the internal "Standard Name" used by the system with the exact "Header Name" found in your Excel files. This allows the import to work even if column names change.
+                      </p>
+                      <table className="w-full text-sm text-left">
+                          <thead className="bg-slate-50 text-slate-500 uppercase font-bold text-xs sticky top-0">
+                              <tr>
+                                  <th className="px-4 py-3 border-b">Standard Name (Internal)</th>
+                                  <th className="px-4 py-3 border-b">Excel Header Name (Editable)</th>
+                                  <th className="px-4 py-3 border-b text-center">Required</th>
+                              </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                              {tempMappings.map((m, i) => (
+                                  <tr key={m.internalKey} className="hover:bg-slate-50">
+                                      <td className="px-4 py-3 font-medium text-slate-700">{m.label}</td>
+                                      <td className="px-4 py-2">
+                                          <input 
+                                             value={m.excelHeader} 
+                                             onChange={e => handleHeaderChange(i, e.target.value)}
+                                             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                                             placeholder="Enter Excel Column Name"
+                                          />
+                                      </td>
+                                      <td className="px-4 py-3 text-center">
+                                          {m.required ? 
+                                              <span className="bg-rose-100 text-rose-700 px-2 py-0.5 rounded text-[10px] font-bold">YES</span> 
+                                              : <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded text-[10px]">NO</span>}
+                                      </td>
+                                  </tr>
+                              ))}
+                          </tbody>
+                      </table>
+                  </div>
+                  <div className="p-5 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 rounded-b-2xl">
+                      <button onClick={() => setIsConfiguringHeaders(false)} className="px-5 py-2.5 bg-white border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-50">Cancel</button>
+                      <button onClick={saveHeaderConfig} className="px-6 py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-200">Save Mappings</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
 
       {/* SECTION 1: RENTAL PLAN */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden transition-all duration-300">
@@ -403,7 +488,7 @@ const CompanySettlementPage: React.FC = () => {
                             <button onClick={() => setIsManageMode(false)} className="px-4 py-2 bg-white border border-slate-200 text-slate-600 text-sm font-bold rounded-xl">Done</button>
                         </>
                      ) : (
-                        <button onClick={() => setIsManageMode(true)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl"><Settings size={20} /></button>
+                        <button onClick={() => setIsManageMode(true)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl"><Edit3 size={20} /></button>
                      )}
                  </div>
              )}
@@ -597,14 +682,14 @@ const CompanySettlementPage: React.FC = () => {
                                     <th className="px-4 py-3">TDS</th>
                                     <th className="px-4 py-3">Challan</th>
                                     <th className="px-4 py-3">Accident</th>
-                                    <th className="px-4 py-3 bg-slate-100 font-bold text-slate-900 sticky right-0 z-10 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">Current O/S</th>
+                                    <th className="px-4 py-3 bg-slate-100 font-bold text-slate-900 sticky right-0 z-10 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.05)]">Current O/S</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {selectedSummary.rows.map((row, i) => (
                                     <tr key={i} className="hover:bg-slate-50 transition-colors">
                                         <td className="px-4 py-3 font-bold text-slate-700 sticky left-0 bg-white z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">{row.vehicleNumber}</td>
-                                        <td className="px-4 py-3">{row.onroadDays}</td>
+                                        <td className="px-4  bg-white  py-3">{row.onroadDays}</td>
                                         <td className="px-4 py-3">{row.dailyRentApplied}</td>
                                         <td className="px-4 py-3">{row.weeklyIndemnityFees}</td>
                                         <td className="px-4 py-3 font-bold text-indigo-600 bg-indigo-50/10">{row.netWeeklyLeaseRental}</td>

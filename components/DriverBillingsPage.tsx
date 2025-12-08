@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { storageService } from '../services/storageService';
 import { DriverSummary, RentalSlab, WeeklyWallet, DailyEntry } from '../types';
-import { Users, ChevronDown, ChevronUp, FileText, Briefcase, Download, Share2, Edit2, Save, X, Calendar, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Users, ChevronDown, ChevronUp, FileText, Briefcase, Download, Share2, Edit2, Save, X, Calendar, Filter, ChevronLeft, ChevronRight, Check, Copy } from 'lucide-react';
 
 const DriverBillingsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
@@ -27,6 +27,9 @@ const DriverBillingsPage: React.FC = () => {
   const [editingBillId, setEditingBillId] = useState<string | null>(null);
   const [adjustmentValue, setAdjustmentValue] = useState<number>(0);
   const [adjustmentsMap, setAdjustmentsMap] = useState<Record<string, number>>({});
+  
+  // Copy Feedback State
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -36,7 +39,7 @@ const DriverBillingsPage: React.FC = () => {
     setLoading(true);
     const [summaryData, slabData, weeklyData, dailyData] = await Promise.all([
         storageService.getSummary(),
-        storageService.getRentalSlabs(),
+        storageService.getDriverRentalSlabs(), // Use Driver Slabs
         storageService.getWeeklyWallets(),
         storageService.getDailyEntries()
     ]);
@@ -64,10 +67,9 @@ const DriverBillingsPage: React.FC = () => {
        const startDate = new Date(wallet.weekStartDate);
        const endDate = new Date(wallet.weekEndDate);
        
-       // Logic: Only show bill if the week has fully passed (endDate < today)
        const isWeekCompleted = today > endDate;
 
-       if (!isWeekCompleted) return null; // Skip active weeks
+       if (!isWeekCompleted) return null; 
 
        const relevantDaily = dailyEntries.filter(d => {
           const entryDate = new Date(d.date);
@@ -78,6 +80,11 @@ const DriverBillingsPage: React.FC = () => {
        
        let rentTotal = 0;
        let rentRateUsed = 0;
+       // Updated logic: if < 70, use slab. 70+ uses actual daily sum or high slab?
+       // Prompt said "if trip total ... is below 70 keep the rent is based on Driver Rental Reference else take the rent of the Daily Entries"
+       // New Driver Slab has 70+ tier. 
+       // I will stick to the prompt's explicit logic: < 70 -> Slab, >= 70 -> Daily Entries Actual Sum.
+       
        const isLowTrips = totalTrips < 70;
 
        if (isLowTrips) {
@@ -102,7 +109,7 @@ const DriverBillingsPage: React.FC = () => {
        return {
            id: wallet.id,
            weekRange: `${wallet.weekStartDate} to ${wallet.weekEndDate}`,
-           weekKey: wallet.weekStartDate, // For filtering
+           weekKey: wallet.weekStartDate, 
            driver: wallet.driver,
            qrCode: relevantDaily[0]?.qrCode || 'N/A',
            trips: totalTrips,
@@ -117,7 +124,7 @@ const DriverBillingsPage: React.FC = () => {
            dailyDetails: relevantDaily,
            weeklyDetails: wallet
        };
-    }).filter(Boolean); // Remove nulls (active weeks)
+    }).filter(Boolean); 
 
     return bills.filter(b => {
         const matchesDriver = filterDriver === '' || b!.driver.toLowerCase().includes(filterDriver.toLowerCase());
@@ -127,15 +134,12 @@ const DriverBillingsPage: React.FC = () => {
   };
 
   const billingData = getBillingSummary();
-
-  // Pagination Logic
   const totalPages = Math.ceil(billingData.length / itemsPerPage);
   const paginatedData = billingData.slice(
     (currentPage - 1) * itemsPerPage, 
     currentPage * itemsPerPage
   );
   
-  // Get unique past weeks for filter dropdown
   const uniqueWeeks = Array.from(new Set(weeklyWallets
     .filter(w => new Date() > new Date(w.weekEndDate))
     .map(w => w.weekStartDate)))
@@ -154,7 +158,6 @@ const DriverBillingsPage: React.FC = () => {
   };
 
   const generateBillHTML = (bill: any) => {
-      // Format Daily Entries Table with requested columns
       const dailyRows = bill.dailyDetails.map((d: any) => `
         <tr>
           <td style="padding: 8px; border-bottom: 1px solid #eee;">${d.date}</td>
@@ -264,24 +267,15 @@ const DriverBillingsPage: React.FC = () => {
       a.click();
   };
 
-  const shareBill = async (bill: any) => {
+  const copyBillLink = (bill: any) => {
       const content = generateBillHTML(bill);
       const blob = new Blob([content], { type: 'text/html;charset=utf-8' });
-      const file = new File([blob], `Bill_${bill.driver}.html`, { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
       
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          try {
-              await navigator.share({
-                  files: [file],
-                  title: 'Driver Bill',
-                  text: `Payment Statement for ${bill.driver}`
-              });
-          } catch (error) {
-              console.log('Share failed', error);
-          }
-      } else {
-          alert("Sharing not supported on this browser/device. Please download instead.");
-      }
+      navigator.clipboard.writeText(url).then(() => {
+          setCopiedId(bill.id);
+          setTimeout(() => setCopiedId(null), 2000);
+      });
   };
 
   return (
@@ -474,8 +468,12 @@ const DriverBillingsPage: React.FC = () => {
                                          <button onClick={() => handleEditAdjustment(bill!.id, bill!.adjustments)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Edit Adjustments">
                                             <Edit2 size={16} />
                                          </button>
-                                         <button onClick={() => shareBill(bill)} className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Share Bill Link">
-                                            <Share2 size={16} />
+                                         <button 
+                                            onClick={() => copyBillLink(bill!)} 
+                                            className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors relative" 
+                                            title="Copy Bill Link"
+                                         >
+                                            {copiedId === bill!.id ? <Check size={16} className="text-emerald-600" /> : <Copy size={16} />}
                                          </button>
                                          <button onClick={() => downloadBill(bill)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Download Bill">
                                             <Download size={16} />

@@ -1,4 +1,5 @@
-import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary } from '../types';
+
+import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping } from '../types';
 
 const DAILY_KEY = 'driver_app_daily_entries';
 const WEEKLY_KEY = 'driver_app_weekly_wallets';
@@ -6,8 +7,11 @@ const DRIVER_KEY = 'driver_app_drivers';
 const LEAVE_KEY = 'driver_app_leaves';
 const ASSET_KEY = 'driver_app_assets';
 const SHIFT_KEY = 'driver_app_shifts';
-const RENTAL_SLAB_KEY = 'driver_app_rental_slabs';
+// Split keys for distinct plans
+const COMPANY_RENTAL_SLAB_KEY = 'driver_app_company_rental_slabs';
+const DRIVER_RENTAL_SLAB_KEY = 'driver_app_driver_rental_slabs';
 const COMPANY_SUMMARY_KEY = 'driver_app_company_summaries';
+const HEADER_MAPPING_KEY = 'driver_app_header_mappings';
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -163,28 +167,98 @@ export const storageService = {
     return assets;
   },
 
-  // --- Rental Slabs ---
-  getRentalSlabs: async (): Promise<RentalSlab[]> => {
+  // --- Rental Slabs (Company Settlement) ---
+  getCompanyRentalSlabs: async (): Promise<RentalSlab[]> => {
     await delay(100);
-    const data = localStorage.getItem(RENTAL_SLAB_KEY);
+    const data = localStorage.getItem(COMPANY_RENTAL_SLAB_KEY);
     if (data) return JSON.parse(data);
     
-    // Default Slabs - Updated to user request
+    // Default Slabs for Company Settlement (as requested)
     const defaults: RentalSlab[] = [
         { id: '1', minTrips: 0, maxTrips: 64, rentAmount: 950, notes: 'Base rent' },
-        { id: '2', minTrips: 65, maxTrips: 79, rentAmount: 885, notes: 'Reduced rent' },
-        { id: '3', minTrips: 80, maxTrips: 94, rentAmount: 842, notes: 'Incentive rent' },
-        { id: '4', minTrips: 95, maxTrips: 109, rentAmount: 772, notes: 'Performance tier 1' },
-        { id: '5', minTrips: 110, maxTrips: 124, rentAmount: 700, notes: 'Performance tier 2' },
-        { id: '6', minTrips: 125, maxTrips: null, rentAmount: 550, notes: 'Top performer rate' }
+        { id: '2', minTrips: 65, maxTrips: 79, rentAmount: 710, notes: 'Reduced rent' },
+        { id: '3', minTrips: 80, maxTrips: 94, rentAmount: 600, notes: 'Incentive rent' },
+        { id: '4', minTrips: 95, maxTrips: 109, rentAmount: 470, notes: 'Tier 4' },
+        { id: '5', minTrips: 110, maxTrips: 124, rentAmount: 380, notes: 'Tier 5' },
+        { id: '6', minTrips: 125, maxTrips: null, rentAmount: 260, notes: 'Lowest rent' }
     ];
-    localStorage.setItem(RENTAL_SLAB_KEY, JSON.stringify(defaults));
+    localStorage.setItem(COMPANY_RENTAL_SLAB_KEY, JSON.stringify(defaults));
     return defaults;
   },
 
-  saveRentalSlabs: async (slabs: RentalSlab[]): Promise<void> => {
+  saveCompanyRentalSlabs: async (slabs: RentalSlab[]): Promise<void> => {
     await delay(100);
-    localStorage.setItem(RENTAL_SLAB_KEY, JSON.stringify(slabs));
+    localStorage.setItem(COMPANY_RENTAL_SLAB_KEY, JSON.stringify(slabs));
+  },
+
+  // --- Rental Slabs (Driver Billing) ---
+  getDriverRentalSlabs: async (): Promise<RentalSlab[]> => {
+    await delay(100);
+    const data = localStorage.getItem(DRIVER_RENTAL_SLAB_KEY);
+    if (data) return JSON.parse(data);
+
+    // Default Slabs for Driver Billing (as requested)
+    const defaults: RentalSlab[] = [
+        { id: '1', minTrips: 0, maxTrips: 49, rentAmount: 957, notes: 'Base Driver Rent' },
+        { id: '2', minTrips: 50, maxTrips: 54, rentAmount: 885, notes: 'Tier 1' },
+        { id: '3', minTrips: 55, maxTrips: 59, rentAmount: 842, notes: 'Tier 2' },
+        { id: '4', minTrips: 60, maxTrips: 64, rentAmount: 772, notes: 'Tier 3' },
+        { id: '5', minTrips: 65, maxTrips: 69, rentAmount: 700, notes: 'Tier 4' },
+        { id: '6', minTrips: 70, maxTrips: null, rentAmount: 550, notes: 'Top Tier' }
+    ];
+    localStorage.setItem(DRIVER_RENTAL_SLAB_KEY, JSON.stringify(defaults));
+    return defaults;
+  },
+
+  saveDriverRentalSlabs: async (slabs: RentalSlab[]): Promise<void> => {
+    await delay(100);
+    localStorage.setItem(DRIVER_RENTAL_SLAB_KEY, JSON.stringify(slabs));
+  },
+  
+  // Legacy alias for compatibility if needed
+  getRentalSlabs: async (): Promise<RentalSlab[]> => {
+      return storageService.getCompanyRentalSlabs();
+  },
+  saveRentalSlabs: async (slabs: RentalSlab[]): Promise<void> => {
+      return storageService.saveCompanyRentalSlabs(slabs);
+  },
+
+  // --- Header Mappings (Company Summary) ---
+  getHeaderMappings: async (): Promise<HeaderMapping[]> => {
+    await delay(100);
+    const data = localStorage.getItem(HEADER_MAPPING_KEY);
+    if (data) return JSON.parse(data);
+    
+    // Default Mappings (Canonical Standard -> Default Excel Header)
+    const defaults: HeaderMapping[] = [
+      { internalKey: 'vehicleNumber', label: 'Vehicle Number', excelHeader: 'Vehicle Number', required: true },
+      { internalKey: 'onroadDays', label: 'Onroad Days', excelHeader: 'Onroad Days', required: true },
+      { internalKey: 'dailyRentApplied', label: 'Daily Rent Applied', excelHeader: 'Daily Rent Applied', required: true },
+      { internalKey: 'weeklyIndemnityFees', label: 'Weekly Indemnity Fees', excelHeader: 'Weekly Indemnity Fees', required: true },
+      { internalKey: 'netWeeklyLeaseRental', label: 'Net Weekly Lease Rental', excelHeader: 'Net Weekly Lease Rental', required: true },
+      { internalKey: 'performanceDay', label: 'Performance Day', excelHeader: 'Performance Day', required: false },
+      { internalKey: 'uberTrips', label: 'Uber Trips', excelHeader: 'Uber Trips', required: true },
+      { internalKey: 'totalEarning', label: 'Total Earning', excelHeader: 'Total Earning', required: true },
+      { internalKey: 'uberCashCollection', label: 'Uber Cash Collection', excelHeader: 'Uber Cash Collection', required: true },
+      { internalKey: 'toll', label: 'Toll', excelHeader: 'Toll', required: true },
+      { internalKey: 'driverSubscriptionCharge', label: 'Driver Subscription Charge', excelHeader: 'Driver subscription charge', required: true },
+      { internalKey: 'uberIncentive', label: 'Uber Incentive', excelHeader: 'Uber Incentive', required: true },
+      { internalKey: 'uberWeekOs', label: 'Uber Week O/s', excelHeader: 'Uber Week O/s', required: true },
+      { internalKey: 'olaWeekOs', label: 'OLA Week O/s', excelHeader: 'OLA Week O/s', required: false },
+      { internalKey: 'vehicleLevelAdjustment', label: 'Vehicle Level Adjustment', excelHeader: 'Vehicle Level Adjustment', required: true },
+      { internalKey: 'tds', label: 'TDS', excelHeader: 'TDS', required: true },
+      { internalKey: 'challan', label: 'Challan', excelHeader: 'Challan', required: true },
+      { internalKey: 'accident', label: 'Accident', excelHeader: 'Accident', required: true },
+      { internalKey: 'deadMile', label: 'DeadMile', excelHeader: 'DeadMile', required: true },
+      { internalKey: 'currentOs', label: 'Current O/S', excelHeader: 'Current O/S', required: true },
+    ];
+    localStorage.setItem(HEADER_MAPPING_KEY, JSON.stringify(defaults));
+    return defaults;
+  },
+
+  saveHeaderMappings: async (mappings: HeaderMapping[]): Promise<void> => {
+    await delay(100);
+    localStorage.setItem(HEADER_MAPPING_KEY, JSON.stringify(mappings));
   },
 
   // --- Company Summaries (Weekly) ---
@@ -197,7 +271,6 @@ export const storageService = {
   saveCompanySummary: async (summary: CompanyWeeklySummary): Promise<CompanyWeeklySummary> => {
     await delay(200);
     const summaries = await storageService.getCompanySummaries();
-    // If we are overriding, we filter out the old one by date range
     const filtered = summaries.filter(s => s.startDate !== summary.startDate);
     const updated = [summary, ...filtered];
     localStorage.setItem(COMPANY_SUMMARY_KEY, JSON.stringify(updated));
@@ -222,10 +295,9 @@ export const storageService = {
       const totalRent = driverDaily.reduce((sum, d) => sum + (d.rent || 0), 0);
       const totalFuel = driverDaily.reduce((sum, d) => sum + (d.fuel || 0), 0);
       const totalDue = driverDaily.reduce((sum, d) => sum + (d.due || 0), 0);
-      const totalPayout = driverDaily.reduce((sum, d) => sum + (d.payout || 0), 0); // New Field Sum
+      const totalPayout = driverDaily.reduce((sum, d) => sum + (d.payout || 0), 0); 
       const totalWalletWeek = driverWeekly.reduce((sum, w) => sum + (w.walletWeek || 0), 0);
 
-      // Formula: Total = Collection - Rent - Fuel + Due + WalletWeek - Payout
       const finalTotal = totalCollection - totalRent - totalFuel + totalDue + totalWalletWeek - totalPayout;
 
       return {
