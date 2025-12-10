@@ -413,4 +413,9 @@ app.post('/api/manager-access', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// For Vercel, export the app. For local dev, listen on port.
+if (require.main === module) {
+  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+}
+
+module.exports = app;

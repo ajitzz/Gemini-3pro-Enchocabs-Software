@@ -1,8 +1,9 @@
 
 import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping, ManagerAccess, AdminAccess } from '../types';
 
-// Use 127.0.0.1 to prevent IPv6 lookup issues on some systems
-const API_BASE = 'http://127.0.0.1:3000/api'; 
+// Use relative path for production (Vercel) compatibility. 
+// Vercel rewrites /api requests to the backend serverless function.
+const API_BASE = '/api'; 
 
 const api = {
   get: async (endpoint: string) => {
@@ -12,9 +13,8 @@ const api = {
       return response.json();
     } catch (error: any) {
       console.error(`API GET Error (${endpoint}):`, error);
-      // More descriptive network error
       const msg = error.message === 'Failed to fetch' 
-        ? `Network Error: Cannot connect to backend at ${API_BASE}. Ensure server is running.` 
+        ? `Network Error: Cannot connect to backend. Ensure server is running.` 
         : error.message;
       throw new Error(msg);
     }
@@ -34,7 +34,7 @@ const api = {
     } catch (error: any) {
       console.error(`API POST Error (${endpoint}):`, error);
       const msg = error.message === 'Failed to fetch' 
-        ? `Network Error: Cannot connect to backend at ${API_BASE}. Ensure server is running.` 
+        ? `Network Error: Cannot connect to backend. Ensure server is running.` 
         : error.message;
       throw new Error(msg);
     }
@@ -47,7 +47,7 @@ const api = {
     } catch (error: any) {
       console.error(`API DELETE Error (${endpoint}):`, error);
       const msg = error.message === 'Failed to fetch' 
-        ? `Network Error: Cannot connect to backend at ${API_BASE}. Ensure server is running.` 
+        ? `Network Error: Cannot connect to backend. Ensure server is running.` 
         : error.message;
       throw new Error(msg);
     }
