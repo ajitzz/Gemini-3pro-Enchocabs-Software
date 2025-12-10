@@ -72,8 +72,10 @@ const api = {
     }
   },
   delete: async (endpoint: string) => {
+    const url = `${API_BASE}${endpoint}`;
+    console.log(`DELETE request to: ${url}`); // Debug log
     try {
-      const response = await fetch(`${API_BASE}${endpoint}`, { method: 'DELETE' });
+      const response = await fetch(url, { method: 'DELETE' });
       if (!response.ok) {
         const text = await response.text();
         let msg = `API Error ${response.status}: ${response.statusText}`;

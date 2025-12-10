@@ -51,10 +51,17 @@ app.post('/api/drivers', async (req, res) => {
 });
 
 app.delete('/api/drivers/:id', async (req, res) => {
+  console.log(`Received DELETE request for driver ID: ${req.params.id}`);
   try {
-    await db.query('DELETE FROM drivers WHERE id = $1', [req.params.id]);
+    const result = await db.query('DELETE FROM drivers WHERE id = $1', [req.params.id]);
+    if (result.rowCount === 0) {
+        console.log(`Driver ID ${req.params.id} not found in DB, but returning success to ensure idempotency.`);
+    }
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { 
+    console.error("Delete Error:", err);
+    res.status(500).json({ error: err.message }); 
+  }
 });
 
 // --- DAILY ENTRIES ---
