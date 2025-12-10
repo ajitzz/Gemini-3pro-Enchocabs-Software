@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { Driver, LeaveRecord, ManagerAccess } from '../types';
 import { storageService } from '../services/storageService';
-import { UserPlus, Edit2, Clock, FileText, X, AlertTriangle, ShieldCheck, Users, CheckSquare, Square, AlertOctagon, Mail } from 'lucide-react';
+import { UserPlus, Edit2, Clock, FileText, X, AlertTriangle, ShieldCheck, Users, CheckSquare, Square, AlertOctagon, Mail, Loader2 } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
 const InputField = ({ label, value, onChange, placeholder, type = "text", required = false, className = "" }: any) => (
@@ -21,6 +21,7 @@ const InputField = ({ label, value, onChange, placeholder, type = "text", requir
 
 const RegistrationPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false); // New saving state
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [leaves, setLeaves] = useState<LeaveRecord[]>([]);
 
@@ -51,14 +52,20 @@ const RegistrationPage: React.FC = () => {
   }, []);
 
   const loadData = async () => {
-    setLoading(true);
-    const [d, l] = await Promise.all([
-      storageService.getDrivers(),
-      storageService.getLeaves(),
-    ]);
-    setDrivers(d);
-    setLeaves(l);
-    setLoading(false);
+    try {
+      setLoading(true);
+      const [d, l] = await Promise.all([
+        storageService.getDrivers(),
+        storageService.getLeaves(),
+      ]);
+      setDrivers(d);
+      setLeaves(l);
+    } catch (err) {
+      console.error("Failed to load drivers", err);
+      // Optional: Add global error toast here
+    } finally {
+      setLoading(false);
+    }
   };
 
   // --- Calculations ---
@@ -176,11 +183,18 @@ const RegistrationPage: React.FC = () => {
        };
     }
 
-    await storageService.saveDriver(newDriver);
-    setIsDriverFormOpen(false);
-    setEditingDriverId(null);
-    setDriverForm({ joinDate: new Date().toISOString().split('T')[0], deposit: 0, status: 'Active', qrCode: '', vehicle: '', currentShift: 'Day', notes: '', isManager: false, email: '' });
-    loadData();
+    try {
+        setSaving(true);
+        await storageService.saveDriver(newDriver);
+        setIsDriverFormOpen(false);
+        setEditingDriverId(null);
+        setDriverForm({ joinDate: new Date().toISOString().split('T')[0], deposit: 0, status: 'Active', qrCode: '', vehicle: '', currentShift: 'Day', notes: '', isManager: false, email: '' });
+        loadData();
+    } catch (error: any) {
+        alert(`Failed to save driver: ${error.message}\n\nPlease check your database connection.`);
+    } finally {
+        setSaving(false);
+    }
   };
 
   const openEditDriver = (d: Driver) => {
@@ -194,10 +208,14 @@ const RegistrationPage: React.FC = () => {
 
   const openTeamModal = async () => {
       if (!editingDriverId) return;
-      const allAccess = await storageService.getManagerAccess();
-      const currentAccess = allAccess.find(a => a.managerId === editingDriverId);
-      setManagerTeam(currentAccess ? currentAccess.childDriverIds : []);
-      setIsTeamModalOpen(true);
+      try {
+        const allAccess = await storageService.getManagerAccess();
+        const currentAccess = allAccess.find(a => a.managerId === editingDriverId);
+        setManagerTeam(currentAccess ? currentAccess.childDriverIds : []);
+        setIsTeamModalOpen(true);
+      } catch (err: any) {
+        alert("Failed to load team data: " + err.message);
+      }
   };
 
   const toggleTeamMember = (childId: string) => {
@@ -218,9 +236,13 @@ const RegistrationPage: React.FC = () => {
           childDriverIds: managerTeam
       };
       
-      await storageService.saveManagerAccess(accessRecord);
-      setIsTeamModalOpen(false);
-      alert("Team assignments saved successfully.");
+      try {
+        await storageService.saveManagerAccess(accessRecord);
+        setIsTeamModalOpen(false);
+        alert("Team assignments saved successfully.");
+      } catch (err: any) {
+        alert("Failed to save assignments: " + err.message);
+      }
   };
 
   return (
@@ -333,7 +355,12 @@ const RegistrationPage: React.FC = () => {
               </div>
 
               <div className="lg:col-span-2 flex justify-end items-end pb-2">
-                <button type="submit" className="px-8 py-3 bg-slate-900 text-white font-medium rounded-xl hover:bg-black shadow-lg shadow-slate-900/20 transition-all active:scale-95">
+                <button 
+                  type="submit" 
+                  disabled={saving}
+                  className="px-8 py-3 bg-slate-900 text-white font-medium rounded-xl hover:bg-black shadow-lg shadow-slate-900/20 transition-all active:scale-95 flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  {saving && <Loader2 size={18} className="animate-spin" />}
                   {editingDriverId ? 'Update Record' : 'Register Driver'}
                 </button>
               </div>
@@ -429,7 +456,9 @@ const RegistrationPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {drivers.length === 0 ? (
+              {loading ? (
+                 <tr><td colSpan={4} className="p-12 text-center text-slate-400">Loading drivers...</td></tr>
+              ) : drivers.length === 0 ? (
                  <tr><td colSpan={4} className="p-12 text-center text-slate-400">No drivers registered yet.</td></tr>
               ) : (
                 drivers.map(d => {

@@ -9,12 +9,20 @@ const api = {
   get: async (endpoint: string) => {
     try {
       const response = await fetch(`${API_BASE}${endpoint}`);
-      if (!response.ok) throw new Error(`API Error ${response.status}: ${response.statusText}`);
+      if (!response.ok) {
+        const text = await response.text();
+        let msg = `API Error ${response.status}: ${response.statusText}`;
+        try {
+            const json = JSON.parse(text);
+            if(json.error) msg = json.error;
+        } catch(e) {}
+        throw new Error(msg);
+      }
       return response.json();
     } catch (error: any) {
       console.error(`API GET Error (${endpoint}):`, error);
-      const msg = error.message === 'Failed to fetch' 
-        ? `Network Error: Cannot connect to backend. Ensure server is running.` 
+      const msg = error.message === 'Failed to fetch' || error.message.includes('Unexpected token')
+        ? `Network/Server Error: Backend unreachable. Check if server is running and DB is connected.` 
         : error.message;
       throw new Error(msg);
     }
@@ -27,14 +35,19 @@ const api = {
         body: JSON.stringify(data)
       });
       if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || `API Error ${response.status}: ${response.statusText}`);
+        const text = await response.text();
+        let msg = `API Error ${response.status}: ${response.statusText}`;
+        try {
+            const json = JSON.parse(text);
+            if(json.error) msg = json.error;
+        } catch(e) {}
+        throw new Error(msg);
       }
       return response.json();
     } catch (error: any) {
       console.error(`API POST Error (${endpoint}):`, error);
-      const msg = error.message === 'Failed to fetch' 
-        ? `Network Error: Cannot connect to backend. Ensure server is running.` 
+      const msg = error.message === 'Failed to fetch' || error.message.includes('Unexpected token')
+        ? `Network/Server Error: Backend unreachable. Check if server is running and DB is connected.` 
         : error.message;
       throw new Error(msg);
     }
@@ -42,12 +55,20 @@ const api = {
   delete: async (endpoint: string) => {
     try {
       const response = await fetch(`${API_BASE}${endpoint}`, { method: 'DELETE' });
-      if (!response.ok) throw new Error(`API Error ${response.status}: ${response.statusText}`);
+      if (!response.ok) {
+        const text = await response.text();
+        let msg = `API Error ${response.status}: ${response.statusText}`;
+        try {
+            const json = JSON.parse(text);
+            if(json.error) msg = json.error;
+        } catch(e) {}
+        throw new Error(msg);
+      }
       return response.json();
     } catch (error: any) {
       console.error(`API DELETE Error (${endpoint}):`, error);
       const msg = error.message === 'Failed to fetch' 
-        ? `Network Error: Cannot connect to backend. Ensure server is running.` 
+        ? `Network/Server Error: Backend unreachable. Check if server is running and DB is connected.` 
         : error.message;
       throw new Error(msg);
     }
