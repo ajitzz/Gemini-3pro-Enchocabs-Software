@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { WeeklyWallet, Driver } from '../types';
 import { storageService } from '../services/storageService';
@@ -331,6 +332,7 @@ const WeeklyWalletPage: React.FC = () => {
               <tr>
                 <th className="px-6 py-4 font-semibold tracking-wider">Week Range</th>
                 <th className="px-6 py-4 font-semibold tracking-wider">Driver</th>
+                <th className="px-6 py-4 font-semibold text-center tracking-wider">Trips</th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Earnings</th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Refund</th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Deductions</th>
@@ -340,9 +342,9 @@ const WeeklyWalletPage: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-50">
               {loading ? (
-                <tr><td colSpan={7} className="p-12 text-center text-slate-400">Loading wallet data...</td></tr>
+                <tr><td colSpan={8} className="p-12 text-center text-slate-400">Loading wallet data...</td></tr>
               ) : filteredWallets.length === 0 ? (
-                <tr><td colSpan={7} className="p-12 text-center text-slate-400">No records found.</td></tr>
+                <tr><td colSpan={8} className="p-12 text-center text-slate-400">No records found.</td></tr>
               ) : (
                 filteredWallets.map(w => {
                   const deductions = (w.diff || 0) + (w.cash || 0) + (w.charges || 0);
@@ -355,6 +357,7 @@ const WeeklyWalletPage: React.FC = () => {
                          </div>
                       </td>
                       <td className="px-6 py-4 font-bold text-slate-800">{w.driver}</td>
+                      <td className="px-6 py-4 text-center font-bold text-slate-600 bg-slate-50/50">{w.trips || 0}</td>
                       <td className="px-6 py-4 text-right text-emerald-600 font-medium">+₹{w.earnings}</td>
                       <td className="px-6 py-4 text-right text-emerald-600 font-medium">+₹{w.refund}</td>
                       <td className="px-6 py-4 text-right text-rose-500 font-medium">-₹{deductions.toFixed(2)}</td>

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Upload, CheckCircle, FileSpreadsheet, XCircle, AlertTriangle, X, UserPlus, AlertOctagon, ArrowRight, Save, Play, Download, Eye } from 'lucide-react';
 import { storageService } from '../services/storageService';
@@ -522,13 +523,22 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
   // -------------------------------------------------------------------------
 
   const resolveDriver_Add = async () => {
-    const nameToAdd = newDriverName.trim() || currentConflict?.payload.driverName;
+    const nameToAdd = newDriverName.trim() || currentConflict?.payload.driverName?.trim();
+    const mobileToAdd = newDriverMobile.trim();
+    
     if (!nameToAdd) return alert("Name required");
     
+    // Check duplication against existing drivers before adding
+    const duplicateName = driversRef.current.find(d => d.name.toLowerCase() === nameToAdd.toLowerCase());
+    if (duplicateName) {
+        alert(`Cannot add: Driver "${duplicateName.name}" already exists.`);
+        return;
+    }
+
     const newDriver: Driver = {
       id: crypto.randomUUID(),
       name: nameToAdd,
-      mobile: newDriverMobile,
+      mobile: mobileToAdd,
       joinDate: new Date().toISOString().split('T')[0],
       deposit: 0,
       status: 'Active',
@@ -537,16 +547,20 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
       currentShift: 'Day'
     };
 
-    await storageService.saveDriver(newDriver);
-    
-    const updatedDrivers = [...driversRef.current, newDriver];
-    driversRef.current = updatedDrivers;
-    setDrivers(updatedDrivers); 
-    
-    setNewDriverName('');
-    setNewDriverMobile('');
-    
-    resumeImport(false); 
+    try {
+        await storageService.saveDriver(newDriver);
+        
+        const updatedDrivers = [...driversRef.current, newDriver];
+        driversRef.current = updatedDrivers;
+        setDrivers(updatedDrivers); 
+        
+        setNewDriverName('');
+        setNewDriverMobile('');
+        
+        resumeImport(false); 
+    } catch (e: any) {
+        alert(e.message);
+    }
   };
 
   const resolveDriver_Skip = () => {

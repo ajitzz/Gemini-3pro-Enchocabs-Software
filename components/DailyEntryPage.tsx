@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { DailyEntry, Driver } from '../types';
+import { DailyEntry, Driver, LeaveRecord } from '../types';
 import { storageService } from '../services/storageService';
 import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp } from 'lucide-react';
 
@@ -24,6 +24,7 @@ const InputField = ({ label, name, type = "text", value, onChange, placeholder, 
 const DailyEntryPage: React.FC = () => {
   const [entries, setEntries] = useState<DailyEntry[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [leaves, setLeaves] = useState<LeaveRecord[]>([]); // Added Leaves state
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -58,13 +59,15 @@ const DailyEntryPage: React.FC = () => {
 
   const loadData = async () => {
     setLoading(true);
-    const [e, d] = await Promise.all([
+    const [e, d, l] = await Promise.all([
         storageService.getDailyEntries(),
-        storageService.getDrivers()
+        storageService.getDrivers(),
+        storageService.getLeaves() // Fetch leaves
     ]);
     
     setEntries(e.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
     setDrivers(d.filter(driver => !driver.terminationDate));
+    setLeaves(l);
     setLoading(false);
   };
 
@@ -177,6 +180,30 @@ const DailyEntryPage: React.FC = () => {
     }
   };
 
+  // Helper to check if driver is on leave for the selected form date
+  const isDriverOnLeave = (driverId: string) => {
+    if (!formData.date) return false;
+    const selectedDate = formData.date;
+
+    return leaves.some(leave => {
+        if (leave.driverId !== driverId) return false;
+        
+        // Logic:
+        // If Actual Return exists: On Leave if Date >= Start AND Date < ActualReturn
+        // If NO Actual Return: On Leave if Date >= Start AND Date <= PlannedEnd
+        
+        const start = leave.startDate;
+        
+        if (leave.actualReturnDate) {
+            // They are back on actualReturnDate, so they are unavailable strictly BEFORE that date
+            return selectedDate >= start && selectedDate < leave.actualReturnDate;
+        } else {
+            // Still away, unavailable up to planned end (inclusive)
+            return selectedDate >= start && selectedDate <= leave.endDate;
+        }
+    });
+  };
+
   const filteredEntries = entries.filter(entry => {
     const matchDriver = filterDriver === '' || entry.driver.toLowerCase().includes(filterDriver.toLowerCase());
     const matchStart = filterDateStart === '' || entry.date >= filterDateStart;
@@ -222,9 +249,17 @@ const DailyEntryPage: React.FC = () => {
             <div className="relative">
               <select required name="driver" value={formData.driver} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none appearance-none cursor-pointer">
                   <option value="">-- Select Driver --</option>
-                  {drivers.map(d => (
-                      <option key={d.id} value={d.name}>{d.name}</option>
-                  ))}
+                  {drivers.map(d => {
+                      // Only show if available OR if it's the currently selected driver (for editing)
+                      const onLeave = isDriverOnLeave(d.id);
+                      if (onLeave && formData.driver !== d.name) return null;
+                      
+                      return (
+                        <option key={d.id} value={d.name}>
+                            {d.name} {onLeave ? '(On Leave)' : ''}
+                        </option>
+                      );
+                  })}
               </select>
               <ChevronDown className="absolute right-4 top-3 text-slate-400 pointer-events-none" size={16} />
             </div>

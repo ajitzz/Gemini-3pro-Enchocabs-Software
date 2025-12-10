@@ -124,11 +124,11 @@ const DriverBillingsPage: React.FC = () => {
            dailyDetails: relevantDaily,
            weeklyDetails: wallet
        };
-    }).filter(Boolean); 
+    }).filter((item): item is NonNullable<typeof item> => item !== null); 
 
     return bills.filter(b => {
-        const matchesDriver = filterDriver === '' || b!.driver.toLowerCase().includes(filterDriver.toLowerCase());
-        const matchesWeek = filterWeek === '' || b!.weekKey === filterWeek;
+        const matchesDriver = filterDriver === '' || b.driver.toLowerCase().includes(filterDriver.toLowerCase());
+        const matchesWeek = filterWeek === '' || b.weekKey === filterWeek;
         return matchesDriver && matchesWeek;
     });
   };
@@ -143,7 +143,7 @@ const DriverBillingsPage: React.FC = () => {
   const uniqueWeeks = Array.from(new Set(weeklyWallets
     .filter(w => new Date() > new Date(w.weekEndDate))
     .map(w => w.weekStartDate)))
-    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+    .sort((a: string, b: string) => new Date(b).getTime() - new Date(a).getTime());
 
   const handleEditAdjustment = (billId: string, currentVal: number) => {
       setEditingBillId(billId);

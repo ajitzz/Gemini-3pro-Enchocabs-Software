@@ -34,6 +34,7 @@ export interface Driver {
   id: string;
   name: string;
   mobile: string;
+  email?: string; // New: Optional Email/Gmail
   joinDate: string;
   terminationDate?: string;
   deposit: number;
@@ -43,6 +44,12 @@ export interface Driver {
   currentShift: 'Day' | 'Night'; // Default current shift
   defaultRent?: number; // Default daily rent amount
   notes?: string;
+  isManager?: boolean; // New: Manager Role Flag
+}
+
+export interface ManagerAccess {
+  managerId: string;
+  childDriverIds: string[]; // List of drivers this manager can view
 }
 
 export interface DriverShiftRecord {
@@ -58,7 +65,8 @@ export interface LeaveRecord {
   driverId: string;
   startDate: string;
   endDate: string;
-  days: number;
+  actualReturnDate?: string; // New field for late return logic
+  days: number; // Originally planned days
   reason?: string;
 }
 
@@ -148,4 +156,21 @@ export interface ImportError {
 export interface ImportValidationResult<T> {
   validData: T[];
   errors: ImportError[];
+}
+
+// --- Auth Types ---
+export type UserRole = 'super_admin' | 'admin' | 'driver';
+
+export interface AuthUser {
+  email: string;
+  name: string;
+  photoURL?: string;
+  role: UserRole;
+  driverId?: string; // If role is driver
+}
+
+export interface AdminAccess {
+  email: string;
+  addedBy: string;
+  addedAt: string;
 }

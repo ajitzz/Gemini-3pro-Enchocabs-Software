@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+
+import React, { useEffect, useState, useRef } from 'react';
 import { storageService } from '../services/storageService';
 import { RentalSlab, CompanyWeeklySummary, CompanySummaryRow, HeaderMapping } from '../types';
-import { Briefcase, Save, Plus, Trash2, Edit3, X, Settings, ChevronDown, ChevronUp, Upload, FileText, AlertTriangle, CheckCircle, Calendar, Eye, Table } from 'lucide-react';
+import { Briefcase, Save, Plus, Trash2, Edit3, X, Settings, ChevronDown, ChevronUp, Upload, FileText, AlertTriangle, CheckCircle, Calendar, Eye, Table, RefreshCcw } from 'lucide-react';
 
 declare const XLSX: any;
 
@@ -25,6 +26,7 @@ const CompanySettlementPage: React.FC = () => {
   const [currentWeekFile, setCurrentWeekFile] = useState<File | null>(null);
   const [currentWeekNote, setCurrentWeekNote] = useState('');
   const [processingSummary, setProcessingSummary] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // New: Single Date Selection Logic - Empty by default
   const [selectedDate, setSelectedDate] = useState(''); 
@@ -32,17 +34,18 @@ const CompanySettlementPage: React.FC = () => {
   const [weekExists, setWeekExists] = useState(false);
 
   // Popup States
-  const [popupType, setPopupType] = useState<'NONE' | 'PENALTY' | 'OVERRIDE'>('NONE');
+  const [popupType, setPopupType] = useState<'NONE' | 'PENALTY' | 'OVERRIDE' | 'DUPLICATE_FILE'>('NONE');
   const [popupMessage, setPopupMessage] = useState('');
   const [pendingData, setPendingData] = useState<CompanySummaryRow[] | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
 
-  // Viewer State
+  // Viewer/Editor State
   const [selectedSummary, setSelectedSummary] = useState<CompanyWeeklySummary | null>(null);
+  const [isEditingSummary, setIsEditingSummary] = useState(false);
+  const [tempSummaryRows, setTempSummaryRows] = useState<CompanySummaryRow[]>([]);
 
   useEffect(() => {
     loadData();
-    // Removed default date setting to force user selection
   }, []);
 
   const loadData = async () => {
@@ -84,6 +87,69 @@ const CompanySettlementPage: React.FC = () => {
           setErrors(["Week range already imported. Duplicates not allowed."]);
       } else {
           setErrors([]);
+      }
+  };
+
+  // --- HISTORY ACTIONS ---
+  const handleViewSummary = (summary: CompanyWeeklySummary) => {
+      setSelectedSummary(summary);
+      setTempSummaryRows([...summary.rows]); // Create shallow copy for viewing/editing
+      setIsEditingSummary(false);
+  };
+
+  const handleEditSummaryStart = () => {
+      setIsEditingSummary(true);
+  };
+
+  const handleEditSummaryRowChange = (index: number, field: keyof CompanySummaryRow, value: string) => {
+      const updatedRows = [...tempSummaryRows];
+      const numValue = parseFloat(value) || 0;
+      
+      // @ts-ignore - Dynamic key assignment
+      updatedRows[index][field] = numValue;
+      setTempSummaryRows(updatedRows);
+  };
+
+  const handleEditSummarySave = async () => {
+      if (!selectedSummary) return;
+
+      if (!confirm("Saving manual edits will overwrite the imported data. Continue?")) return;
+
+      // Basic Re-validation of critical fields before saving
+      // Similar to continueValidations but simpler for edits
+      const newErrors: string[] = [];
+       
+      tempSummaryRows.forEach(row => {
+          // Recalculate Net Lease Logic for integrity
+          const expectedNet = (row.dailyRentApplied * row.onroadDays) + row.weeklyIndemnityFees;
+          // Warn if deviation is huge, but allow edit (override)
+          if (Math.abs(expectedNet - row.netWeeklyLeaseRental) > 10) {
+               console.warn(`Row ${row.vehicleNumber}: Net Lease mismatch detected during edit.`);
+          }
+          
+          // Wallet Check
+          const expectedWeekOs = -(row.totalEarning + row.uberCashCollection + row.toll + row.driverSubscriptionCharge);
+           if (Math.abs(expectedWeekOs - row.uberWeekOs) > 10) {
+              console.warn(`Row ${row.vehicleNumber}: Wallet mismatch detected during edit.`);
+          }
+      });
+
+      const updatedSummary: CompanyWeeklySummary = {
+          ...selectedSummary,
+          rows: tempSummaryRows
+      };
+
+      await storageService.saveCompanySummary(updatedSummary);
+      setSelectedSummary(updatedSummary); // Update view
+      setIsEditingSummary(false);
+      loadData(); // Refresh list
+      alert("Changes saved successfully.");
+  };
+
+  const handleDeleteSummary = async (id: string, label: string) => {
+      if (confirm(`Are you sure you want to permanently delete the settlement record for ${label}? This cannot be undone.`)) {
+          await storageService.deleteCompanySummary(id);
+          loadData();
       }
   };
 
@@ -146,6 +212,7 @@ const CompanySettlementPage: React.FC = () => {
       if (e.target.files?.[0]) {
           setCurrentWeekFile(e.target.files[0]);
           setErrors([]); // Clear errors on new file
+          e.target.value = ''; 
       }
   };
 
@@ -158,12 +225,35 @@ const CompanySettlementPage: React.FC = () => {
           return;
       }
 
-      // Strict Duplication Check
+      // Strict Duplication Check (Date)
       if (weekExists) {
           setErrors([`Week ${computedWeek.label} is already imported. Duplicates not accepted.`]);
           return;
       }
 
+      // Check File Name Duplication
+      const duplicateFile = summaries.find(s => s.fileName === currentWeekFile.name);
+      if (duplicateFile) {
+           setPopupMessage(`A file named "${currentWeekFile.name}" was already imported on ${new Date(duplicateFile.importedAt).toLocaleDateString()}. Duplicate files might cause confusion.`);
+           setPopupType('DUPLICATE_FILE');
+           return;
+      }
+
+      executeFileProcessing();
+  };
+
+  const handleDuplicateFileAction = (allow: boolean) => {
+      setPopupType('NONE');
+      if (allow) {
+          executeFileProcessing();
+      } else {
+          // Terminate
+          setCurrentWeekFile(null);
+          setErrors([]);
+      }
+  };
+
+  const executeFileProcessing = () => {
       setProcessingSummary(true);
       setErrors([]);
 
@@ -280,7 +370,7 @@ const CompanySettlementPage: React.FC = () => {
           // If no penalties, proceed to next validations directly
           continueValidations(rows);
       };
-      reader.readAsBinaryString(currentWeekFile);
+      reader.readAsBinaryString(currentWeekFile!);
   };
 
   const handlePenaltyAction = (allow: boolean) => {
@@ -296,11 +386,6 @@ const CompanySettlementPage: React.FC = () => {
   const continueValidations = (rows: CompanySummaryRow[]) => {
       const newErrors: string[] = [];
       
-      // --- VALIDATION 3: EXISTING RECORD (SOFT) ---
-      // We check strict duplication now at start, but if user is overriding via special flow (removed for strict dupe check, but kept existing logic structure just in case)
-      // Since prompt says "Duplication cannot be Accepted", I will skip the Override check here and rely on the pre-check.
-      // However, if logic flow reaches here, we assume it's a valid new import.
-
       rows.forEach(row => {
           // --- VALIDATION 4: NET LEASE FORMULA (HARD) ---
           // Formula: (Daily Rent * Days) + Indemnity
@@ -404,8 +489,19 @@ const CompanySettlementPage: React.FC = () => {
       await storageService.saveCompanySummary(newSummary);
       setProcessingSummary(false);
       setPendingData(null);
+      
+      // RESET FORM STATE COMPLETELY
       setCurrentWeekFile(null);
       setCurrentWeekNote('');
+      setSelectedDate(''); // Clear date so user must pick new one
+      setComputedWeek({start: '', end: '', label: ''});
+      setWeekExists(false);
+      
+      // RESET DOM INPUT
+      if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+      }
+
       loadData();
       alert("Weekly Summary Imported Successfully!");
   };
@@ -443,7 +539,7 @@ const CompanySettlementPage: React.FC = () => {
                   </div>
                   <div className="flex-1 overflow-auto p-6">
                       <p className="text-sm text-slate-500 mb-4 bg-blue-50 p-3 rounded-lg border border-blue-100">
-                         <strong>Instructions:</strong> Match the internal "Standard Name" used by the system with the exact "Header Name" found in your Excel files. This allows the import to work even if column names change.
+                         <strong>Instructions:</strong> Match the internal "Standard Name" used in code with the exact "Header Name" found in your Excel files.
                       </p>
                       <table className="w-full text-sm text-left">
                           <thead className="bg-white text-slate-500 uppercase font-bold text-xs sticky top-0">
@@ -604,7 +700,13 @@ const CompanySettlementPage: React.FC = () => {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className="border-2 border-dashed border-slate-200 hover:border-indigo-300 rounded-xl p-8 text-center transition-all group bg-slate-50/50 relative">
-                      <input type="file" accept=".xlsx,.xls,.csv" onChange={handleSummaryFileChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                      <input 
+                        type="file" 
+                        ref={fileInputRef}
+                        accept=".xlsx,.xls,.csv" 
+                        onChange={handleSummaryFileChange} 
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
+                      />
                       <div className="bg-white p-4 rounded-full shadow-sm w-fit mx-auto mb-3 text-indigo-500 group-hover:scale-110 transition-transform">
                           <Upload size={24} />
                       </div>
@@ -632,7 +734,7 @@ const CompanySettlementPage: React.FC = () => {
                       {weekExists && (
                           <div className="flex items-center gap-2 text-rose-600 text-xs font-bold bg-rose-50 p-2 rounded-lg justify-center">
                               <AlertTriangle size={14}/>
-                              Week already imported!
+                              Week already imported! Select new date.
                           </div>
                       )}
                   </div>
@@ -654,11 +756,13 @@ const CompanySettlementPage: React.FC = () => {
               <h4 className="text-lg font-bold text-slate-700 mb-4 px-2">History</h4>
               <div className="space-y-4">
                   {summaries.length === 0 && <p className="text-slate-400 px-2">No history yet.</p>}
-                  {summaries.map(s => (
-                      <div key={s.id} className="bg-white p-6 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center hover:shadow-md transition-shadow">
+                  {summaries.map(s => {
+                      const weekLabel = `${new Date(s.startDate).toLocaleDateString('en-GB', {day: '2-digit', month: 'short'})} – ${new Date(s.endDate).toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric'})}`;
+                      return (
+                      <div key={s.id} className="bg-white p-6 rounded-xl border border-slate-100 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:shadow-md transition-shadow group">
                           <div>
                               <div className="flex items-center gap-3 mb-1">
-                                  <span className="font-bold text-slate-800">{new Date(s.startDate).toLocaleDateString('en-GB', {day: '2-digit', month: 'short'})} – {new Date(s.endDate).toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric'})}</span>
+                                  <span className="font-bold text-slate-800">{weekLabel}</span>
                                   <span className="bg-emerald-50 text-emerald-600 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">Imported</span>
                               </div>
                               <p className="text-xs text-slate-400 flex items-center gap-2">
@@ -668,37 +772,64 @@ const CompanySettlementPage: React.FC = () => {
                               </p>
                               {s.note && <p className="text-sm text-slate-500 mt-2 italic">"{s.note}"</p>}
                           </div>
-                          <button 
-                            onClick={() => setSelectedSummary(s)}
-                            className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50"
-                          >
-                            View / Edit
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button 
+                                onClick={() => handleViewSummary(s)}
+                                className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 flex items-center gap-2"
+                            >
+                                <Eye size={16}/> View / Edit
+                            </button>
+                            <button 
+                                onClick={() => handleDeleteSummary(s.id, weekLabel)}
+                                className="px-3 py-2 border border-slate-200 rounded-lg text-sm font-medium text-rose-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                                title="Delete Record"
+                            >
+                                <Trash2 size={16} />
+                            </button>
+                          </div>
                       </div>
-                  ))}
+                  )})}
               </div>
           </div>
       </div>
 
-      {/* --- VIEW SUMMARY MODAL --- */}
+      {/* --- VIEW / EDIT SUMMARY MODAL --- */}
       {selectedSummary && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-7xl max-h-[90vh] flex flex-col animate-fade-in">
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 rounded-t-2xl">
                     <div>
                         <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                           <Eye size={20} className="text-indigo-600"/> Weekly Summary Details
+                           <Eye size={20} className="text-indigo-600"/> 
+                           {isEditingSummary ? 'Editing Weekly Summary' : 'Weekly Summary Details'}
                         </h3>
                         <p className="text-sm text-slate-500 mt-1">
                            {new Date(selectedSummary.startDate).toLocaleDateString('en-GB', {day: '2-digit', month: 'short'})} – {new Date(selectedSummary.endDate).toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric'})}
                         </p>
                     </div>
-                    <button onClick={() => setSelectedSummary(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-500">
-                        <X size={24} />
-                    </button>
+                    <div className="flex gap-2">
+                        {!isEditingSummary ? (
+                            <button onClick={handleEditSummaryStart} className="px-4 py-2 bg-indigo-50 text-indigo-600 font-bold rounded-lg hover:bg-indigo-100 flex items-center gap-2">
+                                <Edit3 size={16}/> Edit Data
+                            </button>
+                        ) : (
+                            <button onClick={() => setIsEditingSummary(false)} className="px-4 py-2 bg-slate-200 text-slate-700 font-bold rounded-lg hover:bg-slate-300">
+                                Cancel Edit
+                            </button>
+                        )}
+                        <button onClick={() => setSelectedSummary(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-500">
+                            <X size={24} />
+                        </button>
+                    </div>
                 </div>
 
                 <div className="flex-1 overflow-auto p-6">
+                    {isEditingSummary && (
+                        <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-xl mb-4 text-sm font-medium flex items-center gap-2">
+                            <AlertTriangle size={16} />
+                            Warning: Editing raw values may break calculated fields (Net Lease, Wallet O/S). Ensure consistency manually.
+                        </div>
+                    )}
                     <div className="overflow-x-auto">
                         <table className="w-full text-xs text-left whitespace-nowrap">
                             <thead className="bg-slate-50 text-slate-500 font-bold uppercase border-b border-slate-200">
@@ -722,27 +853,34 @@ const CompanySettlementPage: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {selectedSummary.rows.map((row, i) => (
+                                {tempSummaryRows.map((row, i) => (
                                     <tr key={i} className="hover:bg-slate-50 transition-colors">
-                                        <td className="px-4 py-3 font-bold text-slate-700 sticky left-0 bg-white z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">{row.vehicleNumber}</td>
-                                        <td className="px-4 py-3">{row.onroadDays}</td>
-                                        <td className="px-4 py-3">{row.dailyRentApplied}</td>
-                                        <td className="px-4 py-3">{row.weeklyIndemnityFees}</td>
-                                        <td className="px-4 py-3 font-bold text-indigo-600 bg-indigo-50/10">{row.netWeeklyLeaseRental}</td>
-                                        <td className="px-4 py-3">{row.uberTrips}</td>
-                                        <td className="px-4 py-3 text-emerald-600">{row.totalEarning}</td>
-                                        <td className="px-4 py-3 text-rose-500">{row.uberCashCollection}</td>
-                                        <td className="px-4 py-3">{row.toll}</td>
-                                        <td className="px-4 py-3 text-rose-500">{row.driverSubscriptionCharge}</td>
-                                        <td className="px-4 py-3">{row.uberIncentive}</td>
-                                        <td className="px-4 py-3 font-bold text-indigo-600 bg-indigo-50/10">{row.uberWeekOs}</td>
-                                        <td className="px-4 py-3">{row.tds || '-'}</td>
-                                        <td className="px-4 py-3 text-rose-600 font-bold">{row.challan || '-'}</td>
-                                        <td className="px-4 py-3 text-rose-600 font-bold">{row.accident || '-'}</td>
-                                        <td className="px-4 py-3 font-bold text-slate-900 bg-slate-50 sticky right-0 z-10 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.05)]">{row.currentOs}</td>
+                                        <td className="px-4 py-3 font-bold text-slate-700 sticky left-0 bg-white z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                                            {isEditingSummary ? (
+                                                <input type="text" value={row.vehicleNumber} onChange={e => handleEditSummaryRowChange(i, 'vehicleNumber', e.target.value)} className="w-20 p-1 border rounded" />
+                                            ) : row.vehicleNumber}
+                                        </td>
+                                        
+                                        {/* Helper to render Cell or Input */}
+                                        {[
+                                            'onroadDays', 'dailyRentApplied', 'weeklyIndemnityFees', 'netWeeklyLeaseRental',
+                                            'uberTrips', 'totalEarning', 'uberCashCollection', 'toll', 'driverSubscriptionCharge',
+                                            'uberIncentive', 'uberWeekOs', 'tds', 'challan', 'accident', 'currentOs'
+                                        ].map((field: any) => (
+                                            <td key={field} className={`px-4 py-3 ${['netWeeklyLeaseRental', 'uberWeekOs'].includes(field) ? 'bg-indigo-50/10 font-bold text-indigo-600' : ''}`}>
+                                                {isEditingSummary ? (
+                                                    // @ts-ignore
+                                                    <input type="number" value={row[field]} onChange={e => handleEditSummaryRowChange(i, field, e.target.value)} className="w-16 p-1 border rounded bg-white focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                                ) : (
+                                                    // @ts-ignore
+                                                    row[field]
+                                                )}
+                                            </td>
+                                        ))}
                                     </tr>
                                 ))}
                             </tbody>
+                            {!isEditingSummary && (
                             <tfoot className="bg-slate-100 border-t-2 border-slate-200 font-bold text-slate-800">
                                 <tr>
                                     <td className="px-4 py-3 sticky left-0 bg-slate-100 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">TOTAL</td>
@@ -756,18 +894,39 @@ const CompanySettlementPage: React.FC = () => {
                                     </td>
                                 </tr>
                             </tfoot>
+                            )}
                         </table>
                     </div>
                 </div>
                 
-                <div className="p-4 border-t border-slate-100 flex justify-end bg-slate-50 rounded-b-2xl">
-                    <button onClick={() => setSelectedSummary(null)} className="px-6 py-2 bg-slate-800 text-white rounded-xl hover:bg-slate-900 font-bold shadow-lg">Close</button>
+                <div className="p-4 border-t border-slate-100 flex justify-end bg-slate-50 rounded-b-2xl gap-3">
+                    {isEditingSummary ? (
+                        <>
+                            <button onClick={() => setIsEditingSummary(false)} className="px-6 py-2 bg-white border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 font-bold">Cancel</button>
+                            <button onClick={handleEditSummarySave} className="px-6 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 font-bold shadow-lg">Save Changes</button>
+                        </>
+                    ) : (
+                        <button onClick={() => setSelectedSummary(null)} className="px-6 py-2 bg-slate-800 text-white rounded-xl hover:bg-slate-900 font-bold shadow-lg">Close</button>
+                    )}
                 </div>
             </div>
         </div>
       )}
 
       {/* --- POPUPS --- */}
+      {popupType === 'DUPLICATE_FILE' && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border-t-4 border-slate-500">
+                  <h3 className="text-lg font-bold text-slate-800 mb-2 flex items-center gap-2"><FileText className="text-slate-500"/> Duplicate File Name</h3>
+                  <p className="text-slate-600 text-sm mb-6">{popupMessage}</p>
+                  <div className="flex gap-3">
+                      <button onClick={() => handleDuplicateFileAction(false)} className="flex-1 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200">Terminate Import</button>
+                      <button onClick={() => handleDuplicateFileAction(true)} className="flex-1 py-2.5 bg-slate-800 text-white font-bold rounded-xl hover:bg-slate-900 shadow-lg shadow-slate-900/20">Allow Import</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       {popupType === 'PENALTY' && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
               <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border-t-4 border-amber-500">
