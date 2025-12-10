@@ -139,6 +139,10 @@ export const storageService = {
     return api.post('/drivers', driver);
   },
 
+  deleteDriver: async (id: string): Promise<void> => {
+    return api.delete(`/drivers/${id}`);
+  },
+
   // --- Manager Access ---
   getManagerAccess: async (): Promise<ManagerAccess[]> => {
     return api.get('/manager-access');

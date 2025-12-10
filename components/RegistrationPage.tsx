@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { Driver, LeaveRecord, ManagerAccess } from '../types';
 import { storageService } from '../services/storageService';
-import { UserPlus, Edit2, Clock, FileText, X, AlertTriangle, ShieldCheck, Users, CheckSquare, Square, AlertOctagon, Mail, Loader2 } from 'lucide-react';
+import { UserPlus, Edit2, Clock, FileText, X, AlertTriangle, ShieldCheck, Users, CheckSquare, Square, AlertOctagon, Mail, Loader2, Trash2, Archive, RefreshCcw } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
 const InputField = ({ label, value, onChange, placeholder, type = "text", required = false, className = "" }: any) => (
@@ -24,6 +24,9 @@ const RegistrationPage: React.FC = () => {
   const [saving, setSaving] = useState(false); // New saving state
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [leaves, setLeaves] = useState<LeaveRecord[]>([]);
+  
+  // UI State
+  const [showTerminated, setShowTerminated] = useState(false);
 
   // Form States
   const [driverForm, setDriverForm] = useState<Partial<Driver>>({
@@ -197,6 +200,25 @@ const RegistrationPage: React.FC = () => {
     }
   };
 
+  const handleDeleteDriver = async (id: string) => {
+      // Prompt user with a clear warning
+      const isConfirmed = window.confirm(
+          "DANGER ZONE:\n\nAre you sure you want to PERMANENTLY DELETE this driver?\n\nThis action cannot be undone. All linked data (history, shift records) might become orphaned."
+      );
+
+      if (isConfirmed) {
+          try {
+              setSaving(true);
+              await storageService.deleteDriver(id);
+              await loadData(); // Refresh list
+          } catch (e: any) {
+              alert("Failed to delete driver: " + e.message);
+          } finally {
+              setSaving(false);
+          }
+      }
+  };
+
   const openEditDriver = (d: Driver) => {
     setDriverForm(d);
     setEditingDriverId(d.id);
@@ -245,24 +267,36 @@ const RegistrationPage: React.FC = () => {
       }
   };
 
+  // Filter Drivers based on Toggle
+  const displayedDrivers = drivers.filter(d => showTerminated ? !!d.terminationDate : !d.terminationDate);
+
   return (
-    <div className="max-w-7xl mx-auto space-y-8 animate-fade-in">
+    <div className="max-w-7xl mx-auto space-y-8 animate-fade-in pb-20">
       <div className="flex flex-col md:flex-row justify-between items-end gap-4">
         <div>
            <h2 className="text-3xl font-bold text-slate-900 tracking-tight">HR Registration</h2>
            <p className="text-slate-500 mt-1">Onboard drivers and manage deposits.</p>
         </div>
-        <button 
-           onClick={() => {
-             setIsDriverFormOpen(!isDriverFormOpen);
-             if(!isDriverFormOpen) setDriverForm({ joinDate: new Date().toISOString().split('T')[0], deposit: 0, status: 'Active', qrCode: '', vehicle: '', currentShift: 'Day', notes: '', isManager: false, email: '' });
-             setEditingDriverId(null);
-           }} 
-           className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
-        >
-           {isDriverFormOpen ? <X size={20}/> : <UserPlus size={20} />}
-           <span>{isDriverFormOpen ? 'Cancel' : 'Register Driver'}</span>
-        </button>
+        <div className="flex gap-3">
+            <button 
+                onClick={() => setShowTerminated(!showTerminated)}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all ${showTerminated ? 'bg-slate-800 text-white shadow-lg' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+            >
+                <Archive size={18} />
+                {showTerminated ? 'View Active Drivers' : 'View Terminated'}
+            </button>
+            <button 
+               onClick={() => {
+                 setIsDriverFormOpen(!isDriverFormOpen);
+                 if(!isDriverFormOpen) setDriverForm({ joinDate: new Date().toISOString().split('T')[0], deposit: 0, status: 'Active', qrCode: '', vehicle: '', currentShift: 'Day', notes: '', isManager: false, email: '' });
+                 setEditingDriverId(null);
+               }} 
+               className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
+            >
+               {isDriverFormOpen ? <X size={20}/> : <UserPlus size={20} />}
+               <span>{isDriverFormOpen ? 'Cancel' : 'Register Driver'}</span>
+            </button>
+        </div>
       </div>
 
       {/* Driver Form */}
@@ -440,14 +474,21 @@ const RegistrationPage: React.FC = () => {
       )}
 
       {/* Driver List */}
-      <div className="bg-white rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100 overflow-hidden">
-        <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-           <h3 className="font-bold text-slate-800 text-lg">Employee Directory</h3>
-           <div className="text-xs font-medium text-slate-400 bg-slate-50 px-3 py-1 rounded-full border border-slate-100">{drivers.length} Drivers</div>
+      <div className={`bg-white rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border overflow-hidden ${showTerminated ? 'border-rose-200 ring-2 ring-rose-50' : 'border-slate-100'}`}>
+        <div className={`p-6 border-b flex justify-between items-center ${showTerminated ? 'bg-rose-50 border-rose-100' : 'bg-white border-slate-100'}`}>
+           <div>
+               <h3 className={`font-bold text-lg ${showTerminated ? 'text-rose-800' : 'text-slate-800'}`}>
+                   {showTerminated ? 'Archived Drivers (Terminated)' : 'Employee Directory'}
+               </h3>
+               {showTerminated && <p className="text-xs text-rose-600 mt-1 font-medium">These records are inactive.</p>}
+           </div>
+           <div className={`text-xs font-bold px-3 py-1 rounded-full border ${showTerminated ? 'bg-white text-rose-600 border-rose-200' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>
+               {displayedDrivers.length} Records
+           </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
-            <thead className="text-xs text-slate-500 uppercase bg-slate-50/50 border-b border-slate-100">
+            <thead className={`text-xs uppercase border-b ${showTerminated ? 'bg-rose-50/50 text-rose-800 border-rose-100' : 'bg-slate-50/50 text-slate-500 border-slate-100'}`}>
               <tr>
                 <th className="px-6 py-4 font-semibold tracking-wider">Driver Name</th>
                 <th className="px-6 py-4 font-semibold tracking-wider">Contact & Status</th>
@@ -458,14 +499,14 @@ const RegistrationPage: React.FC = () => {
             <tbody className="divide-y divide-slate-50">
               {loading ? (
                  <tr><td colSpan={4} className="p-12 text-center text-slate-400">Loading drivers...</td></tr>
-              ) : drivers.length === 0 ? (
-                 <tr><td colSpan={4} className="p-12 text-center text-slate-400">No drivers registered yet.</td></tr>
+              ) : displayedDrivers.length === 0 ? (
+                 <tr><td colSpan={4} className="p-12 text-center text-slate-400">No {showTerminated ? 'terminated' : 'active'} drivers found.</td></tr>
               ) : (
-                drivers.map(d => {
+                displayedDrivers.map(d => {
                   const refundText = calculateDaysLeftForRefund(d);
                   const isTerminated = !!d.terminationDate;
                   return (
-                    <tr key={d.id} className={`group transition-colors ${isTerminated ? 'bg-slate-50/80 grayscale opacity-70' : 'hover:bg-slate-50/80'}`}>
+                    <tr key={d.id} className={`group transition-colors ${showTerminated ? 'hover:bg-rose-50/50' : 'hover:bg-slate-50/80'}`}>
                       <td className="px-6 py-4 font-bold text-slate-800">
                         <div className="flex items-center gap-2">
                            {d.name}
@@ -503,13 +544,22 @@ const RegistrationPage: React.FC = () => {
                           </div>
                       </td>
                       <td className="px-6 py-4 text-right">
-                          <button 
-                            onClick={() => openEditDriver(d)} 
-                            className="text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 p-2 rounded-lg transition-colors"
-                            title="Edit HR Details"
-                          >
-                            <Edit2 size={16} />
-                          </button>
+                          <div className="flex items-center justify-end gap-1">
+                              <button 
+                                onClick={() => openEditDriver(d)} 
+                                className="text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 p-2 rounded-lg transition-colors"
+                                title="Edit HR Details"
+                              >
+                                <Edit2 size={16} />
+                              </button>
+                              <button 
+                                onClick={() => handleDeleteDriver(d.id)} 
+                                className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 p-2 rounded-lg transition-colors"
+                                title="Delete Permanently"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                          </div>
                       </td>
                     </tr>
                   );
