@@ -1,9 +1,28 @@
-
 import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping, ManagerAccess, AdminAccess } from '../types';
 
-// Use relative path for production (Vercel) compatibility. 
-// Vercel rewrites /api requests to the backend serverless function.
-const API_BASE = '/api'; 
+// logic: Use local proxy in dev (npm run dev), use Render URL in production (Vercel)
+// We check for Vite's import.meta.env.DEV safely, and fallback to window location check for localhost
+// Cast import.meta to any to avoid TypeScript errors if vite/client types are missing
+const isLocal = ((import.meta as any).env && (import.meta as any).env.DEV) || 
+                (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'));
+
+const getApiBase = () => {
+    if (isLocal) return '/api';
+    
+    // Check for Environment Variable set in Vercel
+    const env = (import.meta as any).env;
+    if (env && env.VITE_API_URL) {
+        // Remove trailing slash if present to avoid double slashes
+        return env.VITE_API_URL.replace(/\/$/, '');
+    }
+    
+    // Fallback Default (Render Backend)
+    return 'https://enchocabs-software-orginal-gemini3pro-1.onrender.com/api';
+};
+
+const API_BASE = getApiBase();
+
+console.log("Current API Base:", API_BASE); // Debugging log
 
 const api = {
   get: async (endpoint: string) => {
