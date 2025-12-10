@@ -536,7 +536,7 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
     }
 
     const newDriver: Driver = {
-      id: crypto.randomUUID(),
+      id: '', // Empty string, let backend generate UUID
       name: nameToAdd,
       mobile: mobileToAdd,
       joinDate: new Date().toISOString().split('T')[0],
@@ -548,9 +548,10 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
     };
 
     try {
-        await storageService.saveDriver(newDriver);
+        const savedDriver = await storageService.saveDriver(newDriver);
         
-        const updatedDrivers = [...driversRef.current, newDriver];
+        // Update reference with the FULL driver object returned by API (including new ID)
+        const updatedDrivers = [...driversRef.current, savedDriver];
         driversRef.current = updatedDrivers;
         setDrivers(updatedDrivers); 
         

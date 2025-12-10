@@ -1,9 +1,9 @@
 
 const express = require('express');
 const cors = require('cors');
+const { v4: uuidv4 } = require('uuid');
 const db = require('./db');
 const app = express();
-const { v4: uuidv4 } = require('uuid');
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); // Support large Excel imports
@@ -27,62 +27,27 @@ app.get('/api/drivers', async (req, res) => {
 });
 
 app.post('/api/drivers', async (req, res) => {
-  console.log('POST /api/drivers body:', req.body);
+  const d = req.body;
+  
+  // UUID FIX: Generate a new ID if one isn't provided or is empty
+  const idToUse = (d.id && d.id.trim().length > 0) ? d.id : uuidv4();
 
   try {
-    const {
-      name,
-      mobile,
-      email,
-      join_date,
-      termination_date,
-      deposit,
-      qr_code,
-      vehicle,
-      status,
-      current_shift,
-      default_rent,
-      notes,
-      is_manager,
-    } = req.body;
+    // Check duplication (excluding the current ID we are about to insert/update)
+    const check = await db.query('SELECT * FROM drivers WHERE (lower(name) = lower($1) OR mobile = $2) AND id != $3', [d.name, d.mobile, idToUse]);
+    if (check.rows.length > 0) return res.status(409).json({ error: "Driver name or mobile already exists" });
 
-    // ✅ generate an id for this driver
-    const id = uuidv4();
-
-    const result = await db.query(
-      `INSERT INTO drivers
-       (id, name, mobile, email, join_date, termination_date, deposit,
-        qr_code, vehicle, status, current_shift, default_rent, notes, is_manager)
-       VALUES
-       ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-       RETURNING *`,
-      [
-        id,
-        name,
-        mobile,
-        email,
-        join_date,
-        termination_date,
-        deposit,
-        qr_code,
-        vehicle,
-        status || 'active',
-        current_shift,
-        default_rent,
-        notes,
-        is_manager ?? false,
-      ]
-    );
-
-    console.log('Driver inserted:', result.rows[0]);
-    res.status(201).json(result.rows[0]);
-  } catch (err) {
-    console.error('Error inserting driver:', err);
-    res.status(500).json({
-      error: 'Failed to create driver',
-      details: err.message,
-    });
-  }
+    // Upsert using idToUse
+    const q = `
+      INSERT INTO drivers (id, name, mobile, email, join_date, termination_date, deposit, qr_code, vehicle, status, current_shift, default_rent, notes, is_manager)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      ON CONFLICT (id) DO UPDATE SET
+        name=$2, mobile=$3, email=$4, join_date=$5, termination_date=$6, deposit=$7, qr_code=$8, vehicle=$9, status=$10, current_shift=$11, default_rent=$12, notes=$13, is_manager=$14
+      RETURNING *;
+    `;
+    const result = await db.query(q, [idToUse, d.name, d.mobile, d.email, d.joinDate, d.terminationDate || null, d.deposit, d.qrCode, d.vehicle, d.status, d.currentShift, d.defaultRent, d.notes, d.isManager]);
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // --- DAILY ENTRIES ---

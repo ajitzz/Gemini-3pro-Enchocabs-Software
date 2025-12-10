@@ -164,9 +164,9 @@ const RegistrationPage: React.FC = () => {
        };
     } else {
        // --- CREATE NEW DRIVER ---
-       const id = crypto.randomUUID();
+       // Fix: Send empty string for ID, allow backend to generate UUID
        newDriver = {
-         id: id,
+         id: '', 
          name: name,
          mobile: mobile || '',
          email: email,
