@@ -101,13 +101,19 @@ const RevenuePage: React.FC = () => {
       const totalRent = vehicleRent + companyWallet;
       const otherHeadSections = currentOs - totalRent;
 
-      // Inputs from Daily Entries + Weekly Wallets (Drivers Revenue)
+      // Inputs from Daily Entries (Drivers Revenue)
       const relevantDaily = dailyEntries.filter(d => {
           const dt = new Date(d.date);
           return dt >= startDate && dt <= endDate;
       });
       
-      const relevantWallets = weeklyWallets.filter(w => w.weekStartDate === summary.startDate);
+      // Inputs from Weekly Wallets (Billing History)
+      // Logic: Include wallets that START within this week's range. 
+      // This allows manual bills created in Driver Portal to be picked up even if dates aren't exact strings but fall in range.
+      const relevantWallets = weeklyWallets.filter(w => {
+          const wStart = new Date(w.weekStartDate);
+          return wStart >= startDate && wStart <= endDate;
+      });
 
       // Identify all drivers involved in this week (either via Daily Activity or Billing History)
       const uniqueDrivers = Array.from(new Set([
@@ -119,6 +125,8 @@ const RevenuePage: React.FC = () => {
       let driversWalletRaw = 0; // Total Wallet Payouts + Adjustments (Expense)
 
       // Use centralized service logic to ensure consistency with Billing History overrides
+      // If a wallet exists in 'relevantWallets', calculateDriverStats will use it (Overrides/Adjustments).
+      // If NOT, it falls back to summing 'relevantDaily' raw values.
       uniqueDrivers.forEach(driver => {
           const stats = storageService.calculateDriverStats(
               driver,
