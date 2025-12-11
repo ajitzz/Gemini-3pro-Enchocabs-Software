@@ -516,7 +516,7 @@ const DriverPortalPage: React.FC = () => {
            <div className="max-w-md mx-auto px-6 py-4 flex items-center justify-between">
                <div className="flex items-center gap-3">
                    <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-900/50">
-                       <span className="font-bold text-lg tracking-tighter">ENCHO</span>
+                       <span className="font-bold text-lg tracking-tighter">EC</span>
                    </div>
                    <div>
                        <h1 className="font-bold text-lg leading-none">Staff Room</h1>
