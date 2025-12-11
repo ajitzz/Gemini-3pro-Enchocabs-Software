@@ -6,14 +6,32 @@ import { storageService } from '../services/storageService';
 interface AuthContextType {
   user: AuthUser | null;
   loading: boolean;
-  loginWithGoogle: (simulatedEmail?: string) => Promise<void>;
+  loginWithGoogleToken: (token: string) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const SUPER_ADMIN_EMAIL = 'enchoenterprises@gmail.com';
+// Helper to interact with the Auth API directly
+const authApi = {
+    login: async (token: string) => {
+        const isLocal = window.location.hostname === 'localhost';
+        const API_BASE = isLocal ? '/api' : 'https://enchocabs-software-orginal-gemini3pro-1.onrender.com/api';
+        
+        const response = await fetch(`${API_BASE}/auth/google`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token })
+        });
+        
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || 'Authentication failed');
+        }
+        return response.json();
+    }
+};
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -33,65 +51,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(false);
   }, []);
 
-  const loginWithGoogle = async (simulatedEmail?: string) => {
+  const loginWithGoogleToken = async (token: string) => {
     setLoading(true);
     try {
-        // --- SIMULATED GOOGLE AUTH FLOW ---
-        const email = simulatedEmail?.toLowerCase().trim();
+        // Send token to backend for verification and role assignment
+        const userData = await authApi.login(token);
         
-        if (!email) throw new Error("Email required for simulation.");
-        
-        let role: UserRole | null = null;
-        let driverId: string | undefined = undefined;
-        let name = email.split('@')[0];
-
-        // 1. Check Super Admin (Strict Check)
-        if (email === SUPER_ADMIN_EMAIL.toLowerCase()) {
-            role = 'super_admin';
-            name = 'Encho (Super Admin)';
-        }
-
-        // 2. Check Authorized Admins
-        if (!role) {
-            const admins = await storageService.getAuthorizedAdmins();
-            const adminUser = admins.find(a => a.email.toLowerCase() === email);
-            if (adminUser) {
-                role = 'admin';
-                name = 'Admin User';
-            }
-        }
-
-        // 3. Check Drivers
-        if (!role) {
-            const drivers = await storageService.getDrivers();
-            // Ensure we handle potential missing email fields in legacy data
-            const driver = drivers.find(d => d.email && d.email.toLowerCase() === email);
-            
-            if (driver) {
-                if (driver.terminationDate) {
-                    throw new Error("Access Denied: This driver account has been terminated.");
-                }
-                role = 'driver';
-                name = driver.name;
-                driverId = driver.id;
-            }
-        }
-
-        if (!role) {
-            throw new Error(`Access Denied: Email '${email}' is not registered in the system. Contact Super Admin.`);
-        }
-
-        const authUser: AuthUser = {
-            email,
-            name,
-            role,
-            photoURL: `https://ui-avatars.com/api/?name=${name}&background=random`,
-            driverId
-        };
-
-        // Update state and storage
-        localStorage.setItem('driver_app_session', JSON.stringify(authUser));
-        setUser(authUser);
+        // Save session
+        localStorage.setItem('driver_app_session', JSON.stringify(userData));
+        setUser(userData);
 
     } catch (error: any) {
         console.error("Login failed:", error);
@@ -107,7 +75,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, loginWithGoogle, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, loading, loginWithGoogleToken, logout, isAuthenticated: !!user }}>
       {children}
     </AuthContext.Provider>
   );

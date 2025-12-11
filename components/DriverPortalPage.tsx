@@ -136,6 +136,11 @@ const DriverPortalPage: React.FC = () => {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(val);
   };
 
+  // Helper for Top Cards to remove decimal
+  const formatCurrencyInt = (val: number) => {
+    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(val);
+  };
+
   const formatInt = (val: number) => {
     return Math.floor(val).toString();
   };
@@ -230,130 +235,125 @@ const DriverPortalPage: React.FC = () => {
       };
   }, [rawDaily, rawWeekly, rentalSlabs, viewingAsDriver]);
 
-  // --- 3. PERFORMANCE STATS ---
-  const performanceStats = useMemo(() => {
-      const now = new Date();
-      const currentMonth = now.getMonth();
-      const currentYear = now.getFullYear();
-
-      let monthTrips = 0;
-      let monthEarnings = 0;
-      let yearTrips = 0;
-      let yearEarnings = 0;
-
-      rawWeekly.forEach(w => {
-          if (!w.weekEndDate) return;
-          const parts = w.weekEndDate.split('-');
-          if (parts.length !== 3) return;
-          const wYear = parseInt(parts[0], 10);
-          const wMonth = parseInt(parts[1], 10) - 1; 
-          const earnings = Number(w.earnings) || 0;
-          const trips = Number(w.trips) || 0;
-
-          if (wYear === currentYear) {
-              yearTrips += trips;
-              yearEarnings += earnings;
-              if (wMonth === currentMonth) {
-                  monthTrips += trips;
-                  monthEarnings += earnings;
-              }
-          }
-      });
-
-      return {
-          month: { trips: monthTrips, earnings: monthEarnings },
-          year: { trips: yearTrips, earnings: yearEarnings }
-      };
-  }, [rawWeekly]);
-
-  // --- 4. ADDITIONAL STATS FOR DYNAMIC CARDS ---
-  const dailyAggregates = useMemo(() => {
+  // --- 3. AGGREGATED STATS (Month/Prev Month/Year) ---
+  const aggregatedStats = useMemo(() => {
       const now = new Date();
       const currentMonth = now.getMonth();
       const currentYear = now.getFullYear();
       
-      let monthColl = 0;
-      let yearColl = 0;
+      const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const prevMonth = prevMonthDate.getMonth();
+      const prevMonthYear = prevMonthDate.getFullYear();
+
+      let monthCollection = 0;
+      let monthRent = 0;
+      let prevMonthDues = 0;
+      let yearCollection = 0;
+      let monthTrips = 0;
       
       rawDaily.forEach(entry => {
           const d = new Date(entry.date);
-          if (d.getFullYear() === currentYear) {
-              yearColl += entry.collection;
-              if (d.getMonth() === currentMonth) {
-                  monthColl += entry.collection;
+          const eYear = d.getFullYear();
+          const eMonth = d.getMonth();
+
+          // Current Year
+          if (eYear === currentYear) {
+              yearCollection += entry.collection;
+              // Current Month
+              if (eMonth === currentMonth) {
+                  monthCollection += entry.collection;
+                  monthRent += entry.rent;
               }
+          }
+          
+          // Previous Month
+          if (eYear === prevMonthYear && eMonth === prevMonth) {
+              prevMonthDues += entry.due;
           }
       });
       
-      return { monthColl, yearColl };
-  }, [rawDaily]);
+      // Calculate Month Trips from Weekly Data (as Daily doesn't store trips explicitly)
+      rawWeekly.forEach(w => {
+          if (!w.weekEndDate) return;
+          const endD = new Date(w.weekEndDate);
+          if (endD.getFullYear() === currentYear && endD.getMonth() === currentMonth) {
+              monthTrips += (w.trips || 0);
+          }
+      });
 
-  const billingAggregates = useMemo(() => {
-      return billingData.reduce((acc, bill) => ({
-          payout: acc.payout + bill.payout,
-          earnings: acc.earnings + bill.grossEarnings,
-          trips: acc.trips + bill.trips
-      }), { payout: 0, earnings: 0, trips: 0 });
-  }, [billingData]);
+      // Latest Week Details
+      const latestWeekly = rawWeekly.length > 0 ? rawWeekly[0] : null;
+      const latestWeekTrips = latestWeekly ? latestWeekly.trips : 0;
+      const latestWeekEarnings = latestWeekly ? latestWeekly.earnings : 0;
 
-  // --- 5. DYNAMIC CARD DATA ---
+      return { 
+          monthCollection, 
+          monthRent, 
+          prevMonthDues, 
+          yearCollection,
+          latestWeekTrips,
+          latestWeekEarnings,
+          monthTrips
+      };
+  }, [rawDaily, rawWeekly]);
+
+  // --- 4. DYNAMIC CARD DATA ---
   const topCards = useMemo(() => {
-      if (activeTab === 'daily') {
-          // DAILY LOG: Show Current Year Earnings and Trips
-          return {
-              left: {
-                  label: 'Year Earnings',
-                  value: dailyAggregates.yearColl, // Use real-time daily sum for accuracy
-                  subtext: 'Current Year Collection',
-                  isCurrency: true,
-                  colorClass: 'bg-[#1e1b4b]'
-              },
-              right: {
-                  label: 'Trips Taken',
-                  value: formatInt(performanceStats.year.trips),
-                  subtext: 'Current Year',
-                  isCurrency: false,
-                  colorClass: 'bg-white'
-              }
-          };
-      } else if (activeTab === 'billing') {
-          // BILLING: Show Net Payout and Total Earnings (Lifetime)
-          return {
-              left: {
-                  label: 'Net Payout',
-                  value: billingAggregates.payout,
-                  subtext: 'Lifetime Payout',
-                  isCurrency: true,
-                  colorClass: 'bg-[#1e1b4b]'
-              },
-              right: {
-                  label: 'Total Earnings',
-                  value: billingAggregates.earnings,
-                  subtext: `${formatInt(billingAggregates.trips)} Total Trips`,
-                  isCurrency: true,
-                  colorClass: 'bg-white'
-              }
-          };
-      } else {
-          // OVERVIEW: Net Balance and This Month Earnings + Trips
+      // OVERVIEW: Net Balance & Latest Week Earnings
+      if (activeTab === 'home') {
           return {
               left: {
                   label: 'Net Balance',
                   value: balanceSummary.netBalance,
                   subtext: balanceSummary.netBalance < 0 ? 'Payable Amount' : 'Receivable Amount',
                   isCurrency: true,
-                  colorClass: 'bg-[#1e1b4b]'
+                  colorClass: 'bg-[#1e1b4b]',
+                  colSpan: 1
               },
               right: {
-                  label: 'This Month',
-                  value: dailyAggregates.monthColl, // Use Month Collection from daily entries
-                  subtext: `${formatInt(performanceStats.month.trips)} Trips`,
+                  label: 'Total Earnings', // Requested Label
+                  value: aggregatedStats.latestWeekEarnings, // Value: Latest Week Earnings
+                  subtext: `${formatInt(aggregatedStats.latestWeekTrips)} Trips (Latest Week)`,
                   isCurrency: true,
-                  colorClass: 'bg-white'
+                  colorClass: 'bg-white',
+                  colSpan: 1
+              }
+          };
+      } 
+      // DAILY LOG: Single Card with 3 Details
+      else if (activeTab === 'daily') {
+          return {
+              // We'll use a special flag or structure for this consolidated card
+              isConsolidated: true,
+              data: {
+                  monthRent: aggregatedStats.monthRent,
+                  monthCollection: aggregatedStats.monthCollection,
+                  prevDues: aggregatedStats.prevMonthDues
+              }
+          };
+      } 
+      // BILLING: Net Balance & This Month Total Earnings
+      else {
+          return {
+              left: {
+                  label: 'Net Balance',
+                  value: balanceSummary.netBalance,
+                  subtext: balanceSummary.netBalance < 0 ? 'Payable Amount' : 'Receivable Amount',
+                  isCurrency: true,
+                  colorClass: 'bg-[#1e1b4b]',
+                  colSpan: 1
+              },
+              right: {
+                  label: "This Month's Earnings",
+                  value: aggregatedStats.monthCollection, // Value: This Month Collection
+                  subtext: `${formatInt(aggregatedStats.monthTrips)} Trips (This Month)`,
+                  isCurrency: true,
+                  colorClass: 'bg-white',
+                  colSpan: 1
               }
           };
       }
-  }, [activeTab, balanceSummary, performanceStats, dailyAggregates, billingAggregates]);
+  }, [activeTab, balanceSummary, aggregatedStats]);
 
 
   // --- BILL HTML GENERATOR (unchanged) ---
@@ -575,25 +575,70 @@ const DriverPortalPage: React.FC = () => {
 
            {/* Top Cards Grid (Dynamic) */}
            <div className="grid grid-cols-2 gap-4 mb-2">
-                {/* Left Card */}
-               <div className={`${topCards.left.colorClass} p-6 rounded-[24px] text-white relative overflow-hidden shadow-xl flex flex-col justify-center`}>
-                   <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-200 mb-1">{topCards.left.label}</p>
-                   <h3 className={`text-3xl font-bold tracking-tight mb-1 ${topCards.left.isCurrency && typeof topCards.left.value === 'number' && topCards.left.value < 0 ? 'text-rose-300' : 'text-white'}`}>
-                       {topCards.left.isCurrency && typeof topCards.left.value === 'number' ? formatCurrency(topCards.left.value) : topCards.left.value}
-                   </h3>
-                   <p className="text-[10px] text-indigo-300/80">
-                       {topCards.left.subtext}
-                   </p>
-               </div>
+               {/* Check if consolidated card (Daily Log Tab Special) */}
+               {/* @ts-ignore */}
+               {topCards.isConsolidated ? (
+                   <div className="col-span-2 bg-white p-5 rounded-[24px] border border-slate-100 shadow-sm flex flex-col justify-center">
+                       <div className="flex justify-between items-center mb-3 pb-3 border-b border-slate-50">
+                           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Month Stats (Current)</h3>
+                           <span className="text-[10px] bg-slate-50 text-slate-500 px-2 py-1 rounded-full font-bold">Consolidated</span>
+                       </div>
+                       <div className="grid grid-cols-3 gap-2 text-center divide-x divide-slate-100">
+                           <div>
+                               <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">Month Rent</p>
+                               <p className="text-base font-bold text-slate-800">
+                                   {/* @ts-ignore */}
+                                   {formatCurrencyInt(topCards.data.monthRent)}
+                               </p>
+                           </div>
+                           <div>
+                               <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">Month Collection</p>
+                               <p className="text-base font-bold text-emerald-600">
+                                   {/* @ts-ignore */}
+                                   {formatCurrencyInt(topCards.data.monthCollection)}
+                               </p>
+                           </div>
+                           <div>
+                               <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">Prev Month Dues</p>
+                               <p className="text-base font-bold text-rose-500">
+                                   {/* @ts-ignore */}
+                                   {formatCurrencyInt(topCards.data.prevDues)}
+                               </p>
+                           </div>
+                       </div>
+                   </div>
+               ) : (
+                   <>
+                       {/* Left Card */}
+                       {/* @ts-ignore */}
+                       <div className={`${topCards.left.colorClass} p-6 rounded-[24px] text-white relative overflow-hidden shadow-xl flex flex-col justify-center ${topCards.left.colSpan ? `col-span-${topCards.left.colSpan}` : ''}`}>
+                           {/* @ts-ignore */}
+                           <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-200 mb-1">{topCards.left.label}</p>
+                           {/* @ts-ignore */}
+                           <h3 className={`text-3xl font-bold tracking-tight mb-1 ${topCards.left.isCurrency && typeof topCards.left.value === 'number' && topCards.left.value < 0 ? 'text-rose-300' : 'text-white'}`}>
+                               {/* @ts-ignore */}
+                               {topCards.left.isCurrency && typeof topCards.left.value === 'number' ? formatCurrencyInt(topCards.left.value) : topCards.left.value}
+                           </h3>
+                           <p className="text-[10px] text-indigo-300/80">
+                               {/* @ts-ignore */}
+                               {topCards.left.subtext}
+                           </p>
+                       </div>
 
-               {/* Right Card */}
-               <div className={`${topCards.right.colorClass} p-6 rounded-[24px] border border-slate-100 shadow-sm flex flex-col justify-center`}>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">{topCards.right.label}</p>
-                    <h3 className="text-3xl font-bold text-slate-800 mb-1">
-                       {topCards.right.isCurrency && typeof topCards.right.value === 'number' ? formatCurrency(topCards.right.value) : topCards.right.value}
-                    </h3>
-                    <p className="text-[10px] text-slate-400">{topCards.right.subtext}</p>
-               </div>
+                       {/* Right Card */}
+                       {/* @ts-ignore */}
+                       <div className={`${topCards.right.colorClass} p-6 rounded-[24px] border border-slate-100 shadow-sm flex flex-col justify-center ${topCards.right.colSpan ? `col-span-${topCards.right.colSpan}` : ''}`}>
+                            {/* @ts-ignore */}
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">{topCards.right.label}</p>
+                            <h3 className="text-3xl font-bold text-slate-800 mb-1">
+                               {/* @ts-ignore */}
+                               {topCards.right.isCurrency && typeof topCards.right.value === 'number' ? formatCurrencyInt(topCards.right.value) : topCards.right.value}
+                            </h3>
+                            {/* @ts-ignore */}
+                            <p className="text-[10px] text-slate-400">{topCards.right.subtext}</p>
+                       </div>
+                   </>
+               )}
            </div>
 
            {/* Tab Switcher */}

@@ -2,6 +2,7 @@
 const express = require('express');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
+const { OAuth2Client } = require('google-auth-library');
 const db = require('./db');
 const app = express();
 
@@ -9,6 +10,11 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' })); // Support large Excel imports
 
 const PORT = process.env.PORT || 3000;
+// You should set this in your environment variables (e.g. .env file)
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "YOUR_GOOGLE_CLIENT_ID_HERE";
+const client = new OAuth2Client(GOOGLE_CLIENT_ID);
+
+const SUPER_ADMIN_EMAIL = 'enchoenterprises@gmail.com';
 
 // --- INITIALIZATION SQL ---
 const initDb = async () => {
@@ -56,6 +62,78 @@ const initDb = async () => {
 };
 
 initDb();
+
+// --- AUTHENTICATION ROUTE ---
+app.post('/api/auth/google', async (req, res) => {
+  const { token } = req.body;
+
+  if (!token) {
+    return res.status(400).json({ error: "No token provided" });
+  }
+
+  try {
+    // 1. Verify Google Token
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    const email = payload.email.toLowerCase();
+    const name = payload.name;
+    const picture = payload.picture;
+
+    let role = null;
+    let driverId = null;
+    let userName = name;
+
+    // 2. Check Permissions
+
+    // A. Super Admin Check
+    if (email === SUPER_ADMIN_EMAIL.toLowerCase()) {
+      role = 'super_admin';
+      userName = 'Encho (Super Admin)';
+    }
+
+    // B. Admin Access Check (If not super admin)
+    if (!role) {
+      const adminCheck = await db.query('SELECT * FROM admin_access WHERE lower(email) = $1', [email]);
+      if (adminCheck.rows.length > 0) {
+        role = 'admin';
+      }
+    }
+
+    // C. Driver Check (If not admin)
+    if (!role) {
+      const driverCheck = await db.query('SELECT * FROM drivers WHERE lower(email) = $1', [email]);
+      if (driverCheck.rows.length > 0) {
+        const driver = driverCheck.rows[0];
+        if (driver.termination_date) {
+          return res.status(403).json({ error: "Access Denied: Your driver account has been terminated." });
+        }
+        role = 'driver';
+        userName = driver.name;
+        driverId = driver.id;
+      }
+    }
+
+    if (!role) {
+      return res.status(403).json({ error: "Access Denied: Email not registered in Encho Cabs system." });
+    }
+
+    // 3. Return User Data
+    res.json({
+      email,
+      name: userName,
+      role,
+      photoURL: picture,
+      driverId
+    });
+
+  } catch (err) {
+    console.error("Auth Error:", err);
+    res.status(401).json({ error: "Authentication failed or token invalid" });
+  }
+});
 
 // --- HELPERS ---
 const snakeToCamel = (str) => str.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
