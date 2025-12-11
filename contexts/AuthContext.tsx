@@ -29,15 +29,21 @@ const getApiBase = () => {
     return 'https://enchocabs-software-orginal-gemini3pro-1.onrender.com/api';
 };
 
+const getGoogleClientId = () => {
+    const env = (import.meta as any).env || {};
+    return env.VITE_GOOGLE_CLIENT_ID || "";
+};
+
 const authApi = {
     login: async (token: string) => {
         const API_BASE = getApiBase();
+        const clientId = getGoogleClientId();
         console.log("Authentication attempting to reach:", API_BASE + '/auth/google');
         
         const response = await fetch(`${API_BASE}/auth/google`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token })
+            body: JSON.stringify({ token, clientId })
         });
         
         if (!response.ok) {

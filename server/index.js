@@ -11,7 +11,8 @@ const app = express();
 app.use((req, res, next) => {
   // Allows the Google Sign-In popup to communicate back to the main window
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
-  res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+  // Removing COEP 'require-corp' as it can be too strict for external images (Google Avatars)
+  // res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp'); 
   next();
 });
 
@@ -21,9 +22,7 @@ app.use(express.json({ limit: '50mb' })); // Support large Excel imports
 const PORT = process.env.PORT || 3000;
 
 // Use key from .env
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-const client = new OAuth2Client(GOOGLE_CLIENT_ID);
-
+const SERVER_GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const SUPER_ADMIN_EMAIL = 'enchoenterprises@gmail.com';
 
 // --- INITIALIZATION SQL ---
@@ -75,22 +74,26 @@ initDb();
 
 // --- AUTHENTICATION ROUTE ---
 app.post('/api/auth/google', async (req, res) => {
-  const { token } = req.body;
+  const { token, clientId } = req.body;
 
   if (!token) {
     return res.status(400).json({ error: "No token provided" });
   }
 
-  if (!GOOGLE_CLIENT_ID) {
-      console.error("Server Error: GOOGLE_CLIENT_ID is missing in environment variables.");
-      return res.status(500).json({ error: "Server authentication configuration missing." });
+  // Use Server Env OR Client Provided ID
+  const audience = SERVER_GOOGLE_CLIENT_ID || clientId;
+
+  if (!audience) {
+      console.error("Server Error: GOOGLE_CLIENT_ID is missing in environment variables and not provided by client.");
+      return res.status(500).json({ error: "Server authentication configuration missing. Please ensure GOOGLE_CLIENT_ID is set." });
   }
 
   try {
     // 1. Verify Google Token
-    const ticket = await client.verifyIdToken({
+    const authClient = new OAuth2Client(audience);
+    const ticket = await authClient.verifyIdToken({
       idToken: token,
-      audience: GOOGLE_CLIENT_ID,
+      audience: audience,
     });
     const payload = ticket.getPayload();
     const email = payload.email.toLowerCase();
