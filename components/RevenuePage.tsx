@@ -107,47 +107,35 @@ const RevenuePage: React.FC = () => {
           return dt >= startDate && dt <= endDate;
       });
       
-      const driversInWeek = Array.from(new Set(relevantDaily.map(d => d.driver)));
       const relevantWallets = weeklyWallets.filter(w => w.weekStartDate === summary.startDate);
 
-      let driversPayments = 0; // Total Rent Collected
+      // Identify all drivers involved in this week (either via Daily Activity or Billing History)
+      const uniqueDrivers = Array.from(new Set([
+          ...relevantDaily.map(d => d.driver),
+          ...relevantWallets.map(w => w.driver)
+      ]));
 
-      // Calculate Driver Payments using centralized logic for consistency
-      driversInWeek.forEach(driver => {
-          const wallet = relevantWallets.find(w => w.driver === driver);
-          const driverDaily = relevantDaily.filter(d => d.driver === driver);
+      let driversPayments = 0; // Total Rent Collected (Revenue)
+      let driversWalletRaw = 0; // Total Wallet Payouts + Adjustments (Expense)
+
+      // Use centralized service logic to ensure consistency with Billing History overrides
+      uniqueDrivers.forEach(driver => {
+          const stats = storageService.calculateDriverStats(
+              driver,
+              relevantDaily, // Scope to this week
+              relevantWallets, // Scope to this week
+              rentalSlabs
+          );
           
-          if (wallet) {
-              // Priority: Manual Override -> Avg Daily -> Slab -> 0
-              const trips = wallet.trips;
-              const slab = rentalSlabs.find(s => trips >= s.minTrips && (s.maxTrips === null || trips <= s.maxTrips));
-              
-              let rentRate = 0;
-              if (wallet.rentOverride !== undefined && wallet.rentOverride !== null) {
-                  rentRate = wallet.rentOverride;
-              } else if (driverDaily.length > 0) {
-                  rentRate = driverDaily.reduce((sum, d) => sum + d.rent, 0) / driverDaily.length;
-              } else {
-                  rentRate = slab ? slab.rentAmount : 0;
-              }
-
-              const days = (wallet.daysWorkedOverride !== undefined && wallet.daysWorkedOverride !== null)
-                  ? wallet.daysWorkedOverride
-                  : driverDaily.length;
-
-              driversPayments += (rentRate * days);
-          } else {
-              // Fallback to raw sum if no bill generated
-              driversPayments += driverDaily.reduce((sum, d) => sum + d.rent, 0);
-          }
+          driversPayments += stats.totalRent;
+          driversWalletRaw += stats.totalWalletWeek;
       });
 
-      // Inputs from Weekly Wallets (Wallet Week Sum)
-      // Wallet Raw should effectively be "Wallet Week" + "Adjustments" if we treat adjustments as credits to driver
-      const driversWalletRaw = relevantWallets.reduce((sum, w) => sum + w.walletWeek + (w.adjustments || 0), 0);
+      // Charges for Fraud Check (Aggregate from relevant wallets)
       const totalCharges = relevantWallets.reduce((sum, w) => sum + w.charges, 0);
       
       // Drivers Adjusted for Fraud Check
+      // Logic: driversWalletRaw includes adjustments. Adding charges back allows comparison with Gross-like metrics if needed.
       const driversWalletAdjusted = driversWalletRaw + totalCharges; 
 
       // Profit / Loss Logic
