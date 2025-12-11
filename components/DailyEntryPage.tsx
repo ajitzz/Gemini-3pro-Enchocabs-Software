@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { DailyEntry, Driver, LeaveRecord } from '../types';
 import { storageService } from '../services/storageService';
-import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
 const InputField = ({ label, name, type = "text", value, onChange, placeholder, required = false, className = "", readOnly = false }: any) => (
@@ -21,6 +22,166 @@ const InputField = ({ label, name, type = "text", value, onChange, placeholder, 
   </div>
 );
 
+// --- COLUMN FILTER COMPONENT ---
+interface ColumnFilterProps {
+  columnKey: keyof DailyEntry | 'combined_driver_qr'; 
+  data: DailyEntry[];
+  activeFilters: Record<string, string[]>;
+  onFilterChange: (key: string, values: string[]) => void;
+  label: string;
+  alignRight?: boolean;
+}
+
+const ColumnFilter: React.FC<ColumnFilterProps> = ({ columnKey, data, activeFilters, onFilterChange, label, alignRight = false }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedValues, setSelectedValues] = useState<Set<string>>(new Set(activeFilters[columnKey] || []));
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Extract unique values from data for this column
+  const uniqueValues = useMemo(() => {
+    const values = new Set<string>();
+    data.forEach(item => {
+      let val = '';
+      if (columnKey === 'combined_driver_qr') {
+         val = item.driver; // Primary filter on Driver name for this visual column
+      } else {
+         val = String(item[columnKey as keyof DailyEntry] ?? '');
+      }
+      if (val) values.add(val);
+    });
+    return Array.from(values).sort();
+  }, [data, columnKey]);
+
+  const filteredUniqueValues = uniqueValues.filter(v => 
+    v.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // Sync internal state when external filters change (e.g. clear all)
+  useEffect(() => {
+    setSelectedValues(new Set(activeFilters[columnKey] || []));
+  }, [activeFilters, columnKey]);
+
+  // Click outside to close
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const toggleValue = (val: string) => {
+    const newSet = new Set(selectedValues);
+    if (newSet.has(val)) newSet.delete(val);
+    else newSet.add(val);
+    setSelectedValues(newSet);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedValues.size === uniqueValues.length) {
+      setSelectedValues(new Set());
+    } else {
+      setSelectedValues(new Set(uniqueValues));
+    }
+  };
+
+  const applyFilter = () => {
+    onFilterChange(columnKey, Array.from(selectedValues));
+    setIsOpen(false);
+  };
+
+  const clearFilter = () => {
+    setSelectedValues(new Set());
+    onFilterChange(columnKey, []);
+    setIsOpen(false);
+  };
+
+  const isActive = (activeFilters[columnKey]?.length || 0) > 0;
+
+  return (
+    <div className={`relative flex items-center gap-2 ${alignRight ? 'justify-end' : 'justify-start'}`} ref={wrapperRef}>
+      <span>{label}</span>
+      <button 
+        onClick={() => setIsOpen(!isOpen)}
+        className={`p-1 rounded transition-colors ${isActive ? 'text-indigo-600 bg-indigo-50' : 'text-slate-300 hover:text-slate-500 hover:bg-slate-100'}`}
+      >
+        <Filter size={14} fill={isActive ? "currentColor" : "none"} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full mt-2 z-50 w-64 bg-white rounded-xl shadow-2xl border border-slate-200 animate-fade-in flex flex-col overflow-hidden text-left left-0">
+           {/* Header / Search */}
+           <div className="p-3 border-b border-slate-100 bg-slate-50">
+              <input 
+                autoFocus
+                type="text" 
+                placeholder={`Search ${label}...`} 
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
+              />
+           </div>
+           
+           {/* List */}
+           <div className="max-h-48 overflow-y-auto p-2 scrollbar-thin">
+              <div 
+                className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded cursor-pointer"
+                onClick={handleSelectAll}
+              >
+                 <div className={`w-4 h-4 rounded border flex items-center justify-center ${selectedValues.size === uniqueValues.length ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'}`}>
+                    {selectedValues.size === uniqueValues.length && <Check size={10} className="text-white" />}
+                 </div>
+                 <span className="text-xs font-bold text-slate-700">Select All</span>
+              </div>
+              
+              <div className="h-px bg-slate-100 my-1"></div>
+
+              {filteredUniqueValues.length === 0 ? (
+                 <p className="text-xs text-slate-400 text-center py-2">No matches</p>
+              ) : (
+                 filteredUniqueValues.map(val => {
+                   const isSelected = selectedValues.has(val);
+                   return (
+                     <div 
+                        key={val} 
+                        className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded cursor-pointer"
+                        onClick={() => toggleValue(val)}
+                     >
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'}`}>
+                           {isSelected && <Check size={10} className="text-white" />}
+                        </div>
+                        <span className="text-xs text-slate-600 truncate" title={val}>{val}</span>
+                     </div>
+                   );
+                 })
+              )}
+           </div>
+
+           {/* Footer Actions */}
+           <div className="p-3 border-t border-slate-100 flex justify-between gap-2 bg-slate-50">
+              <button 
+                onClick={clearFilter}
+                className="px-3 py-1.5 text-xs font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-200 rounded-lg transition-colors"
+              >
+                Clear
+              </button>
+              <button 
+                onClick={applyFilter}
+                className="px-3 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm"
+              >
+                Apply
+              </button>
+           </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+
 const DailyEntryPage: React.FC = () => {
   const [entries, setEntries] = useState<DailyEntry[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -32,10 +193,12 @@ const DailyEntryPage: React.FC = () => {
   // UI State for optional fields
   const [showOptionalFields, setShowOptionalFields] = useState(false);
 
-  // Filter State
+  // Global Date Filter State (Kept as primary filter for performance/context)
   const [filterDateStart, setFilterDateStart] = useState('');
   const [filterDateEnd, setFilterDateEnd] = useState('');
-  const [filterDriver, setFilterDriver] = useState('');
+  
+  // Column Filters State
+  const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>({});
 
   // Form State
   const initialFormState: Partial<DailyEntry> = {
@@ -188,31 +351,64 @@ const DailyEntryPage: React.FC = () => {
     return leaves.some(leave => {
         if (leave.driverId !== driverId) return false;
         
-        // Logic:
-        // If Actual Return exists: On Leave if Date >= Start AND Date < ActualReturn
-        // If NO Actual Return: On Leave if Date >= Start AND Date <= PlannedEnd
-        
         const start = leave.startDate;
         
         if (leave.actualReturnDate) {
-            // They are back on actualReturnDate, so they are unavailable strictly BEFORE that date
             return selectedDate >= start && selectedDate < leave.actualReturnDate;
         } else {
-            // Still away, unavailable up to planned end (inclusive)
             return selectedDate >= start && selectedDate <= leave.endDate;
         }
     });
   };
 
-  const filteredEntries = entries.filter(entry => {
-    const matchDriver = filterDriver === '' || entry.driver.toLowerCase().includes(filterDriver.toLowerCase());
-    const matchStart = filterDateStart === '' || entry.date >= filterDateStart;
-    const matchEnd = filterDateEnd === '' || entry.date <= filterDateEnd;
-    return matchDriver && matchStart && matchEnd;
-  });
+  const handleColumnFilterChange = (key: string, values: string[]) => {
+    setColumnFilters(prev => ({
+      ...prev,
+      [key]: values
+    }));
+  };
+
+  // Filter Logic: Global Dates AND Column Specific Filters
+  const filteredEntries = useMemo(() => {
+    return entries.filter(entry => {
+        // 1. Global Date Range Filter
+        const matchStart = filterDateStart === '' || entry.date >= filterDateStart;
+        const matchEnd = filterDateEnd === '' || entry.date <= filterDateEnd;
+        if (!matchStart || !matchEnd) return false;
+
+        // 2. Column Specific Filters (OR logic within column, AND logic across columns)
+        for (const [key, selectedValues] of Object.entries(columnFilters)) {
+            if (selectedValues.length === 0) continue; // No filter active for this column
+
+            let entryVal = '';
+            if (key === 'combined_driver_qr') {
+                entryVal = entry.driver; // Check against driver name
+            } else {
+                // @ts-ignore
+                entryVal = String(entry[key] ?? '');
+            }
+
+            // If entry value is NOT in selected list, exclude it
+            if (!selectedValues.includes(entryVal)) {
+                return false;
+            }
+        }
+
+        return true;
+    });
+  }, [entries, filterDateStart, filterDateEnd, columnFilters]);
+
+  // Determine if any filter is active
+  const isAnyFilterActive = filterDateStart !== '' || filterDateEnd !== '' || Object.values(columnFilters).some(v => v.length > 0);
+
+  const clearAllFilters = () => {
+      setFilterDateStart('');
+      setFilterDateEnd('');
+      setColumnFilters({});
+  };
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8">
+    <div className="max-w-[1920px] mx-auto space-y-8 pb-20">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Daily Entries</h2>
@@ -250,10 +446,8 @@ const DailyEntryPage: React.FC = () => {
               <select required name="driver" value={formData.driver} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none appearance-none cursor-pointer">
                   <option value="">-- Select Driver --</option>
                   {drivers.map(d => {
-                      // Only show if available OR if it's the currently selected driver (for editing)
                       const onLeave = isDriverOnLeave(d.id);
                       if (onLeave && formData.driver !== d.name) return null;
-                      
                       return (
                         <option key={d.id} value={d.name}>
                             {d.name} {onLeave ? '(On Leave)' : ''}
@@ -335,24 +529,19 @@ const DailyEntryPage: React.FC = () => {
         </form>
       </div>
 
-      {/* Filters */}
+      {/* Global Filter Bar */}
       <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row gap-5 items-center justify-between">
-        <div className="flex items-center gap-2 text-slate-500">
+        <div className="flex items-center gap-3 text-slate-500">
           <Filter size={18} />
-          <span className="text-sm font-semibold uppercase tracking-wide">Filters</span>
+          <span className="text-sm font-semibold uppercase tracking-wide">Data View</span>
+          {isAnyFilterActive && (
+             <button onClick={clearAllFilters} className="text-xs font-bold text-rose-500 bg-rose-50 px-2 py-1 rounded-lg hover:bg-rose-100 transition-colors">
+                Reset All Filters
+             </button>
+          )}
         </div>
-        <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
-          <div className="relative flex-1 md:w-64">
-            <input 
-              type="text" 
-              placeholder="Search driver..." 
-              value={filterDriver} 
-              onChange={e => setFilterDriver(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" 
-            />
-            <Search size={16} className="absolute left-3.5 top-3 text-slate-400" />
-          </div>
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
+             <span className="text-xs font-bold text-slate-400 uppercase mr-2">Global Date Range</span>
              <input 
                type="date" 
                value={filterDateStart} 
@@ -366,26 +555,45 @@ const DailyEntryPage: React.FC = () => {
                onChange={e => setFilterDateEnd(e.target.value)} 
                className="bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
              />
-          </div>
         </div>
       </div>
 
       {/* Table */}
       <div className="bg-white rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100 overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto min-h-[400px]">
           <table className="w-full text-sm text-left">
             <thead className="text-xs text-slate-500 uppercase bg-slate-50/50 border-b border-slate-100">
               <tr>
-                <th className="px-6 py-4 font-semibold tracking-wider">Date</th>
-                <th className="px-6 py-4 font-semibold tracking-wider">Driver / QR</th>
-                <th className="px-6 py-4 font-semibold tracking-wider">Vehicle</th>
-                <th className="px-6 py-4 font-semibold tracking-wider">Shift</th>
-                <th className="px-6 py-4 font-semibold text-right tracking-wider">Rent</th>
-                <th className="px-6 py-4 font-semibold text-right tracking-wider">Collection</th>
-                <th className="px-6 py-4 font-semibold text-right tracking-wider">Fuel</th>
-                <th className="px-6 py-4 font-semibold text-right tracking-wider">Due</th>
-                <th className="px-6 py-4 font-semibold text-right tracking-wider">Payout</th>
-                <th className="px-6 py-4 font-semibold text-left tracking-wider">Notes</th>
+                <th className="px-6 py-4 font-semibold tracking-wider min-w-[120px]">
+                    <ColumnFilter columnKey="date" label="Date" data={entries} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} />
+                </th>
+                <th className="px-6 py-4 font-semibold tracking-wider min-w-[180px]">
+                    <ColumnFilter columnKey="combined_driver_qr" label="Driver / QR" data={entries} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} />
+                </th>
+                <th className="px-6 py-4 font-semibold tracking-wider min-w-[140px]">
+                    <ColumnFilter columnKey="vehicle" label="Vehicle" data={entries} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} />
+                </th>
+                <th className="px-6 py-4 font-semibold tracking-wider min-w-[100px]">
+                    <ColumnFilter columnKey="shift" label="Shift" data={entries} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} />
+                </th>
+                <th className="px-6 py-4 font-semibold text-right tracking-wider min-w-[100px]">
+                    <ColumnFilter columnKey="rent" label="Rent" data={entries} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} alignRight />
+                </th>
+                <th className="px-6 py-4 font-semibold text-right tracking-wider min-w-[120px]">
+                    <ColumnFilter columnKey="collection" label="Collection" data={entries} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} alignRight />
+                </th>
+                <th className="px-6 py-4 font-semibold text-right tracking-wider min-w-[100px]">
+                    <ColumnFilter columnKey="fuel" label="Fuel" data={entries} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} alignRight />
+                </th>
+                <th className="px-6 py-4 font-semibold text-right tracking-wider min-w-[100px]">
+                    <ColumnFilter columnKey="due" label="Due" data={entries} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} alignRight />
+                </th>
+                <th className="px-6 py-4 font-semibold text-right tracking-wider min-w-[100px]">
+                    <ColumnFilter columnKey="payout" label="Payout" data={entries} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} alignRight />
+                </th>
+                <th className="px-6 py-4 font-semibold text-left tracking-wider min-w-[150px]">
+                    <ColumnFilter columnKey="notes" label="Notes" data={entries} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} />
+                </th>
                 <th className="px-6 py-4 font-semibold text-center tracking-wider">Actions</th>
               </tr>
             </thead>
