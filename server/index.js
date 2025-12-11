@@ -1,4 +1,5 @@
 
+require('dotenv').config(); // Load .env file
 const express = require('express');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
@@ -6,12 +7,21 @@ const { OAuth2Client } = require('google-auth-library');
 const db = require('./db');
 const app = express();
 
+// --- SECURITY HEADERS FOR OAUTH ---
+app.use((req, res, next) => {
+  // Allows the Google Sign-In popup to communicate back to the main window
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+  next();
+});
+
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); // Support large Excel imports
 
 const PORT = process.env.PORT || 3000;
-// You should set this in your environment variables (e.g. .env file)
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "YOUR_GOOGLE_CLIENT_ID_HERE";
+
+// Use key from .env
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const client = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 const SUPER_ADMIN_EMAIL = 'enchoenterprises@gmail.com';
@@ -69,6 +79,11 @@ app.post('/api/auth/google', async (req, res) => {
 
   if (!token) {
     return res.status(400).json({ error: "No token provided" });
+  }
+
+  if (!GOOGLE_CLIENT_ID) {
+      console.error("Server Error: GOOGLE_CLIENT_ID is missing in environment variables.");
+      return res.status(500).json({ error: "Server authentication configuration missing." });
   }
 
   try {
@@ -597,6 +612,13 @@ app.post('/api/manager-access', async (req, res) => {
   } finally {
     client.release();
   }
+});
+
+// --- 404 FALLBACK ---
+// This ensures that if a route is not found, we return a JSON error instead of default HTML
+// which fixes the "Unexpected token <" error in the frontend.
+app.use((req, res) => {
+  res.status(404).json({ error: "API endpoint not found" });
 });
 
 app.listen(PORT, () => {

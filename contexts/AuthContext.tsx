@@ -14,10 +14,25 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Helper to interact with the Auth API directly
+const getApiBase = () => {
+    // Check for Vite dev mode or specific local hostnames
+    const isLocal = ((import.meta as any).env && (import.meta as any).env.DEV) || 
+                    (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'));
+    
+    if (isLocal) return '/api';
+    
+    const env = (import.meta as any).env || {};
+    if (env.VITE_API_URL) {
+        return env.VITE_API_URL.replace(/\/$/, '');
+    }
+    // Fallback to the production backend if VITE_API_URL is not set
+    return 'https://enchocabs-software-orginal-gemini3pro-1.onrender.com/api';
+};
+
 const authApi = {
     login: async (token: string) => {
-        const isLocal = window.location.hostname === 'localhost';
-        const API_BASE = isLocal ? '/api' : 'https://enchocabs-software-orginal-gemini3pro-1.onrender.com/api';
+        const API_BASE = getApiBase();
+        console.log("Authentication attempting to reach:", API_BASE + '/auth/google');
         
         const response = await fetch(`${API_BASE}/auth/google`, {
             method: 'POST',
@@ -26,7 +41,7 @@ const authApi = {
         });
         
         if (!response.ok) {
-            const err = await response.json();
+            const err = await response.json().catch(() => ({ error: `Server error ${response.status}` }));
             throw new Error(err.error || 'Authentication failed');
         }
         return response.json();
