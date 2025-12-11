@@ -183,11 +183,15 @@ const DriverPortalPage: React.FC = () => {
            totalTrips >= s.minTrips && (s.maxTrips === null || totalTrips <= s.maxTrips)
        );
        
-       // Default to daily avg if no slab (fallback), else use Slab Rate
-       const rentRateUsed = slab ? slab.rentAmount : (relevantDaily.length > 0 ? (relevantDaily.reduce((sum, d) => sum + d.rent, 0) / relevantDaily.length) : 0);
+       // Use average from actual entries to reflect any manual overrides in rent
+       const rentRateUsed = relevantDaily.length > 0 
+           ? relevantDaily.reduce((sum, d) => sum + d.rent, 0) / relevantDaily.length 
+           : (slab ? slab.rentAmount : 0);
        
-       // 2. Count Days Worked
-       const daysWorked = relevantDaily.length;
+       // 2. Count Days Worked (Respect Override)
+       const daysWorked = wallet.daysWorkedOverride !== undefined && wallet.daysWorkedOverride !== null 
+           ? wallet.daysWorkedOverride 
+           : relevantDaily.length;
 
        // 3. Calc Total Rent
        const rentTotal = rentRateUsed * daysWorked;

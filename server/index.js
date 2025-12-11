@@ -10,6 +10,45 @@ app.use(express.json({ limit: '50mb' })); // Support large Excel imports
 
 const PORT = process.env.PORT || 3000;
 
+// --- INITIALIZATION SQL ---
+const initDb = async () => {
+  try {
+    // Ensure weekly_wallets has days_worked_override column
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS weekly_wallets (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        driver TEXT,
+        week_start_date DATE,
+        week_end_date DATE,
+        earnings NUMERIC DEFAULT 0,
+        refund NUMERIC DEFAULT 0,
+        diff NUMERIC DEFAULT 0,
+        cash NUMERIC DEFAULT 0,
+        charges NUMERIC DEFAULT 0,
+        trips NUMERIC DEFAULT 0,
+        wallet_week NUMERIC DEFAULT 0,
+        days_worked_override NUMERIC DEFAULT NULL,
+        notes TEXT
+      );
+    `);
+    
+    // Add column if it was missing in existing table (Migration)
+    await db.query(`
+      DO $$
+      BEGIN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='weekly_wallets' AND column_name='days_worked_override') THEN
+              ALTER TABLE weekly_wallets ADD COLUMN days_worked_override NUMERIC DEFAULT NULL;
+          END IF;
+      END $$;
+    `);
+    console.log("Database schema verified.");
+  } catch (err) {
+    console.error("DB Init Error:", err);
+  }
+};
+
+initDb();
+
 // --- HELPERS ---
 const snakeToCamel = (str) => str.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
 const mapKeys = (obj) => {
@@ -112,10 +151,10 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
       const q = `
         INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, payout, notes)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-        ON CONFLICT (id) DO NOTHING; 
+        ON CONFLICT (id) DO UPDATE SET
+          date=$2, day=$3, vehicle=$4, driver=$5, shift=$6, qr_code=$7, rent=$8, collection=$9, fuel=$10, due=$11, payout=$12, notes=$13;
       `;
-      // Note: "ON CONFLICT DO NOTHING" mimics the localStorage append behavior, but specific ID conflicts might need updating. 
-      // The frontend logic usually handles overrides by deleting first.
+      // Updated: Use DO UPDATE to allow overrides (e.g. rent updates)
       await client.query(q, [e.id, e.date, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, e.notes]);
     }
     await client.query('COMMIT');
@@ -138,10 +177,10 @@ app.delete('/api/daily-entries/:id', async (req, res) => {
 // --- WEEKLY WALLETS ---
 app.get('/api/weekly-wallets', async (req, res) => {
   try {
-    const result = await db.query(`SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate", to_char(week_end_date, 'YYYY-MM-DD') as "weekEndDate", earnings, refund, diff, cash, charges, trips, wallet_week as "walletWeek", notes FROM weekly_wallets ORDER BY week_start_date DESC`);
+    const result = await db.query(`SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate", to_char(week_end_date, 'YYYY-MM-DD') as "weekEndDate", earnings, refund, diff, cash, charges, trips, wallet_week as "walletWeek", days_worked_override as "daysWorkedOverride", notes FROM weekly_wallets ORDER BY week_start_date DESC`);
     const safeRows = result.rows.map(r => ({
       ...r,
-      earnings: Number(r.earnings), refund: Number(r.refund), diff: Number(r.diff), cash: Number(r.cash), charges: Number(r.charges), walletWeek: Number(r.walletWeek)
+      earnings: Number(r.earnings), refund: Number(r.refund), diff: Number(r.diff), cash: Number(r.cash), charges: Number(r.charges), walletWeek: Number(r.walletWeek), daysWorkedOverride: r.daysWorkedOverride !== null ? Number(r.daysWorkedOverride) : undefined
     }));
     res.json(safeRows);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -151,13 +190,13 @@ app.post('/api/weekly-wallets', async (req, res) => {
   const w = req.body;
   try {
     const q = `
-      INSERT INTO weekly_wallets (id, driver, week_start_date, week_end_date, earnings, refund, diff, cash, charges, trips, wallet_week, notes)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      INSERT INTO weekly_wallets (id, driver, week_start_date, week_end_date, earnings, refund, diff, cash, charges, trips, wallet_week, days_worked_override, notes)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       ON CONFLICT (id) DO UPDATE SET
-        driver=$2, week_start_date=$3, week_end_date=$4, earnings=$5, refund=$6, diff=$7, cash=$8, charges=$9, trips=$10, wallet_week=$11, notes=$12
+        driver=$2, week_start_date=$3, week_end_date=$4, earnings=$5, refund=$6, diff=$7, cash=$8, charges=$9, trips=$10, wallet_week=$11, days_worked_override=$12, notes=$13
       RETURNING *;
     `;
-    const result = await db.query(q, [w.id, w.driver, w.weekStartDate, w.weekEndDate, w.earnings, w.refund, w.diff, w.cash, w.charges, w.trips, w.walletWeek, w.notes]);
+    const result = await db.query(q, [w.id, w.driver, w.weekStartDate, w.weekEndDate, w.earnings, w.refund, w.diff, w.cash, w.charges, w.trips, w.walletWeek, w.daysWorkedOverride ?? null, w.notes]);
     res.json(result.rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
