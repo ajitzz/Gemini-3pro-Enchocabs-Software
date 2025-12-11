@@ -80,7 +80,7 @@ const RevenuePage: React.FC = () => {
   };
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+    return dateStr.split('-').reverse().join('-');
   };
 
   // --- 1. CORE CALCULATION ENGINE ---

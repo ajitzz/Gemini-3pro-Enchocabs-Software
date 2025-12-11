@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { storageService } from '../services/storageService';
 import { DriverSummary, RentalSlab, WeeklyWallet, DailyEntry } from '../types';
@@ -108,7 +109,7 @@ const DriverBillingsPage: React.FC = () => {
 
        return {
            id: wallet.id,
-           weekRange: `${wallet.weekStartDate} to ${wallet.weekEndDate}`,
+           weekRange: `${wallet.weekStartDate.split('-').reverse().join('-')} to ${wallet.weekEndDate.split('-').reverse().join('-')}`,
            weekKey: wallet.weekStartDate, 
            driver: wallet.driver,
            qrCode: relevantDaily[0]?.qrCode || 'N/A',
@@ -160,7 +161,7 @@ const DriverBillingsPage: React.FC = () => {
   const generateBillHTML = (bill: any) => {
       const dailyRows = bill.dailyDetails.map((d: any) => `
         <tr>
-          <td style="padding: 8px; border-bottom: 1px solid #eee;">${d.date}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #eee;">${d.date.split('-').reverse().join('-')}</td>
           <td style="padding: 8px; border-bottom: 1px solid #eee;">${d.driver}</td>
           <td style="padding: 8px; border-bottom: 1px solid #eee;">${d.vehicle}</td>
           <td style="padding: 8px; border-bottom: 1px solid #eee;">${d.shift}</td>
@@ -169,6 +170,9 @@ const DriverBillingsPage: React.FC = () => {
           <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">${formatCurrency(d.collection)}</td>
         </tr>
       `).join('');
+
+      const genDate = new Date();
+      const genDateStr = `${String(genDate.getDate()).padStart(2,'0')}-${String(genDate.getMonth()+1).padStart(2,'0')}-${genDate.getFullYear()}`;
 
       return `<!DOCTYPE html>
         <html>
@@ -209,7 +213,7 @@ const DriverBillingsPage: React.FC = () => {
                </div>
                <div style="text-align:right;">
                  <div><strong>Week:</strong> ${bill.weekRange}</div>
-                 <div style="margin-top:5px;"><strong>Generated:</strong> ${new Date().toLocaleDateString()}</div>
+                 <div style="margin-top:5px;"><strong>Generated:</strong> ${genDateStr}</div>
                </div>
             </div>
 
@@ -400,7 +404,7 @@ const DriverBillingsPage: React.FC = () => {
                         >
                             <option value="">All Past Weeks</option>
                             {uniqueWeeks.map(w => (
-                                <option key={w} value={w}>Week of {w}</option>
+                                <option key={w} value={w}>Week of {w.split('-').reverse().join('-')}</option>
                             ))}
                         </select>
                         <Calendar size={14} className="absolute left-3 top-2.5 text-slate-400 pointer-events-none" />

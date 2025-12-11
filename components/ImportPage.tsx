@@ -980,7 +980,7 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
                            <tr key={idx} className="hover:bg-slate-50 transition-colors">
                               <td className="px-4 py-3 font-mono text-xs text-slate-400 font-bold">{row.rowNumber}</td>
                               <td className="px-4 py-3 text-rose-600 font-medium">{row.rejectReason}</td>
-                              <td className="px-4 py-3 text-slate-600">{row.date || '-'}</td>
+                              <td className="px-4 py-3 text-slate-600">{row.date ? row.date.split('-').reverse().join('-') : '-'}</td>
                               <td className="px-4 py-3 font-bold text-slate-800">{row.driver || '-'}</td>
                               <td className="px-4 py-3 text-slate-600">{row.shift || '-'}</td>
                               <td className="px-4 py-3 text-slate-500 text-xs">{row.qrCode || '-'}</td>

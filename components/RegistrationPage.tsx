@@ -526,8 +526,8 @@ const RegistrationPage: React.FC = () => {
                                 <Mail size={12}/> {d.email}
                               </div>
                             )}
-                            <span className="text-xs text-slate-400">Joined: {d.joinDate}</span>
-                            {d.terminationDate && <span className="text-rose-600 text-xs font-bold">Left: {d.terminationDate}</span>}
+                            <span className="text-xs text-slate-400">Joined: {d.joinDate.split('-').reverse().join('-')}</span>
+                            {d.terminationDate && <span className="text-rose-600 text-xs font-bold">Left: {d.terminationDate.split('-').reverse().join('-')}</span>}
                           </div>
                           {d.notes && (
                             <div className="mt-2 text-xs text-slate-400 flex items-center gap-1.5 max-w-xs bg-slate-50 p-1.5 rounded-lg border border-slate-100">

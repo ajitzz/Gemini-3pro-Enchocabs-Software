@@ -46,10 +46,18 @@ const WeeklyWalletPage: React.FC = () => {
       const monday = getMonday(d);
       const sunday = new Date(monday);
       sunday.setDate(monday.getDate() + 6);
+      
+      const startISO = monday.toISOString().split('T')[0];
+      const endISO = sunday.toISOString().split('T')[0];
+      
+      // Label in DD-MM-YYYY format
+      const startLabel = startISO.split('-').reverse().join('-');
+      const endLabel = endISO.split('-').reverse().join('-');
+      
       return {
-          start: monday.toISOString().split('T')[0],
-          end: sunday.toISOString().split('T')[0],
-          label: `${monday.toLocaleDateString('en-GB', {day: '2-digit', month: 'short'})} - ${sunday.toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric'})}`
+          start: startISO,
+          end: endISO,
+          label: `${startLabel} to ${endLabel}`
       };
   };
 
@@ -168,9 +176,8 @@ const WeeklyWalletPage: React.FC = () => {
   
   // Format Date Range for Display
   const formatWeekRange = (start: string, end: string) => {
-      const s = new Date(start);
-      const e = new Date(end);
-      return `${s.toLocaleDateString('en-GB', {day: '2-digit', month: 'short'})} - ${e.toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric'})}`;
+      if(!start || !end) return '';
+      return `${start.split('-').reverse().join('-')} - ${end.split('-').reverse().join('-')}`;
   };
 
   return (

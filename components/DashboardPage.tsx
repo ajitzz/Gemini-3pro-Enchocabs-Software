@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { storageService } from '../services/storageService';
 import { DriverSummary, GlobalSummary } from '../types';
@@ -174,12 +175,13 @@ const DashboardPage: React.FC = () => {
 
         {/* Charts & Helpers */}
         <div className="space-y-6">
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
              <h3 className="font-bold text-lg text-slate-800 mb-6 flex items-center gap-2">
                <TrendingUp size={20} className="text-indigo-500" />
                Visual Balance
              </h3>
-             <div className="h-80">
+             <div className="h-80 w-full min-w-0">
+               {/* Added min-w-0 and w-full to prevent flexbox overflow issues causing width(-1) errors in Recharts */}
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={filteredSummaries} layout="vertical" margin={{ left: 0, right: 20 }}>
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />

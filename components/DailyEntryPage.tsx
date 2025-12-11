@@ -691,7 +691,7 @@ const DailyEntryPage: React.FC = () => {
                 filteredEntries.map(entry => (
                   <tr key={entry.id} className="hover:bg-slate-50/80 transition-colors group">
                     <td className="px-6 py-4 text-slate-900 whitespace-nowrap font-medium">
-                      {entry.date} <span className="text-slate-400 text-xs ml-1 font-normal">({entry.day.substring(0,3)})</span>
+                      {entry.date.split('-').reverse().join('-')} <span className="text-slate-400 text-xs ml-1 font-normal">({entry.day.substring(0,3)})</span>
                     </td>
                     <td className="px-6 py-4 font-medium text-slate-900">
                         {entry.driver}

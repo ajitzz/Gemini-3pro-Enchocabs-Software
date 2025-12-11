@@ -2,16 +2,17 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { storageService } from '../services/storageService';
 import { DailyEntry, WeeklyWallet, Driver, RentalSlab } from '../types';
-import { useAuth } from '../contexts/AuthContext'; // Import Auth Context
+import { useAuth } from '../contexts/AuthContext';
 import { 
   Download, Calendar, Wallet, FileText, ChevronRight, LogOut, 
   UserCircle, TrendingUp, TrendingDown, DollarSign, MapPin, 
-  CheckCircle, AlertCircle, Eye, X, ShieldCheck, Users, ArrowLeft, Lock, ArrowRight, Gauge, BarChart3, ChevronDown 
+  CheckCircle, AlertCircle, Eye, X, ShieldCheck, Users, ArrowLeft, Lock, ArrowRight, Gauge, BarChart3, ChevronDown, Copy
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 const DriverPortalPage: React.FC = () => {
-  // Use Global Auth
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   
   // Admin Context
   const [driversList, setDriversList] = useState<Driver[]>([]);
@@ -65,7 +66,7 @@ const DriverPortalPage: React.FC = () => {
           targetDriver = allDrivers.find(d => d.id === user.driverId);
       } else if ((user?.role === 'admin' || user?.role === 'super_admin')) {
           // Admin View: If they have a linked driver profile via email, use it.
-          // Otherwise, maybe just pick the first active one or show a selector?
+          // Otherwise, maybe just pick the first active one.
           targetDriver = allDrivers.find(d => d.email === user.email);
           
           if (!targetDriver) {
@@ -117,10 +118,7 @@ const DriverPortalPage: React.FC = () => {
   };
 
   const returnToDashboard = async () => {
-      // Return to "Self" view
-      if (user) {
-          initializePortal();
-      }
+      navigate('/');
   };
   
   const viewTeamMember = async (member: Driver) => {
@@ -189,7 +187,7 @@ const DriverPortalPage: React.FC = () => {
 
        return {
            id: wallet.id,
-           weekRange: `${new Date(wallet.weekStartDate).toLocaleDateString('en-GB', {day: '2-digit', month: 'short'})} to ${new Date(wallet.weekEndDate).toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric'})}`,
+           weekRange: `${wallet.weekStartDate.split('-').reverse().join('-')} to ${wallet.weekEndDate.split('-').reverse().join('-')}`,
            startDate: wallet.weekStartDate,
            endDate: wallet.weekEndDate,
            driver: wallet.driver,
@@ -276,7 +274,7 @@ const DriverPortalPage: React.FC = () => {
   const generateBillHTML = (bill: any) => {
       const dailyRows = bill.dailyDetails.map((d: any) => `
         <tr>
-          <td style="padding: 8px; border-bottom: 1px solid #f1f5f9;">${d.date}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #f1f5f9;">${d.date.split('-').reverse().join('-')}</td>
           <td style="padding: 8px; border-bottom: 1px solid #f1f5f9;">${d.driver}</td>
           <td style="padding: 8px; border-bottom: 1px solid #f1f5f9;">${d.vehicle}</td>
           <td style="padding: 8px; border-bottom: 1px solid #f1f5f9;">${d.shift}</td>
@@ -285,6 +283,9 @@ const DriverPortalPage: React.FC = () => {
           <td style="padding: 8px; border-bottom: 1px solid #f1f5f9; text-align: right;">${formatCurrency(d.collection)}</td>
         </tr>
       `).join('');
+
+      const genDate = new Date();
+      const genDateStr = `${String(genDate.getDate()).padStart(2,'0')}-${String(genDate.getMonth()+1).padStart(2,'0')}-${genDate.getFullYear()}`;
 
       return `<!DOCTYPE html>
         <html>
@@ -340,7 +341,7 @@ const DriverPortalPage: React.FC = () => {
                </div>
                <div class="meta-group" style="text-align:right;">
                  <div><span class="meta-label">Billing Period</span> <div class="meta-value">${bill.weekRange}</div></div>
-                 <div style="margin-top:12px;"><span class="meta-label">Generated On</span> <div class="meta-value">${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</div></div>
+                 <div style="margin-top:12px;"><span class="meta-label">Generated On</span> <div class="meta-value">${genDateStr}</div></div>
                </div>
             </div>
 
@@ -367,413 +368,302 @@ const DriverPortalPage: React.FC = () => {
               <tbody>${dailyRows}</tbody>
             </table>
 
-            <div class="section-header">Weekly Wallet Breakdown</div>
-             <div class="wallet-grid">
-               <div class="wg-row"><span class="pg-label">Gross Earnings</span><span class="pg-value">${formatCurrency(bill.weeklyDetails.earnings)}</span></div>
-               <div class="wg-row"><span class="pg-label">Refunds</span><span class="pg-value">${formatCurrency(bill.weeklyDetails.refund)}</span></div>
-               <div class="wg-row"><span class="pg-label">Deductions</span><span class="pg-value negative">-${formatCurrency(bill.weeklyDetails.diff)}</span></div>
-               <div class="wg-row"><span class="pg-label">Charges</span><span class="pg-value negative">-${formatCurrency(bill.weeklyDetails.charges)}</span></div>
-               <div class="wg-row"><span class="pg-label">Cash (Wallet)</span><span class="pg-value negative">-${formatCurrency(bill.weeklyDetails.cash)}</span></div>
-               <div class="wg-row wg-total"><span>Wallet Total</span><span>${formatCurrency(bill.wallet)}</span></div>
-            </div>
-
             <div class="footer">
-               System Generated Bill • Encho Cabs Driver Portal
+               System Generated Bill • Encho Cabs
             </div>
           </body>
         </html>
       `;
   };
 
-  const handleDownloadBill = (bill: any) => {
+  const downloadBill = (bill: any) => {
       const content = generateBillHTML(bill);
       const blob = new Blob([content], { type: 'text/html;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Bill_${bill.driver.replace(/\s+/g, '_')}_${bill.startDate}.html`;
+      a.download = `Bill_${bill.driver}_${bill.id.substring(0,6)}.html`;
       a.click();
   };
 
-  const isReadOnly = user?.role !== 'driver';
-  const isSelf = user?.role === 'driver' && viewingAsDriver?.id === user.driverId;
-  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+  if (!viewingAsDriver) return (
+      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+          <div className="flex flex-col items-center gap-3">
+              <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+              <p className="text-slate-400 font-medium text-sm">Loading Driver Profile...</p>
+          </div>
+      </div>
+  );
 
-  // --- MAIN APP ---
   return (
-    <div className="min-h-screen bg-slate-50 pb-24 font-sans text-slate-900">
-        
-        {/* READ ONLY BANNER */}
-        {!isSelf && (
-            <div className="bg-amber-100 px-4 py-3 text-amber-800 text-xs font-bold border-b border-amber-200 sticky top-0 z-40 flex justify-between items-center transition-all">
-                <div className="flex items-center gap-2 flex-1">
-                    <Eye size={16}/> 
-                    {isAdmin ? (
-                        <div className="flex items-center gap-2 w-full max-w-xs">
-                            <span className="whitespace-nowrap">Admin Mode: Viewing</span>
-                            <div className="relative flex-1">
-                                <select 
-                                    className="w-full bg-white/50 border border-amber-300 rounded text-amber-900 text-xs font-bold py-1 pl-2 pr-6 focus:outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer appearance-none"
-                                    value={viewingAsDriver?.id || ''}
-                                    onChange={(e) => handleAdminDriverSwitch(e.target.value)}
-                                >
-                                    {driversList.map(d => (
-                                        <option key={d.id} value={d.id}>{d.name}</option>
-                                    ))}
-                                </select>
-                                <ChevronDown size={14} className="absolute right-1 top-1.5 text-amber-700 pointer-events-none" />
-                            </div>
-                        </div>
-                    ) : (
-                        <span>Viewing as {viewingAsDriver?.name} (Manager View)</span>
-                    )}
-                </div>
-                {/* Allow going back to Self if you are a driver, or back to dashboard if admin */}
-                {user?.role === 'driver' && viewingAsDriver?.id !== user.driverId && (
-                    <button 
-                        onClick={returnToDashboard} 
-                        className="bg-white px-3 py-1 rounded-full text-amber-900 shadow-sm flex items-center gap-1 active:scale-95 transition-transform whitespace-nowrap ml-2"
-                    >
-                        <ArrowLeft size={12}/> My Dashboard
-                    </button>
-                )}
-            </div>
-        )}
+    <div className="min-h-screen bg-slate-50 font-sans pb-24">
+       {/* 1. Header & Nav */}
+       <header className="bg-slate-900 text-white sticky top-0 z-30 shadow-xl">
+           <div className="max-w-md mx-auto px-6 py-4 flex items-center justify-between">
+               <div className="flex items-center gap-3">
+                   <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-900/50">
+                       <span className="font-bold text-lg tracking-tighter">DT</span>
+                   </div>
+                   <div>
+                       <h1 className="font-bold text-lg leading-none">Driver Portal</h1>
+                       <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mt-1">
+                           {user?.role === 'driver' ? 'My Dashboard' : 'View Mode'}
+                       </p>
+                   </div>
+               </div>
+               <div className="flex gap-3">
+                   {user?.role !== 'driver' && (
+                       <button onClick={returnToDashboard} className="p-2 bg-slate-800 rounded-lg hover:bg-slate-700 text-slate-300" title="Exit View Mode">
+                           <LogOut size={20} />
+                       </button>
+                   )}
+                   {user?.role === 'driver' && (
+                       <button onClick={logout} className="p-2 bg-slate-800 rounded-lg hover:bg-slate-700 text-rose-400" title="Sign Out">
+                           <LogOut size={20} />
+                       </button>
+                   )}
+               </div>
+           </div>
+           
+           {/* Admin Selector (Only for Admins) */}
+           {(user?.role === 'admin' || user?.role === 'super_admin') && (
+               <div className="bg-slate-800 border-t border-slate-700 py-3 px-6 overflow-x-auto scrollbar-hide">
+                  <div className="flex gap-2 max-w-md mx-auto">
+                     {driversList.map(d => (
+                         <button 
+                            key={d.id}
+                            onClick={() => handleAdminDriverSwitch(d.id)}
+                            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${viewingAsDriver.id === d.id ? 'bg-indigo-500 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}
+                         >
+                            {d.name}
+                         </button>
+                     ))}
+                  </div>
+               </div>
+           )}
+       </header>
 
-        {/* HEADER */}
-        <div className="bg-white px-5 py-4 shadow-sm border-b border-slate-100 flex justify-between items-center relative z-30">
-            <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center border ${!isSelf ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-indigo-50 text-indigo-600 border-indigo-100'}`}>
-                    <UserCircle size={24} />
-                </div>
-                <div>
-                    <h2 className="font-bold text-slate-800 leading-none flex items-center gap-1">
-                        {viewingAsDriver?.name || 'Loading...'}
-                        {viewingAsDriver?.isManager && <ShieldCheck size={14} className="text-indigo-500" />}
-                    </h2>
-                    <p className="text-xs text-slate-500 mt-1 font-medium">{viewingAsDriver?.vehicle || 'No Vehicle Assigned'}</p>
-                </div>
-            </div>
-            
-            {/* Logout button only if self (if simulated view, maybe hide logout?) */}
-            <button onClick={logout} className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors">
-                <LogOut size={20} />
-            </button>
-        </div>
+       <main className="max-w-md mx-auto p-6 space-y-6">
+           
+           {/* Profile Card */}
+           <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 relative overflow-hidden">
+               <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-bl-[100px] -mr-10 -mt-10"></div>
+               
+               <div className="relative z-10">
+                   <div className="flex items-start justify-between mb-6">
+                       <div className="flex items-center gap-4">
+                           <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center border-4 border-white shadow-sm">
+                               <UserCircle size={40} className="text-slate-300" />
+                           </div>
+                           <div>
+                               <h2 className="text-xl font-bold text-slate-800">{viewingAsDriver.name}</h2>
+                               <p className="text-xs text-slate-500 font-medium flex items-center gap-1.5 mt-1">
+                                   <MapPin size={12}/> {viewingAsDriver.vehicle || 'No Vehicle'}
+                               </p>
+                           </div>
+                       </div>
+                       <div className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide ${viewingAsDriver.status === 'Active' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-rose-50 text-rose-600 border border-rose-100'}`}>
+                           {viewingAsDriver.status}
+                       </div>
+                   </div>
 
-        {/* HERO BALANCE CARD (Home Tab) */}
-        {activeTab === 'home' && (
-            <div className="p-5 animate-fade-in space-y-6">
-                <div className="bg-slate-900 rounded-3xl p-6 text-white shadow-xl shadow-slate-900/20 relative overflow-hidden">
-                    <div className="absolute right-0 top-0 p-6 opacity-10">
-                        <DollarSign size={120} />
-                    </div>
-                    <div className="relative z-10">
-                        <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Net Payable Balance</p>
-                        <div className="flex items-end gap-3 mb-6">
-                            <span className="text-4xl font-bold tracking-tight">{formatCurrency(balanceSummary.netBalance)}</span>
-                            <span className={`px-2.5 py-1 rounded-lg text-xs font-bold mb-1.5 flex items-center gap-1 ${balanceSummary.netBalance >= 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}`}>
-                                {balanceSummary.netBalance >= 0 ? <TrendingUp size={12}/> : <TrendingDown size={12}/>}
-                                {balanceSummary.netBalance >= 0 ? 'You are Owed' : 'You Owe'}
-                            </span>
-                        </div>
-                        
-                        <div className="grid grid-cols-2 gap-3 pt-6 border-t border-white/10">
-                            <div>
-                                <p className="text-slate-400 text-[10px] uppercase font-bold">Total Earnings</p>
-                                <p className="text-lg font-bold text-emerald-400">+{formatCurrency(balanceSummary.totalCollection)}</p>
-                            </div>
-                            <div className="text-right">
-                                <p className="text-slate-400 uppercase font-bold text-[10px]">Deductions</p>
-                                <p className="text-lg font-bold text-rose-400">-{formatCurrency(balanceSummary.totalRawRent + balanceSummary.totalFuel)}</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                   {/* Quick Stats */}
+                   <div className="grid grid-cols-2 gap-4 mb-2">
+                       <div className="bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100/50">
+                           <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider mb-1">Net Balance</p>
+                           <p className={`text-2xl font-bold ${balanceSummary.netBalance < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                               {formatCurrency(balanceSummary.netBalance)}
+                           </p>
+                           <p className="text-[10px] text-slate-400 mt-1">
+                               {balanceSummary.netBalance < 0 ? 'You owe company' : 'Company owes you'}
+                           </p>
+                       </div>
+                       <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                           <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">This Month</p>
+                           <p className="text-2xl font-bold text-slate-800">{performanceStats.month.trips}</p>
+                           <p className="text-[10px] text-slate-400 mt-1">Completed Trips</p>
+                       </div>
+                   </div>
+               </div>
+           </div>
 
-                {/* TEAM SECTION (Only for Managers) */}
-                {viewingAsDriver?.isManager && myTeam.length > 0 && isSelf && (
-                    <div>
-                        <div className="flex items-center justify-between mb-3 px-1">
-                            <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                                <Users size={18} className="text-indigo-600"/> Team Overview
-                            </h3>
-                            <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded-lg font-bold">{myTeam.length} Members</span>
-                        </div>
-                        <div className="grid grid-cols-1 gap-3">
-                            {myTeam.map(member => {
-                                const bal = teamBalances[member.id] || 0;
-                                return (
-                                    <div 
-                                      key={member.id}
-                                      onClick={() => viewTeamMember(member)}
-                                      className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-center cursor-pointer hover:border-indigo-300 transition-colors group"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-500 group-hover:bg-indigo-100 group-hover:text-indigo-600 transition-colors">
-                                                {member.name.charAt(0)}
-                                            </div>
-                                            <div>
-                                                <p className="font-bold text-slate-800 text-sm group-hover:text-indigo-700">{member.name}</p>
-                                                <p className="text-xs text-slate-400">{member.mobile}</p>
-                                            </div>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className={`font-bold text-sm ${bal >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                {formatCurrency(bal)}
-                                            </p>
-                                            <div className="flex items-center justify-end gap-1 text-[10px] text-slate-400 font-bold uppercase">
-                                                View <ChevronRight size={10}/>
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
+           {/* Tab Switcher */}
+           <div className="flex p-1 bg-white rounded-2xl border border-slate-100 shadow-sm">
+               <button 
+                  onClick={() => setActiveTab('home')}
+                  className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'home' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+               >
+                  Overview
+               </button>
+               <button 
+                  onClick={() => setActiveTab('daily')}
+                  className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'daily' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+               >
+                  Daily Log
+               </button>
+               <button 
+                  onClick={() => setActiveTab('billing')}
+                  className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'billing' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+               >
+                  Billings
+               </button>
+           </div>
 
-                {/* Recent Activity */}
-                <div>
-                    <div className="flex justify-between items-center mb-4">
-                        <h3 className="font-bold text-slate-800">Recent Activity</h3>
-                        <button onClick={() => setActiveTab('daily')} className="text-xs font-bold text-indigo-600">View All</button>
-                    </div>
-                    <div className="space-y-3">
-                        {rawDaily.slice(0, 3).map(entry => (
-                            <div key={entry.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center">
-                                <div className="flex items-center gap-3">
-                                    <div className="bg-indigo-50 p-2.5 rounded-xl text-indigo-600"><Calendar size={18} /></div>
-                                    <div>
-                                        <p className="font-bold text-slate-800 text-sm">{entry.date}</p>
-                                        <p className="text-xs text-slate-400">{entry.shift}</p>
-                                    </div>
-                                </div>
-                                <span className="font-bold text-emerald-600 text-sm">+{formatCurrency(entry.collection)}</span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </div>
-        )}
+           {/* --- TAB CONTENT --- */}
+           
+           {/* HOME TAB */}
+           {activeTab === 'home' && (
+              <div className="space-y-6 animate-fade-in">
+                  
+                  {/* Manager Section (If Applicable) */}
+                  {viewingAsDriver.isManager && myTeam.length > 0 && (
+                      <div className="bg-indigo-900 rounded-3xl p-6 text-white shadow-xl shadow-indigo-900/20 relative overflow-hidden">
+                           <div className="relative z-10">
+                               <div className="flex justify-between items-center mb-6">
+                                   <div>
+                                       <h3 className="font-bold text-lg">My Team</h3>
+                                       <p className="text-indigo-300 text-xs">Managing {myTeam.length} Drivers</p>
+                                   </div>
+                                   <div className="bg-indigo-800 p-2 rounded-lg">
+                                       <ShieldCheck size={20} className="text-indigo-200" />
+                                   </div>
+                               </div>
+                               <div className="space-y-3">
+                                   {myTeam.map(member => (
+                                       <div key={member.id} className="flex items-center justify-between p-3 bg-indigo-800/50 rounded-xl border border-indigo-700/50">
+                                           <div className="flex items-center gap-3">
+                                               <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center font-bold text-xs shadow-inner">
+                                                   {member.name.charAt(0)}
+                                               </div>
+                                               <div>
+                                                   <p className="font-bold text-sm">{member.name}</p>
+                                                   <p className="text-[10px] text-indigo-300">{member.vehicle || 'No Vehicle'}</p>
+                                               </div>
+                                           </div>
+                                           <div className="text-right">
+                                               <p className={`text-sm font-bold ${teamBalances[member.id] < 0 ? 'text-rose-300' : 'text-emerald-300'}`}>
+                                                   {formatCurrency(teamBalances[member.id] || 0)}
+                                               </p>
+                                               <button onClick={() => viewTeamMember(member)} className="text-[10px] font-bold text-white bg-indigo-600 px-2 py-0.5 rounded mt-1 hover:bg-indigo-500">
+                                                   View Details
+                                               </button>
+                                           </div>
+                                       </div>
+                                   ))}
+                               </div>
+                           </div>
+                      </div>
+                  )}
 
-        {/* DAILY LOG TAB */}
-        {activeTab === 'daily' && (
-            <div className="p-5 animate-fade-in space-y-6">
-                
-                {/* 1. PERFORMANCE SUMMARY (Aggregated from Weekly Wallet) */}
-                <div className="space-y-4">
-                    <div className="flex items-center gap-2 mb-2">
-                        <Gauge className="text-indigo-600" size={20} />
-                        <h3 className="font-bold text-slate-800">Performance Summary</h3>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-3">
-                        {/* Monthly Card */}
-                        <div className="bg-gradient-to-br from-indigo-600 to-indigo-700 rounded-2xl p-4 text-white shadow-lg shadow-indigo-200 relative overflow-hidden">
-                            <div className="absolute top-0 right-0 p-2 opacity-20"><Calendar size={40} /></div>
-                            <p className="text-[10px] uppercase font-bold tracking-wider opacity-80 mb-1">This Month</p>
-                            <div className="flex justify-between items-end">
-                                <div>
-                                    <p className="text-2xl font-bold">{performanceStats.month.trips}</p>
-                                    <p className="text-[10px] opacity-80">Trips</p>
-                                </div>
-                                <div className="text-right">
-                                    <p className="text-lg font-bold">{formatCurrency(performanceStats.month.earnings)}</p>
-                                    <p className="text-[10px] opacity-80">Earnings</p>
-                                </div>
-                            </div>
-                            <div className="mt-3 pt-2 border-t border-white/20 flex justify-between text-[10px] font-bold">
-                                <span>Avg / Trip</span>
-                                <span>{formatCurrency(performanceStats.month.avg)}</span>
-                            </div>
-                        </div>
+                  {/* Performance Cards */}
+                  <div className="space-y-4">
+                      <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wide ml-1">Performance</h3>
+                      <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                              <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
+                                  <Gauge size={20}/>
+                              </div>
+                              <div>
+                                  <p className="text-xs text-slate-400 font-bold uppercase">This Year</p>
+                                  <p className="text-lg font-bold text-slate-800">{performanceStats.year.trips} Trips</p>
+                              </div>
+                          </div>
+                          <div className="text-right">
+                              <p className="text-sm font-bold text-slate-600">{formatCurrency(performanceStats.year.earnings)}</p>
+                              <p className="text-[10px] text-slate-400">Total Earnings</p>
+                          </div>
+                      </div>
+                  </div>
+              </div>
+           )}
 
-                        {/* Yearly Card */}
-                        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm relative overflow-hidden">
-                            <div className="absolute top-0 right-0 p-2 opacity-5 text-slate-900"><BarChart3 size={40} /></div>
-                            <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1">This Year</p>
-                            <div className="flex justify-between items-end">
-                                <div>
-                                    <p className="text-xl font-bold text-slate-800">{performanceStats.year.trips}</p>
-                                    <p className="text-[10px] text-slate-400">Total Trips</p>
-                                </div>
-                                <div className="text-right">
-                                    <p className="text-base font-bold text-slate-700">{formatCurrency(performanceStats.year.earnings)}</p>
-                                    <p className="text-[10px] text-slate-400">Total Revenue</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+           {/* DAILY TAB */}
+           {activeTab === 'daily' && (
+              <div className="space-y-4 animate-fade-in">
+                  {rawDaily.length === 0 ? (
+                      <div className="text-center py-12 text-slate-400 text-sm">No daily entries found.</div>
+                  ) : (
+                      rawDaily.map(d => (
+                          <div key={d.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+                              <div className="flex justify-between items-start mb-4 border-b border-slate-50 pb-3">
+                                  <div>
+                                      <p className="font-bold text-slate-800">{d.date.split('-').reverse().join('-')}</p>
+                                      <p className="text-xs text-slate-400">{d.day}</p>
+                                  </div>
+                                  <div className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${d.shift === 'Day' ? 'bg-amber-50 text-amber-600' : 'bg-slate-800 text-slate-200'}`}>
+                                      {d.shift}
+                                  </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-y-3 text-sm">
+                                  <div>
+                                      <p className="text-[10px] text-slate-400 font-bold uppercase">Collection</p>
+                                      <p className="font-bold text-emerald-600">{formatCurrency(d.collection)}</p>
+                                  </div>
+                                  <div className="text-right">
+                                      <p className="text-[10px] text-slate-400 font-bold uppercase">Rent Deducted</p>
+                                      <p className="font-bold text-slate-700">{formatCurrency(d.rent)}</p>
+                                  </div>
+                                  <div>
+                                      <p className="text-[10px] text-slate-400 font-bold uppercase">Fuel</p>
+                                      <p className="font-bold text-rose-500">{d.fuel > 0 ? `-${formatCurrency(d.fuel)}` : '-'}</p>
+                                  </div>
+                                  <div className="text-right">
+                                      <p className="text-[10px] text-slate-400 font-bold uppercase">Due</p>
+                                      <p className={`font-bold ${d.due > 0 ? 'text-rose-500' : 'text-slate-400'}`}>{d.due}</p>
+                                  </div>
+                              </div>
+                          </div>
+                      ))
+                  )}
+              </div>
+           )}
 
-                <div className="h-px bg-slate-100 w-full"></div>
+           {/* BILLING TAB */}
+           {activeTab === 'billing' && (
+              <div className="space-y-4 animate-fade-in">
+                  {billingData.length === 0 ? (
+                      <div className="text-center py-12 text-slate-400 text-sm">No bills generated yet.</div>
+                  ) : (
+                      billingData.map(bill => (
+                          <div key={bill.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 relative overflow-hidden">
+                              {bill.payout > 0 && <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-50 rounded-bl-full -mr-8 -mt-8"></div>}
+                              
+                              <div className="relative z-10">
+                                  <div className="flex justify-between items-start mb-6">
+                                      <div>
+                                          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Weekly Bill</p>
+                                          <p className="font-bold text-slate-800 mt-1">{bill.weekRange}</p>
+                                      </div>
+                                      <button onClick={() => downloadBill(bill)} className="bg-indigo-50 text-indigo-600 p-2 rounded-xl hover:bg-indigo-100 transition-colors">
+                                          <Download size={20} />
+                                      </button>
+                                  </div>
 
-                {/* 2. DAILY LOG LIST */}
-                <div className="space-y-4">
-                    <div className="flex justify-between items-center mb-2">
-                        <h3 className="font-bold text-slate-800 text-lg">Daily Log</h3>
-                        <span className="text-xs bg-white px-2 py-1 rounded border border-slate-200 text-slate-500 font-bold">{rawDaily.length} Entries</span>
-                    </div>
-                    
-                    {rawDaily.map(entry => {
-                        const associatedBill = billingData.find(b => {
-                            const d = new Date(entry.date);
-                            return d >= new Date(b.startDate) && d <= new Date(b.endDate);
-                        });
-                        
-                        const displayRent = associatedBill ? associatedBill.rentPerDay : entry.rent;
-                        const isRentAdjusted = associatedBill && associatedBill.rentPerDay !== entry.rent;
+                                  <div className="grid grid-cols-2 gap-4 mb-6">
+                                      <div className="bg-slate-50 p-3 rounded-xl">
+                                          <p className="text-[10px] text-slate-400 uppercase font-bold">Trips</p>
+                                          <p className="text-lg font-bold text-slate-800">{bill.trips}</p>
+                                      </div>
+                                      <div className="bg-slate-50 p-3 rounded-xl">
+                                          <p className="text-[10px] text-slate-400 uppercase font-bold">Rent Total</p>
+                                          <p className="text-lg font-bold text-rose-500">-{formatCurrency(bill.rentTotal)}</p>
+                                      </div>
+                                  </div>
 
-                        return (
-                            <div key={entry.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
-                                {isRentAdjusted && (
-                                    <div className="absolute top-0 right-0 bg-indigo-600 text-white text-[9px] font-bold px-2 py-1 rounded-bl-xl">
-                                        RENT ADJUSTED
-                                    </div>
-                                )}
-                                <div className="flex justify-between items-start mb-4">
-                                    <div className="flex items-center gap-2">
-                                        <div className="bg-slate-100 p-2 rounded-lg text-slate-500"><Calendar size={16} /></div>
-                                        <div>
-                                            <span className="font-bold text-slate-800 block">{new Date(entry.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                                            <span className="text-xs text-slate-400 font-medium">{entry.shift} Shift</span>
-                                        </div>
-                                    </div>
-                                    <div className="text-right">
-                                        <span className="font-bold text-emerald-600 block text-lg">+{formatCurrency(entry.collection)}</span>
-                                        <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wide">Collection</span>
-                                    </div>
-                                </div>
-                                
-                                <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-50">
-                                    <div>
-                                        <p className="text-[10px] text-slate-400 font-bold uppercase mb-0.5">Rent Applied</p>
-                                        <p className={`text-sm font-bold ${isRentAdjusted ? 'text-indigo-600' : 'text-slate-700'}`}>
-                                            {formatCurrency(displayRent)}
-                                        </p>
-                                        {isRentAdjusted && <p className="text-[9px] text-indigo-400">Based on {associatedBill.trips} Trips</p>}
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="text-[10px] text-slate-400 font-bold uppercase mb-0.5">Fuel / Due</p>
-                                        <p className="text-sm font-bold text-rose-500">-{formatCurrency(entry.fuel)}</p>
-                                    </div>
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
-        )}
+                                  <div className="flex items-center justify-between pt-4 border-t border-slate-50">
+                                      <p className="text-xs font-bold text-slate-500 uppercase">Net Payout</p>
+                                      <p className={`text-xl font-bold ${bill.payout < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                          {formatCurrency(bill.payout)}
+                                      </p>
+                                  </div>
+                              </div>
+                          </div>
+                      ))
+                  )}
+              </div>
+           )}
 
-        {/* BILLING / WEEKLY WALLET TAB */}
-        {activeTab === 'billing' && (
-            <div className="p-5 animate-fade-in space-y-4">
-                <h3 className="font-bold text-slate-800 text-lg mb-2">Billing History</h3>
-                
-                {billingData.length === 0 ? (
-                    <div className="text-center py-12 text-slate-400">
-                        <FileText size={48} className="mx-auto mb-3 opacity-20"/>
-                        <p>No generated bills yet.</p>
-                    </div>
-                ) : (
-                    billingData.map(bill => (
-                        <div key={bill.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                            <div className="flex justify-between items-start mb-4">
-                                <div>
-                                    <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Week Period</p>
-                                    <p className="font-bold text-slate-800 text-sm">{bill.weekRange}</p>
-                                </div>
-                                <div className={`text-right px-3 py-1.5 rounded-lg ${bill.payout >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
-                                    <p className="text-[10px] font-bold uppercase opacity-70">Net Payout</p>
-                                    <p className="font-bold text-base">{formatCurrency(bill.payout)}</p>
-                                </div>
-                            </div>
-
-                            {/* Trip / Performance Stats within Card */}
-                            <div className="bg-slate-50 rounded-xl p-3 mb-4 grid grid-cols-2 gap-4">
-                                <div>
-                                    <p className="text-[10px] text-slate-400 font-bold uppercase">Trips</p>
-                                    <p className="text-lg font-bold text-slate-800">{bill.trips}</p>
-                                </div>
-                                <div className="text-right">
-                                    <p className="text-[10px] text-slate-400 font-bold uppercase">Earnings</p>
-                                    <p className="text-lg font-bold text-indigo-600">{formatCurrency(bill.grossEarnings)}</p>
-                                </div>
-                                <div className="col-span-2 pt-2 border-t border-slate-100 flex justify-between text-xs">
-                                     <span className="text-slate-500 font-medium">Avg / Trip</span>
-                                     <span className="font-bold text-slate-700">{formatCurrency(bill.avgPerTrip)}</span>
-                                </div>
-                            </div>
-                            
-                            <div className="flex gap-3 mt-4">
-                                <button 
-                                    onClick={() => setViewingBill(bill)}
-                                    className="flex-1 py-2.5 bg-slate-50 text-slate-700 font-bold rounded-xl text-sm hover:bg-slate-100 flex items-center justify-center gap-2"
-                                >
-                                    <Eye size={16}/> View Bill
-                                </button>
-                                <button 
-                                    onClick={() => handleDownloadBill(bill)}
-                                    className="flex-1 py-2.5 bg-indigo-600 text-white font-bold rounded-xl text-sm hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2"
-                                >
-                                    <Download size={16}/> Download
-                                </button>
-                            </div>
-                        </div>
-                    ))
-                )}
-            </div>
-        )}
-
-        {/* BILL VIEWER MODAL */}
-        {viewingBill && (
-            <div className="fixed inset-0 z-50 bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
-                <div className="bg-white w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl max-h-[90vh] flex flex-col">
-                    <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                        <h3 className="font-bold text-slate-800">Bill Details</h3>
-                        <button onClick={() => setViewingBill(null)} className="p-2 bg-white rounded-full text-slate-500 hover:bg-slate-200"><X size={20}/></button>
-                    </div>
-                    
-                    {/* Rendered HTML Preview (using iframe for isolation and faithful rendering) */}
-                    <div className="flex-1 overflow-hidden bg-white">
-                        <iframe 
-                            srcDoc={generateBillHTML(viewingBill)}
-                            className="w-full h-full border-0"
-                            title="Bill Preview"
-                        />
-                    </div>
-
-                    <div className="p-5 border-t border-slate-100 bg-slate-50">
-                        <button onClick={() => handleDownloadBill(viewingBill)} className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold shadow-lg flex items-center justify-center gap-2">
-                            <Download size={18} /> Download PDF
-                        </button>
-                    </div>
-                </div>
-            </div>
-        )}
-
-        {/* BOTTOM NAV */}
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 pb-safe px-6 py-3 flex justify-around items-center z-30 shadow-[0_-5px_20px_rgba(0,0,0,0.03)]">
-            <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'home' ? 'text-indigo-600' : 'text-slate-400'}`}>
-                <div className={`p-1.5 rounded-xl ${activeTab === 'home' ? 'bg-indigo-50' : 'bg-transparent'}`}>
-                    <UserCircle size={24} strokeWidth={activeTab === 'home' ? 2.5 : 2} />
-                </div>
-                <span className="text-[10px] font-bold">Home</span>
-            </button>
-            <button onClick={() => setActiveTab('daily')} className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'daily' ? 'text-indigo-600' : 'text-slate-400'}`}>
-                <div className={`p-1.5 rounded-xl ${activeTab === 'daily' ? 'bg-indigo-50' : 'bg-transparent'}`}>
-                    <Calendar size={24} strokeWidth={activeTab === 'daily' ? 2.5 : 2} />
-                </div>
-                <span className="text-[10px] font-bold">Daily</span>
-            </button>
-            <button onClick={() => setActiveTab('billing')} className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'billing' ? 'text-indigo-600' : 'text-slate-400'}`}>
-                <div className={`p-1.5 rounded-xl ${activeTab === 'billing' ? 'bg-indigo-50' : 'bg-transparent'}`}>
-                    <FileText size={24} strokeWidth={activeTab === 'billing' ? 2.5 : 2} />
-                </div>
-                <span className="text-[10px] font-bold">Bills</span>
-            </button>
-        </div>
+       </main>
     </div>
   );
 };

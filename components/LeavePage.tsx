@@ -209,7 +209,7 @@ const LeavePage: React.FC = () => {
                        <td className="px-6 py-4 text-slate-600 font-medium">
                          <div className="flex items-center gap-1.5">
                             <Calendar size={14} className="text-slate-400"/>
-                            {l.startDate} <span className="text-slate-300 mx-1">to</span> {l.endDate}
+                            {l.startDate.split('-').reverse().join('-')} <span className="text-slate-300 mx-1">to</span> {l.endDate.split('-').reverse().join('-')}
                          </div>
                        </td>
                        <td className="px-6 py-4">
@@ -228,7 +228,7 @@ const LeavePage: React.FC = () => {
                              l.actualReturnDate ? (
                                  <div className="flex flex-col">
                                     <span className={`font-bold ${isLate ? 'text-rose-600' : 'text-emerald-600'}`}>
-                                        {l.actualReturnDate}
+                                        {l.actualReturnDate.split('-').reverse().join('-')}
                                     </span>
                                     {isLate && <span className="text-[10px] text-rose-500 font-bold">+{lateDays} days late</span>}
                                  </div>
