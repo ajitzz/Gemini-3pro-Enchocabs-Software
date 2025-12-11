@@ -13,7 +13,7 @@ const PORT = process.env.PORT || 3000;
 // --- INITIALIZATION SQL ---
 const initDb = async () => {
   try {
-    // Ensure weekly_wallets has days_worked_override column
+    // Ensure weekly_wallets has days_worked_override and rent_override columns
     await db.query(`
       CREATE TABLE IF NOT EXISTS weekly_wallets (
         id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -28,16 +28,20 @@ const initDb = async () => {
         trips NUMERIC DEFAULT 0,
         wallet_week NUMERIC DEFAULT 0,
         days_worked_override NUMERIC DEFAULT NULL,
+        rent_override NUMERIC DEFAULT NULL,
         notes TEXT
       );
     `);
     
-    // Add column if it was missing in existing table (Migration)
+    // Add columns if missing (Migration)
     await db.query(`
       DO $$
       BEGIN
           IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='weekly_wallets' AND column_name='days_worked_override') THEN
               ALTER TABLE weekly_wallets ADD COLUMN days_worked_override NUMERIC DEFAULT NULL;
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='weekly_wallets' AND column_name='rent_override') THEN
+              ALTER TABLE weekly_wallets ADD COLUMN rent_override NUMERIC DEFAULT NULL;
           END IF;
       END $$;
     `);
@@ -177,10 +181,12 @@ app.delete('/api/daily-entries/:id', async (req, res) => {
 // --- WEEKLY WALLETS ---
 app.get('/api/weekly-wallets', async (req, res) => {
   try {
-    const result = await db.query(`SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate", to_char(week_end_date, 'YYYY-MM-DD') as "weekEndDate", earnings, refund, diff, cash, charges, trips, wallet_week as "walletWeek", days_worked_override as "daysWorkedOverride", notes FROM weekly_wallets ORDER BY week_start_date DESC`);
+    const result = await db.query(`SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate", to_char(week_end_date, 'YYYY-MM-DD') as "weekEndDate", earnings, refund, diff, cash, charges, trips, wallet_week as "walletWeek", days_worked_override as "daysWorkedOverride", rent_override as "rentOverride", notes FROM weekly_wallets ORDER BY week_start_date DESC`);
     const safeRows = result.rows.map(r => ({
       ...r,
-      earnings: Number(r.earnings), refund: Number(r.refund), diff: Number(r.diff), cash: Number(r.cash), charges: Number(r.charges), walletWeek: Number(r.walletWeek), daysWorkedOverride: r.daysWorkedOverride !== null ? Number(r.daysWorkedOverride) : undefined
+      earnings: Number(r.earnings), refund: Number(r.refund), diff: Number(r.diff), cash: Number(r.cash), charges: Number(r.charges), walletWeek: Number(r.walletWeek), 
+      daysWorkedOverride: r.daysWorkedOverride !== null ? Number(r.daysWorkedOverride) : undefined,
+      rentOverride: r.rentOverride !== null ? Number(r.rentOverride) : undefined
     }));
     res.json(safeRows);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -190,13 +196,13 @@ app.post('/api/weekly-wallets', async (req, res) => {
   const w = req.body;
   try {
     const q = `
-      INSERT INTO weekly_wallets (id, driver, week_start_date, week_end_date, earnings, refund, diff, cash, charges, trips, wallet_week, days_worked_override, notes)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      INSERT INTO weekly_wallets (id, driver, week_start_date, week_end_date, earnings, refund, diff, cash, charges, trips, wallet_week, days_worked_override, rent_override, notes)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       ON CONFLICT (id) DO UPDATE SET
-        driver=$2, week_start_date=$3, week_end_date=$4, earnings=$5, refund=$6, diff=$7, cash=$8, charges=$9, trips=$10, wallet_week=$11, days_worked_override=$12, notes=$13
+        driver=$2, week_start_date=$3, week_end_date=$4, earnings=$5, refund=$6, diff=$7, cash=$8, charges=$9, trips=$10, wallet_week=$11, days_worked_override=$12, rent_override=$13, notes=$14
       RETURNING *;
     `;
-    const result = await db.query(q, [w.id, w.driver, w.weekStartDate, w.weekEndDate, w.earnings, w.refund, w.diff, w.cash, w.charges, w.trips, w.walletWeek, w.daysWorkedOverride ?? null, w.notes]);
+    const result = await db.query(q, [w.id, w.driver, w.weekStartDate, w.weekEndDate, w.earnings, w.refund, w.diff, w.cash, w.charges, w.trips, w.walletWeek, w.daysWorkedOverride ?? null, w.rentOverride ?? null, w.notes]);
     res.json(result.rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

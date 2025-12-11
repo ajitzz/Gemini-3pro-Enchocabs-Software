@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useMemo } from 'react';
 import { storageService } from '../services/storageService';
 import { DriverSummary, RentalSlab, WeeklyWallet, DailyEntry } from '../types';
@@ -85,11 +86,16 @@ const DriverBillingsPage: React.FC = () => {
        );
        
        // 2. Determine Rent/Day
-       // Priority: Actual Daily Entries Avg (if they exist) -> Slab -> 0
-       // This ensures if user edited daily entries previously, we respect that.
-       const actualAvgRent = relevantDaily.length > 0 
-           ? relevantDaily.reduce((sum, d) => sum + d.rent, 0) / relevantDaily.length 
-           : (slab ? slab.rentAmount : 0);
+       // Priority: Manual Override (in Wallet) -> Actual Daily Entries Avg -> Slab -> 0
+       // This ensures if user manually sets rent (even with 0 entries), it sticks.
+       let rentRateUsed = 0;
+       if (wallet.rentOverride !== undefined && wallet.rentOverride !== null) {
+           rentRateUsed = wallet.rentOverride;
+       } else if (relevantDaily.length > 0) {
+           rentRateUsed = relevantDaily.reduce((sum, d) => sum + d.rent, 0) / relevantDaily.length;
+       } else {
+           rentRateUsed = slab ? slab.rentAmount : 0;
+       }
        
        // 3. Count Days Worked (Use Override if present)
        const calculatedDays = relevantDaily.length;
@@ -98,7 +104,7 @@ const DriverBillingsPage: React.FC = () => {
            : calculatedDays;
 
        // 4. Calculate Total Rent
-       const rentTotal = actualAvgRent * daysWorked;
+       const rentTotal = rentRateUsed * daysWorked;
 
        const collection = relevantDaily.reduce((sum, d) => sum + d.collection, 0);
        const fuel = relevantDaily.reduce((sum, d) => sum + d.fuel, 0);
@@ -116,8 +122,9 @@ const DriverBillingsPage: React.FC = () => {
            driver: wallet.driver,
            qrCode: relevantDaily[0]?.qrCode || 'N/A',
            trips: totalTrips,
-           rentPerDay: actualAvgRent,
+           rentPerDay: rentRateUsed,
            slabRent: slab ? slab.rentAmount : 0, // Store standard slab rent for comparison/reset
+           isRentOverridden: wallet.rentOverride !== undefined && wallet.rentOverride !== null,
            daysWorked: daysWorked,
            calculatedDays, 
            rentTotal,
@@ -137,7 +144,7 @@ const DriverBillingsPage: React.FC = () => {
   // --- WEEK PAGINATION LOGIC ---
   const availableWeeks = useMemo(() => {
       const weeks = Array.from(new Set(allBills.map(b => b.weekKey)));
-      // Cast to string to resolve TypeScript error: Argument of type 'unknown' is not assignable to parameter of type 'string | number | Date'.
+      // Safe cast to string to sort
       return weeks.sort((a, b) => new Date(b as string).getTime() - new Date(a as string).getTime());
   }, [allBills]);
 
@@ -183,20 +190,21 @@ const DriverBillingsPage: React.FC = () => {
           // 1. Save Adjustments Locally
           setAdjustmentsMap(prev => ({ ...prev, [editingBillId]: editFormData.adjustments }));
 
-          // 2. Save Days Worked Override to Weekly Wallet
+          // 2. Save Overrides to Weekly Wallet (Days Worked AND Rent)
           const updatedWallet = { 
               ...bill.weeklyDetails, 
-              daysWorkedOverride: editFormData.daysWorked 
+              daysWorkedOverride: editFormData.daysWorked,
+              rentOverride: editFormData.rentPerDay // IMPORTANT: Store the custom rent here!
           };
           // Always save wallet to persist override even if days didn't change (idempotent)
           await storageService.saveWeeklyWallet(updatedWallet);
 
-          // 3. Save Rent/Day Changes (Propagate to Daily Entries)
-          // We apply the new rent to ALL daily entries involved in this bill
+          // 3. Propagate Rent/Day Changes to Daily Entries (if any exist)
+          // This keeps the Daily Log consistent with the Bill
           if (bill.dailyDetails.length > 0) {
               const updatedEntries = bill.dailyDetails.map((entry: DailyEntry) => ({
                   ...entry,
-                  rent: Number(editFormData.rentPerDay) // Ensure number
+                  rent: Number(editFormData.rentPerDay)
               }));
               await storageService.saveDailyEntriesBulk(updatedEntries);
           }
@@ -218,18 +226,22 @@ const DriverBillingsPage: React.FC = () => {
       if (!confirm("Are you sure? This will revert 'Days Worked' and 'Rent/Day' to the standard calculations based on trips.")) return;
 
       try {
-          // 1. Reset Wallet Override
+          // 1. Reset Wallet Overrides
           const updatedWallet = {
               ...bill.weeklyDetails,
-              daysWorkedOverride: null // Clear override (backend must handle null)
+              daysWorkedOverride: null, // Clear override 
+              rentOverride: null        // Clear rent override
           };
-          // Workaround for TS optional vs null:
+          
+          // Force nulls for backend update if strict types block it
           // @ts-ignore
           updatedWallet.daysWorkedOverride = null;
+          // @ts-ignore
+          updatedWallet.rentOverride = null;
 
           await storageService.saveWeeklyWallet(updatedWallet);
 
-          // 2. Reset Daily Rents to Slab Rent
+          // 2. Reset Daily Rents to Slab Rent (if entries exist)
           if (bill.dailyDetails.length > 0) {
               const defaultRent = bill.slabRent;
               const updatedEntries = bill.dailyDetails.map((entry: DailyEntry) => ({
@@ -486,24 +498,24 @@ const DriverBillingsPage: React.FC = () => {
           {isBillingExpanded && (
              <div className="p-0 animate-fade-in">
                 {/* Week Pagination & Filters */}
-                <div className="px-6 py-4 bg-slate-50 border-b border-slate-100 flex flex-col md:flex-row gap-4 justify-between items-center">
+                <div className="px-6 py-6 bg-slate-50 border-b border-slate-100 flex flex-col items-center gap-4">
                     
-                    {/* Week Navigation */}
-                    <div className="flex items-center bg-white rounded-xl border border-slate-200 shadow-sm p-1">
+                    {/* Centered Week Navigator */}
+                    <div className="flex items-center bg-white rounded-2xl border border-slate-200 shadow-md p-1.5 w-full max-w-xl justify-between">
                         <button 
                             onClick={goToPreviousWeek} 
                             disabled={currentWeekIndex >= availableWeeks.length - 1}
-                            className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                            className="p-3 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl disabled:opacity-30 disabled:hover:bg-transparent transition-colors flex-shrink-0"
                         >
-                            <ChevronLeft size={20} />
+                            <ChevronLeft size={24} />
                         </button>
                         
-                        <div className="px-4 text-center min-w-[200px]">
+                        <div className="px-4 text-center flex-1">
                             {currentWeekKey ? (
                                 <div className="flex flex-col">
-                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Week Starting</span>
-                                    <span className="text-sm font-bold text-slate-800 flex items-center justify-center gap-2">
-                                        <Calendar size={14} className="text-indigo-500"/>
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Billing Week</span>
+                                    <span className="text-lg md:text-xl font-bold text-slate-800 flex items-center justify-center gap-2">
+                                        <Calendar size={18} className="text-indigo-500 mb-0.5"/>
                                         {currentWeekKey.split('-').reverse().join('-')}
                                     </span>
                                 </div>
@@ -515,22 +527,22 @@ const DriverBillingsPage: React.FC = () => {
                         <button 
                             onClick={goToNextWeek} 
                             disabled={currentWeekIndex === 0}
-                            className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                            className="p-3 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl disabled:opacity-30 disabled:hover:bg-transparent transition-colors flex-shrink-0"
                         >
-                            <ChevronRight size={20} />
+                            <ChevronRight size={24} />
                         </button>
                     </div>
                     
                     {/* Driver Search */}
-                    <div className="relative group w-full md:w-64">
+                    <div className="relative group w-full max-w-md">
                         <input 
                           type="text" 
-                          placeholder="Search driver in this week..." 
+                          placeholder="Search driver in selected week..." 
                           value={filterDriver}
                           onChange={(e) => setFilterDriver(e.target.value)}
-                          className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                          className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
                         />
-                        <Users size={16} className="absolute left-3 top-3 text-slate-400" />
+                        <Users size={18} className="absolute left-3.5 top-3.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
                     </div>
                 </div>
 
@@ -569,7 +581,11 @@ const DriverBillingsPage: React.FC = () => {
                                    <td className="px-6 py-4 font-bold text-center">
                                       {bill!.trips}
                                    </td>
-                                   <td className="px-6 py-4 text-right text-slate-500">{formatCurrency(bill!.rentPerDay)}</td>
+                                   <td className="px-6 py-4 text-right">
+                                      <span className={`${bill!.isRentOverridden ? 'text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded' : 'text-slate-500'}`}>
+                                          {formatCurrency(bill!.rentPerDay)}
+                                      </span>
+                                   </td>
                                    <td className="px-6 py-4 text-right font-medium text-rose-600">-{formatCurrency(bill!.rentTotal)}</td>
                                    <td className="px-6 py-4 text-right font-medium text-emerald-600">+{formatCurrency(bill!.collection)}</td>
                                    <td className="px-6 py-4 text-right text-rose-500">-{formatCurrency(bill!.fuel)}</td>
@@ -684,7 +700,7 @@ const DriverBillingsPage: React.FC = () => {
                               onChange={(e) => setEditFormData({...editFormData, rentPerDay: parseFloat(e.target.value) || 0})}
                               className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
                           />
-                          <p className="text-[10px] text-amber-600 mt-1">Changing this updates all Daily Entries for this week.</p>
+                          <p className="text-[10px] text-amber-600 mt-1">This will override standard slab calculations.</p>
                       </div>
 
                       <div>

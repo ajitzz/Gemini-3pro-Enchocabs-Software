@@ -28,6 +28,7 @@ export interface WeeklyWallet {
   trips: number;
   walletWeek: number; // calculated: earnings + refund - (diff + cash + charges)
   daysWorkedOverride?: number; // New: Manual override for days worked calculation
+  rentOverride?: number; // New: Manual override for rent per day
   notes?: string;
 }
 
