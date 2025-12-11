@@ -136,6 +136,10 @@ const DriverPortalPage: React.FC = () => {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(val);
   };
 
+  const formatInt = (val: number) => {
+    return Math.floor(val).toString();
+  };
+
   const formatDate = (dateString: string) => {
       if(!dateString) return '-';
       return dateString.split('-').reverse().join('-');
@@ -213,13 +217,10 @@ const DriverPortalPage: React.FC = () => {
     });
   }, [rawWeekly, rawDaily, rentalSlabs, viewingAsDriver]);
 
-  // --- 2. BALANCE CALCULATION (Accurate using Billing Engine logic) ---
+  // --- 2. BALANCE CALCULATION ---
   const balanceSummary = useMemo(() => {
       if (!viewingAsDriver) return { netBalance: 0, totalCollection: 0, totalRawRent: 0, totalFuel: 0, totalWallet: 0 };
-      
-      // Use the centralized calculator for accuracy
       const stats = storageService.calculateDriverStats(viewingAsDriver.name, rawDaily, rawWeekly, rentalSlabs);
-      
       return { 
           netBalance: stats.finalTotal, 
           totalCollection: stats.totalCollection, 
@@ -244,17 +245,14 @@ const DriverPortalPage: React.FC = () => {
           if (!w.weekEndDate) return;
           const parts = w.weekEndDate.split('-');
           if (parts.length !== 3) return;
-          
           const wYear = parseInt(parts[0], 10);
           const wMonth = parseInt(parts[1], 10) - 1; 
-
           const earnings = Number(w.earnings) || 0;
           const trips = Number(w.trips) || 0;
 
           if (wYear === currentYear) {
               yearTrips += trips;
               yearEarnings += earnings;
-
               if (wMonth === currentMonth) {
                   monthTrips += trips;
                   monthEarnings += earnings;
@@ -263,21 +261,102 @@ const DriverPortalPage: React.FC = () => {
       });
 
       return {
-          month: { 
-              trips: monthTrips, 
-              earnings: monthEarnings, 
-              avg: monthTrips > 0 ? monthEarnings / monthTrips : 0 
-          },
-          year: { 
-              trips: yearTrips, 
-              earnings: yearEarnings, 
-              avg: yearTrips > 0 ? yearEarnings / yearTrips : 0 
-          }
+          month: { trips: monthTrips, earnings: monthEarnings },
+          year: { trips: yearTrips, earnings: yearEarnings }
       };
   }, [rawWeekly]);
 
+  // --- 4. ADDITIONAL STATS FOR DYNAMIC CARDS ---
+  const dailyAggregates = useMemo(() => {
+      const now = new Date();
+      const currentMonth = now.getMonth();
+      const currentYear = now.getFullYear();
+      
+      let monthColl = 0;
+      let yearColl = 0;
+      
+      rawDaily.forEach(entry => {
+          const d = new Date(entry.date);
+          if (d.getFullYear() === currentYear) {
+              yearColl += entry.collection;
+              if (d.getMonth() === currentMonth) {
+                  monthColl += entry.collection;
+              }
+          }
+      });
+      
+      return { monthColl, yearColl };
+  }, [rawDaily]);
 
-  // --- 4. BILL HTML GENERATOR ---
+  const billingAggregates = useMemo(() => {
+      return billingData.reduce((acc, bill) => ({
+          payout: acc.payout + bill.payout,
+          earnings: acc.earnings + bill.grossEarnings,
+          trips: acc.trips + bill.trips
+      }), { payout: 0, earnings: 0, trips: 0 });
+  }, [billingData]);
+
+  // --- 5. DYNAMIC CARD DATA ---
+  const topCards = useMemo(() => {
+      if (activeTab === 'daily') {
+          // DAILY LOG: Show Current Year Earnings and Trips
+          return {
+              left: {
+                  label: 'Year Earnings',
+                  value: dailyAggregates.yearColl, // Use real-time daily sum for accuracy
+                  subtext: 'Current Year Collection',
+                  isCurrency: true,
+                  colorClass: 'bg-[#1e1b4b]'
+              },
+              right: {
+                  label: 'Trips Taken',
+                  value: formatInt(performanceStats.year.trips),
+                  subtext: 'Current Year',
+                  isCurrency: false,
+                  colorClass: 'bg-white'
+              }
+          };
+      } else if (activeTab === 'billing') {
+          // BILLING: Show Net Payout and Total Earnings (Lifetime)
+          return {
+              left: {
+                  label: 'Net Payout',
+                  value: billingAggregates.payout,
+                  subtext: 'Lifetime Payout',
+                  isCurrency: true,
+                  colorClass: 'bg-[#1e1b4b]'
+              },
+              right: {
+                  label: 'Total Earnings',
+                  value: billingAggregates.earnings,
+                  subtext: `${formatInt(billingAggregates.trips)} Total Trips`,
+                  isCurrency: true,
+                  colorClass: 'bg-white'
+              }
+          };
+      } else {
+          // OVERVIEW: Net Balance and This Month Earnings + Trips
+          return {
+              left: {
+                  label: 'Net Balance',
+                  value: balanceSummary.netBalance,
+                  subtext: balanceSummary.netBalance < 0 ? 'Payable Amount' : 'Receivable Amount',
+                  isCurrency: true,
+                  colorClass: 'bg-[#1e1b4b]'
+              },
+              right: {
+                  label: 'This Month',
+                  value: dailyAggregates.monthColl, // Use Month Collection from daily entries
+                  subtext: `${formatInt(performanceStats.month.trips)} Trips`,
+                  isCurrency: true,
+                  colorClass: 'bg-white'
+              }
+          };
+      }
+  }, [activeTab, balanceSummary, performanceStats, dailyAggregates, billingAggregates]);
+
+
+  // --- BILL HTML GENERATOR (unchanged) ---
   const generateBillHTML = (bill: any) => {
       const dailyRows = bill.dailyDetails.map((d: any) => `
         <tr>
@@ -293,8 +372,6 @@ const DriverPortalPage: React.FC = () => {
 
       const genDate = new Date();
       const genDateStr = `${String(genDate.getDate()).padStart(2,'0')}/${String(genDate.getMonth()+1).padStart(2,'0')}/${genDate.getFullYear()}`;
-
-      // Calculate deduction sum for wallet breakdown
       const walletDeductions = (bill.weeklyDetails.diff || 0) + (bill.weeklyDetails.charges || 0);
 
       return `<!DOCTYPE html>
@@ -346,7 +423,7 @@ const DriverPortalPage: React.FC = () => {
             </div>
             <div class="section-title">Payment Statement</div>
             <div class="statement-grid">
-               <div class="st-row"><span class="st-label">Total Trips Completed</span><span class="st-val">${bill.trips}</span></div>
+               <div class="st-row"><span class="st-label">Total Trips Completed</span><span class="st-val">${formatInt(bill.trips)}</span></div>
                <div class="st-row"><span class="st-label">Rent / Day (Applied)</span><span class="st-val">${formatCurrency(bill.rentPerDay)}</span></div>
                <div class="st-row"><span class="st-label">Days Worked</span><span class="st-val">${bill.daysWorked}</span></div>
                <div class="st-row"><span class="st-label">Weekly Rent Deduction</span><span class="st-val red">- ${formatCurrency(bill.rentTotal)}</span></div>
@@ -496,26 +573,26 @@ const DriverPortalPage: React.FC = () => {
                 </div>
            </div>
 
-           {/* Top Cards Grid */}
+           {/* Top Cards Grid (Dynamic) */}
            <div className="grid grid-cols-2 gap-4 mb-2">
-                {/* Net Balance - Dark Card */}
-               <div className="bg-[#1e1b4b] p-6 rounded-[24px] text-white relative overflow-hidden shadow-xl flex flex-col justify-center">
-                   <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-200 mb-1">Net Balance</p>
-                   <h3 className={`text-3xl font-bold tracking-tight mb-1 ${balanceSummary.netBalance < 0 ? 'text-rose-300' : 'text-emerald-300'}`}>
-                       {formatCurrency(balanceSummary.netBalance)}
+                {/* Left Card */}
+               <div className={`${topCards.left.colorClass} p-6 rounded-[24px] text-white relative overflow-hidden shadow-xl flex flex-col justify-center`}>
+                   <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-200 mb-1">{topCards.left.label}</p>
+                   <h3 className={`text-3xl font-bold tracking-tight mb-1 ${topCards.left.isCurrency && typeof topCards.left.value === 'number' && topCards.left.value < 0 ? 'text-rose-300' : 'text-white'}`}>
+                       {topCards.left.isCurrency && typeof topCards.left.value === 'number' ? formatCurrency(topCards.left.value) : topCards.left.value}
                    </h3>
                    <p className="text-[10px] text-indigo-300/80">
-                       {balanceSummary.netBalance < 0 ? 'Payable Amount' : 'Receivable Amount'}
+                       {topCards.left.subtext}
                    </p>
                </div>
 
-               {/* This Month - White Card */}
-               <div className="bg-white p-6 rounded-[24px] border border-slate-100 shadow-sm flex flex-col justify-center">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">This Month</p>
-                    <h3 className="text-4xl font-bold text-slate-800 mb-1">
-                       {performanceStats.month.trips}
+               {/* Right Card */}
+               <div className={`${topCards.right.colorClass} p-6 rounded-[24px] border border-slate-100 shadow-sm flex flex-col justify-center`}>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">{topCards.right.label}</p>
+                    <h3 className="text-3xl font-bold text-slate-800 mb-1">
+                       {topCards.right.isCurrency && typeof topCards.right.value === 'number' ? formatCurrency(topCards.right.value) : topCards.right.value}
                     </h3>
-                    <p className="text-[10px] text-slate-400">Completed Trips</p>
+                    <p className="text-[10px] text-slate-400">{topCards.right.subtext}</p>
                </div>
            </div>
 
@@ -755,7 +832,7 @@ const DriverPortalPage: React.FC = () => {
                                   <div className="grid grid-cols-2 gap-4 mb-6">
                                       <div className="bg-slate-50 p-3 rounded-xl">
                                           <p className="text-[10px] text-slate-400 uppercase font-bold">Trips</p>
-                                          <p className="text-lg font-bold text-slate-800">{bill.trips}</p>
+                                          <p className="text-lg font-bold text-slate-800">{formatInt(bill.trips)}</p>
                                       </div>
                                       <div className="bg-slate-50 p-3 rounded-xl">
                                           <p className="text-[10px] text-slate-400 uppercase font-bold">Rent Total</p>
@@ -816,7 +893,7 @@ const DriverPortalPage: React.FC = () => {
                         <div>
                             <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-4 border-b-2 border-slate-100 pb-2">Payment Statement</h4>
                             <div className="space-y-3 text-sm">
-                                <div className="flex justify-between"><span className="text-slate-600 font-medium">Total Trips Completed</span><span className="font-bold text-slate-800">{selectedBill.trips}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-600 font-medium">Total Trips Completed</span><span className="font-bold text-slate-800">{formatInt(selectedBill.trips)}</span></div>
                                 <div className="flex justify-between"><span className="text-slate-600 font-medium">Rent / Day (Applied)</span><span className="font-bold text-slate-800">{formatCurrency(selectedBill.rentPerDay)}</span></div>
                                 <div className="flex justify-between"><span className="text-slate-600 font-medium">Days Worked</span><span className="font-bold text-slate-800">{selectedBill.daysWorked}</span></div>
                                 <div className="flex justify-between"><span className="text-slate-600 font-medium">Weekly Rent Deduction</span><span className="font-bold text-rose-600">- {formatCurrency(selectedBill.rentTotal)}</span></div>
