@@ -74,3 +74,92 @@ export interface LeaveRecord {
 
 export interface AssetMaster {
   vehicles: string[]; // List of all owned vehicles
+  qrCodes: string[]; // List of all owned QR codes
+}
+
+export interface DriverSummary {
+  driver: string;
+  totalCollection: number;
+  totalRent: number;
+  totalFuel: number;
+  totalDue: number;
+  totalPayout: number;
+  totalWalletWeek: number;
+  finalTotal: number;
+}
+
+export interface GlobalSummary {
+  totalCollection: number;
+  totalRent: number;
+  totalFuel: number;
+  totalDue: number;
+  totalPayout: number;
+  totalWalletWeek: number;
+  pendingFromDrivers: number;
+  payableToDrivers: number;
+}
+
+export interface RentalSlab {
+  id: string;
+  minTrips: number;
+  maxTrips: number | null; // null means infinity
+  rentAmount: number;
+  notes?: string;
+  slabType?: string; // 'company' or 'driver'
+}
+
+export interface CompanySummaryRow {
+  vehicleNumber: string;
+  onroadDays: number;
+  dailyRentApplied: number;
+  weeklyIndemnityFees: number;
+  netWeeklyLeaseRental: number;
+  performanceDay: number;
+  uberTrips: number;
+  totalEarning: number;
+  uberCashCollection: number;
+  toll: number;
+  driverSubscriptionCharge: number;
+  uberIncentive: number;
+  uberWeekOs: number;
+  olaWeekOs?: number;
+  vehicleLevelAdjustment: number;
+  tds: number;
+  challan: number;
+  accident: number;
+  deadMile: number;
+  currentOs: number;
+}
+
+export interface CompanyWeeklySummary {
+  id: string;
+  startDate: string;
+  endDate: string;
+  fileName: string;
+  importedAt: string;
+  note?: string;
+  rows: CompanySummaryRow[];
+}
+
+export interface HeaderMapping {
+  internalKey: string;
+  label: string;
+  excelHeader: string;
+  required: boolean;
+}
+
+export interface AdminAccess {
+  email: string;
+  addedBy: string;
+  addedAt: string;
+}
+
+export type UserRole = 'super_admin' | 'admin' | 'driver';
+
+export interface AuthUser {
+  email: string;
+  name: string;
+  role: UserRole;
+  photoURL?: string;
+  driverId?: string;
+}

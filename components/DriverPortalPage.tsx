@@ -233,7 +233,7 @@ const DriverPortalPage: React.FC = () => {
            payout,
            dailyDetails: relevantDaily,
            weeklyDetails: wallet,
-           isAdjusted: !!slab 
+           isAdjusted: !!slab || (wallet.rentOverride !== undefined && wallet.rentOverride !== null)
        };
     });
   }, [rawWeekly, rawDaily, rentalSlabs, viewingAsDriver]);

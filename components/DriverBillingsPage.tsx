@@ -157,6 +157,9 @@ const DriverBillingsPage: React.FC = () => {
       );
   }, [allBills, currentWeekKey, filterDriver]);
 
+  // Get display range label
+  const currentWeekRange = displayedBills.length > 0 ? displayedBills[0].weekRange : currentWeekKey;
+
   const goToPreviousWeek = () => {
       if (currentWeekIndex < availableWeeks.length - 1) {
           setCurrentWeekIndex(prev => prev + 1);
@@ -229,16 +232,10 @@ const DriverBillingsPage: React.FC = () => {
           // 1. Reset Wallet Overrides
           const updatedWallet = {
               ...bill.weeklyDetails,
-              daysWorkedOverride: null, // Clear override 
-              rentOverride: null        // Clear rent override
+              daysWorkedOverride: null as any, // Clear override (send null to backend)
+              rentOverride: null as any        // Clear rent override
           };
           
-          // Force nulls for backend update if strict types block it
-          // @ts-ignore
-          updatedWallet.daysWorkedOverride = null;
-          // @ts-ignore
-          updatedWallet.rentOverride = null;
-
           await storageService.saveWeeklyWallet(updatedWallet);
 
           // 2. Reset Daily Rents to Slab Rent (if entries exist)
@@ -498,10 +495,10 @@ const DriverBillingsPage: React.FC = () => {
           {isBillingExpanded && (
              <div className="p-0 animate-fade-in">
                 {/* Week Pagination & Filters */}
-                <div className="px-6 py-6 bg-slate-50 border-b border-slate-100 flex flex-col items-center gap-4">
+                <div className="px-6 py-6 bg-slate-50 border-b border-slate-100 flex flex-col items-center gap-6">
                     
                     {/* Centered Week Navigator */}
-                    <div className="flex items-center bg-white rounded-2xl border border-slate-200 shadow-md p-1.5 w-full max-w-xl justify-between">
+                    <div className="flex items-center bg-white rounded-2xl border border-slate-200 shadow-sm p-1.5 w-full max-w-md mx-auto justify-between">
                         <button 
                             onClick={goToPreviousWeek} 
                             disabled={currentWeekIndex >= availableWeeks.length - 1}
@@ -512,11 +509,11 @@ const DriverBillingsPage: React.FC = () => {
                         
                         <div className="px-4 text-center flex-1">
                             {currentWeekKey ? (
-                                <div className="flex flex-col">
-                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Billing Week</span>
-                                    <span className="text-lg md:text-xl font-bold text-slate-800 flex items-center justify-center gap-2">
+                                <div className="flex flex-col items-center">
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Billing Period</span>
+                                    <span className="text-base md:text-lg font-bold text-slate-800 flex items-center justify-center gap-2">
                                         <Calendar size={18} className="text-indigo-500 mb-0.5"/>
-                                        {currentWeekKey.split('-').reverse().join('-')}
+                                        {currentWeekRange}
                                     </span>
                                 </div>
                             ) : (
