@@ -29,7 +29,6 @@ const DriverBillingsPage: React.FC = () => {
       rentPerDay: 0,
       adjustments: 0
   });
-  const [adjustmentsMap, setAdjustmentsMap] = useState<Record<string, number>>({});
   
   // Copy Feedback State
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -87,7 +86,6 @@ const DriverBillingsPage: React.FC = () => {
        
        // 2. Determine Rent/Day
        // Priority: Manual Override (in Wallet) -> Actual Daily Entries Avg -> Slab -> 0
-       // This ensures if user manually sets rent (even with 0 entries), it sticks.
        let rentRateUsed = 0;
        if (wallet.rentOverride !== undefined && wallet.rentOverride !== null) {
            rentRateUsed = wallet.rentOverride;
@@ -111,7 +109,9 @@ const DriverBillingsPage: React.FC = () => {
        const overdue = relevantDaily.reduce((sum, d) => sum + d.due, 0);
        const walletAmount = wallet.walletWeek;
 
-       const adjustment = adjustmentsMap[wallet.id] || 0;
+       // Use persisted adjustment
+       const adjustment = wallet.adjustments || 0;
+       
        const payout = collection - rentTotal - fuel + overdue + walletAmount + adjustment;
 
        return {
@@ -123,7 +123,7 @@ const DriverBillingsPage: React.FC = () => {
            qrCode: relevantDaily[0]?.qrCode || 'N/A',
            trips: totalTrips,
            rentPerDay: rentRateUsed,
-           slabRent: slab ? slab.rentAmount : 0, // Store standard slab rent for comparison/reset
+           slabRent: slab ? slab.rentAmount : 0, 
            isRentOverridden: wallet.rentOverride !== undefined && wallet.rentOverride !== null,
            daysWorked: daysWorked,
            calculatedDays, 
@@ -139,12 +139,11 @@ const DriverBillingsPage: React.FC = () => {
        };
     }).filter((item): item is NonNullable<typeof item> => item !== null)
       .sort((a, b) => new Date(b.weekKey).getTime() - new Date(a.weekKey).getTime());
-  }, [weeklyWallets, dailyEntries, rentalSlabs, adjustmentsMap]);
+  }, [weeklyWallets, dailyEntries, rentalSlabs]);
 
   // --- WEEK PAGINATION LOGIC ---
   const availableWeeks = useMemo(() => {
       const weeks = Array.from(new Set(allBills.map(b => b.weekKey)));
-      // Safe cast to string to sort
       return weeks.sort((a, b) => new Date(b as string).getTime() - new Date(a as string).getTime());
   }, [allBills]);
 
@@ -167,12 +166,8 @@ const DriverBillingsPage: React.FC = () => {
       );
   }, [allBills, currentWeekKey, filterDriver]);
 
-  // Get display range label
   const currentWeekRange = displayedBills.length > 0 ? displayedBills[0].weekRange : (
-      // Fallback for when there are no bills but we have a key (unlikely given derivation)
-      currentWeekKey ? 
-      `${currentWeekKey.split('-').reverse().join('-')} (Empty)` : 
-      ''
+      currentWeekKey ? `${currentWeekKey.split('-').reverse().join('-')} (Empty)` : ''
   );
 
   const goToPreviousWeek = () => {
@@ -205,20 +200,17 @@ const DriverBillingsPage: React.FC = () => {
       if (!bill) return;
 
       try {
-          // 1. Save Adjustments Locally
-          setAdjustmentsMap(prev => ({ ...prev, [editingBillId]: editFormData.adjustments }));
-
-          // 2. Save Overrides to Weekly Wallet (Days Worked AND Rent)
-          const updatedWallet = { 
+          // Update Weekly Wallet with ALL overrides including adjustments
+          const updatedWallet: WeeklyWallet = { 
               ...bill.weeklyDetails, 
               daysWorkedOverride: editFormData.daysWorked,
-              rentOverride: editFormData.rentPerDay // IMPORTANT: Store the custom rent here!
+              rentOverride: editFormData.rentPerDay,
+              adjustments: editFormData.adjustments
           };
-          // Always save wallet to persist override even if days didn't change (idempotent)
+          
           await storageService.saveWeeklyWallet(updatedWallet);
 
-          // 3. Propagate Rent/Day Changes to Daily Entries (if any exist)
-          // This keeps the Daily Log consistent with the Bill
+          // Propagate Rent/Day Changes to Daily Entries (to keep data consistent for raw views)
           if (bill.dailyDetails.length > 0) {
               const updatedEntries = bill.dailyDetails.map((entry: DailyEntry) => ({
                   ...entry,
@@ -228,7 +220,7 @@ const DriverBillingsPage: React.FC = () => {
           }
 
           setEditingBillId(null);
-          await loadData(); // Full refresh to ensure consistency
+          await loadData(); 
       } catch (err) {
           alert("Failed to save changes. Please try again.");
           console.error(err);
@@ -241,19 +233,18 @@ const DriverBillingsPage: React.FC = () => {
       const bill = allBills.find(b => b.id === editingBillId);
       if (!bill) return;
 
-      if (!confirm("Are you sure? This will revert 'Days Worked' and 'Rent/Day' to the standard calculations based on trips.")) return;
+      if (!confirm("Are you sure? This will revert manual overrides to standard calculations.")) return;
 
       try {
-          // 1. Reset Wallet Overrides
-          const updatedWallet = {
+          const updatedWallet: WeeklyWallet = {
               ...bill.weeklyDetails,
-              daysWorkedOverride: null as any, // Clear override (send null to backend)
-              rentOverride: null as any        // Clear rent override
+              daysWorkedOverride: undefined, 
+              rentOverride: undefined,
+              adjustments: 0 // Reset adjustments too? Assuming yes for full reset.
           };
           
           await storageService.saveWeeklyWallet(updatedWallet);
 
-          // 2. Reset Daily Rents to Slab Rent (if entries exist)
           if (bill.dailyDetails.length > 0) {
               const defaultRent = bill.slabRent;
               const updatedEntries = bill.dailyDetails.map((entry: DailyEntry) => ({
@@ -271,7 +262,7 @@ const DriverBillingsPage: React.FC = () => {
       }
   };
 
-  // --- HTML GENERATION ---
+  // ... (HTML Generation & Rest of Component - unchanged logic, just using new fields)
   const generateBillHTML = (bill: any) => {
       const dailyRows = bill.dailyDetails.map((d: any) => `
         <tr>

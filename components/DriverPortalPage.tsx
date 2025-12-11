@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { 
   Download, Calendar, Wallet, FileText, ChevronRight, LogOut, 
   UserCircle, TrendingUp, TrendingDown, DollarSign, MapPin, 
-  CheckCircle, AlertCircle, Eye, X, ShieldCheck, Users, ArrowLeft, Lock, ArrowRight, Gauge, BarChart3, ChevronDown, Copy, AlertTriangle
+  CheckCircle, AlertCircle, Eye, X, ShieldCheck, Users, ArrowLeft, Lock, ArrowRight, Gauge, BarChart3, ChevronDown, Copy, AlertTriangle, ArrowUpRight, Clock
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -34,7 +34,7 @@ const DriverPortalPage: React.FC = () => {
   
   // UI State
   const [activeTab, setActiveTab] = useState<'home' | 'daily' | 'billing'>('home');
-  const [viewingBill, setViewingBill] = useState<any | null>(null);
+  const [selectedBill, setSelectedBill] = useState<any | null>(null);
 
   useEffect(() => {
     // Initial Load based on Authenticated User
@@ -46,40 +46,33 @@ const DriverPortalPage: React.FC = () => {
   const initializePortal = async () => {
       setInitError(null);
       try {
-          // 1. Fetch Global Data needed for calculations
           const [allDrivers, allDaily, allWeekly, slabs] = await Promise.all([
               storageService.getDrivers(),
               storageService.getDailyEntries(),
               storageService.getWeeklyWallets(),
               storageService.getDriverRentalSlabs()
           ]);
-          setRentalSlabs(slabs.sort((a, b) => a.minTrips - b.minTrips));
+          const sortedSlabs = slabs.sort((a, b) => a.minTrips - b.minTrips);
+          setRentalSlabs(sortedSlabs);
 
-          // Cache data for Admin switching capabilities
           if (user?.role === 'admin' || user?.role === 'super_admin') {
               setDriversList(allDrivers.sort((a, b) => a.name.localeCompare(b.name)));
               setGlobalDaily(allDaily);
               setGlobalWeekly(allWeekly);
           }
 
-          // 2. Identify the Current Driver Context
           let targetDriver: Driver | undefined;
 
           if (user?.role === 'driver' && user.driverId) {
               targetDriver = allDrivers.find(d => d.id === user.driverId);
           } else if ((user?.role === 'admin' || user?.role === 'super_admin')) {
-              // Admin View: If they have a linked driver profile via email, use it.
-              // Otherwise, maybe just pick the first active one.
               targetDriver = allDrivers.find(d => d.email === user.email);
-              
               if (!targetDriver) {
-                  // Fallback for Admin testing: Pick the first active driver to simulate
                   targetDriver = allDrivers.find(d => !d.terminationDate);
               }
           }
 
           if (targetDriver) {
-              // 3. Manager Logic
               if (targetDriver.isManager) {
                   const accessList = await storageService.getManagerAccess();
                   const myAccess = accessList.find(a => a.managerId === targetDriver!.id);
@@ -87,18 +80,15 @@ const DriverPortalPage: React.FC = () => {
                       const teamMembers = allDrivers.filter(d => myAccess.childDriverIds.includes(d.id));
                       setMyTeam(teamMembers);
                       
-                      // Calculate Team Balances
+                      // USE CENTRALIZED LOGIC FOR TEAM BALANCES
                       const balances: Record<string, number> = {};
                       teamMembers.forEach(member => {
-                          const memberDaily = allDaily.filter(d => d.driver === member.name);
-                          const memberWeekly = allWeekly.filter(w => w.driver === member.name);
-                          balances[member.id] = calculateNetBalance(memberDaily, memberWeekly);
+                          const stats = storageService.calculateDriverStats(member.name, allDaily, allWeekly, sortedSlabs);
+                          balances[member.id] = stats.finalTotal;
                       });
                       setTeamBalances(balances);
                   }
               }
-
-              // 4. Set View
               switchToDriverView(targetDriver, allDaily, allWeekly);
           } else {
               setInitError("No driver profile found linked to this account.");
@@ -142,17 +132,6 @@ const DriverPortalPage: React.FC = () => {
       }
   };
 
-  // Helper Calculation
-  const calculateNetBalance = (daily: DailyEntry[], weekly: WeeklyWallet[]) => {
-      const totalCollection = daily.reduce((sum, d) => sum + d.collection, 0);
-      const totalRawRent = daily.reduce((sum, d) => sum + d.rent, 0);
-      const totalFuel = daily.reduce((sum, d) => sum + d.fuel, 0);
-      const totalDue = daily.reduce((sum, d) => sum + d.due, 0);
-      const totalWallet = weekly.reduce((sum, w) => sum + w.walletWeek, 0);
-      const totalPayouts = daily.reduce((sum, d) => sum + (d.payout || 0), 0);
-      return totalCollection - totalRawRent - totalFuel + totalDue + totalWallet - totalPayouts;
-  };
-
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(val);
   };
@@ -177,13 +156,10 @@ const DriverPortalPage: React.FC = () => {
 
        const totalTrips = wallet.trips || 0; 
        
-       // --- NEW CALCULATION LOGIC ---
-       // 1. Find Slab
        const slab = rentalSlabs.find(s => 
            totalTrips >= s.minTrips && (s.maxTrips === null || totalTrips <= s.maxTrips)
        );
        
-       // 2. Determine Rent/Day
        let rentRateUsed = 0;
        if (wallet.rentOverride !== undefined && wallet.rentOverride !== null) {
            rentRateUsed = wallet.rentOverride;
@@ -193,21 +169,20 @@ const DriverPortalPage: React.FC = () => {
            rentRateUsed = slab ? slab.rentAmount : 0;
        }
        
-       // 3. Count Days Worked (Respect Override)
        const daysWorked = wallet.daysWorkedOverride !== undefined && wallet.daysWorkedOverride !== null 
            ? wallet.daysWorkedOverride 
            : relevantDaily.length;
 
-       // 4. Calc Total Rent
        const rentTotal = rentRateUsed * daysWorked;
 
        const collection = relevantDaily.reduce((sum, d) => sum + d.collection, 0);
        const fuel = relevantDaily.reduce((sum, d) => sum + d.fuel, 0);
        const overdue = relevantDaily.reduce((sum, d) => sum + d.due, 0);
        const walletAmount = wallet.walletWeek;
-       const grossEarnings = wallet.earnings || 0; // Use Gross Earnings for Stats
+       const grossEarnings = wallet.earnings || 0; 
 
-       const adjustments = 0; // Adjustments not visible/editable in portal, assumed 0 for display consistency
+       const adjustments = wallet.adjustments || 0;
+       
        const payout = collection - rentTotal - fuel + overdue + walletAmount + adjustments;
        
        const avgPerTrip = totalTrips > 0 ? grossEarnings / totalTrips : 0;
@@ -238,18 +213,23 @@ const DriverPortalPage: React.FC = () => {
     });
   }, [rawWeekly, rawDaily, rentalSlabs, viewingAsDriver]);
 
-  // --- 2. BALANCE CALCULATION ---
+  // --- 2. BALANCE CALCULATION (Accurate using Billing Engine logic) ---
   const balanceSummary = useMemo(() => {
-      const netBalance = calculateNetBalance(rawDaily, rawWeekly);
-      const totalCollection = rawDaily.reduce((sum, d) => sum + d.collection, 0);
-      const totalRawRent = rawDaily.reduce((sum, d) => sum + d.rent, 0);
-      const totalFuel = rawDaily.reduce((sum, d) => sum + d.fuel, 0);
-      const totalWallet = rawWeekly.reduce((sum, w) => sum + w.walletWeek, 0);
+      if (!viewingAsDriver) return { netBalance: 0, totalCollection: 0, totalRawRent: 0, totalFuel: 0, totalWallet: 0 };
       
-      return { netBalance, totalCollection, totalRawRent, totalFuel, totalWallet };
-  }, [rawDaily, rawWeekly]);
+      // Use the centralized calculator for accuracy
+      const stats = storageService.calculateDriverStats(viewingAsDriver.name, rawDaily, rawWeekly, rentalSlabs);
+      
+      return { 
+          netBalance: stats.finalTotal, 
+          totalCollection: stats.totalCollection, 
+          totalRawRent: stats.totalRent, 
+          totalFuel: stats.totalFuel, 
+          totalWallet: stats.totalWalletWeek 
+      };
+  }, [rawDaily, rawWeekly, rentalSlabs, viewingAsDriver]);
 
-  // --- 3. PERFORMANCE STATS (Monthly/Yearly) ---
+  // --- 3. PERFORMANCE STATS ---
   const performanceStats = useMemo(() => {
       const now = new Date();
       const currentMonth = now.getMonth();
@@ -297,22 +277,25 @@ const DriverPortalPage: React.FC = () => {
   }, [rawWeekly]);
 
 
-  // --- 4. BILL HTML ---
+  // --- 4. BILL HTML GENERATOR ---
   const generateBillHTML = (bill: any) => {
       const dailyRows = bill.dailyDetails.map((d: any) => `
         <tr>
-          <td style="padding: 8px; border-bottom: 1px solid #f1f5f9;">${formatDate(d.date)}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #f1f5f9;">${d.driver}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #f1f5f9;">${d.vehicle}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #f1f5f9;">${d.shift}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #f1f5f9; font-size: 10px;">${d.qrCode || '-'}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #f1f5f9; text-align: right;">${formatCurrency(d.rent)}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #f1f5f9; text-align: right;">${formatCurrency(d.collection)}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #334155;">${formatDate(d.date)}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #334155;">${d.driver}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #334155;">${d.vehicle}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #334155;">${d.shift}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #334155; font-size: 11px;">${d.qrCode || '-'}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #334155;">${formatCurrency(d.rent)}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #16a34a;">${formatCurrency(d.collection)}</td>
         </tr>
       `).join('');
 
       const genDate = new Date();
-      const genDateStr = `${String(genDate.getDate()).padStart(2,'0')}-${String(genDate.getMonth()+1).padStart(2,'0')}-${genDate.getFullYear()}`;
+      const genDateStr = `${String(genDate.getDate()).padStart(2,'0')}/${String(genDate.getMonth()+1).padStart(2,'0')}/${genDate.getFullYear()}`;
+
+      // Calculate deduction sum for wallet breakdown
+      const walletDeductions = (bill.weeklyDetails.diff || 0) + (bill.weeklyDetails.charges || 0);
 
       return `<!DOCTYPE html>
         <html>
@@ -320,85 +303,79 @@ const DriverPortalPage: React.FC = () => {
             <meta charset="UTF-8">
             <title>Bill - ${bill.driver}</title>
             <style>
-              body { font-family: 'Inter', system-ui, -apple-system, sans-serif; padding: 40px; color: #1e293b; max-width: 800px; margin: 0 auto; background: white; }
-              .header { text-align: center; margin-bottom: 40px; border-bottom: 1px solid #e2e8f0; padding-bottom: 20px; }
-              .company-name { font-size: 28px; font-weight: 800; color: #4338ca; letter-spacing: -0.5px; }
-              .sub-company { font-size: 14px; color: #666; margin-top: 4px; font-weight: 500; }
-              
-              .meta-container { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin-bottom: 32px; display: flex; justify-content: space-between; }
-              .meta-group { display: flex; flex-direction: column; gap: 4px; }
-              .meta-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 700; }
-              .meta-value { font-size: 14px; font-weight: 600; color: #0f172a; }
-              
-              .section-header { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #475569; margin: 32px 0 12px 0; padding-bottom: 8px; border-bottom: 2px solid #e2e8f0; }
-              .first-section { margin-top: 0; }
-              
-              .payment-grid { display: grid; grid-template-columns: 1fr auto; row-gap: 12px; column-gap: 40px; font-size: 14px; }
-              .pg-label { color: #475569; font-weight: 500; }
-              .pg-value { font-weight: 600; text-align: right; }
-              .positive { color: #16a34a; }
-              .negative { color: #dc2626; }
-              
-              .net-payout-box { background: #f1f5f9; border-radius: 8px; padding: 16px 20px; margin-top: 24px; display: flex; justify-content: space-between; align-items: center; }
-              .np-label { font-size: 16px; font-weight: 700; color: #334155; }
-              .np-value { font-size: 24px; font-weight: 800; color: #0f172a; }
-
-              table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
-              th { text-align: left; background: #f8fafc; padding: 12px 8px; color: #64748b; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0; }
-              td { color: #334155; }
-              
-              .wallet-grid { display: grid; grid-template-columns: 1fr auto; gap: 8px; font-size: 13px; background: #fff; padding: 0; }
-              .wg-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed #e2e8f0; }
-              .wg-row:last-child { border-bottom: none; border-top: 1px solid #cbd5e1; margin-top: 8px; padding-top: 12px; }
-              .wg-total { font-weight: 800; color: #4338ca; font-size: 15px; }
-              
-              .footer { margin-top: 60px; font-size: 11px; text-align: center; color: #94a3b8; font-weight: 500; border-top: 1px solid #f1f5f9; padding-top: 20px; }
+              @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+              body { font-family: 'Inter', sans-serif; padding: 40px; color: #1e293b; max-width: 800px; margin: 0 auto; background: white; -webkit-print-color-adjust: exact; }
+              .header { text-align: center; margin-bottom: 30px; }
+              .company-name { font-size: 32px; font-weight: 800; color: #4338ca; text-transform: uppercase; letter-spacing: -0.5px; }
+              .sub-company { font-size: 14px; color: #64748b; font-weight: 600; margin-top: 4px; text-transform: uppercase; letter-spacing: 1px; }
+              .divider { height: 2px; background: #f1f5f9; margin: 20px 0; }
+              .meta-box { background: #f8fafc; border-radius: 12px; padding: 24px; margin-bottom: 40px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #e2e8f0; }
+              .meta-col div { margin-bottom: 6px; font-size: 14px; color: #334155; }
+              .meta-col div strong { color: #0f172a; font-weight: 700; margin-right: 8px; }
+              .section-title { font-size: 14px; font-weight: 800; color: #334155; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 20px; text-align: center; }
+              .statement-grid { display: grid; grid-template-columns: 1fr auto; gap: 12px; margin-bottom: 30px; font-size: 14px; }
+              .st-row { display: flex; justify-content: space-between; padding: 4px 0; }
+              .st-label { font-weight: 600; color: #64748b; }
+              .st-val { font-weight: 700; color: #0f172a; }
+              .st-val.red { color: #dc2626; }
+              .st-val.green { color: #16a34a; }
+              .net-box { background: #f1f5f9; padding: 20px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-top: 10px; border-top: 2px solid #cbd5e1; }
+              .net-label { font-size: 18px; font-weight: 800; color: #334155; text-transform: uppercase; }
+              .net-val { font-size: 24px; font-weight: 800; color: #0f172a; }
+              table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
+              th { text-align: left; background: #f8fafc; padding: 12px 10px; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #e2e8f0; }
+              .wallet-section { margin-top: 40px; border-top: 2px solid #f1f5f9; padding-top: 20px; }
+              .footer { margin-top: 60px; font-size: 12px; text-align: center; color: #94a3b8; border-top: 1px solid #f1f5f9; padding-top: 20px; }
             </style>
           </head>
           <body>
             <div class="header">
-              <div class="company-name">ENCHO CABS</div>
+              <div class="company-name">Encho Cabs</div>
               <div class="sub-company">A Unit of Encho Enterprises</div>
             </div>
-            
-            <div class="meta-container">
-               <div class="meta-group">
-                 <div><span class="meta-label">Driver Name</span> <div class="meta-value">${bill.driver}</div></div>
-                 <div style="margin-top:12px;"><span class="meta-label">Vehicle QR</span> <div class="meta-value">${bill.qrCode}</div></div>
+            <div class="divider"></div>
+            <div class="meta-box">
+               <div class="meta-col">
+                 <div><strong>Driver:</strong> ${bill.driver}</div>
+                 <div><strong>Vehicle QR:</strong> ${bill.qrCode}</div>
                </div>
-               <div class="meta-group" style="text-align:right;">
-                 <div><span class="meta-label">Billing Period</span> <div class="meta-value">${bill.weekRange}</div></div>
-                 <div style="margin-top:12px;"><span class="meta-label">Generated On</span> <div class="meta-value">${genDateStr}</div></div>
+               <div class="meta-col" style="text-align:right;">
+                 <div><strong>Week:</strong> ${bill.weekRange}</div>
+                 <div><strong>Generated:</strong> ${genDateStr}</div>
                </div>
             </div>
-
-            <div class="section-header first-section">Payment Statement</div>
-            <div class="payment-grid">
-               <div class="pg-label">Total Trips Completed</div><div class="pg-value">${bill.trips}</div>
-               <div class="pg-label">Rent / Day (Applied)</div><div class="pg-value">${formatCurrency(bill.rentPerDay)}</div>
-               <div class="pg-label">Days Worked</div><div class="pg-value">${bill.daysWorked}</div>
-               <div class="pg-label">Weekly Rent Deduction</div><div class="pg-value negative">- ${formatCurrency(bill.rentTotal)}</div>
-               <div class="pg-label">Fuel Advances</div><div class="pg-value negative">- ${formatCurrency(bill.fuel)}</div>
-               <div class="pg-label">Wallet Earnings (Weekly)</div><div class="pg-value positive">+ ${formatCurrency(bill.wallet)}</div>
-               <div class="pg-label">Rental Collection</div><div class="pg-value positive">+ ${formatCurrency(bill.collection)}</div>
-               <div class="pg-label">Previous Dues/Credit</div><div class="pg-value">${formatCurrency(bill.overdue)}</div>
-               <div class="pg-label">Adjustments</div><div class="pg-value">${formatCurrency(bill.adjustments)}</div>
+            <div class="section-title">Payment Statement</div>
+            <div class="statement-grid">
+               <div class="st-row"><span class="st-label">Total Trips Completed</span><span class="st-val">${bill.trips}</span></div>
+               <div class="st-row"><span class="st-label">Rent / Day (Applied)</span><span class="st-val">${formatCurrency(bill.rentPerDay)}</span></div>
+               <div class="st-row"><span class="st-label">Days Worked</span><span class="st-val">${bill.daysWorked}</span></div>
+               <div class="st-row"><span class="st-label">Weekly Rent Deduction</span><span class="st-val red">- ${formatCurrency(bill.rentTotal)}</span></div>
+               <div class="st-row"><span class="st-label">Fuel Advances</span><span class="st-val red">- ${formatCurrency(bill.fuel)}</span></div>
+               <div class="st-row"><span class="st-label">Wallet Earnings (Weekly)</span><span class="st-val green">+ ${formatCurrency(bill.wallet)}</span></div>
+               <div class="st-row"><span class="st-label">Rental Collection</span><span class="st-val green">+ ${formatCurrency(bill.collection)}</span></div>
+               <div class="st-row"><span class="st-label">Previous Dues/Credit</span><span class="st-val">${formatCurrency(bill.overdue)}</span></div>
+               <div class="st-row"><span class="st-label">Adjustments</span><span class="st-val">${formatCurrency(bill.adjustments)}</span></div>
             </div>
-            
-            <div class="net-payout-box">
-               <div class="np-label">NET PAYOUT</div>
-               <div class="np-value">${formatCurrency(bill.payout)}</div>
+            <div class="net-box">
+               <span class="net-label">NET PAYOUT</span>
+               <span class="net-val">${formatCurrency(bill.payout)}</span>
             </div>
-
-            <div class="section-header">Daily Activity Log</div>
+            <div class="section-title" style="margin-top: 40px; text-align: left;">Daily Activity Log</div>
             <table>
               <thead><tr><th>Date</th><th>Driver</th><th>Vehicle</th><th>Shift</th><th>QR</th><th style="text-align:right">Rent</th><th style="text-align:right">Collection</th></tr></thead>
               <tbody>${dailyRows}</tbody>
             </table>
-
-            <div class="footer">
-               System Generated Bill • Encho Cabs
+            <div class="wallet-section">
+                <div class="section-title" style="text-align: left; margin-bottom: 15px;">Weekly Wallet Breakdown</div>
+                <div class="statement-grid" style="font-size: 13px;">
+                   <div class="st-row"><span class="st-label">Gross Earnings</span><span class="st-val">${formatCurrency(bill.weeklyDetails.earnings)}</span></div>
+                   <div class="st-row"><span class="st-label">Refunds</span><span class="st-val">${formatCurrency(bill.weeklyDetails.refund)}</span></div>
+                   <div class="st-row"><span class="st-label">Deductions (Diff + Charges)</span><span class="st-val red">-${formatCurrency(walletDeductions)}</span></div>
+                   <div class="st-row"><span class="st-label">Cash (Wallet)</span><span class="st-val red">-${formatCurrency(bill.weeklyDetails.cash)}</span></div>
+                   <div class="st-row" style="border-top: 1px dashed #cbd5e1; padding-top: 8px; margin-top: 4px;"><span class="st-label" style="color:#4338ca;">Wallet Total</span><span class="st-val" style="color:#4338ca;">${formatCurrency(bill.wallet)}</span></div>
+                </div>
             </div>
+            <div class="footer">System Generated Bill • Encho Cabs</div>
           </body>
         </html>
       `;
@@ -413,6 +390,11 @@ const DriverPortalPage: React.FC = () => {
       a.download = `Bill_${bill.driver}_${bill.id.substring(0,6)}.html`;
       a.click();
   };
+
+  // Helper for recent logs
+  const recentLogs = rawDaily.slice(0, 3);
+  // Helper for latest bill
+  const latestBill = billingData.length > 0 ? billingData[0] : null;
 
   if (!viewingAsDriver) return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50 flex-col">
@@ -451,9 +433,9 @@ const DriverPortalPage: React.FC = () => {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans pb-24">
+    <div className="min-h-screen bg-[#F8FAFC] font-sans pb-24">
        {/* 1. Header & Nav */}
-       <header className="bg-slate-900 text-white sticky top-0 z-30 shadow-xl">
+       <header className="bg-[#1e293b] text-white sticky top-0 z-30 shadow-xl">
            <div className="max-w-md mx-auto px-6 py-4 flex items-center justify-between">
                <div className="flex items-center gap-3">
                    <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-900/50">
@@ -500,65 +482,60 @@ const DriverPortalPage: React.FC = () => {
 
        <main className="max-w-md mx-auto p-6 space-y-6">
            
-           {/* Profile Card */}
-           <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 relative overflow-hidden">
-               <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-bl-[100px] -mr-10 -mt-10"></div>
-               
-               <div className="relative z-10">
-                   <div className="flex items-start justify-between mb-6">
-                       <div className="flex items-center gap-4">
-                           <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center border-4 border-white shadow-sm">
-                               <UserCircle size={40} className="text-slate-300" />
-                           </div>
-                           <div>
-                               <h2 className="text-xl font-bold text-slate-800">{viewingAsDriver.name}</h2>
-                               <p className="text-xs text-slate-500 font-medium flex items-center gap-1.5 mt-1">
-                                   <MapPin size={12}/> {viewingAsDriver.vehicle || 'No Vehicle'}
-                               </p>
-                           </div>
-                       </div>
-                       <div className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide ${viewingAsDriver.status === 'Active' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-rose-50 text-rose-600 border border-rose-100'}`}>
-                           {viewingAsDriver.status}
-                       </div>
-                   </div>
+           {/* Profile Header Block */}
+           <div className="flex justify-between items-center px-1">
+                <div>
+                    <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Hi, {viewingAsDriver.name.split(' ')[0]}</h2>
+                    <p className="text-slate-500 text-xs font-medium flex items-center gap-1.5 mt-1">
+                        <span className={`w-2 h-2 rounded-full ${viewingAsDriver.status === 'Active' ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
+                        {viewingAsDriver.vehicle || 'No Vehicle Assigned'}
+                    </p>
+                </div>
+                <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 border border-indigo-100">
+                    <UserCircle size={24} />
+                </div>
+           </div>
 
-                   {/* Quick Stats */}
-                   <div className="grid grid-cols-2 gap-4 mb-2">
-                       <div className="bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100/50">
-                           <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider mb-1">Net Balance</p>
-                           <p className={`text-2xl font-bold ${balanceSummary.netBalance < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                               {formatCurrency(balanceSummary.netBalance)}
-                           </p>
-                           <p className="text-[10px] text-slate-400 mt-1">
-                               {balanceSummary.netBalance < 0 ? 'You owe company' : 'Company owes you'}
-                           </p>
-                       </div>
-                       <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                           <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">This Month</p>
-                           <p className="text-2xl font-bold text-slate-800">{performanceStats.month.trips}</p>
-                           <p className="text-[10px] text-slate-400 mt-1">Completed Trips</p>
-                       </div>
-                   </div>
+           {/* Top Cards Grid */}
+           <div className="grid grid-cols-2 gap-4 mb-2">
+                {/* Net Balance - Dark Card */}
+               <div className="bg-[#1e1b4b] p-6 rounded-[24px] text-white relative overflow-hidden shadow-xl flex flex-col justify-center">
+                   <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-200 mb-1">Net Balance</p>
+                   <h3 className={`text-3xl font-bold tracking-tight mb-1 ${balanceSummary.netBalance < 0 ? 'text-rose-300' : 'text-emerald-300'}`}>
+                       {formatCurrency(balanceSummary.netBalance)}
+                   </h3>
+                   <p className="text-[10px] text-indigo-300/80">
+                       {balanceSummary.netBalance < 0 ? 'Payable Amount' : 'Receivable Amount'}
+                   </p>
+               </div>
+
+               {/* This Month - White Card */}
+               <div className="bg-white p-6 rounded-[24px] border border-slate-100 shadow-sm flex flex-col justify-center">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">This Month</p>
+                    <h3 className="text-4xl font-bold text-slate-800 mb-1">
+                       {performanceStats.month.trips}
+                    </h3>
+                    <p className="text-[10px] text-slate-400">Completed Trips</p>
                </div>
            </div>
 
            {/* Tab Switcher */}
-           <div className="flex p-1 bg-white rounded-2xl border border-slate-100 shadow-sm">
+           <div className="flex p-1 bg-white rounded-xl border border-slate-100 shadow-sm">
                <button 
                   onClick={() => setActiveTab('home')}
-                  className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'home' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+                  className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'home' ? 'bg-[#4f46e5] text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
                >
                   Overview
                </button>
                <button 
                   onClick={() => setActiveTab('daily')}
-                  className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'daily' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+                  className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'daily' ? 'bg-[#4f46e5] text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
                >
                   Daily Log
                </button>
                <button 
                   onClick={() => setActiveTab('billing')}
-                  className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'billing' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+                  className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'billing' ? 'bg-[#4f46e5] text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
                >
                   Billings
                </button>
@@ -572,63 +549,131 @@ const DriverPortalPage: React.FC = () => {
                   
                   {/* Manager Section (If Applicable) */}
                   {viewingAsDriver.isManager && myTeam.length > 0 && (
-                      <div className="bg-indigo-900 rounded-3xl p-6 text-white shadow-xl shadow-indigo-900/20 relative overflow-hidden">
+                      <div className="bg-[#4C4E94] rounded-[32px] p-6 shadow-2xl shadow-indigo-900/30 overflow-hidden relative">
+                           {/* Background Decor */}
+                           <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
+                           
                            <div className="relative z-10">
-                               <div className="flex justify-between items-center mb-6">
+                               <div className="flex justify-between items-start mb-6">
                                    <div>
-                                       <h3 className="font-bold text-lg">My Team</h3>
-                                       <p className="text-indigo-300 text-xs">Managing {myTeam.length} Drivers</p>
+                                       <h3 className="font-bold text-xl text-white tracking-tight">My Team</h3>
+                                       <p className="text-indigo-200 text-xs font-medium mt-1">Managing {myTeam.length} Drivers</p>
                                    </div>
-                                   <div className="bg-indigo-800 p-2 rounded-lg">
-                                       <ShieldCheck size={20} className="text-indigo-200" />
+                                   <div className="bg-white/10 p-2.5 rounded-xl backdrop-blur-md border border-white/10">
+                                       <ShieldCheck size={20} className="text-white" />
                                    </div>
                                </div>
+
                                <div className="space-y-3">
-                                   {myTeam.map(member => (
-                                       <div key={member.id} className="flex items-center justify-between p-3 bg-indigo-800/50 rounded-xl border border-indigo-700/50 hover:bg-indigo-700/50 transition-colors cursor-pointer" onClick={() => viewTeamMember(member)}>
-                                           <div className="flex items-center gap-3">
-                                               <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center font-bold text-xs text-white">
-                                                   {member.name.charAt(0)}
+                                   {myTeam.map(member => {
+                                       const bal = teamBalances[member.id] || 0;
+                                       return (
+                                           <div 
+                                              key={member.id} 
+                                              onClick={() => viewTeamMember(member)}
+                                              className="group flex items-center justify-between p-4 bg-[#5fa5f9]/10 rounded-2xl border border-white/5 hover:bg-[#5fa5f9]/20 transition-all cursor-pointer backdrop-blur-sm"
+                                           >
+                                               <div className="flex items-center gap-4">
+                                                   <div className="w-10 h-10 rounded-full bg-[#6366f1] flex items-center justify-center font-bold text-sm text-white shadow-inner border border-white/10">
+                                                       {member.name.charAt(0)}
+                                                   </div>
+                                                   <div>
+                                                       <p className="text-sm font-bold text-white group-hover:text-indigo-100 transition-colors">{member.name}</p>
+                                                       <p className="text-[11px] text-indigo-200 font-medium">
+                                                           Balance: <span className={bal < 0 ? "text-rose-300 font-bold" : "text-emerald-300 font-bold"}>{formatCurrency(bal)}</span>
+                                                       </p>
+                                                   </div>
                                                </div>
-                                               <div>
-                                                   <p className="text-sm font-bold text-white">{member.name}</p>
-                                                   <p className="text-[10px] text-indigo-300">Balance: {formatCurrency(teamBalances[member.id] || 0)}</p>
+                                               <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-white/10 transition-colors">
+                                                   <ChevronRight size={16} className="text-indigo-200" />
                                                </div>
                                            </div>
-                                           <ChevronRight size={16} className="text-indigo-400" />
-                                       </div>
-                                   ))}
+                                       );
+                                   })}
                                </div>
                            </div>
-                           {/* Decorative background element */}
-                           <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-indigo-600/20 rounded-full blur-2xl pointer-events-none"></div>
                       </div>
                   )}
 
-                  {/* Wallet Balance Card - visible for everyone */}
-                  <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                            <Wallet size={20} className="text-emerald-500"/> Wallet Overview
-                        </h3>
+                  {/* 1. Latest Bill Alert (If available) */}
+                  {latestBill && (
+                      <div className="bg-white p-5 rounded-[24px] border-2 border-dashed border-indigo-100 shadow-sm relative overflow-hidden group hover:border-indigo-200 transition-all">
+                          <div className="flex justify-between items-center mb-3">
+                              <div>
+                                  <p className="text-xs font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-1.5">
+                                      <Clock size={12}/> Latest Bill Generated
+                                  </p>
+                                  <p className="text-[10px] text-slate-400 font-medium mt-0.5">{latestBill.weekRange}</p>
+                              </div>
+                              <button onClick={() => { setSelectedBill(latestBill); }} className="bg-indigo-50 text-indigo-600 p-2 rounded-full hover:bg-indigo-100 transition-colors">
+                                  <ChevronRight size={16} />
+                              </button>
+                          </div>
+                          <div className="flex justify-between items-end bg-slate-50 p-3 rounded-xl">
+                              <div>
+                                  <p className="text-[10px] text-slate-400 font-bold uppercase">Net Payout</p>
+                                  <p className={`text-xl font-bold ${latestBill.payout < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                      {formatCurrency(latestBill.payout)}
+                                  </p>
+                              </div>
+                              <button onClick={() => downloadBill(latestBill)} className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded-lg flex items-center gap-1 hover:bg-slate-50 transition-colors">
+                                  <Download size={12}/> PDF
+                              </button>
+                          </div>
+                      </div>
+                  )}
+
+                  {/* 2. Recent Daily Activity */}
+                  <div>
+                      <div className="flex justify-between items-end mb-3 px-2">
+                          <h3 className="font-bold text-slate-800 text-sm">Recent Activity</h3>
+                          <button onClick={() => setActiveTab('daily')} className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700">View All</button>
+                      </div>
+                      <div className="space-y-3">
+                          {recentLogs.map(entry => (
+                              <div key={entry.id} className="bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center">
+                                   <div className="flex items-center gap-3">
+                                       <div className="bg-slate-50 p-2.5 rounded-xl text-slate-400">
+                                           <Calendar size={16} />
+                                       </div>
+                                       <div>
+                                           <p className="text-sm font-bold text-slate-800">{formatDate(entry.date)}</p>
+                                           <p className="text-[10px] text-slate-400 font-medium">{entry.day}</p>
+                                       </div>
+                                   </div>
+                                   <div className="text-right">
+                                       <p className="text-sm font-bold text-emerald-600">+{formatCurrency(entry.collection)}</p>
+                                       <p className="text-[10px] text-slate-400">Rent: {formatCurrency(entry.rent)}</p>
+                                   </div>
+                              </div>
+                          ))}
+                          {recentLogs.length === 0 && <p className="text-center text-xs text-slate-400 py-4 bg-white rounded-2xl border border-slate-100 border-dashed">No recent activity found</p>}
+                      </div>
+                  </div>
+
+                  {/* 3. Wallet Overview Card */}
+                  <div className="bg-white p-6 rounded-[28px] border-4 border-slate-50/50 shadow-sm relative">
+                      <div className="flex items-center gap-2 mb-6">
+                        <Wallet size={20} className="text-emerald-500"/>
+                        <h3 className="font-bold text-slate-800">Wallet Overview</h3>
                       </div>
                       
-                      <div className="grid grid-cols-2 gap-4 text-center">
-                          <div className="p-4 bg-slate-50 rounded-2xl">
-                              <p className="text-xs text-slate-400 uppercase font-bold tracking-wider mb-1">Total Collection</p>
-                              <p className="text-lg font-bold text-slate-700">{formatCurrency(balanceSummary.totalCollection)}</p>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-8">
+                          <div className="text-center">
+                              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Total Collection</p>
+                              <p className="text-xl font-bold text-slate-700">{formatCurrency(balanceSummary.totalCollection)}</p>
                           </div>
-                          <div className="p-4 bg-slate-50 rounded-2xl">
-                              <p className="text-xs text-slate-400 uppercase font-bold tracking-wider mb-1">Total Fuel</p>
-                              <p className="text-lg font-bold text-amber-600">{formatCurrency(balanceSummary.totalFuel)}</p>
+                          <div className="text-center">
+                              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Total Fuel</p>
+                              <p className="text-xl font-bold text-amber-500">{formatCurrency(balanceSummary.totalFuel)}</p>
                           </div>
-                          <div className="p-4 bg-slate-50 rounded-2xl">
-                              <p className="text-xs text-slate-400 uppercase font-bold tracking-wider mb-1">Vehicle Rent</p>
-                              <p className="text-lg font-bold text-slate-700">{formatCurrency(balanceSummary.totalRawRent)}</p>
+                          <div className="text-center">
+                              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Vehicle Rent</p>
+                              <p className="text-xl font-bold text-slate-700">{formatCurrency(balanceSummary.totalRawRent)}</p>
                           </div>
-                          <div className="p-4 bg-slate-50 rounded-2xl">
-                              <p className="text-xs text-slate-400 uppercase font-bold tracking-wider mb-1">Weekly Wallet</p>
-                              <p className={`text-lg font-bold ${balanceSummary.totalWallet >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatCurrency(balanceSummary.totalWallet)}</p>
+                          <div className="text-center">
+                              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Weekly Wallet</p>
+                              <p className={`text-xl font-bold ${balanceSummary.totalWallet >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{formatCurrency(balanceSummary.totalWallet)}</p>
                           </div>
                       </div>
                   </div>
@@ -724,6 +769,10 @@ const DriverPortalPage: React.FC = () => {
                                           {formatCurrency(bill.payout)}
                                       </p>
                                   </div>
+                                  
+                                  <button onClick={() => setSelectedBill(bill)} className="w-full mt-4 py-3 bg-slate-900 text-white rounded-xl font-bold text-sm hover:bg-black transition-colors flex items-center justify-center gap-2">
+                                      <Eye size={16}/> View Full Statement
+                                  </button>
                               </div>
                           </div>
                       ))
@@ -732,6 +781,85 @@ const DriverPortalPage: React.FC = () => {
            )}
 
        </main>
+
+       {/* VIEW BILL MODAL (High Fidelity) */}
+       {selectedBill && (
+           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-fade-in overflow-y-auto">
+               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden my-auto relative">
+                   <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/80 backdrop-blur-md sticky top-0 z-10">
+                       <h3 className="font-bold text-slate-800 flex items-center gap-2"><FileText size={18} className="text-indigo-600"/> Bill Details</h3>
+                       <button onClick={() => setSelectedBill(null)} className="p-2 hover:bg-slate-200 rounded-full text-slate-400 hover:text-slate-600 transition-colors"><X size={20} /></button>
+                   </div>
+                   
+                   <div className="p-6 md:p-8 bg-white space-y-8">
+                        {/* Header Branding */}
+                        <div className="text-center">
+                            <h2 className="text-3xl font-extrabold text-indigo-700 uppercase tracking-tight">Encho Cabs</h2>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">A Unit of Encho Enterprises</p>
+                        </div>
+
+                        {/* Info Block */}
+                        <div className="bg-slate-50 rounded-2xl border border-slate-100 p-5 flex flex-col md:flex-row justify-between gap-4 text-xs">
+                            <div className="space-y-1.5">
+                                <p className="text-slate-500 uppercase font-bold text-[10px]">Driver Name</p>
+                                <p className="text-slate-900 font-bold text-base">{selectedBill.driver}</p>
+                                <p className="text-slate-500">Vehicle QR: <strong className="text-slate-700">{selectedBill.qrCode}</strong></p>
+                            </div>
+                            <div className="md:text-right space-y-1.5 border-t md:border-t-0 md:border-l border-slate-200 pt-3 md:pt-0 md:pl-5">
+                                <p className="text-slate-500 uppercase font-bold text-[10px]">Billing Period</p>
+                                <p className="text-slate-900 font-bold">{selectedBill.weekRange}</p>
+                                <p className="text-slate-500">Generated: <strong className="text-slate-700">{new Date().toLocaleDateString()}</strong></p>
+                            </div>
+                        </div>
+
+                        {/* Payment Statement Table */}
+                        <div>
+                            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-4 border-b-2 border-slate-100 pb-2">Payment Statement</h4>
+                            <div className="space-y-3 text-sm">
+                                <div className="flex justify-between"><span className="text-slate-600 font-medium">Total Trips Completed</span><span className="font-bold text-slate-800">{selectedBill.trips}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-600 font-medium">Rent / Day (Applied)</span><span className="font-bold text-slate-800">{formatCurrency(selectedBill.rentPerDay)}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-600 font-medium">Days Worked</span><span className="font-bold text-slate-800">{selectedBill.daysWorked}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-600 font-medium">Weekly Rent Deduction</span><span className="font-bold text-rose-600">- {formatCurrency(selectedBill.rentTotal)}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-600 font-medium">Fuel Advances</span><span className="font-bold text-rose-600">- {formatCurrency(selectedBill.fuel)}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-600 font-medium">Wallet Earnings (Weekly)</span><span className="font-bold text-emerald-600">+ {formatCurrency(selectedBill.wallet)}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-600 font-medium">Rental Collection</span><span className="font-bold text-emerald-600">+ {formatCurrency(selectedBill.collection)}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-600 font-medium">Previous Dues/Credit</span><span className="font-bold text-slate-800">{formatCurrency(selectedBill.overdue)}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-600 font-medium">Adjustments</span><span className="font-bold text-slate-800">{formatCurrency(selectedBill.adjustments)}</span></div>
+                            </div>
+                            <div className="mt-6 bg-slate-100 p-4 rounded-xl flex justify-between items-center border-l-4 border-slate-800">
+                                <span className="text-sm font-bold text-slate-700 uppercase">Net Payout</span>
+                                <span className="text-2xl font-black text-slate-900">{formatCurrency(selectedBill.payout)}</span>
+                            </div>
+                        </div>
+
+                        {/* Weekly Wallet Breakdown */}
+                        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+                            <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-4">Weekly Wallet Breakdown</h4>
+                            <div className="grid grid-cols-2 gap-y-3 text-xs">
+                                <div className="text-slate-500 font-medium">Gross Earnings</div><div className="text-right font-bold text-slate-800">{formatCurrency(selectedBill.weeklyDetails.earnings)}</div>
+                                <div className="text-slate-500 font-medium">Refunds</div><div className="text-right font-bold text-slate-800">{formatCurrency(selectedBill.weeklyDetails.refund)}</div>
+                                <div className="text-slate-500 font-medium">Deductions</div><div className="text-right font-bold text-rose-600">-{formatCurrency(selectedBill.weeklyDetails.diff)}</div>
+                                <div className="text-slate-500 font-medium">Charges</div><div className="text-right font-bold text-rose-600">-{formatCurrency(selectedBill.weeklyDetails.charges)}</div>
+                                <div className="text-slate-500 font-medium">Cash (Wallet)</div><div className="text-right font-bold text-rose-600">-{formatCurrency(selectedBill.weeklyDetails.cash)}</div>
+                                <div className="col-span-2 h-px bg-slate-100 my-1"></div>
+                                <div className="text-indigo-600 font-bold">Wallet Total</div><div className="text-right font-bold text-indigo-600">{formatCurrency(selectedBill.wallet)}</div>
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="text-center text-[10px] text-slate-400 font-medium pt-4 border-t border-slate-100">
+                            System Generated Bill • Encho Cabs
+                        </div>
+                   </div>
+
+                   <div className="p-5 border-t border-slate-100 bg-slate-50 flex gap-3 sticky bottom-0 z-10">
+                       <button onClick={() => downloadBill(selectedBill)} className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2">
+                           <Download size={18} /> Download PDF
+                       </button>
+                   </div>
+               </div>
+           </div>
+       )}
     </div>
   );
 };

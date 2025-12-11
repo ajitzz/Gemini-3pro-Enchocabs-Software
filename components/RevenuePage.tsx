@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { storageService } from '../services/storageService';
-import { CompanyWeeklySummary, DailyEntry, WeeklyWallet } from '../types';
+import { CompanyWeeklySummary, DailyEntry, WeeklyWallet, RentalSlab } from '../types';
 import { Calculator, AlertTriangle, CheckCircle, TrendingUp, TrendingDown, DollarSign, Wallet, ShieldCheck, ShieldAlert, Calendar, RefreshCcw, ArrowRight, Filter, ChevronRight, History, Layers, ChevronDown } from 'lucide-react';
 
 // --- Types for Internal Calculations ---
@@ -39,6 +39,7 @@ const RevenuePage: React.FC = () => {
   const [rawSummaries, setRawSummaries] = useState<CompanyWeeklySummary[]>([]);
   const [dailyEntries, setDailyEntries] = useState<DailyEntry[]>([]);
   const [weeklyWallets, setWeeklyWallets] = useState<WeeklyWallet[]>([]);
+  const [rentalSlabs, setRentalSlabs] = useState<RentalSlab[]>([]);
 
   // Selection State
   const [selectionMode, setSelectionMode] = useState<'SINGLE' | 'RANGE'>('SINGLE');
@@ -54,16 +55,18 @@ const RevenuePage: React.FC = () => {
 
   const loadData = async () => {
     setLoading(true);
-    const [s, d, w] = await Promise.all([
+    const [s, d, w, r] = await Promise.all([
       storageService.getCompanySummaries(),
       storageService.getDailyEntries(),
       storageService.getWeeklyWallets(),
+      storageService.getDriverRentalSlabs()
     ]);
     const sortedSummaries = s.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
     
     setRawSummaries(sortedSummaries);
     setDailyEntries(d);
     setWeeklyWallets(w);
+    setRentalSlabs(r.sort((a,b) => a.minTrips - b.minTrips));
     
     // Default to latest week
     if (sortedSummaries.length > 0) {
@@ -98,22 +101,56 @@ const RevenuePage: React.FC = () => {
       const totalRent = vehicleRent + companyWallet;
       const otherHeadSections = currentOs - totalRent;
 
-      // Inputs from Daily Entries (Revenue)
-      const driversPayments = dailyEntries
-        .filter(d => {
+      // Inputs from Daily Entries + Weekly Wallets (Drivers Revenue)
+      const relevantDaily = dailyEntries.filter(d => {
           const dt = new Date(d.date);
           return dt >= startDate && dt <= endDate;
-        })
-        .reduce((sum, d) => sum + d.rent, 0);
-
-      // Inputs from Weekly Wallets
+      });
+      
+      const driversInWeek = Array.from(new Set(relevantDaily.map(d => d.driver)));
       const relevantWallets = weeklyWallets.filter(w => w.weekStartDate === summary.startDate);
-      const driversWalletRaw = relevantWallets.reduce((sum, w) => sum + w.walletWeek, 0);
+
+      let driversPayments = 0; // Total Rent Collected
+
+      // Calculate Driver Payments using centralized logic for consistency
+      driversInWeek.forEach(driver => {
+          const wallet = relevantWallets.find(w => w.driver === driver);
+          const driverDaily = relevantDaily.filter(d => d.driver === driver);
+          
+          if (wallet) {
+              // Priority: Manual Override -> Avg Daily -> Slab -> 0
+              const trips = wallet.trips;
+              const slab = rentalSlabs.find(s => trips >= s.minTrips && (s.maxTrips === null || trips <= s.maxTrips));
+              
+              let rentRate = 0;
+              if (wallet.rentOverride !== undefined && wallet.rentOverride !== null) {
+                  rentRate = wallet.rentOverride;
+              } else if (driverDaily.length > 0) {
+                  rentRate = driverDaily.reduce((sum, d) => sum + d.rent, 0) / driverDaily.length;
+              } else {
+                  rentRate = slab ? slab.rentAmount : 0;
+              }
+
+              const days = (wallet.daysWorkedOverride !== undefined && wallet.daysWorkedOverride !== null)
+                  ? wallet.daysWorkedOverride
+                  : driverDaily.length;
+
+              driversPayments += (rentRate * days);
+          } else {
+              // Fallback to raw sum if no bill generated
+              driversPayments += driverDaily.reduce((sum, d) => sum + d.rent, 0);
+          }
+      });
+
+      // Inputs from Weekly Wallets (Wallet Week Sum)
+      // Wallet Raw should effectively be "Wallet Week" + "Adjustments" if we treat adjustments as credits to driver
+      const driversWalletRaw = relevantWallets.reduce((sum, w) => sum + w.walletWeek + (w.adjustments || 0), 0);
       const totalCharges = relevantWallets.reduce((sum, w) => sum + w.charges, 0);
-      const driversWalletAdjusted = driversWalletRaw + totalCharges;
+      
+      // Drivers Adjusted for Fraud Check
+      const driversWalletAdjusted = driversWalletRaw + totalCharges; 
 
       // Profit / Loss Logic
-      // Formula: Income (Drivers Payments) - Expenses (Wallet Payouts + Current O/S + Fixed Rent)
       const profitLoss = driversPayments - driversWalletRaw - currentOs - ROOM_RENT_PER_WEEK;
 
       // Validations
@@ -144,7 +181,7 @@ const RevenuePage: React.FC = () => {
         fraudCheckDiff
       };
     });
-  }, [rawSummaries, dailyEntries, weeklyWallets]);
+  }, [rawSummaries, dailyEntries, weeklyWallets, rentalSlabs]);
 
   // --- 2. SELECTION LOGIC ---
   const activeWeeks = useMemo(() => {
@@ -196,8 +233,6 @@ const RevenuePage: React.FC = () => {
     const weeksCount = activeWeeks.length;
     const totalRoomRent = ROOM_RENT_PER_WEEK * weeksCount;
     
-    // Strict Net Result Calculation for Display
-    // Revenue - Wallet - OS - RoomRent
     const strictProfit = base.driversPayments - base.driversWalletRaw - base.currentOs - totalRoomRent;
 
     return {
@@ -205,7 +240,6 @@ const RevenuePage: React.FC = () => {
         weeksCount,
         totalRoomRent,
         strictProfit,
-        // For aggregation, we check if the net difference is significant over the period
         isWalletSafe: Math.abs(base.fraudCheckDiff) < (100 * weeksCount)
     };
   }, [activeWeeks]);
@@ -412,7 +446,7 @@ const RevenuePage: React.FC = () => {
                                </div>
                                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
                                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Driver Wallet</p>
-                                  <p className="text-xs text-slate-400 mb-2">Net Balance (Raw)</p>
+                                  <p className="text-xs text-slate-400 mb-2">Net Balance (With Adj)</p>
                                   <p className="text-xl font-bold text-slate-800">{formatCurrency(consolidatedStats.driversWalletRaw)}</p>
                                </div>
                             </div>

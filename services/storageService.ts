@@ -1,28 +1,20 @@
+
 import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping, ManagerAccess, AdminAccess } from '../types';
 
 // logic: Use local proxy in dev (npm run dev), use Render URL in production (Vercel)
-// We check for Vite's import.meta.env.DEV safely, and fallback to window location check for localhost
-// Cast import.meta to any to avoid TypeScript errors if vite/client types are missing
 const isLocal = ((import.meta as any).env && (import.meta as any).env.DEV) || 
                 (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'));
 
 const getApiBase = () => {
     if (isLocal) return '/api';
-    
-    // Check for Environment Variable set in Vercel
     const env = (import.meta as any).env;
     if (env && env.VITE_API_URL) {
-        // Remove trailing slash if present to avoid double slashes
         return env.VITE_API_URL.replace(/\/$/, '');
     }
-    
-    // Fallback Default (Render Backend)
     return 'https://enchocabs-software-orginal-gemini3pro-1.onrender.com/api';
 };
 
 const API_BASE = getApiBase();
-
-console.log("Current API Base:", API_BASE); // Debugging log
 
 const api = {
   get: async (endpoint: string) => {
@@ -31,19 +23,13 @@ const api = {
       if (!response.ok) {
         const text = await response.text();
         let msg = `API Error ${response.status}: ${response.statusText}`;
-        try {
-            const json = JSON.parse(text);
-            if(json.error) msg = json.error;
-        } catch(e) {}
+        try { const json = JSON.parse(text); if(json.error) msg = json.error; } catch(e) {}
         throw new Error(msg);
       }
       return response.json();
     } catch (error: any) {
       console.error(`API GET Error (${endpoint}):`, error);
-      const msg = error.message === 'Failed to fetch' || error.message.includes('Unexpected token')
-        ? `Network/Server Error: Backend unreachable. Check if server is running and DB is connected.` 
-        : error.message;
-      throw new Error(msg);
+      throw new Error(error.message);
     }
   },
   post: async (endpoint: string, data: any) => {
@@ -56,273 +42,108 @@ const api = {
       if (!response.ok) {
         const text = await response.text();
         let msg = `API Error ${response.status}: ${response.statusText}`;
-        try {
-            const json = JSON.parse(text);
-            if(json.error) msg = json.error;
-        } catch(e) {}
+        try { const json = JSON.parse(text); if(json.error) msg = json.error; } catch(e) {}
         throw new Error(msg);
       }
       return response.json();
     } catch (error: any) {
       console.error(`API POST Error (${endpoint}):`, error);
-      const msg = error.message === 'Failed to fetch' || error.message.includes('Unexpected token')
-        ? `Network/Server Error: Backend unreachable. Check if server is running and DB is connected.` 
-        : error.message;
-      throw new Error(msg);
+      throw new Error(error.message);
     }
   },
   delete: async (endpoint: string) => {
-    const url = `${API_BASE}${endpoint}`;
-    console.log(`DELETE request to: ${url}`); // Debug log
     try {
-      const response = await fetch(url, { method: 'DELETE' });
-      if (!response.ok) {
-        const text = await response.text();
-        let msg = `API Error ${response.status}: ${response.statusText}`;
-        try {
-            const json = JSON.parse(text);
-            if(json.error) msg = json.error;
-        } catch(e) {}
-        throw new Error(msg);
-      }
+      const response = await fetch(`${API_BASE}${endpoint}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error(`API Error ${response.status}`);
       return response.json();
     } catch (error: any) {
       console.error(`API DELETE Error (${endpoint}):`, error);
-      const msg = error.message === 'Failed to fetch' 
-        ? `Network/Server Error: Backend unreachable. Check if server is running and DB is connected.` 
-        : error.message;
-      throw new Error(msg);
+      throw new Error(error.message);
     }
   }
 };
 
-export const storageService = {
-  // --- Daily Entries ---
-  getDailyEntries: async (): Promise<DailyEntry[]> => {
-    return api.get('/daily-entries');
-  },
-
-  saveDailyEntry: async (entry: DailyEntry): Promise<DailyEntry> => {
-    return api.post('/daily-entries', entry);
-  },
-
-  saveDailyEntriesBulk: async (newEntries: DailyEntry[]): Promise<void> => {
-    return api.post('/daily-entries/bulk', newEntries);
-  },
-
-  deleteDailyEntry: async (id: string): Promise<void> => {
-    return api.delete(`/daily-entries/${id}`);
-  },
-
-  // --- Weekly Wallets ---
-  getWeeklyWallets: async (): Promise<WeeklyWallet[]> => {
-    return api.get('/weekly-wallets');
-  },
-
-  saveWeeklyWallet: async (wallet: WeeklyWallet): Promise<WeeklyWallet> => {
-    return api.post('/weekly-wallets', wallet);
-  },
-
-  saveWeeklyWalletsBulk: async (newWallets: WeeklyWallet[]): Promise<void> => {
-    // Backend doesn't explicitly have bulk for wallets, so looping parallel
-    await Promise.all(newWallets.map(w => api.post('/weekly-wallets', w)));
-  },
-
-  deleteWeeklyWallet: async (id: string): Promise<void> => {
-    return api.delete(`/weekly-wallets/${id}`);
-  },
-
-  // --- Drivers ---
-  getDrivers: async (): Promise<Driver[]> => {
-    return api.get('/drivers');
-  },
-
-  saveDriver: async (driver: Driver): Promise<Driver> => {
-    return api.post('/drivers', driver);
-  },
-
-  deleteDriver: async (id: string): Promise<void> => {
-    return api.delete(`/drivers/${id}`);
-  },
-
-  // --- Manager Access ---
-  getManagerAccess: async (): Promise<ManagerAccess[]> => {
-    return api.get('/manager-access');
-  },
-
-  saveManagerAccess: async (access: ManagerAccess): Promise<void> => {
-    return api.post('/manager-access', access);
-  },
-
-  // --- Admin Access ---
-  getAuthorizedAdmins: async (): Promise<AdminAccess[]> => {
-    return api.get('/admin-access');
-  },
-
-  addAuthorizedAdmin: async (admin: AdminAccess): Promise<void> => {
-    return api.post('/admin-access', admin);
-  },
-
-  removeAuthorizedAdmin: async (email: string): Promise<void> => {
-    return api.delete(`/admin-access/${email}`);
-  },
-
-  // --- Shifts ---
-  getDriverShifts: async (): Promise<DriverShiftRecord[]> => {
-    return api.get('/shifts');
-  },
-
-  saveDriverShift: async (shift: DriverShiftRecord): Promise<DriverShiftRecord> => {
-    return api.post('/shifts', shift);
-  },
-
-  // --- Leaves ---
-  getLeaves: async (): Promise<LeaveRecord[]> => {
-    return api.get('/leaves');
-  },
-
-  saveLeave: async (leave: LeaveRecord): Promise<LeaveRecord> => {
-    return api.post('/leaves', leave);
-  },
-  
-  deleteLeave: async (id: string): Promise<void> => {
-    return api.delete(`/leaves/${id}`);
-  },
-
-  // --- Assets (QR & Vehicles) ---
-  getAssets: async (): Promise<AssetMaster> => {
-    return api.get('/assets');
-  },
-
-  saveAssets: async (assets: AssetMaster): Promise<AssetMaster> => {
-    // API expects separated structure in body, sends back success
-    await api.post('/assets', assets);
-    return assets;
-  },
-
-  // --- Rental Slabs ---
-  getCompanyRentalSlabs: async (): Promise<RentalSlab[]> => {
-    const data = await api.get('/rental-slabs/company');
-    if (data.length === 0) {
-        // Return defaults if DB empty to maintain behavior
-        return [
-            { id: '1', minTrips: 0, maxTrips: 64, rentAmount: 950, notes: 'Base rent' },
-            { id: '2', minTrips: 65, maxTrips: 79, rentAmount: 710, notes: 'Reduced rent' },
-            { id: '3', minTrips: 80, maxTrips: 94, rentAmount: 600, notes: 'Incentive rent' },
-            { id: '4', minTrips: 95, maxTrips: 109, rentAmount: 470, notes: 'Tier 4' },
-            { id: '5', minTrips: 110, maxTrips: 124, rentAmount: 380, notes: 'Tier 5' },
-            { id: '6', minTrips: 125, maxTrips: null, rentAmount: 260, notes: 'Lowest rent' }
-        ];
-    }
-    return data;
-  },
-
-  saveCompanyRentalSlabs: async (slabs: RentalSlab[]): Promise<void> => {
-    return api.post('/rental-slabs/company', slabs);
-  },
-
-  getDriverRentalSlabs: async (): Promise<RentalSlab[]> => {
-    const data = await api.get('/rental-slabs/driver');
-    if (data.length === 0) {
-        return [
-            { id: '1', minTrips: 0, maxTrips: 49, rentAmount: 957, notes: 'Base Driver Rent' },
-            { id: '2', minTrips: 50, maxTrips: 54, rentAmount: 885, notes: 'Tier 1' },
-            { id: '3', minTrips: 55, maxTrips: 59, rentAmount: 842, notes: 'Tier 2' },
-            { id: '4', minTrips: 60, maxTrips: 64, rentAmount: 772, notes: 'Tier 3' },
-            { id: '5', minTrips: 65, maxTrips: 69, rentAmount: 700, notes: 'Tier 4' },
-            { id: '6', minTrips: 70, maxTrips: null, rentAmount: 550, notes: 'Top Tier' }
-        ];
-    }
-    return data;
-  },
-
-  saveDriverRentalSlabs: async (slabs: RentalSlab[]): Promise<void> => {
-    return api.post('/rental-slabs/driver', slabs);
-  },
-  
-  // Legacy aliases
-  getRentalSlabs: async (): Promise<RentalSlab[]> => {
-      return storageService.getCompanyRentalSlabs();
-  },
-  saveRentalSlabs: async (slabs: RentalSlab[]): Promise<void> => {
-      return storageService.saveCompanyRentalSlabs(slabs);
-  },
-
-  // --- Header Mappings ---
-  getHeaderMappings: async (): Promise<HeaderMapping[]> => {
-    const data = await api.get('/header-mappings');
-    if (data.length === 0) {
-        // Return defaults if empty
-        return [
-          { internalKey: 'vehicleNumber', label: 'Vehicle Number', excelHeader: 'Vehicle Number', required: true },
-          { internalKey: 'onroadDays', label: 'Onroad Days', excelHeader: 'Onroad Days', required: true },
-          { internalKey: 'dailyRentApplied', label: 'Daily Rent Applied', excelHeader: 'Daily Rent Applied', required: true },
-          { internalKey: 'weeklyIndemnityFees', label: 'Weekly Indemnity Fees', excelHeader: 'Weekly Indemnity Fees', required: true },
-          { internalKey: 'netWeeklyLeaseRental', label: 'Net Weekly Lease Rental', excelHeader: 'Net Weekly Lease Rental', required: true },
-          { internalKey: 'performanceDay', label: 'Performance Day', excelHeader: 'Performance Day', required: false },
-          { internalKey: 'uberTrips', label: 'Uber Trips', excelHeader: 'Uber Trips', required: true },
-          { internalKey: 'totalEarning', label: 'Total Earning', excelHeader: 'Total Earning', required: true },
-          { internalKey: 'uberCashCollection', label: 'Uber Cash Collection', excelHeader: 'Uber Cash Collection', required: true },
-          { internalKey: 'toll', label: 'Toll', excelHeader: 'Toll', required: true },
-          { internalKey: 'driverSubscriptionCharge', label: 'Driver Subscription Charge', excelHeader: 'Driver subscription charge', required: true },
-          { internalKey: 'uberIncentive', label: 'Uber Incentive', excelHeader: 'Uber Incentive', required: true },
-          { internalKey: 'uberWeekOs', label: 'Uber Week O/s', excelHeader: 'Uber Week O/s', required: true },
-          { internalKey: 'olaWeekOs', label: 'OLA Week O/s', excelHeader: 'OLA Week O/s', required: false },
-          { internalKey: 'vehicleLevelAdjustment', label: 'Vehicle Level Adjustment', excelHeader: 'Vehicle Level Adjustment', required: true },
-          { internalKey: 'tds', label: 'TDS', excelHeader: 'TDS', required: true },
-          { internalKey: 'challan', label: 'Challan', excelHeader: 'Challan', required: true },
-          { internalKey: 'accident', label: 'Accident', excelHeader: 'Accident', required: true },
-          { internalKey: 'deadMile', label: 'DeadMile', excelHeader: 'DeadMile', required: true },
-          { internalKey: 'currentOs', label: 'Current O/S', excelHeader: 'Current O/S', required: true },
-        ];
-    }
-    return data;
-  },
-
-  saveHeaderMappings: async (mappings: HeaderMapping[]): Promise<void> => {
-    return api.post('/header-mappings', mappings);
-  },
-
-  // --- Company Summaries ---
-  getCompanySummaries: async (): Promise<CompanyWeeklySummary[]> => {
-    return api.get('/company-summaries');
-  },
-
-  saveCompanySummary: async (summary: CompanyWeeklySummary): Promise<CompanyWeeklySummary> => {
-    return api.post('/company-summaries', summary);
-  },
-
-  deleteCompanySummary: async (id: string): Promise<void> => {
-    return api.delete(`/company-summaries/${id}`);
-  },
-
-  // --- Aggregation (Frontend Logic Preserved) ---
-  getSummary: async (): Promise<{ driverSummaries: DriverSummary[], global: GlobalSummary }> => {
-    // Fetch raw data from API
-    const dailyEntries = await storageService.getDailyEntries();
-    const weeklyWallets = await storageService.getWeeklyWallets();
+// --- CENTRALIZED CALCULATION HELPER ---
+const calculateDriverStats = (
+    driverName: string,
+    allDaily: DailyEntry[],
+    allWallets: WeeklyWallet[],
+    sortedSlabs: RentalSlab[]
+): DriverSummary => {
+    const driverWallets = allWallets.filter(w => w.driver === driverName);
+    const driverDaily = allDaily.filter(d => d.driver === driverName);
     
-    // Aggregation Logic stays on frontend to ensure 100% calculation fidelity during migration
-    const drivers = Array.from(new Set([
-      ...dailyEntries.map(d => d.driver),
-      ...weeklyWallets.map(w => w.driver)
-    ])).sort();
+    let totalCollection = 0;
+    let totalRent = 0;
+    let totalFuel = 0;
+    let totalDue = 0;
+    let totalPayout = 0;
+    let totalWalletWeek = 0;
+    
+    const processedDailyIds = new Set<string>();
 
-    const driverSummaries: DriverSummary[] = drivers.map(driver => {
-      const driverDaily = dailyEntries.filter(d => d.driver === driver);
-      const driverWeekly = weeklyWallets.filter(w => w.driver === driver);
+    // 1. Process Billing History (Weekly Wallets) - STRICT PRIORITY
+    driverWallets.forEach(wallet => {
+        const startDate = wallet.weekStartDate;
+        const endDate = wallet.weekEndDate;
+        
+        const weekDaily = driverDaily.filter(d => {
+            if (processedDailyIds.has(d.id)) return false;
+            const date = d.date;
+            return date >= startDate && date <= endDate;
+        });
+        
+        weekDaily.forEach(d => processedDailyIds.add(d.id));
 
-      const totalCollection = driverDaily.reduce((sum, d) => sum + (d.collection || 0), 0);
-      const totalRent = driverDaily.reduce((sum, d) => sum + (d.rent || 0), 0);
-      const totalFuel = driverDaily.reduce((sum, d) => sum + (d.fuel || 0), 0);
-      const totalDue = driverDaily.reduce((sum, d) => sum + (d.due || 0), 0);
-      const totalPayout = driverDaily.reduce((sum, d) => sum + (d.payout || 0), 0); 
-      const totalWalletWeek = driverWeekly.reduce((sum, w) => sum + (w.walletWeek || 0), 0);
+        // Rent Calculation: Prioritize Wallet Override
+        const trips = wallet.trips;
+        const slab = sortedSlabs.find(s => trips >= s.minTrips && (s.maxTrips === null || trips <= s.maxTrips));
+        
+        let rentRateUsed = 0;
+        if (wallet.rentOverride !== undefined && wallet.rentOverride !== null) {
+            rentRateUsed = wallet.rentOverride;
+        } else if (weekDaily.length > 0) {
+            rentRateUsed = weekDaily.reduce((sum, d) => sum + d.rent, 0) / weekDaily.length;
+        } else {
+            rentRateUsed = slab ? slab.rentAmount : 0;
+        }
 
-      const finalTotal = totalCollection - totalRent - totalFuel + totalDue + totalWalletWeek - totalPayout;
+        const daysWorked = (wallet.daysWorkedOverride !== undefined && wallet.daysWorkedOverride !== null)
+            ? wallet.daysWorkedOverride
+            : weekDaily.length;
 
-      return {
-        driver,
+        const weeklyRentTotal = rentRateUsed * daysWorked;
+        
+        // Sum Daily Values
+        const weeklyCollection = weekDaily.reduce((sum, d) => sum + d.collection, 0);
+        const weeklyFuel = weekDaily.reduce((sum, d) => sum + d.fuel, 0);
+        const weeklyDue = weekDaily.reduce((sum, d) => sum + d.due, 0);
+        const weeklyPayout = weekDaily.reduce((sum, d) => sum + (d.payout || 0), 0);
+
+        // Accumulate
+        totalCollection += weeklyCollection;
+        totalRent += weeklyRentTotal;
+        totalFuel += weeklyFuel;
+        totalDue += weeklyDue;
+        totalPayout += weeklyPayout;
+        totalWalletWeek += (wallet.walletWeek + (wallet.adjustments || 0));
+    });
+
+    // 2. Process Remaining Daily Entries (No Bill Generated Yet)
+    driverDaily.forEach(d => {
+        if (!processedDailyIds.has(d.id)) {
+            totalCollection += d.collection;
+            totalRent += d.rent;
+            totalFuel += d.fuel;
+            totalDue += d.due;
+            totalPayout += (d.payout || 0);
+        }
+    });
+
+    const finalTotal = totalCollection - totalRent - totalFuel + totalDue + totalWalletWeek - totalPayout;
+
+    return {
+        driver: driverName,
         totalCollection,
         totalRent,
         totalFuel,
@@ -330,8 +151,130 @@ export const storageService = {
         totalPayout,
         totalWalletWeek,
         finalTotal
-      };
-    });
+    };
+};
+
+export const storageService = {
+  // --- Daily Entries ---
+  getDailyEntries: async (): Promise<DailyEntry[]> => api.get('/daily-entries'),
+  saveDailyEntry: async (entry: DailyEntry): Promise<DailyEntry> => api.post('/daily-entries', entry),
+  saveDailyEntriesBulk: async (newEntries: DailyEntry[]): Promise<void> => api.post('/daily-entries/bulk', newEntries),
+  deleteDailyEntry: async (id: string): Promise<void> => api.delete(`/daily-entries/${id}`),
+
+  // --- Weekly Wallets ---
+  getWeeklyWallets: async (): Promise<WeeklyWallet[]> => api.get('/weekly-wallets'),
+  saveWeeklyWallet: async (wallet: WeeklyWallet): Promise<WeeklyWallet> => api.post('/weekly-wallets', wallet),
+  saveWeeklyWalletsBulk: async (newWallets: WeeklyWallet[]): Promise<void> => Promise.all(newWallets.map(w => api.post('/weekly-wallets', w))).then(() => {}),
+  deleteWeeklyWallet: async (id: string): Promise<void> => api.delete(`/weekly-wallets/${id}`),
+
+  // --- Drivers ---
+  getDrivers: async (): Promise<Driver[]> => api.get('/drivers'),
+  saveDriver: async (driver: Driver): Promise<Driver> => api.post('/drivers', driver),
+  deleteDriver: async (id: string): Promise<void> => api.delete(`/drivers/${id}`),
+
+  // --- Access ---
+  getManagerAccess: async (): Promise<ManagerAccess[]> => api.get('/manager-access'),
+  saveManagerAccess: async (access: ManagerAccess): Promise<void> => api.post('/manager-access', access),
+  getAuthorizedAdmins: async (): Promise<AdminAccess[]> => api.get('/admin-access'),
+  addAuthorizedAdmin: async (admin: AdminAccess): Promise<void> => api.post('/admin-access', admin),
+  removeAuthorizedAdmin: async (email: string): Promise<void> => api.delete(`/admin-access/${email}`),
+
+  // --- Shifts & Leaves ---
+  getDriverShifts: async (): Promise<DriverShiftRecord[]> => api.get('/shifts'),
+  saveDriverShift: async (shift: DriverShiftRecord): Promise<DriverShiftRecord> => api.post('/shifts', shift),
+  getLeaves: async (): Promise<LeaveRecord[]> => api.get('/leaves'),
+  saveLeave: async (leave: LeaveRecord): Promise<LeaveRecord> => api.post('/leaves', leave),
+  deleteLeave: async (id: string): Promise<void> => api.delete(`/leaves/${id}`),
+
+  // --- Assets ---
+  getAssets: async (): Promise<AssetMaster> => api.get('/assets'),
+  saveAssets: async (assets: AssetMaster): Promise<AssetMaster> => { await api.post('/assets', assets); return assets; },
+
+  // --- Rental Slabs ---
+  getCompanyRentalSlabs: async (): Promise<RentalSlab[]> => {
+    const data = await api.get('/rental-slabs/company');
+    return data.length ? data : [
+        { id: '1', minTrips: 0, maxTrips: 64, rentAmount: 950, notes: 'Base rent' },
+        { id: '2', minTrips: 65, maxTrips: 79, rentAmount: 710, notes: 'Reduced rent' },
+        { id: '3', minTrips: 80, maxTrips: 94, rentAmount: 600, notes: 'Incentive rent' },
+        { id: '4', minTrips: 95, maxTrips: 109, rentAmount: 470, notes: 'Tier 4' },
+        { id: '5', minTrips: 110, maxTrips: 124, rentAmount: 380, notes: 'Tier 5' },
+        { id: '6', minTrips: 125, maxTrips: null, rentAmount: 260, notes: 'Lowest rent' }
+    ];
+  },
+  saveCompanyRentalSlabs: async (slabs: RentalSlab[]): Promise<void> => api.post('/rental-slabs/company', slabs),
+  getDriverRentalSlabs: async (): Promise<RentalSlab[]> => {
+    const data = await api.get('/rental-slabs/driver');
+    return data.length ? data : [
+        { id: '1', minTrips: 0, maxTrips: 49, rentAmount: 957, notes: 'Base Driver Rent' },
+        { id: '2', minTrips: 50, maxTrips: 54, rentAmount: 885, notes: 'Tier 1' },
+        { id: '3', minTrips: 55, maxTrips: 59, rentAmount: 842, notes: 'Tier 2' },
+        { id: '4', minTrips: 60, maxTrips: 64, rentAmount: 772, notes: 'Tier 3' },
+        { id: '5', minTrips: 65, maxTrips: 69, rentAmount: 700, notes: 'Tier 4' },
+        { id: '6', minTrips: 70, maxTrips: null, rentAmount: 550, notes: 'Top Tier' }
+    ];
+  },
+  saveDriverRentalSlabs: async (slabs: RentalSlab[]): Promise<void> => api.post('/rental-slabs/driver', slabs),
+  
+  // Legacy aliases
+  getRentalSlabs: async (): Promise<RentalSlab[]> => storageService.getCompanyRentalSlabs(),
+  saveRentalSlabs: async (slabs: RentalSlab[]): Promise<void> => storageService.saveCompanyRentalSlabs(slabs),
+
+  // --- Header Mappings ---
+  getHeaderMappings: async (): Promise<HeaderMapping[]> => {
+    const data = await api.get('/header-mappings');
+    return data.length ? data : [
+      { internalKey: 'vehicleNumber', label: 'Vehicle Number', excelHeader: 'Vehicle Number', required: true },
+      { internalKey: 'onroadDays', label: 'Onroad Days', excelHeader: 'Onroad Days', required: true },
+      { internalKey: 'dailyRentApplied', label: 'Daily Rent Applied', excelHeader: 'Daily Rent Applied', required: true },
+      { internalKey: 'weeklyIndemnityFees', label: 'Weekly Indemnity Fees', excelHeader: 'Weekly Indemnity Fees', required: true },
+      { internalKey: 'netWeeklyLeaseRental', label: 'Net Weekly Lease Rental', excelHeader: 'Net Weekly Lease Rental', required: true },
+      { internalKey: 'performanceDay', label: 'Performance Day', excelHeader: 'Performance Day', required: false },
+      { internalKey: 'uberTrips', label: 'Uber Trips', excelHeader: 'Uber Trips', required: true },
+      { internalKey: 'totalEarning', label: 'Total Earning', excelHeader: 'Total Earning', required: true },
+      { internalKey: 'uberCashCollection', label: 'Uber Cash Collection', excelHeader: 'Uber Cash Collection', required: true },
+      { internalKey: 'toll', label: 'Toll', excelHeader: 'Toll', required: true },
+      { internalKey: 'driverSubscriptionCharge', label: 'Driver Subscription Charge', excelHeader: 'Driver subscription charge', required: true },
+      { internalKey: 'uberIncentive', label: 'Uber Incentive', excelHeader: 'Uber Incentive', required: true },
+      { internalKey: 'uberWeekOs', label: 'Uber Week O/s', excelHeader: 'Uber Week O/s', required: true },
+      { internalKey: 'olaWeekOs', label: 'OLA Week O/s', excelHeader: 'OLA Week O/s', required: false },
+      { internalKey: 'vehicleLevelAdjustment', label: 'Vehicle Level Adjustment', excelHeader: 'Vehicle Level Adjustment', required: true },
+      { internalKey: 'tds', label: 'TDS', excelHeader: 'TDS', required: true },
+      { internalKey: 'challan', label: 'Challan', excelHeader: 'Challan', required: true },
+      { internalKey: 'accident', label: 'Accident', excelHeader: 'Accident', required: true },
+      { internalKey: 'deadMile', label: 'DeadMile', excelHeader: 'DeadMile', required: true },
+      { internalKey: 'currentOs', label: 'Current O/S', excelHeader: 'Current O/S', required: true },
+    ];
+  },
+  saveHeaderMappings: async (mappings: HeaderMapping[]): Promise<void> => api.post('/header-mappings', mappings),
+
+  // --- Company Summaries ---
+  getCompanySummaries: async (): Promise<CompanyWeeklySummary[]> => api.get('/company-summaries'),
+  saveCompanySummary: async (summary: CompanyWeeklySummary): Promise<CompanyWeeklySummary> => api.post('/company-summaries', summary),
+  deleteCompanySummary: async (id: string): Promise<void> => api.delete(`/company-summaries/${id}`),
+
+  // --- Aggregation ---
+  // Exposed for specific driver calculation (reused by Portal)
+  calculateDriverStats,
+
+  getSummary: async (): Promise<{ driverSummaries: DriverSummary[], global: GlobalSummary }> => {
+    // 1. Fetch all raw data
+    const [dailyEntries, weeklyWallets, rentalSlabs] = await Promise.all([
+        storageService.getDailyEntries(),
+        storageService.getWeeklyWallets(),
+        storageService.getDriverRentalSlabs()
+    ]);
+    const sortedSlabs = rentalSlabs.sort((a, b) => a.minTrips - b.minTrips);
+
+    const drivers = Array.from(new Set([
+      ...dailyEntries.map(d => d.driver),
+      ...weeklyWallets.map(w => w.driver)
+    ])).sort();
+
+    // 2. Use Centralized Calculation Logic
+    const driverSummaries: DriverSummary[] = drivers.map(driver => 
+        calculateDriverStats(driver, dailyEntries, weeklyWallets, sortedSlabs)
+    );
 
     const global: GlobalSummary = {
       totalCollection: driverSummaries.reduce((sum, d) => sum + d.totalCollection, 0),
