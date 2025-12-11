@@ -148,6 +148,16 @@ const DriverBillingsPage: React.FC = () => {
       return weeks.sort((a, b) => new Date(b as string).getTime() - new Date(a as string).getTime());
   }, [allBills]);
 
+  const weekOptions = useMemo(() => {
+      return availableWeeks.map((weekKey, index) => {
+           const bill = allBills.find(b => b.weekKey === weekKey);
+           return {
+               index: index,
+               label: bill ? bill.weekRange : weekKey
+           };
+      });
+  }, [availableWeeks, allBills]);
+
   const currentWeekKey = availableWeeks[currentWeekIndex];
   
   const displayedBills = useMemo(() => {
@@ -158,7 +168,12 @@ const DriverBillingsPage: React.FC = () => {
   }, [allBills, currentWeekKey, filterDriver]);
 
   // Get display range label
-  const currentWeekRange = displayedBills.length > 0 ? displayedBills[0].weekRange : currentWeekKey;
+  const currentWeekRange = displayedBills.length > 0 ? displayedBills[0].weekRange : (
+      // Fallback for when there are no bills but we have a key (unlikely given derivation)
+      currentWeekKey ? 
+      `${currentWeekKey.split('-').reverse().join('-')} (Empty)` : 
+      ''
+  );
 
   const goToPreviousWeek = () => {
       if (currentWeekIndex < availableWeeks.length - 1) {
@@ -507,15 +522,30 @@ const DriverBillingsPage: React.FC = () => {
                             <ChevronLeft size={24} />
                         </button>
                         
-                        <div className="px-4 text-center flex-1">
+                        <div className="px-4 text-center flex-1 relative group cursor-pointer">
                             {currentWeekKey ? (
-                                <div className="flex flex-col items-center">
-                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Billing Period</span>
-                                    <span className="text-base md:text-lg font-bold text-slate-800 flex items-center justify-center gap-2">
-                                        <Calendar size={18} className="text-indigo-500 mb-0.5"/>
-                                        {currentWeekRange}
-                                    </span>
-                                </div>
+                                <>
+                                    <div className="flex flex-col items-center pointer-events-none">
+                                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Billing Period</span>
+                                        <span className="text-base md:text-lg font-bold text-slate-800 flex items-center justify-center gap-2 group-hover:text-indigo-600 transition-colors">
+                                            <Calendar size={18} className="text-indigo-500 mb-0.5"/>
+                                            {currentWeekRange}
+                                            <ChevronDown size={14} className="text-slate-300 group-hover:text-indigo-400 transition-colors" />
+                                        </span>
+                                    </div>
+                                    <select
+                                        value={currentWeekIndex}
+                                        onChange={(e) => setCurrentWeekIndex(Number(e.target.value))}
+                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer appearance-none"
+                                        title="Select Week"
+                                    >
+                                        {weekOptions.map((opt) => (
+                                            <option key={opt.index} value={opt.index}>
+                                                {opt.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </>
                             ) : (
                                 <span className="text-sm text-slate-400 font-medium">No Data Available</span>
                             )}
