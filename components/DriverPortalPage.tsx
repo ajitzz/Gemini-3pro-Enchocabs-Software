@@ -176,21 +176,21 @@ const DriverPortalPage: React.FC = () => {
        });
 
        const totalTrips = wallet.trips || 0; 
-       let rentTotal = 0;
-       let rentRateUsed = 0;
        
-       const isLowTrips = totalTrips < 70;
+       // --- NEW CALCULATION LOGIC ---
+       // 1. Find Slab
+       const slab = rentalSlabs.find(s => 
+           totalTrips >= s.minTrips && (s.maxTrips === null || totalTrips <= s.maxTrips)
+       );
+       
+       // Default to daily avg if no slab (fallback), else use Slab Rate
+       const rentRateUsed = slab ? slab.rentAmount : (relevantDaily.length > 0 ? (relevantDaily.reduce((sum, d) => sum + d.rent, 0) / relevantDaily.length) : 0);
+       
+       // 2. Count Days Worked
+       const daysWorked = relevantDaily.length;
 
-       if (isLowTrips) {
-           const slab = rentalSlabs.find(s => 
-               totalTrips >= s.minTrips && (s.maxTrips === null || totalTrips <= s.maxTrips)
-           );
-           rentRateUsed = slab ? slab.rentAmount : 950; 
-           rentTotal = rentRateUsed * 7;
-       } else {
-           rentTotal = relevantDaily.reduce((sum, d) => sum + d.rent, 0);
-           rentRateUsed = relevantDaily.length > 0 ? rentTotal / relevantDaily.length : 0; 
-       }
+       // 3. Calc Total Rent
+       const rentTotal = rentRateUsed * daysWorked;
 
        const collection = relevantDaily.reduce((sum, d) => sum + d.collection, 0);
        const fuel = relevantDaily.reduce((sum, d) => sum + d.fuel, 0);
@@ -214,6 +214,7 @@ const DriverPortalPage: React.FC = () => {
            grossEarnings,
            avgPerTrip,
            rentPerDay: rentRateUsed,
+           daysWorked: daysWorked,
            rentTotal,
            collection,
            fuel,
@@ -223,7 +224,7 @@ const DriverPortalPage: React.FC = () => {
            payout,
            dailyDetails: relevantDaily,
            weeklyDetails: wallet,
-           isAdjusted: isLowTrips 
+           isAdjusted: !!slab 
        };
     });
   }, [rawWeekly, rawDaily, rentalSlabs, viewingAsDriver]);
@@ -366,6 +367,7 @@ const DriverPortalPage: React.FC = () => {
             <div class="payment-grid">
                <div class="pg-label">Total Trips Completed</div><div class="pg-value">${bill.trips}</div>
                <div class="pg-label">Rent / Day (Applied)</div><div class="pg-value">${formatCurrency(bill.rentPerDay)}</div>
+               <div class="pg-label">Days Worked</div><div class="pg-value">${bill.daysWorked}</div>
                <div class="pg-label">Weekly Rent Deduction</div><div class="pg-value negative">- ${formatCurrency(bill.rentTotal)}</div>
                <div class="pg-label">Fuel Advances</div><div class="pg-value negative">- ${formatCurrency(bill.fuel)}</div>
                <div class="pg-label">Wallet Earnings (Weekly)</div><div class="pg-value positive">+ ${formatCurrency(bill.wallet)}</div>

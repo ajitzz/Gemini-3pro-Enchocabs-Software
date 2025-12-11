@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { DailyEntry, Driver, LeaveRecord } from '../types';
 import { storageService } from '../services/storageService';
-import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check } from 'lucide-react';
+import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check, AlertOctagon } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
 const InputField = ({ label, name, type = "text", value, onChange, placeholder, required = false, className = "", readOnly = false }: any) => (
@@ -272,6 +272,9 @@ const DailyEntryPage: React.FC = () => {
   // Column Filters State
   const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>({});
 
+  // Duplicate Warning State
+  const [duplicateWarning, setDuplicateWarning] = useState<{ active: boolean, existingId: string, payload: DailyEntry } | null>(null);
+
   // Form State
   const initialFormState: Partial<DailyEntry> = {
     date: new Date().toISOString().split('T')[0],
@@ -336,31 +339,19 @@ const DailyEntryPage: React.FC = () => {
     e.preventDefault();
     if (!formData.date || !formData.driver) return;
 
+    // Check for duplicate entry on same day
     const duplicateEntry = entries.find(entry => 
       entry.date === formData.date && 
       entry.driver === formData.driver && 
       entry.id !== editingId
     );
 
-    let finalId = formData.id || crypto.randomUUID();
-
-    if (duplicateEntry) {
-      const confirmOverride = window.confirm(
-        `Warning:\n\nDriver "${formData.driver}" already has an entry for ${formData.date}.\n\nDo you want to OVERWRITE the existing data?`
-      );
-      if (!confirmOverride) return;
-      
-      if (editingId && editingId !== duplicateEntry.id) {
-         await storageService.deleteDailyEntry(editingId);
-      }
-      finalId = duplicateEntry.id;
-    }
-
     const dateObj = new Date(formData.date);
     const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'long' });
 
+    // Use existing ID if editing, otherwise generate new one (but will be overridden if duplicate exists)
     const newEntry: DailyEntry = {
-      id: finalId,
+      id: formData.id || crypto.randomUUID(),
       date: formData.date,
       day: dayName,
       vehicle: formData.vehicle || 'Unknown',
@@ -370,10 +361,19 @@ const DailyEntryPage: React.FC = () => {
       collection: Number(formData.collection),
       fuel: Number(formData.fuel),
       due: Number(formData.due),
-      payout: Number(formData.payout), // New field
+      payout: Number(formData.payout), 
       qrCode: formData.qrCode,
       notes: formData.notes
     };
+
+    if (duplicateEntry) {
+      setDuplicateWarning({
+        active: true,
+        existingId: duplicateEntry.id,
+        payload: newEntry
+      });
+      return;
+    }
 
     await storageService.saveDailyEntry(newEntry);
     
@@ -381,6 +381,34 @@ const DailyEntryPage: React.FC = () => {
       resetForm(); 
     } else {
       resetFormAfterSave(formData.date);
+    }
+    loadData();
+  };
+
+  const handleOverrideConfirm = async () => {
+    if (!duplicateWarning) return;
+
+    // If we are overriding, we are essentially updating the *existing* duplicate entry
+    // with the values from our form.
+    const entryToSave = {
+        ...duplicateWarning.payload,
+        id: duplicateWarning.existingId // Force ID to match existing
+    };
+
+    // Edge case: If we were "Editing" a different entry (Entry A) and changed its date/driver
+    // to clash with Entry B, and chose to Override, we are essentially merging A into B.
+    // So we should delete A to avoid duplicates, and update B.
+    if (editingId && editingId !== duplicateWarning.existingId) {
+       await storageService.deleteDailyEntry(editingId);
+    }
+
+    await storageService.saveDailyEntry(entryToSave);
+    setDuplicateWarning(null);
+    
+    if (editingId) {
+        resetForm();
+    } else {
+        resetFormAfterSave(entryToSave.date);
     }
     loadData();
   };
@@ -605,6 +633,39 @@ const DailyEntryPage: React.FC = () => {
           </div>
         </form>
       </div>
+
+      {/* DUPLICATE WARNING MODAL */}
+      {duplicateWarning && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden ring-4 ring-amber-50">
+                  <div className="bg-amber-50 p-6 border-b border-amber-100 flex items-center gap-3">
+                      <div className="bg-white p-2 rounded-full text-amber-500 shadow-sm"><AlertOctagon size={28} /></div>
+                      <div>
+                          <h3 className="font-bold text-amber-900 text-lg">Duplicate Entry</h3>
+                      </div>
+                  </div>
+                  <div className="p-6">
+                      <p className="text-slate-600 font-medium leading-relaxed mb-4">
+                          Driver <strong>{duplicateWarning.payload.driver}</strong> already has a record for <strong>{duplicateWarning.payload.date.split('-').reverse().join('-')}</strong>.
+                      </p>
+                      <div className="flex gap-3">
+                          <button 
+                            onClick={() => setDuplicateWarning(null)}
+                            className="flex-1 py-3 border border-slate-200 text-slate-600 rounded-xl font-bold hover:bg-slate-50 transition-colors"
+                          >
+                              Cancel
+                          </button>
+                          <button 
+                            onClick={handleOverrideConfirm}
+                            className="flex-1 py-3 bg-amber-500 text-white rounded-xl font-bold hover:bg-amber-600 shadow-lg shadow-amber-500/20 transition-colors"
+                          >
+                              Override
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
 
       {/* Global Filter Bar */}
       <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row gap-5 items-center justify-between">

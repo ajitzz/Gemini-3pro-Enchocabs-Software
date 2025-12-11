@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { WeeklyWallet, Driver } from '../types';
 import { storageService } from '../services/storageService';
-import { Plus, Trash2, Search, Edit2, X, ChevronDown, Wallet, TrendingUp, TrendingDown, Calendar, ArrowRight } from 'lucide-react';
+import { Plus, Trash2, Search, Edit2, X, ChevronDown, Wallet, TrendingUp, TrendingDown, Calendar, ArrowRight, AlertOctagon } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
 const InputField = ({ label, name, type = "text", value, onChange, placeholder, required = false, className = "", icon: Icon }: any) => (
@@ -31,6 +31,9 @@ const WeeklyWalletPage: React.FC = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [filterDriver, setFilterDriver] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
+  
+  // Duplicate Warning State
+  const [duplicateWarning, setDuplicateWarning] = useState<{ active: boolean, existingId: string, payload: WeeklyWallet } | null>(null);
 
   // Helper to get Monday of the week for a given date
   const getMonday = (d: Date) => {
@@ -128,6 +131,13 @@ const WeeklyWalletPage: React.FC = () => {
 
     const range = getWeekRange(selectedDate);
     
+    // Check for Duplicate
+    const duplicate = wallets.find(w => 
+        w.driver === formData.driver && 
+        w.weekStartDate === range.start && 
+        w.id !== editingId
+    );
+
     const newWallet: WeeklyWallet = {
       id: formData.id || crypto.randomUUID(),
       weekStartDate: range.start,
@@ -143,9 +153,32 @@ const WeeklyWalletPage: React.FC = () => {
       notes: formData.notes
     };
 
+    if (duplicate) {
+        setDuplicateWarning({
+            active: true,
+            existingId: duplicate.id,
+            payload: newWallet
+        });
+        return;
+    }
+
     await storageService.saveWeeklyWallet(newWallet);
     resetForm();
     loadData();
+  };
+
+  const handleOverrideConfirm = async () => {
+      if (!duplicateWarning) return;
+
+      const walletToSave = {
+          ...duplicateWarning.payload,
+          id: duplicateWarning.existingId // Overwrite existing ID
+      };
+
+      await storageService.saveWeeklyWallet(walletToSave);
+      setDuplicateWarning(null);
+      resetForm();
+      loadData();
   };
 
   const handleEdit = (wallet: WeeklyWallet) => {
@@ -311,6 +344,39 @@ const WeeklyWalletPage: React.FC = () => {
               </div>
            </form>
         </div>
+      )}
+
+      {/* DUPLICATE WARNING MODAL */}
+      {duplicateWarning && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden ring-4 ring-amber-50">
+                  <div className="bg-amber-50 p-6 border-b border-amber-100 flex items-center gap-3">
+                      <div className="bg-white p-2 rounded-full text-amber-500 shadow-sm"><AlertOctagon size={28} /></div>
+                      <div>
+                          <h3 className="font-bold text-amber-900 text-lg">Duplicate Week</h3>
+                      </div>
+                  </div>
+                  <div className="p-6">
+                      <p className="text-slate-600 font-medium leading-relaxed mb-4">
+                          Driver <strong>{duplicateWarning.payload.driver}</strong> already has a wallet entry for the week starting <strong>{duplicateWarning.payload.weekStartDate.split('-').reverse().join('-')}</strong>.
+                      </p>
+                      <div className="flex gap-3">
+                          <button 
+                            onClick={() => setDuplicateWarning(null)}
+                            className="flex-1 py-3 border border-slate-200 text-slate-600 rounded-xl font-bold hover:bg-slate-50 transition-colors"
+                          >
+                              Cancel
+                          </button>
+                          <button 
+                            onClick={handleOverrideConfirm}
+                            className="flex-1 py-3 bg-amber-500 text-white rounded-xl font-bold hover:bg-amber-600 shadow-lg shadow-amber-500/20 transition-colors"
+                          >
+                              Override
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
       )}
 
       {/* Filters */}

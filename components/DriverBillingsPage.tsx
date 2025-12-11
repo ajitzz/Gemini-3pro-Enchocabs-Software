@@ -79,25 +79,20 @@ const DriverBillingsPage: React.FC = () => {
 
        const totalTrips = wallet.trips; 
        
-       let rentTotal = 0;
-       let rentRateUsed = 0;
-       // Updated logic: if < 70, use slab. 70+ uses actual daily sum or high slab?
-       // Prompt said "if trip total ... is below 70 keep the rent is based on Driver Rental Reference else take the rent of the Daily Entries"
-       // New Driver Slab has 70+ tier. 
-       // I will stick to the prompt's explicit logic: < 70 -> Slab, >= 70 -> Daily Entries Actual Sum.
+       // --- NEW CALCULATION LOGIC ---
+       // 1. Find the Slab Rate based on Total Trips
+       const slab = rentalSlabs.find(s => 
+           totalTrips >= s.minTrips && (s.maxTrips === null || totalTrips <= s.maxTrips)
+       );
        
-       const isLowTrips = totalTrips < 70;
+       // Default to 0 if no slab matches (though slabs should cover all ranges), or fallback to avg of daily entries if absolutely necessary
+       const rentRateUsed = slab ? slab.rentAmount : (relevantDaily.length > 0 ? (relevantDaily.reduce((sum, d) => sum + d.rent, 0) / relevantDaily.length) : 0);
+       
+       // 2. Count Days Worked (Number of Daily Entries)
+       const daysWorked = relevantDaily.length;
 
-       if (isLowTrips) {
-           const slab = rentalSlabs.find(s => 
-               totalTrips >= s.minTrips && (s.maxTrips === null || totalTrips <= s.maxTrips)
-           );
-           rentRateUsed = slab ? slab.rentAmount : 950; 
-           rentTotal = rentRateUsed * 7;
-       } else {
-           rentTotal = relevantDaily.reduce((sum, d) => sum + d.rent, 0);
-           rentRateUsed = relevantDaily.length > 0 ? rentTotal / relevantDaily.length : 0; 
-       }
+       // 3. Calculate Total Rent: Slab Rate * Days Worked
+       const rentTotal = rentRateUsed * daysWorked;
 
        const collection = relevantDaily.reduce((sum, d) => sum + d.collection, 0);
        const fuel = relevantDaily.reduce((sum, d) => sum + d.fuel, 0);
@@ -115,6 +110,7 @@ const DriverBillingsPage: React.FC = () => {
            qrCode: relevantDaily[0]?.qrCode || 'N/A',
            trips: totalTrips,
            rentPerDay: rentRateUsed,
+           daysWorked: daysWorked, // Added for context if needed
            rentTotal,
            collection,
            fuel,
@@ -222,7 +218,8 @@ const DriverBillingsPage: React.FC = () => {
             <div class="summary-grid">
                <div class="label">Total Trips</div><div class="value">${bill.trips}</div>
                <div class="label">Rent / Day (Applied)</div><div class="value">${formatCurrency(bill.rentPerDay)}</div>
-               <div class="label">Weekly Rent Applied</div><div class="value negative">- ${formatCurrency(bill.rentTotal)}</div>
+               <div class="label">Days Worked</div><div class="value">${bill.daysWorked}</div>
+               <div class="label">Total Rent (${formatCurrency(bill.rentPerDay)} × ${bill.daysWorked})</div><div class="value negative">- ${formatCurrency(bill.rentTotal)}</div>
                <div class="label">Fuel Advances</div><div class="value negative">- ${formatCurrency(bill.fuel)}</div>
                <div class="label">Wallet Earnings (Weekly)</div><div class="value positive">+ ${formatCurrency(bill.wallet)}</div>
                <div class="label">Rental Collection</div><div class="value positive">+ ${formatCurrency(bill.collection)}</div>
@@ -453,7 +450,6 @@ const DriverBillingsPage: React.FC = () => {
                                    <td className="px-6 py-4 text-slate-500">{bill!.qrCode}</td>
                                    <td className="px-6 py-4 font-bold text-center">
                                       {bill!.trips}
-                                      {bill!.trips < 70 && <span className="ml-1 text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Low</span>}
                                    </td>
                                    <td className="px-6 py-4 text-right text-slate-500">{formatCurrency(bill!.rentPerDay)}</td>
                                    <td className="px-6 py-4 text-right font-medium text-rose-600">-{formatCurrency(bill!.rentTotal)}</td>
