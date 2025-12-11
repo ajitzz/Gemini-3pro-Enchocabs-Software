@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, CheckCircle, FileSpreadsheet, XCircle, AlertTriangle, X, UserPlus, AlertOctagon, ArrowRight, Save, Play, Download, Eye } from 'lucide-react';
+import { Upload, CheckCircle, FileSpreadsheet, XCircle, AlertTriangle, X, UserPlus, AlertOctagon, ArrowRight, Save, Play, Download, Eye, RefreshCw } from 'lucide-react';
 import { storageService } from '../services/storageService';
 import { DailyEntry, WeeklyWallet, Driver, AssetMaster } from '../types';
 
@@ -17,14 +17,14 @@ const REQUIRED_DAILY_COLUMNS = [
   { field: 'rent', label: 'Rent', keys: ['Rent', 'Rental'], required: true },
   { field: 'collection', label: 'Collection', keys: ['Collection', 'Amount Collected', 'Collected'], required: false },
   { field: 'fuel', label: 'Fuel', keys: ['Fuel', 'Fuel Expense', 'Fuel Cost', 'Encho Fuel'], required: false },
-  { field: 'due', label: 'Due', keys: ['Due', 'Balance', 'Pending', 'Due Amount'], required: false },
-  { field: 'payout', label: 'Payout', keys: ['Payout', 'Pay Out', 'Paid', 'Payout Amount', 'Pay to Driver'], required: false }
+  { field: 'due', label: 'Due', keys: ['Due', 'Balance', 'Pending', 'Due Amount'], required: false },
+  { field: 'payout', label: 'Payout', keys: ['Payout', 'Pay Out', 'Paid', 'Payout Amount', 'Pay to Driver'], required: false }
 ];
 
 type ImportStatus = 'idle' | 'processing' | 'paused' | 'complete';
 
 interface ConflictState {
-  type: 'DRIVER_MISSING' | 'DUPLICATE_ENTRY' | 'BLANK_FIELDS';
+  type: 'DRIVER_MISSING' | 'DUPLICATE_ENTRY' | 'BLANK_FIELDS' | 'DRIVER_TERMINATED';
   row: any;
   rowIndex: number;
   payload?: any; 
@@ -441,10 +441,19 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
     const dateStr = mapped.date; // Already parsed
 
     // --- VALIDATION 1: DRIVER EXISTS CHECK ---
-    const driverExists = driversRef.current.some(d => d.name.toLowerCase() === driverName.toLowerCase() && !d.terminationDate);
-    if (!driverExists) {
+    // Check if driver exists AT ALL (Active or Terminated)
+    const existingDriver = driversRef.current.find(d => d.name.toLowerCase() === driverName.toLowerCase());
+    
+    if (!existingDriver) {
+      // Not found anywhere
       pauseWithConflict('DRIVER_MISSING', mapped, currentIndex, { driverName });
       return;
+    }
+
+    if (existingDriver.terminationDate) {
+       // Found but Terminated - Prompt to Reactivate
+       pauseWithConflict('DRIVER_TERMINATED', mapped, currentIndex, { driver: existingDriver });
+       return;
     }
 
     // --- VALIDATION 2: DUPLICATE ENTRY CHECK ---
@@ -531,6 +540,10 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
     // Check duplication against existing drivers before adding
     const duplicateName = driversRef.current.find(d => d.name.toLowerCase() === nameToAdd.toLowerCase());
     if (duplicateName) {
+        if (duplicateName.terminationDate) {
+             alert(`Cannot add: Driver "${duplicateName.name}" already exists but is TERMINATED.\n\nPlease close this and select 'Reactivate' instead, or use the Terminated Driver handler.`);
+             return;
+        }
         alert(`Cannot add: Driver "${duplicateName.name}" already exists.`);
         return;
     }
@@ -560,25 +573,48 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
         
         resumeImport(false); 
     } catch (e: any) {
-        alert(e.message);
+        alert(`Error adding driver: ${e.message}\n\nTip: Check if the mobile number is already used by another driver.`);
+    }
+  };
+
+  const resolveDriver_Reactivate = async () => {
+    const { driver } = currentConflict?.payload;
+    if (!driver) return;
+
+    try {
+        // Reactivate: Keep ID, clear termination date, set status active
+        const updatedDriver: Driver = {
+            ...driver,
+            terminationDate: undefined,
+            status: 'Active'
+        };
+        
+        await storageService.saveDriver(updatedDriver);
+        
+        // Update local ref
+        const updatedList = driversRef.current.map(d => d.id === driver.id ? updatedDriver : d);
+        driversRef.current = updatedList;
+        setDrivers(updatedList);
+        
+        resumeImport(false); // Retry current row now that driver is active
+    } catch (e: any) {
+        alert("Failed to reactivate: " + e.message);
     }
   };
 
   const resolveDriver_Skip = () => {
-    const driverName = currentConflict?.payload.driverName;
+    const driverName = currentConflict?.payload.driverName || currentConflict?.payload.driver?.name;
     const { queue, currentIndex } = importState;
     const row = queue[currentIndex];
     
     // Add current to skipped list
-    const skippedRow = createSkippedRow(row, currentIndex, `Driver not found: ${driverName}`);
+    const skippedRow = createSkippedRow(row, currentIndex, `Driver not found/active: ${driverName}`);
     
     setImportState(prev => ({
         ...prev,
         skippedRows: [...prev.skippedRows, skippedRow],
-        // Just skip this one row, manual skip logic simplified to row-by-row for now as per robust design
-        // Or implement loop if "Skip All" is desired
         currentIndex: prev.currentIndex + 1,
-        status: 'processing' // resume
+        status: 'processing'
     }));
     setCurrentConflict(null);
   };
@@ -804,7 +840,43 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
         </div>
       )}
 
-      {/* POPUP 2: DUPLICATE ENTRY */}
+      {/* POPUP 2: DRIVER TERMINATED */}
+      {currentConflict?.type === 'DRIVER_TERMINATED' && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden ring-4 ring-amber-50">
+              <div className="bg-amber-50 p-6 border-b border-amber-100 flex items-center gap-3">
+                 <div className="bg-white p-2 rounded-full text-amber-600 shadow-sm"><RefreshCw size={24} /></div>
+                 <div>
+                    <h3 className="font-bold text-amber-900">Driver is Terminated</h3>
+                    <p className="text-xs text-amber-700 font-medium">Import Row {currentConflict.rowIndex + 1}</p>
+                 </div>
+              </div>
+              <div className="p-6 space-y-4">
+                 <p className="text-slate-600 text-sm">
+                    The driver <span className="font-bold text-slate-900">"{currentConflict.payload.driver.name}"</span> exists but is currently marked as <span className="text-rose-600 font-bold">Terminated</span>.
+                 </p>
+                 
+                 <div className="bg-amber-50/50 p-4 rounded-xl border border-amber-100">
+                    <p className="text-sm text-amber-800 mb-3 font-medium">Would you like to reactivate this driver profile?</p>
+                    <button onClick={resolveDriver_Reactivate} className="w-full py-2.5 bg-amber-600 text-white rounded-lg text-xs font-bold hover:bg-amber-700 flex items-center justify-center gap-2 shadow-lg shadow-amber-200">
+                       <RefreshCw size={14} /> Reactivate & Resume Import
+                    </button>
+                 </div>
+
+                 <div className="grid grid-cols-2 gap-3 pt-2">
+                    <button onClick={resolveDriver_Skip} className="py-3 border border-slate-200 rounded-xl text-slate-600 text-sm font-bold hover:bg-slate-50 transition-colors">
+                       Skip Row
+                    </button>
+                    <button onClick={resolve_Terminate} className="py-3 bg-rose-100 text-rose-700 rounded-xl text-sm font-bold hover:bg-rose-200 transition-colors">
+                       Terminate Import
+                    </button>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* POPUP 3: DUPLICATE ENTRY */}
       {currentConflict?.type === 'DUPLICATE_ENTRY' && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden ring-4 ring-amber-50">
@@ -838,7 +910,7 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
         </div>
       )}
 
-      {/* POPUP 3: BLANK FIELDS */}
+      {/* POPUP 4: BLANK FIELDS */}
       {currentConflict?.type === 'BLANK_FIELDS' && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden ring-4 ring-slate-200">

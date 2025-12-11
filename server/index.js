@@ -33,9 +33,20 @@ app.post('/api/drivers', async (req, res) => {
   const idToUse = (d.id && d.id.trim().length > 0) ? d.id : uuidv4();
 
   try {
-    // Check duplication (excluding the current ID we are about to insert/update)
-    const check = await db.query('SELECT * FROM drivers WHERE (lower(name) = lower($1) OR mobile = $2) AND id != $3', [d.name, d.mobile, idToUse]);
-    if (check.rows.length > 0) return res.status(409).json({ error: "Driver name or mobile already exists" });
+    // 1. Check Name Duplication
+    const nameCheck = await db.query('SELECT * FROM drivers WHERE lower(name) = lower($1) AND id != $2', [d.name, idToUse]);
+    if (nameCheck.rows.length > 0) {
+        const existing = nameCheck.rows[0];
+        return res.status(409).json({ error: `Driver name "${d.name}" already exists (Status: ${existing.status || 'Active'}).` });
+    }
+
+    // 2. Check Mobile Duplication (Only if mobile is provided)
+    if (d.mobile && d.mobile.trim().length > 0) {
+        const mobileCheck = await db.query('SELECT * FROM drivers WHERE mobile = $1 AND id != $2', [d.mobile, idToUse]);
+        if (mobileCheck.rows.length > 0) {
+            return res.status(409).json({ error: `Mobile number "${d.mobile}" is already assigned to driver "${mobileCheck.rows[0].name}".` });
+        }
+    }
 
     // Upsert using idToUse
     const q = `
