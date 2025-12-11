@@ -232,34 +232,61 @@ app.post('/api/rental-slabs/:type', async (req, res) => {
 // --- COMPANY SUMMARIES ---
 app.get('/api/company-summaries', async (req, res) => {
   try {
-    // Fetch headers and rows then group
+    console.log("Fetching company summaries list...");
+    // 1. Fetch parent table
     const summaries = await db.query(`SELECT id, to_char(start_date, 'YYYY-MM-DD') as "startDate", to_char(end_date, 'YYYY-MM-DD') as "endDate", file_name as "fileName", imported_at as "importedAt", note FROM company_summaries`);
     
-    // For each summary, fetch rows
-    // Note: In a real high-perf app, use JSON_AGG. Keeping simple for migration fidelity.
-    const fullData = await Promise.all(summaries.rows.map(async (s) => {
-      const rows = await db.query(`
-        SELECT id, vehicle_number as "vehicleNumber", onroad_days as "onroadDays", daily_rent_applied as "dailyRentApplied", 
-        weekly_indemnity_fees as "weeklyIndemnityFees", net_weekly_lease_rental as "netWeeklyLeaseRental", 
-        performance_day as "performanceDay", uber_trips as "uberTrips", total_earning as "totalEarning", 
-        uber_cash_collection as "uberCashCollection", toll, driver_subscription_charge as "driverSubscriptionCharge", 
-        uber_incentive as "uberIncentive", uber_week_os as "uberWeekOs", ola_week_os as "olaWeekOs", 
-        vehicle_level_adjustment as "vehicleLevelAdjustment", tds, challan, accident, dead_mile as "deadMile", current_os as "currentOs"
-        FROM company_summary_rows WHERE summary_id = $1
-      `, [s.id]);
-      
-      // Cast Numerics
-      const cleanRows = rows.rows.map(r => {
-          const n = {...r};
-          ['dailyRentApplied', 'weeklyIndemnityFees', 'netWeeklyLeaseRental', 'totalEarning', 'uberCashCollection', 'toll', 'driverSubscriptionCharge', 'uberIncentive', 'uberWeekOs', 'olaWeekOs', 'vehicleLevelAdjustment', 'tds', 'challan', 'accident', 'deadMile', 'currentOs'].forEach(k => n[k] = Number(n[k]));
-          return n;
-      });
+    console.log(`Found ${summaries.rows.length} summaries. Fetching rows...`);
 
-      return { ...s, rows: cleanRows };
+    // 2. Fetch children
+    const fullData = await Promise.all(summaries.rows.map(async (s) => {
+      try {
+          const rows = await db.query(`
+            SELECT 
+                vehicle_number as "vehicleNumber", 
+                onroad_days as "onroadDays", 
+                daily_rent_applied as "dailyRentApplied", 
+                weekly_indemnity_fees as "weeklyIndemnityFees", 
+                net_weekly_lease_rental as "netWeeklyLeaseRental", 
+                performance_day as "performanceDay", 
+                uber_trips as "uberTrips", 
+                total_earning as "totalEarning", 
+                uber_cash_collection as "uberCashCollection", 
+                toll, 
+                driver_subscription_charge as "driverSubscriptionCharge", 
+                uber_incentive as "uberIncentive", 
+                uber_week_os as "uberWeekOs", 
+                ola_week_os as "olaWeekOs", 
+                vehicle_level_adjustment as "vehicleLevelAdjustment", 
+                tds, 
+                challan, 
+                accident, 
+                dead_mile as "deadMile", 
+                current_os as "currentOs"
+            FROM company_summary_rows 
+            WHERE summary_id = $1
+          `, [s.id]);
+          
+          const cleanRows = rows.rows.map(r => {
+              const n = {...r};
+              // Ensure numbers are Numbers
+              const numKeys = ['onroadDays','dailyRentApplied', 'weeklyIndemnityFees', 'netWeeklyLeaseRental', 'totalEarning', 'uberCashCollection', 'toll', 'driverSubscriptionCharge', 'uberIncentive', 'uberWeekOs', 'olaWeekOs', 'vehicleLevelAdjustment', 'tds', 'challan', 'accident', 'deadMile', 'currentOs'];
+              numKeys.forEach(k => n[k] = Number(n[k] || 0));
+              return n;
+          });
+
+          return { ...s, rows: cleanRows };
+      } catch (childErr) {
+          console.error(`Error fetching rows for summary ${s.id}:`, childErr);
+          throw childErr; // Propagate to main catch
+      }
     }));
     
     res.json(fullData);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { 
+      console.error("API GET Error (/company-summaries):", err.message);
+      res.status(500).json({ error: err.message }); 
+  }
 });
 
 app.post('/api/company-summaries', async (req, res) => {
@@ -294,6 +321,7 @@ app.post('/api/company-summaries', async (req, res) => {
     res.json(s);
   } catch (err) {
     await client.query('ROLLBACK');
+    console.error("API POST Error (/company-summaries):", err.message);
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
@@ -443,9 +471,6 @@ app.post('/api/manager-access', async (req, res) => {
   }
 });
 
-// For Vercel, export the app. For local dev, listen on port.
-if (require.main === module) {
-  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-}
-
-module.exports = app;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});

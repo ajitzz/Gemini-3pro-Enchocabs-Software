@@ -889,7 +889,7 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
               </div>
               <div className="p-6">
                  <p className="text-slate-600 text-sm mb-4">
-                    Driver <span className="font-bold text-slate-900">"{currentConflict.payload.newEntry.driver}"</span> already has an entry for <span className="font-bold text-slate-900">{currentConflict.payload.newEntry.date}</span>.
+                    Driver <span className="font-bold text-slate-900">"{currentConflict.payload.newEntry.driver}"</span> already has an entry for <span className="font-bold text-slate-900">{currentConflict.payload.newEntry.date.split('-').reverse().join('-')}</span>.
                  </p>
                  
                  <ComparisonTable oldData={currentConflict.payload.existing} newData={currentConflict.payload.newEntry} />

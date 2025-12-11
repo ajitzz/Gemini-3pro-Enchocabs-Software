@@ -8,6 +8,7 @@ declare const XLSX: any;
 
 const CompanySettlementPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null); // New Error State
   const [slabs, setSlabs] = useState<RentalSlab[]>([]);
   const [headerMappings, setHeaderMappings] = useState<HeaderMapping[]>([]);
   
@@ -50,15 +51,22 @@ const CompanySettlementPage: React.FC = () => {
 
   const loadData = async () => {
     setLoading(true);
-    const [slabData, summaryData, mappingData] = await Promise.all([
-        storageService.getCompanyRentalSlabs(), 
-        storageService.getCompanySummaries(),
-        storageService.getHeaderMappings()
-    ]);
-    setSlabs(slabData.sort((a, b) => a.minTrips - b.minTrips));
-    setSummaries(summaryData.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()));
-    setHeaderMappings(mappingData);
-    setLoading(false);
+    setLoadError(null);
+    try {
+        const [slabData, summaryData, mappingData] = await Promise.all([
+            storageService.getCompanyRentalSlabs(), 
+            storageService.getCompanySummaries(),
+            storageService.getHeaderMappings()
+        ]);
+        setSlabs(slabData.sort((a, b) => a.minTrips - b.minTrips));
+        setSummaries(summaryData.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()));
+        setHeaderMappings(mappingData);
+    } catch (err: any) {
+        console.error("Failed to load company settlement data:", err);
+        setLoadError(err.message || "Failed to load data. Please check database connection.");
+    } finally {
+        setLoading(false);
+    }
   };
 
   const updateWeekFromDate = (dateStr: string) => {
@@ -76,7 +84,11 @@ const CompanySettlementPage: React.FC = () => {
       
       const start = monday.toISOString().split('T')[0];
       const end = sunday.toISOString().split('T')[0];
-      const label = `${monday.toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric'})} – ${sunday.toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric'})}`;
+      
+      // Strict DD-MM-YYYY format
+      const startLabel = start.split('-').reverse().join('-');
+      const endLabel = end.split('-').reverse().join('-');
+      const label = `${startLabel} – ${endLabel}`;
       
       setComputedWeek({ start, end, label });
       
@@ -506,6 +518,7 @@ const CompanySettlementPage: React.FC = () => {
       alert("Weekly Summary Imported Successfully!");
   };
 
+  const formatDate = (d: string) => d ? d.split('-').reverse().join('-') : '';
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 animate-fade-in pb-20">
@@ -528,6 +541,24 @@ const CompanySettlementPage: React.FC = () => {
              <Settings size={18} /> Configure Headers
           </button>
       </div>
+
+      {loadError && (
+          <div className="bg-rose-50 border border-rose-200 rounded-xl p-6 mb-6 flex flex-col items-center text-center animate-fade-in">
+              <AlertTriangle className="text-rose-600 mb-2" size={32} />
+              <h3 className="text-lg font-bold text-rose-800">Database Connection Error</h3>
+              <p className="text-sm text-rose-600 mb-4 max-w-lg">{loadError}</p>
+              <div className="p-3 bg-white border border-rose-100 rounded-lg text-xs text-slate-500 font-mono text-left w-full max-w-2xl overflow-x-auto">
+                  <p className="font-bold mb-1">Recommended Fix:</p>
+                  <p>Run the SQL script found in the README or setup guide to ensure database schema is correct.</p>
+              </div>
+              <button 
+                onClick={loadData}
+                className="mt-4 px-6 py-2 bg-rose-600 text-white font-bold rounded-lg hover:bg-rose-700 transition-colors"
+              >
+                Retry Connection
+              </button>
+          </div>
+      )}
 
       {/* HEADER CONFIGURATION MODAL */}
       {isConfiguringHeaders && (
@@ -757,7 +788,7 @@ const CompanySettlementPage: React.FC = () => {
               <div className="space-y-4">
                   {summaries.length === 0 && <p className="text-slate-400 px-2">No history yet.</p>}
                   {summaries.map(s => {
-                      const weekLabel = `${new Date(s.startDate).toLocaleDateString('en-GB', {day: '2-digit', month: 'short'})} – ${new Date(s.endDate).toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric'})}`;
+                      const weekLabel = `${formatDate(s.startDate)} – ${formatDate(s.endDate)}`;
                       return (
                       <div key={s.id} className="bg-white p-6 rounded-xl border border-slate-100 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:shadow-md transition-shadow group">
                           <div>
@@ -804,7 +835,7 @@ const CompanySettlementPage: React.FC = () => {
                            {isEditingSummary ? 'Editing Weekly Summary' : 'Weekly Summary Details'}
                         </h3>
                         <p className="text-sm text-slate-500 mt-1">
-                           {new Date(selectedSummary.startDate).toLocaleDateString('en-GB', {day: '2-digit', month: 'short'})} – {new Date(selectedSummary.endDate).toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric'})}
+                           {formatDate(selectedSummary.startDate)} – {formatDate(selectedSummary.endDate)}
                         </p>
                     </div>
                     <div className="flex gap-2">

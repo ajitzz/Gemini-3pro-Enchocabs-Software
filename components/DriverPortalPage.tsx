@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { 
   Download, Calendar, Wallet, FileText, ChevronRight, LogOut, 
   UserCircle, TrendingUp, TrendingDown, DollarSign, MapPin, 
-  CheckCircle, AlertCircle, Eye, X, ShieldCheck, Users, ArrowLeft, Lock, ArrowRight, Gauge, BarChart3, ChevronDown, Copy
+  CheckCircle, AlertCircle, Eye, X, ShieldCheck, Users, ArrowLeft, Lock, ArrowRight, Gauge, BarChart3, ChevronDown, Copy, AlertTriangle
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -25,6 +25,7 @@ const DriverPortalPage: React.FC = () => {
   
   // View Context (Self vs Managed)
   const [viewingAsDriver, setViewingAsDriver] = useState<Driver | null>(null);
+  const [initError, setInitError] = useState<string | null>(null);
 
   // Data (Filtered for viewingAsDriver)
   const [rawDaily, setRawDaily] = useState<DailyEntry[]>([]);
@@ -43,60 +44,68 @@ const DriverPortalPage: React.FC = () => {
   }, [user]);
 
   const initializePortal = async () => {
-      // 1. Fetch Global Data needed for calculations
-      const [allDrivers, allDaily, allWeekly, slabs] = await Promise.all([
-          storageService.getDrivers(),
-          storageService.getDailyEntries(),
-          storageService.getWeeklyWallets(),
-          storageService.getDriverRentalSlabs()
-      ]);
-      setRentalSlabs(slabs.sort((a, b) => a.minTrips - b.minTrips));
+      setInitError(null);
+      try {
+          // 1. Fetch Global Data needed for calculations
+          const [allDrivers, allDaily, allWeekly, slabs] = await Promise.all([
+              storageService.getDrivers(),
+              storageService.getDailyEntries(),
+              storageService.getWeeklyWallets(),
+              storageService.getDriverRentalSlabs()
+          ]);
+          setRentalSlabs(slabs.sort((a, b) => a.minTrips - b.minTrips));
 
-      // Cache data for Admin switching capabilities
-      if (user?.role === 'admin' || user?.role === 'super_admin') {
-          setDriversList(allDrivers.sort((a, b) => a.name.localeCompare(b.name)));
-          setGlobalDaily(allDaily);
-          setGlobalWeekly(allWeekly);
-      }
-
-      // 2. Identify the Current Driver Context
-      let targetDriver: Driver | undefined;
-
-      if (user?.role === 'driver' && user.driverId) {
-          targetDriver = allDrivers.find(d => d.id === user.driverId);
-      } else if ((user?.role === 'admin' || user?.role === 'super_admin')) {
-          // Admin View: If they have a linked driver profile via email, use it.
-          // Otherwise, maybe just pick the first active one.
-          targetDriver = allDrivers.find(d => d.email === user.email);
-          
-          if (!targetDriver) {
-              // Fallback for Admin testing: Pick the first active driver to simulate
-              targetDriver = allDrivers.find(d => !d.terminationDate);
+          // Cache data for Admin switching capabilities
+          if (user?.role === 'admin' || user?.role === 'super_admin') {
+              setDriversList(allDrivers.sort((a, b) => a.name.localeCompare(b.name)));
+              setGlobalDaily(allDaily);
+              setGlobalWeekly(allWeekly);
           }
-      }
 
-      if (targetDriver) {
-          // 3. Manager Logic
-          if (targetDriver.isManager) {
-              const accessList = await storageService.getManagerAccess();
-              const myAccess = accessList.find(a => a.managerId === targetDriver!.id);
-              if (myAccess && myAccess.childDriverIds.length > 0) {
-                  const teamMembers = allDrivers.filter(d => myAccess.childDriverIds.includes(d.id));
-                  setMyTeam(teamMembers);
-                  
-                  // Calculate Team Balances
-                  const balances: Record<string, number> = {};
-                  teamMembers.forEach(member => {
-                      const memberDaily = allDaily.filter(d => d.driver === member.name);
-                      const memberWeekly = allWeekly.filter(w => w.driver === member.name);
-                      balances[member.id] = calculateNetBalance(memberDaily, memberWeekly);
-                  });
-                  setTeamBalances(balances);
+          // 2. Identify the Current Driver Context
+          let targetDriver: Driver | undefined;
+
+          if (user?.role === 'driver' && user.driverId) {
+              targetDriver = allDrivers.find(d => d.id === user.driverId);
+          } else if ((user?.role === 'admin' || user?.role === 'super_admin')) {
+              // Admin View: If they have a linked driver profile via email, use it.
+              // Otherwise, maybe just pick the first active one.
+              targetDriver = allDrivers.find(d => d.email === user.email);
+              
+              if (!targetDriver) {
+                  // Fallback for Admin testing: Pick the first active driver to simulate
+                  targetDriver = allDrivers.find(d => !d.terminationDate);
               }
           }
 
-          // 4. Set View
-          switchToDriverView(targetDriver, allDaily, allWeekly);
+          if (targetDriver) {
+              // 3. Manager Logic
+              if (targetDriver.isManager) {
+                  const accessList = await storageService.getManagerAccess();
+                  const myAccess = accessList.find(a => a.managerId === targetDriver!.id);
+                  if (myAccess && myAccess.childDriverIds.length > 0) {
+                      const teamMembers = allDrivers.filter(d => myAccess.childDriverIds.includes(d.id));
+                      setMyTeam(teamMembers);
+                      
+                      // Calculate Team Balances
+                      const balances: Record<string, number> = {};
+                      teamMembers.forEach(member => {
+                          const memberDaily = allDaily.filter(d => d.driver === member.name);
+                          const memberWeekly = allWeekly.filter(w => w.driver === member.name);
+                          balances[member.id] = calculateNetBalance(memberDaily, memberWeekly);
+                      });
+                      setTeamBalances(balances);
+                  }
+              }
+
+              // 4. Set View
+              switchToDriverView(targetDriver, allDaily, allWeekly);
+          } else {
+              setInitError("No driver profile found linked to this account.");
+          }
+      } catch (err: any) {
+          console.error("Portal Initialization Error:", err);
+          setInitError(err.message || "Failed to load portal data. Check connection.");
       }
   };
 
@@ -122,11 +131,15 @@ const DriverPortalPage: React.FC = () => {
   };
   
   const viewTeamMember = async (member: Driver) => {
-      const [allDaily, allWeekly] = await Promise.all([
-        storageService.getDailyEntries(),
-        storageService.getWeeklyWallets()
-      ]);
-      switchToDriverView(member, allDaily, allWeekly);
+      try {
+        const [allDaily, allWeekly] = await Promise.all([
+            storageService.getDailyEntries(),
+            storageService.getWeeklyWallets()
+        ]);
+        switchToDriverView(member, allDaily, allWeekly);
+      } catch (err) {
+          alert("Could not load team member data.");
+      }
   };
 
   // Helper Calculation
@@ -142,6 +155,11 @@ const DriverPortalPage: React.FC = () => {
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(val);
+  };
+
+  const formatDate = (dateString: string) => {
+      if(!dateString) return '-';
+      return dateString.split('-').reverse().join('-');
   };
 
   // --- 1. BILLING CALCULATION ENGINE ---
@@ -187,7 +205,7 @@ const DriverPortalPage: React.FC = () => {
 
        return {
            id: wallet.id,
-           weekRange: `${wallet.weekStartDate.split('-').reverse().join('-')} to ${wallet.weekEndDate.split('-').reverse().join('-')}`,
+           weekRange: `${formatDate(wallet.weekStartDate)} to ${formatDate(wallet.weekEndDate)}`,
            startDate: wallet.weekStartDate,
            endDate: wallet.weekEndDate,
            driver: wallet.driver,
@@ -233,13 +251,12 @@ const DriverPortalPage: React.FC = () => {
       let yearEarnings = 0;
 
       rawWeekly.forEach(w => {
-          // Strict Date Parsing to avoid UTC Timezone offsets shifting the month
           if (!w.weekEndDate) return;
           const parts = w.weekEndDate.split('-');
           if (parts.length !== 3) return;
           
           const wYear = parseInt(parts[0], 10);
-          const wMonth = parseInt(parts[1], 10) - 1; // 0-indexed for comparison with getMonth()
+          const wMonth = parseInt(parts[1], 10) - 1; 
 
           const earnings = Number(w.earnings) || 0;
           const trips = Number(w.trips) || 0;
@@ -274,7 +291,7 @@ const DriverPortalPage: React.FC = () => {
   const generateBillHTML = (bill: any) => {
       const dailyRows = bill.dailyDetails.map((d: any) => `
         <tr>
-          <td style="padding: 8px; border-bottom: 1px solid #f1f5f9;">${d.date.split('-').reverse().join('-')}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #f1f5f9;">${formatDate(d.date)}</td>
           <td style="padding: 8px; border-bottom: 1px solid #f1f5f9;">${d.driver}</td>
           <td style="padding: 8px; border-bottom: 1px solid #f1f5f9;">${d.vehicle}</td>
           <td style="padding: 8px; border-bottom: 1px solid #f1f5f9;">${d.shift}</td>
@@ -296,7 +313,7 @@ const DriverPortalPage: React.FC = () => {
               body { font-family: 'Inter', system-ui, -apple-system, sans-serif; padding: 40px; color: #1e293b; max-width: 800px; margin: 0 auto; background: white; }
               .header { text-align: center; margin-bottom: 40px; border-bottom: 1px solid #e2e8f0; padding-bottom: 20px; }
               .company-name { font-size: 28px; font-weight: 800; color: #4338ca; letter-spacing: -0.5px; }
-              .sub-company { font-size: 14px; color: #64748b; margin-top: 4px; font-weight: 500; }
+              .sub-company { font-size: 14px; color: #666; margin-top: 4px; font-weight: 500; }
               
               .meta-container { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin-bottom: 32px; display: flex; justify-content: space-between; }
               .meta-group { display: flex; flex-direction: column; gap: 4px; }
@@ -387,10 +404,37 @@ const DriverPortalPage: React.FC = () => {
   };
 
   if (!viewingAsDriver) return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-50">
-          <div className="flex flex-col items-center gap-3">
-              <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
-              <p className="text-slate-400 font-medium text-sm">Loading Driver Profile...</p>
+      <div className="flex items-center justify-center min-h-screen bg-slate-50 flex-col">
+          {initError ? (
+             <div className="mb-6 flex flex-col items-center gap-2">
+                <AlertTriangle size={48} className="text-rose-500 mb-2" />
+                <h3 className="text-lg font-bold text-slate-800">Connection Failed</h3>
+                <p className="text-sm text-rose-600 font-medium px-6 text-center max-w-md">{initError}</p>
+             </div>
+          ) : (
+             <div className="flex flex-col items-center gap-3 mb-6">
+                <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+                <p className="text-slate-400 font-medium text-sm">Loading Driver Profile...</p>
+             </div>
+          )}
+          
+          <div className="flex gap-3">
+              {user?.role !== 'driver' && (
+                 <button 
+                    onClick={returnToDashboard}
+                    className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-50 transition-colors flex items-center gap-2 shadow-sm"
+                 >
+                    <LogOut size={16} /> Exit to Admin
+                 </button>
+              )}
+              {user?.role === 'driver' && (
+                 <button 
+                    onClick={logout}
+                    className="px-5 py-2.5 bg-rose-50 text-rose-600 rounded-xl text-sm font-bold hover:bg-rose-100 transition-colors flex items-center gap-2"
+                 >
+                    <LogOut size={16} /> Sign Out
+                 </button>
+              )}
           </div>
       </div>
   );
@@ -530,47 +574,50 @@ const DriverPortalPage: React.FC = () => {
                                </div>
                                <div className="space-y-3">
                                    {myTeam.map(member => (
-                                       <div key={member.id} className="flex items-center justify-between p-3 bg-indigo-800/50 rounded-xl border border-indigo-700/50">
+                                       <div key={member.id} className="flex items-center justify-between p-3 bg-indigo-800/50 rounded-xl border border-indigo-700/50 hover:bg-indigo-700/50 transition-colors cursor-pointer" onClick={() => viewTeamMember(member)}>
                                            <div className="flex items-center gap-3">
-                                               <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center font-bold text-xs shadow-inner">
+                                               <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center font-bold text-xs text-white">
                                                    {member.name.charAt(0)}
                                                </div>
                                                <div>
-                                                   <p className="font-bold text-sm">{member.name}</p>
-                                                   <p className="text-[10px] text-indigo-300">{member.vehicle || 'No Vehicle'}</p>
+                                                   <p className="text-sm font-bold text-white">{member.name}</p>
+                                                   <p className="text-[10px] text-indigo-300">Balance: {formatCurrency(teamBalances[member.id] || 0)}</p>
                                                </div>
                                            </div>
-                                           <div className="text-right">
-                                               <p className={`text-sm font-bold ${teamBalances[member.id] < 0 ? 'text-rose-300' : 'text-emerald-300'}`}>
-                                                   {formatCurrency(teamBalances[member.id] || 0)}
-                                               </p>
-                                               <button onClick={() => viewTeamMember(member)} className="text-[10px] font-bold text-white bg-indigo-600 px-2 py-0.5 rounded mt-1 hover:bg-indigo-500">
-                                                   View Details
-                                               </button>
-                                           </div>
+                                           <ChevronRight size={16} className="text-indigo-400" />
                                        </div>
                                    ))}
                                </div>
                            </div>
+                           {/* Decorative background element */}
+                           <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-indigo-600/20 rounded-full blur-2xl pointer-events-none"></div>
                       </div>
                   )}
 
-                  {/* Performance Cards */}
-                  <div className="space-y-4">
-                      <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wide ml-1">Performance</h3>
-                      <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
-                          <div className="flex items-center gap-4">
-                              <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
-                                  <Gauge size={20}/>
-                              </div>
-                              <div>
-                                  <p className="text-xs text-slate-400 font-bold uppercase">This Year</p>
-                                  <p className="text-lg font-bold text-slate-800">{performanceStats.year.trips} Trips</p>
-                              </div>
+                  {/* Wallet Balance Card - visible for everyone */}
+                  <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                            <Wallet size={20} className="text-emerald-500"/> Wallet Overview
+                        </h3>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-4 text-center">
+                          <div className="p-4 bg-slate-50 rounded-2xl">
+                              <p className="text-xs text-slate-400 uppercase font-bold tracking-wider mb-1">Total Collection</p>
+                              <p className="text-lg font-bold text-slate-700">{formatCurrency(balanceSummary.totalCollection)}</p>
                           </div>
-                          <div className="text-right">
-                              <p className="text-sm font-bold text-slate-600">{formatCurrency(performanceStats.year.earnings)}</p>
-                              <p className="text-[10px] text-slate-400">Total Earnings</p>
+                          <div className="p-4 bg-slate-50 rounded-2xl">
+                              <p className="text-xs text-slate-400 uppercase font-bold tracking-wider mb-1">Total Fuel</p>
+                              <p className="text-lg font-bold text-amber-600">{formatCurrency(balanceSummary.totalFuel)}</p>
+                          </div>
+                          <div className="p-4 bg-slate-50 rounded-2xl">
+                              <p className="text-xs text-slate-400 uppercase font-bold tracking-wider mb-1">Vehicle Rent</p>
+                              <p className="text-lg font-bold text-slate-700">{formatCurrency(balanceSummary.totalRawRent)}</p>
+                          </div>
+                          <div className="p-4 bg-slate-50 rounded-2xl">
+                              <p className="text-xs text-slate-400 uppercase font-bold tracking-wider mb-1">Weekly Wallet</p>
+                              <p className={`text-lg font-bold ${balanceSummary.totalWallet >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatCurrency(balanceSummary.totalWallet)}</p>
                           </div>
                       </div>
                   </div>
@@ -579,42 +626,52 @@ const DriverPortalPage: React.FC = () => {
 
            {/* DAILY TAB */}
            {activeTab === 'daily' && (
-              <div className="space-y-4 animate-fade-in">
-                  {rawDaily.length === 0 ? (
-                      <div className="text-center py-12 text-slate-400 text-sm">No daily entries found.</div>
-                  ) : (
-                      rawDaily.map(d => (
-                          <div key={d.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-                              <div className="flex justify-between items-start mb-4 border-b border-slate-50 pb-3">
-                                  <div>
-                                      <p className="font-bold text-slate-800">{d.date.split('-').reverse().join('-')}</p>
-                                      <p className="text-xs text-slate-400">{d.day}</p>
+              <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden animate-fade-in">
+                  <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                      <h3 className="font-bold text-slate-800 text-sm">Recent Activity</h3>
+                      <span className="text-[10px] bg-white border border-slate-200 px-2 py-1 rounded-full text-slate-500 font-bold">{rawDaily.length} Entries</span>
+                  </div>
+                  <div className="divide-y divide-slate-50">
+                      {rawDaily.length === 0 ? (
+                          <div className="p-8 text-center text-slate-400 text-sm">No daily records found.</div>
+                      ) : (
+                          rawDaily.map(entry => (
+                              <div key={entry.id} className="p-4 hover:bg-slate-50 transition-colors">
+                                  <div className="flex justify-between items-start mb-2">
+                                      <div className="flex items-center gap-2">
+                                          <div className="bg-indigo-50 text-indigo-600 p-1.5 rounded-lg">
+                                              <Calendar size={14} />
+                                          </div>
+                                          <div>
+                                              <p className="text-sm font-bold text-slate-800">{formatDate(entry.date)}</p>
+                                              <p className="text-[10px] text-slate-400 uppercase font-medium">{entry.day.substring(0,3)} • {entry.shift}</p>
+                                          </div>
+                                      </div>
+                                      <span className="font-bold text-emerald-600 text-sm bg-emerald-50 px-2 py-1 rounded-lg">
+                                          {formatCurrency(entry.collection)}
+                                      </span>
                                   </div>
-                                  <div className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${d.shift === 'Day' ? 'bg-amber-50 text-amber-600' : 'bg-slate-800 text-slate-200'}`}>
-                                      {d.shift}
+                                  
+                                  <div className="grid grid-cols-3 gap-2 text-[10px] text-slate-500 bg-slate-50/50 p-2 rounded-lg">
+                                      <div>
+                                          <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Rent</span>
+                                          {formatCurrency(entry.rent)}
+                                      </div>
+                                      <div>
+                                          <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Fuel</span>
+                                          {formatCurrency(entry.fuel)}
+                                      </div>
+                                      <div>
+                                          <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Due</span>
+                                          <span className={entry.due !== 0 ? (entry.due > 0 ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold') : ''}>
+                                              {entry.due > 0 ? '+' : ''}{entry.due}
+                                          </span>
+                                      </div>
                                   </div>
                               </div>
-                              <div className="grid grid-cols-2 gap-y-3 text-sm">
-                                  <div>
-                                      <p className="text-[10px] text-slate-400 font-bold uppercase">Collection</p>
-                                      <p className="font-bold text-emerald-600">{formatCurrency(d.collection)}</p>
-                                  </div>
-                                  <div className="text-right">
-                                      <p className="text-[10px] text-slate-400 font-bold uppercase">Rent Deducted</p>
-                                      <p className="font-bold text-slate-700">{formatCurrency(d.rent)}</p>
-                                  </div>
-                                  <div>
-                                      <p className="text-[10px] text-slate-400 font-bold uppercase">Fuel</p>
-                                      <p className="font-bold text-rose-500">{d.fuel > 0 ? `-${formatCurrency(d.fuel)}` : '-'}</p>
-                                  </div>
-                                  <div className="text-right">
-                                      <p className="text-[10px] text-slate-400 font-bold uppercase">Due</p>
-                                      <p className={`font-bold ${d.due > 0 ? 'text-rose-500' : 'text-slate-400'}`}>{d.due}</p>
-                                  </div>
-                              </div>
-                          </div>
-                      ))
-                  )}
+                          ))
+                      )}
+                  </div>
               </div>
            )}
 

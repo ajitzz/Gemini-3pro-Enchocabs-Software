@@ -457,7 +457,8 @@ const DailyEntryPage: React.FC = () => {
         if (filterDriver && entry.driver !== filterDriver) return false;
 
         // 3. Column Specific Filters (OR logic within column, AND logic across columns)
-        for (const [key, selectedValues] of Object.entries(columnFilters)) {
+        for (const [key, val] of Object.entries(columnFilters)) {
+            const selectedValues = val as string[];
             if (selectedValues.length === 0) continue; // No filter active for this column
 
             // @ts-ignore
@@ -474,7 +475,7 @@ const DailyEntryPage: React.FC = () => {
   }, [entries, filterDateStart, filterDateEnd, filterDriver, columnFilters]);
 
   // Determine if any filter is active
-  const isAnyFilterActive = filterDateStart !== '' || filterDateEnd !== '' || filterDriver !== '' || Object.values(columnFilters).some(v => v.length > 0);
+  const isAnyFilterActive = filterDateStart !== '' || filterDateEnd !== '' || filterDriver !== '' || Object.values(columnFilters).some((v) => (v as string[]).length > 0);
 
   const clearAllFilters = () => {
       setFilterDateStart('');
@@ -691,7 +692,7 @@ const DailyEntryPage: React.FC = () => {
                 filteredEntries.map(entry => (
                   <tr key={entry.id} className="hover:bg-slate-50/80 transition-colors group">
                     <td className="px-6 py-4 text-slate-900 whitespace-nowrap font-medium">
-                      {entry.date.split('-').reverse().join('-')} <span className="text-slate-400 text-xs ml-1 font-normal">({entry.day.substring(0,3)})</span>
+                      {entry.date ? entry.date.split('-').reverse().join('-') : '-'} <span className="text-slate-400 text-xs ml-1 font-normal">({entry.day.substring(0,3)})</span>
                     </td>
                     <td className="px-6 py-4 font-medium text-slate-900">
                         {entry.driver}

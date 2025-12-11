@@ -141,9 +141,9 @@ const DriverBillingsPage: React.FC = () => {
     currentPage * itemsPerPage
   );
   
-  const uniqueWeeks = Array.from(new Set(weeklyWallets
+  const uniqueWeeks = (Array.from(new Set(weeklyWallets
     .filter(w => new Date() > new Date(w.weekEndDate))
-    .map(w => w.weekStartDate)))
+    .map(w => w.weekStartDate))) as string[])
     .sort((a: string, b: string) => new Date(b).getTime() - new Date(a).getTime());
 
   const handleEditAdjustment = (billId: string, currentVal: number) => {
