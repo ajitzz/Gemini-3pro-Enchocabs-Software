@@ -183,17 +183,22 @@ const DriverPortalPage: React.FC = () => {
            totalTrips >= s.minTrips && (s.maxTrips === null || totalTrips <= s.maxTrips)
        );
        
-       // Use average from actual entries to reflect any manual overrides in rent
-       const rentRateUsed = relevantDaily.length > 0 
-           ? relevantDaily.reduce((sum, d) => sum + d.rent, 0) / relevantDaily.length 
-           : (slab ? slab.rentAmount : 0);
+       // 2. Determine Rent/Day
+       let rentRateUsed = 0;
+       if (wallet.rentOverride !== undefined && wallet.rentOverride !== null) {
+           rentRateUsed = wallet.rentOverride;
+       } else if (relevantDaily.length > 0) {
+           rentRateUsed = relevantDaily.reduce((sum, d) => sum + d.rent, 0) / relevantDaily.length;
+       } else {
+           rentRateUsed = slab ? slab.rentAmount : 0;
+       }
        
-       // 2. Count Days Worked (Respect Override)
+       // 3. Count Days Worked (Respect Override)
        const daysWorked = wallet.daysWorkedOverride !== undefined && wallet.daysWorkedOverride !== null 
            ? wallet.daysWorkedOverride 
            : relevantDaily.length;
 
-       // 3. Calc Total Rent
+       // 4. Calc Total Rent
        const rentTotal = rentRateUsed * daysWorked;
 
        const collection = relevantDaily.reduce((sum, d) => sum + d.collection, 0);
