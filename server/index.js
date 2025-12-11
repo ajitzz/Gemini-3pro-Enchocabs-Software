@@ -2,6 +2,7 @@
 require('dotenv').config(); // Load .env file
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const { OAuth2Client } = require('google-auth-library');
 const db = require('./db');
@@ -11,13 +12,15 @@ const app = express();
 app.use((req, res, next) => {
   // Allows the Google Sign-In popup to communicate back to the main window
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
-  // Removing COEP 'require-corp' as it can be too strict for external images (Google Avatars)
-  // res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp'); 
+  // res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp'); // Optional, often too strict
   next();
 });
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); // Support large Excel imports
+
+// Serve Static Files (Frontend) if they exist
+app.use(express.static(path.join(__dirname, '../dist')));
 
 const PORT = process.env.PORT || 3000;
 
@@ -75,6 +78,8 @@ initDb();
 // --- AUTHENTICATION ROUTE ---
 app.post('/api/auth/google', async (req, res) => {
   const { token, clientId } = req.body;
+
+  console.log("Auth Request Received. ClientID provided:", clientId ? "Yes" : "No", "Server Env ID:", SERVER_GOOGLE_CLIENT_ID ? "Yes" : "No");
 
   if (!token) {
     return res.status(400).json({ error: "No token provided" });
@@ -617,11 +622,10 @@ app.post('/api/manager-access', async (req, res) => {
   }
 });
 
-// --- 404 FALLBACK ---
-// This ensures that if a route is not found, we return a JSON error instead of default HTML
-// which fixes the "Unexpected token <" error in the frontend.
-app.use((req, res) => {
-  res.status(404).json({ error: "API endpoint not found" });
+// --- SPA Fallback ---
+// For any other route, serve index.html to allow React Router to handle it
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
 
 app.listen(PORT, () => {

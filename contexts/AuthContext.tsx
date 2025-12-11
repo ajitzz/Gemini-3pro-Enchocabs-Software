@@ -13,7 +13,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Helper to interact with the Auth API directly
+// --- CONFIGURATION ---
 const getApiBase = () => {
     // Check for Vite dev mode or specific local hostnames
     const isLocal = ((import.meta as any).env && (import.meta as any).env.DEV) || 
@@ -29,15 +29,15 @@ const getApiBase = () => {
     return 'https://enchocabs-software-orginal-gemini3pro-1.onrender.com/api';
 };
 
-const getGoogleClientId = () => {
-    const env = (import.meta as any).env || {};
-    return env.VITE_GOOGLE_CLIENT_ID || "";
-};
+// Access ENV directly here to avoid scope issues in nested functions
+const env = (import.meta as any).env || {};
+const CLIENT_ID_FROM_ENV = env.VITE_GOOGLE_CLIENT_ID || "";
 
 const authApi = {
     login: async (token: string) => {
         const API_BASE = getApiBase();
-        const clientId = getGoogleClientId();
+        const clientId = CLIENT_ID_FROM_ENV;
+        
         console.log("Authentication attempting to reach:", API_BASE + '/auth/google');
         
         const response = await fetch(`${API_BASE}/auth/google`, {
