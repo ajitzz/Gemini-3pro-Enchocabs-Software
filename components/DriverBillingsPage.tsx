@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { storageService } from '../services/storageService';
 import { DriverSummary, RentalSlab, WeeklyWallet, DailyEntry, Driver, LeaveRecord } from '../types';
-import { Users, ChevronDown, FileText, Briefcase, Download, Edit2, Save, X, Calendar, ChevronLeft, ChevronRight, Check, Copy, RotateCcw } from 'lucide-react';
+import { Users, ChevronDown, FileText, Briefcase, Download, Edit2, Save, X, Calendar, ChevronLeft, ChevronRight, Check, Copy, RotateCcw, Search } from 'lucide-react';
 
 const DriverBillingsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
@@ -10,23 +10,19 @@ const DriverBillingsPage: React.FC = () => {
   const [rentalSlabs, setRentalSlabs] = useState<RentalSlab[]>([]);
   const [weeklyWallets, setWeeklyWallets] = useState<WeeklyWallet[]>([]);
   const [dailyEntries, setDailyEntries] = useState<DailyEntry[]>([]);
-  
-  // New Data for Context (Leaves/Drivers)
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [leaves, setLeaves] = useState<LeaveRecord[]>([]);
   
-  // Filters
+  // Filter & View State
   const [filterDriver, setFilterDriver] = useState('');
-  
-  // Pagination / Week Navigation
   const [currentWeekIndex, setCurrentWeekIndex] = useState(0); // 0 = Latest week
   
-  // UI States for Collapsible Sections
+  // UI Toggles
   const [isBalancesExpanded, setIsBalancesExpanded] = useState(false); 
   const [isRentalExpanded, setIsRentalExpanded] = useState(false);
   const [isBillingExpanded, setIsBillingExpanded] = useState(true);
 
-  // Edit State for Billing Details
+  // Edit Modal State
   const [editingBillId, setEditingBillId] = useState<string | null>(null);
   const [editFormData, setEditFormData] = useState({
       daysWorked: 0,
@@ -34,7 +30,7 @@ const DriverBillingsPage: React.FC = () => {
       adjustments: 0
   });
   
-  // Copy Feedback State
+  // UI Feedback
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -69,52 +65,41 @@ const DriverBillingsPage: React.FC = () => {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(val);
   };
 
-  // --- DATE HELPERS ---
+  // --- STRICT DATE HELPERS ---
   
-  // 1. Comparison Helper: Converts date string to timestamp at Midnight UTC to ignore time diffs
+  // Converts string to UTC Midnight Timestamp for accurate range comparison
   const toNormalizedTimestamp = (dateStr: string) => {
       if (!dateStr) return 0;
-
-          // Support both ISO strings (YYYY-MM-DD) and imported DD-MM-YYYY values
-      const trimmed = dateStr.trim();
-
-      let candidate: Date | null = null;
-
-      // A. Handle DD-MM-YYYY or DD/MM/YYYY
-      const dmyMatch = trimmed.match(/^([0-9]{2})[-/]([0-9]{2})[-/]([0-9]{4})$/);
-      if (dmyMatch) {
-          const [, dd, mm, yyyy] = dmyMatch;
-          candidate = new Date(Date.UTC(Number(yyyy), Number(mm) - 1, Number(dd)));
+      
+      // Strict YYYY-MM-DD parsing to avoid browser timezone offsets
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+          const [y, m, d] = dateStr.split('-').map(Number);
+          return Date.UTC(y, m - 1, d);
       }
 
-      // B. Fallback to native Date parser (covers YYYY-MM-DD and ISO timestamps)
-      if (!candidate) {
-          const parsed = new Date(trimmed);
-          candidate = isNaN(parsed.getTime()) ? null : parsed;
-      }
-
-      if (!candidate || isNaN(candidate.getTime())) return 0;
-
-      return Date.UTC(candidate.getFullYear(), candidate.getMonth(), candidate.getDate());
+      // Fallback
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return 0;
+      return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
   };
 
-  // 2. Display Helper: Converts ISO/Date string to DD-MM-YYYY
+  // Converts ISO string to DD-MM-YYYY for display
   const toDisplayDate = (dateStr: string) => {
       if (!dateStr) return '-';
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+          const [y, m, d] = dateStr.split('-');
+          return `${d}-${m}-${y}`;
+      }
       const d = new Date(dateStr);
       if (isNaN(d.getTime())) return dateStr;
-      
-      const day = String(d.getDate()).padStart(2, '0');
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const year = d.getFullYear();
-      return `${day}-${month}-${year}`;
+      return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
   };
 
   const filteredSummaries = summaries.filter(s => 
     filterDriver === '' || s.driver.toLowerCase().includes(filterDriver.toLowerCase())
   );
 
-  // --- BILLING CALCULATION ENGINE ---
+  // --- CORE BILLING ENGINE ---
   const allBills = useMemo(() => {
     return weeklyWallets.map(wallet => {
        const startTs = toNormalizedTimestamp(wallet.weekStartDate);
@@ -122,35 +107,38 @@ const DriverBillingsPage: React.FC = () => {
        
        if (startTs === 0 || endTs === 0) return null;
 
-       // Robust Normalization for matching
+       // 1. Normalize Driver Name for Matching
        const normalize = (s: string) => s ? s.toLowerCase().replace(/\s+/g, ' ').trim() : '';
        const walletDriverNorm = normalize(wallet.driver);
+       const driverObj = drivers.find(d => normalize(d.name) === walletDriverNorm);
 
-       // 1. Find Daily Entries (Using Normalized Timestamps)
+       // 2. Filter Daily Entries for this specific week and driver
        const relevantDaily = dailyEntries.filter(d => {
-          const entryDriverNorm = normalize(d.driver);
           const entryTs = toNormalizedTimestamp(d.date);
-          
           if (entryTs === 0) return false;
-          // Compare timestamps integers
-          return entryDriverNorm === walletDriverNorm && entryTs >= startTs && entryTs <= endTs;
+          
+          // Check Date Range
+          const inRange = entryTs >= startTs && entryTs <= endTs;
+          if (!inRange) return false;
+
+          // Check Driver Identity (Name match matches primarily)
+          const entryDriverNorm = normalize(d.driver);
+          return entryDriverNorm === walletDriverNorm;
        });
 
-       // 2. Calculate Collection (Sum of Daily Entries)
-       const collection = relevantDaily.reduce((sum, d) => sum + d.collection, 0);
-       const fuel = relevantDaily.reduce((sum, d) => sum + d.fuel, 0);
-       const overdue = relevantDaily.reduce((sum, d) => sum + d.due, 0);
+       // 3. Aggregate Data from Daily Entries
+       const collection = relevantDaily.reduce((sum, d) => sum + (Number(d.collection) || 0), 0);
+       const fuel = relevantDaily.reduce((sum, d) => sum + (Number(d.fuel) || 0), 0);
+       // 'Due' in Daily Entry usually tracks daily balances. 
+       // Summing it adds previous day's +/- balance to this bill.
+       const overdue = relevantDaily.reduce((sum, d) => sum + (Number(d.due) || 0), 0);
 
-       // 3. Days Worked Logic (Excluding Leaves)
-       const driverObj = drivers.find(d => normalize(d.name) === walletDriverNorm);
+       // 4. Calculate Days Worked (Excluding Leaves/Offs)
        const driverId = driverObj?.id;
-
        const calculatedDays = relevantDaily.filter(d => {
-           // A. Check explicit shift text
            const shiftVal = d.shift ? d.shift.toLowerCase().trim() : '';
            if (['leave', 'off', 'absent', 'holiday'].includes(shiftVal)) return false;
 
-           // B. Check System Leave Records
            if (driverId) {
                const entryTs = toNormalizedTimestamp(d.date);
                const onLeave = leaves.some(l => {
@@ -158,6 +146,7 @@ const DriverBillingsPage: React.FC = () => {
                    const lStartTs = toNormalizedTimestamp(l.startDate);
                    const lEndTs = toNormalizedTimestamp(l.actualReturnDate || l.endDate);
                    
+                   // Check strictly if entry date falls within leave
                    if (l.actualReturnDate) {
                        return entryTs >= lStartTs && entryTs < lEndTs;
                    } else {
@@ -169,8 +158,9 @@ const DriverBillingsPage: React.FC = () => {
            return true;
        }).length;
 
-       // 4. Rent Logic
+       // 5. Rent Calculation
        const totalTrips = wallet.trips; 
+       // Find appropriate slab
        const slab = rentalSlabs.find(s => 
            totalTrips >= s.minTrips && (s.maxTrips === null || totalTrips <= s.maxTrips)
        );
@@ -179,9 +169,10 @@ const DriverBillingsPage: React.FC = () => {
        if (wallet.rentOverride !== undefined && wallet.rentOverride !== null) {
            rentRateUsed = wallet.rentOverride;
        } else if (relevantDaily.length > 0 && totalTrips >= 70) {
-           // High Trips: Average of actual daily entries
-           const sumRent = relevantDaily.reduce((sum, d) => sum + d.rent, 0);
-           rentRateUsed = sumRent / relevantDaily.length;
+           // Heuristic: If high trips, maybe average daily rent is preferred? 
+           // Standard logic usually prefers Slab unless manual override. 
+           // Reverting to Slab preference to keep it deterministic unless override exists.
+           rentRateUsed = slab ? slab.rentAmount : 0;
        } else {
            rentRateUsed = slab ? slab.rentAmount : 0;
        }
@@ -191,6 +182,9 @@ const DriverBillingsPage: React.FC = () => {
            : calculatedDays;
 
        const rentTotal = rentRateUsed * daysWorked;
+       
+       // 6. Final Payout Formula
+       // Payout = Collection - Rent - Fuel + DailyDues + WalletEarnings + Adjustments
        const walletAmount = wallet.walletWeek; 
        const adjustment = wallet.adjustments || 0;
        
@@ -224,7 +218,7 @@ const DriverBillingsPage: React.FC = () => {
     .sort((a, b) => new Date(b!.weekKey).getTime() - new Date(a!.weekKey).getTime());
   }, [weeklyWallets, dailyEntries, rentalSlabs, drivers, leaves]);
 
-  // --- PAGINATION ---
+  // --- PAGINATION & WEEK SELECTION ---
   const availableWeeks = useMemo(() => {
       // @ts-ignore
       const weeks = Array.from(new Set(allBills.map(b => b.weekKey)));
@@ -293,7 +287,7 @@ const DriverBillingsPage: React.FC = () => {
       if (!editingBillId) return;
       const bill = allBills.find(b => b!.id === editingBillId);
       if (!bill) return;
-      if (!confirm("Are you sure? This will revert overrides to standard calculations.")) return;
+      if (!confirm("Are you sure? This will revert overrides to standard slab calculations.")) return;
 
       try {
           const updatedWallet: WeeklyWallet = {
@@ -308,6 +302,7 @@ const DriverBillingsPage: React.FC = () => {
       } catch (err) { console.error(err); }
   };
 
+  // --- PDF GENERATION ---
   const generateBillHTML = (bill: any) => {
       const dailyRows = bill.dailyDetails.map((d: any) => `
         <tr>
@@ -478,7 +473,7 @@ const DriverBillingsPage: React.FC = () => {
                       onChange={(e) => setFilterDriver(e.target.value)}
                       className="pl-9 pr-4 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all w-full"
                     />
-                    <Users size={14} className="absolute left-3 top-2.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                    <Search size={14} className="absolute left-3 top-2.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
                   </div>
                </div>
 
@@ -605,7 +600,7 @@ const DriverBillingsPage: React.FC = () => {
                           onChange={(e) => setFilterDriver(e.target.value)}
                           className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
                         />
-                        <Users size={18} className="absolute left-3.5 top-3.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                        <Search size={18} className="absolute left-3.5 top-3.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
                     </div>
                 </div>
 
