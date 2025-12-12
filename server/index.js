@@ -1,32 +1,14 @@
 
-require('dotenv').config(); // Load .env file
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
 const { v4: uuidv4 } = require('uuid');
-const { OAuth2Client } = require('google-auth-library');
 const db = require('./db');
 const app = express();
-
-// --- SECURITY HEADERS FOR OAUTH ---
-app.use((req, res, next) => {
-  // Allows the Google Sign-In popup to communicate back to the main window
-  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
-  // res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp'); // Optional, often too strict
-  next();
-});
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); // Support large Excel imports
 
-// Serve Static Files (Frontend) if they exist
-app.use(express.static(path.join(__dirname, '../dist')));
-
 const PORT = process.env.PORT || 3000;
-
-// Use key from .env
-const SERVER_GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-const SUPER_ADMIN_EMAIL = 'enchoenterprises@gmail.com';
 
 // --- INITIALIZATION SQL ---
 const initDb = async () => {
@@ -75,89 +57,6 @@ const initDb = async () => {
 
 initDb();
 
-// --- AUTHENTICATION ROUTE ---
-app.post('/api/auth/google', async (req, res) => {
-  const { token, clientId } = req.body;
-
-  console.log("Auth Request Received. ClientID provided:", clientId ? "Yes" : "No", "Server Env ID:", SERVER_GOOGLE_CLIENT_ID ? "Yes" : "No");
-
-  if (!token) {
-    return res.status(400).json({ error: "No token provided" });
-  }
-
-  // Use Server Env OR Client Provided ID
-  const audience = SERVER_GOOGLE_CLIENT_ID || clientId;
-
-  if (!audience) {
-      console.error("Server Error: GOOGLE_CLIENT_ID is missing in environment variables and not provided by client.");
-      return res.status(500).json({ error: "Server authentication configuration missing. Please ensure GOOGLE_CLIENT_ID is set." });
-  }
-
-  try {
-    // 1. Verify Google Token
-    const authClient = new OAuth2Client(audience);
-    const ticket = await authClient.verifyIdToken({
-      idToken: token,
-      audience: audience,
-    });
-    const payload = ticket.getPayload();
-    const email = payload.email.toLowerCase();
-    const name = payload.name;
-    const picture = payload.picture;
-
-    let role = null;
-    let driverId = null;
-    let userName = name;
-
-    // 2. Check Permissions
-
-    // A. Super Admin Check
-    if (email === SUPER_ADMIN_EMAIL.toLowerCase()) {
-      role = 'super_admin';
-      userName = 'Encho (Super Admin)';
-    }
-
-    // B. Admin Access Check (If not super admin)
-    if (!role) {
-      const adminCheck = await db.query('SELECT * FROM admin_access WHERE lower(email) = $1', [email]);
-      if (adminCheck.rows.length > 0) {
-        role = 'admin';
-      }
-    }
-
-    // C. Driver Check (If not admin)
-    if (!role) {
-      const driverCheck = await db.query('SELECT * FROM drivers WHERE lower(email) = $1', [email]);
-      if (driverCheck.rows.length > 0) {
-        const driver = driverCheck.rows[0];
-        if (driver.termination_date) {
-          return res.status(403).json({ error: "Access Denied: Your driver account has been terminated." });
-        }
-        role = 'driver';
-        userName = driver.name;
-        driverId = driver.id;
-      }
-    }
-
-    if (!role) {
-      return res.status(403).json({ error: "Access Denied: Email not registered in Encho Cabs system." });
-    }
-
-    // 3. Return User Data
-    res.json({
-      email,
-      name: userName,
-      role,
-      photoURL: picture,
-      driverId
-    });
-
-  } catch (err) {
-    console.error("Auth Error:", err);
-    res.status(401).json({ error: "Authentication failed or token invalid" });
-  }
-});
-
 // --- HELPERS ---
 const snakeToCamel = (str) => str.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
 const mapKeys = (obj) => {
@@ -176,81 +75,66 @@ app.get('/api/drivers', async (req, res) => {
 
 app.post('/api/drivers', async (req, res) => {
   const d = req.body;
+  
+  // UUID FIX: Generate a new ID if one isn't provided or is empty
   const idToUse = (d.id && d.id.trim().length > 0) ? d.id : uuidv4();
 
   const client = await db.pool.connect();
+
   try {
     await client.query('BEGIN');
 
-    // old name (for cascade rename)
-    const oldRow = await client.query('SELECT name FROM drivers WHERE id = $1', [idToUse]);
-    const oldName = oldRow.rows[0]?.name ?? null;
-
-    // 1) Name duplicate check
-    const nameCheck = await client.query(
-      'SELECT 1 FROM drivers WHERE lower(name) = lower($1) AND id != $2',
-      [d.name, idToUse]
-    );
+    // 1. Check Name Duplication
+    const nameCheck = await client.query('SELECT * FROM drivers WHERE lower(name) = lower($1) AND id != $2', [d.name, idToUse]);
     if (nameCheck.rows.length > 0) {
-      await client.query('ROLLBACK');
-      return res.status(409).json({ error: `Driver name "${d.name}" already exists.` });
-    }
-
-    // 2) Mobile duplicate check
-    if (d.mobile && d.mobile.trim().length > 0) {
-      const mobileCheck = await client.query(
-        'SELECT 1 FROM drivers WHERE mobile = $1 AND id != $2',
-        [d.mobile, idToUse]
-      );
-      if (mobileCheck.rows.length > 0) {
+        const existing = nameCheck.rows[0];
         await client.query('ROLLBACK');
-        return res.status(409).json({ error: `Mobile number "${d.mobile}" is already in use.` });
-      }
+        return res.status(409).json({ error: `Driver name "${d.name}" already exists (Status: ${existing.status || 'Active'}).` });
     }
 
-    // 3) Upsert driver
+    // 2. Check Mobile Duplication (Only if mobile is provided)
+    if (d.mobile && d.mobile.trim().length > 0) {
+        const mobileCheck = await client.query('SELECT * FROM drivers WHERE mobile = $1 AND id != $2', [d.mobile, idToUse]);
+        if (mobileCheck.rows.length > 0) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ error: `Mobile number "${d.mobile}" is already assigned to driver "${mobileCheck.rows[0].name}".` });
+        }
+    }
+
+    // 3. Handle Name Change Propagation
+    // Check if driver exists and name is different
+    const currentDriverRes = await client.query('SELECT name FROM drivers WHERE id = $1', [idToUse]);
+    if (currentDriverRes.rows.length > 0) {
+        const oldName = currentDriverRes.rows[0].name;
+        const newName = d.name;
+        
+        if (oldName !== newName) {
+            console.log(`Renaming driver from "${oldName}" to "${newName}" in history...`);
+            // Update daily entries and weekly wallets which rely on the name text
+            await client.query('UPDATE daily_entries SET driver = $1 WHERE driver = $2', [newName, oldName]);
+            await client.query('UPDATE weekly_wallets SET driver = $1 WHERE driver = $2', [newName, oldName]);
+        }
+    }
+
+    // 4. Upsert using idToUse
     const q = `
       INSERT INTO drivers (id, name, mobile, email, join_date, termination_date, deposit, qr_code, vehicle, status, current_shift, default_rent, notes, is_manager)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       ON CONFLICT (id) DO UPDATE SET
         name=$2, mobile=$3, email=$4, join_date=$5, termination_date=$6, deposit=$7, qr_code=$8, vehicle=$9, status=$10, current_shift=$11, default_rent=$12, notes=$13, is_manager=$14
       RETURNING *;
     `;
-
-    const result = await client.query(q, [
-      idToUse,
-      d.name,
-      d.mobile || null,
-      d.email || null,
-      d.joinDate,
-      d.terminationDate || null,
-      d.deposit ?? 0,
-      d.qrCode || null,
-      d.vehicle || null,
-      d.status || 'Active',
-      d.currentShift || 'Day',
-      d.defaultRent ?? null,
-      d.notes || null,
-      d.isManager ?? false
-    ]);
-
-    // 4) Cascade rename so DailyEntries & WeeklyWallets stay linked by driver name
-    if (oldName && oldName !== d.name) {
-      await client.query('UPDATE daily_entries SET driver = $1 WHERE driver = $2', [d.name, oldName]);
-      await client.query('UPDATE weekly_wallets SET driver = $1 WHERE driver = $2', [d.name, oldName]);
-    }
-
+    const result = await client.query(q, [idToUse, d.name, d.mobile, d.email, d.joinDate, d.terminationDate || null, d.deposit, d.qrCode, d.vehicle, d.status, d.currentShift, d.defaultRent, d.notes, d.isManager]);
+    
     await client.query('COMMIT');
     res.json(result.rows[0]);
-  } catch (err) {
+  } catch (err) { 
     await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message }); 
   } finally {
     client.release();
   }
 });
-
-
 
 app.delete('/api/drivers/:id', async (req, res) => {
   console.log(`Received DELETE request for driver ID: ${req.params.id}`);
@@ -663,12 +547,6 @@ app.post('/api/manager-access', async (req, res) => {
   } finally {
     client.release();
   }
-});
-
-// --- SPA Fallback ---
-// For any other route, serve index.html to allow React Router to handle it
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
 
 app.listen(PORT, () => {
