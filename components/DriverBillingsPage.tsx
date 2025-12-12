@@ -62,19 +62,17 @@ const DriverBillingsPage: React.FC = () => {
 
   // --- BILLING CALCULATION ENGINE ---
   const allBills = useMemo(() => {
-    const today = new Date();
-    today.setHours(0,0,0,0);
-
+    // We remove the strict "today > endDate" check to allow viewing ongoing weeks if needed, 
+    // or at least to ensure data is visible. If strict completion is required, 
+    // we can re-add it, but usually seeing data > hidden data.
+    
     return weeklyWallets.map(wallet => {
-       const startDate = new Date(wallet.weekStartDate);
-       const endDate = new Date(wallet.weekEndDate);
+       const startDateStr = wallet.weekStartDate;
+       const endDateStr = wallet.weekEndDate;
        
-       const isWeekCompleted = today > endDate;
-       if (!isWeekCompleted) return null; 
-
+       // Use robust string comparison for YYYY-MM-DD dates to avoid timezone issues with `new Date()`
        const relevantDaily = dailyEntries.filter(d => {
-          const entryDate = new Date(d.date);
-          return d.driver === wallet.driver && entryDate >= startDate && entryDate <= endDate;
+          return d.driver === wallet.driver && d.date >= startDateStr && d.date <= endDateStr;
        });
 
        const totalTrips = wallet.trips; 
@@ -137,8 +135,7 @@ const DriverBillingsPage: React.FC = () => {
            dailyDetails: relevantDaily,
            weeklyDetails: wallet
        };
-    }).filter((item): item is NonNullable<typeof item> => item !== null)
-      .sort((a, b) => new Date(b.weekKey).getTime() - new Date(a.weekKey).getTime());
+    }).sort((a, b) => new Date(b.weekKey).getTime() - new Date(a.weekKey).getTime());
   }, [weeklyWallets, dailyEntries, rentalSlabs]);
 
   // --- WEEK PAGINATION LOGIC ---
