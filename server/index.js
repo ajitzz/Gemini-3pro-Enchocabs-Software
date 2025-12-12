@@ -182,20 +182,62 @@ app.post('/api/drivers', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // get old name (only if updating existing)
+    // old name (for cascade rename)
     const oldRow = await client.query('SELECT name FROM drivers WHERE id = $1', [idToUse]);
     const oldName = oldRow.rows[0]?.name ?? null;
 
-    // (keep your duplicate checks here but use client.query)
+    // 1) Name duplicate check
+    const nameCheck = await client.query(
+      'SELECT 1 FROM drivers WHERE lower(name) = lower($1) AND id != $2',
+      [d.name, idToUse]
+    );
+    if (nameCheck.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: `Driver name "${d.name}" already exists.` });
+    }
 
-    // upsert driver (same query you already have, but client.query)
-    const result = await client.query(q, [...]);
+    // 2) Mobile duplicate check
+    if (d.mobile && d.mobile.trim().length > 0) {
+      const mobileCheck = await client.query(
+        'SELECT 1 FROM drivers WHERE mobile = $1 AND id != $2',
+        [d.mobile, idToUse]
+      );
+      if (mobileCheck.rows.length > 0) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: `Mobile number "${d.mobile}" is already in use.` });
+      }
+    }
 
-    // if name changed => cascade update
-    const newName = d.name;
-    if (oldName && oldName !== newName) {
-      await client.query('UPDATE daily_entries SET driver = $1 WHERE driver = $2', [newName, oldName]);
-      await client.query('UPDATE weekly_wallets SET driver = $1 WHERE driver = $2', [newName, oldName]);
+    // 3) Upsert driver
+    const q = `
+      INSERT INTO drivers (id, name, mobile, email, join_date, termination_date, deposit, qr_code, vehicle, status, current_shift, default_rent, notes, is_manager)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      ON CONFLICT (id) DO UPDATE SET
+        name=$2, mobile=$3, email=$4, join_date=$5, termination_date=$6, deposit=$7, qr_code=$8, vehicle=$9, status=$10, current_shift=$11, default_rent=$12, notes=$13, is_manager=$14
+      RETURNING *;
+    `;
+
+    const result = await client.query(q, [
+      idToUse,
+      d.name,
+      d.mobile || null,
+      d.email || null,
+      d.joinDate,
+      d.terminationDate || null,
+      d.deposit ?? 0,
+      d.qrCode || null,
+      d.vehicle || null,
+      d.status || 'Active',
+      d.currentShift || 'Day',
+      d.defaultRent ?? null,
+      d.notes || null,
+      d.isManager ?? false
+    ]);
+
+    // 4) Cascade rename so DailyEntries & WeeklyWallets stay linked by driver name
+    if (oldName && oldName !== d.name) {
+      await client.query('UPDATE daily_entries SET driver = $1 WHERE driver = $2', [d.name, oldName]);
+      await client.query('UPDATE weekly_wallets SET driver = $1 WHERE driver = $2', [d.name, oldName]);
     }
 
     await client.query('COMMIT');
@@ -207,6 +249,7 @@ app.post('/api/drivers', async (req, res) => {
     client.release();
   }
 });
+
 
 
 app.delete('/api/drivers/:id', async (req, res) => {
