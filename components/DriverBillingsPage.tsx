@@ -64,7 +64,7 @@ const DriverBillingsPage: React.FC = () => {
     today.setHours(0,0,0,0);
 
     const bills = weeklyWallets.map(wallet => {
-       const startDate = new Date(wallet.weekStartDate);
+
        const endDate = new Date(wallet.weekEndDate);
        
        const isWeekCompleted = today > endDate;
@@ -72,8 +72,13 @@ const DriverBillingsPage: React.FC = () => {
        if (!isWeekCompleted) return null; 
 
        const relevantDaily = dailyEntries.filter(d => {
-          const entryDate = new Date(d.date);
-          return d.driver === wallet.driver && entryDate >= startDate && entryDate <= endDate;
+            // Normalize comparisons to avoid timezone offsets and capitalization mismatches
+          const entryDate = d.date;
+          return (
+            d.driver.trim().toLowerCase() === wallet.driver.trim().toLowerCase() &&
+            entryDate >= wallet.weekStartDate &&
+            entryDate <= wallet.weekEndDate
+          );
        });
 
        const totalTrips = wallet.trips; 
