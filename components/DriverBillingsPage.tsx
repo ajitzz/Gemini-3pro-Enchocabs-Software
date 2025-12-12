@@ -74,11 +74,28 @@ const DriverBillingsPage: React.FC = () => {
   // 1. Comparison Helper: Converts date string to timestamp at Midnight UTC to ignore time diffs
   const toNormalizedTimestamp = (dateStr: string) => {
       if (!dateStr) return 0;
-      const d = new Date(dateStr);
-      // Handle invalid dates
-      if (isNaN(d.getTime())) return 0;
-      // Set to UTC midnight
-      return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+
+          // Support both ISO strings (YYYY-MM-DD) and imported DD-MM-YYYY values
+      const trimmed = dateStr.trim();
+
+      let candidate: Date | null = null;
+
+      // A. Handle DD-MM-YYYY or DD/MM/YYYY
+      const dmyMatch = trimmed.match(/^([0-9]{2})[-/]([0-9]{2})[-/]([0-9]{4})$/);
+      if (dmyMatch) {
+          const [, dd, mm, yyyy] = dmyMatch;
+          candidate = new Date(Date.UTC(Number(yyyy), Number(mm) - 1, Number(dd)));
+      }
+
+      // B. Fallback to native Date parser (covers YYYY-MM-DD and ISO timestamps)
+      if (!candidate) {
+          const parsed = new Date(trimmed);
+          candidate = isNaN(parsed.getTime()) ? null : parsed;
+      }
+
+      if (!candidate || isNaN(candidate.getTime())) return 0;
+
+      return Date.UTC(candidate.getFullYear(), candidate.getMonth(), candidate.getDate());
   };
 
   // 2. Display Helper: Converts ISO/Date string to DD-MM-YYYY
