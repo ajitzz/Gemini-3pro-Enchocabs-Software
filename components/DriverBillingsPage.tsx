@@ -1,605 +1,475 @@
+
 import React, { useEffect, useState } from 'react';
+import { WeeklyWallet, Driver } from '../types';
 import { storageService } from '../services/storageService';
-import { DriverSummary, RentalSlab, WeeklyWallet, DailyEntry } from '../types';
-import { Users, ChevronDown, ChevronUp, FileText, Briefcase, Download, Share2, Edit2, Save, X, Calendar, Filter, ChevronLeft, ChevronRight, Check, Copy } from 'lucide-react';
+import { Plus, Trash2, Search, Edit2, X, ChevronDown, Wallet, TrendingUp, TrendingDown, Calendar, ArrowRight, AlertOctagon } from 'lucide-react';
 
-const DriverBillingsPage: React.FC = () => {
+// MOVED OUTSIDE: Prevents re-rendering focus loss
+const InputField = ({ label, name, type = "text", value, onChange, placeholder, required = false, className = "", icon: Icon }: any) => (
+  <div className="flex flex-col gap-1.5 w-full">
+     <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1 flex items-center gap-1.5">
+       {Icon && <Icon size={12} />}
+       {label}
+     </label>
+     <input 
+       required={required}
+       name={name}
+       type={type}
+       value={value === 0 ? '' : value}
+       onChange={onChange}
+       placeholder={placeholder || "0.00"}
+       step="0.01"
+       className={`w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-900 font-medium placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none ${className}`}
+     />
+  </div>
+);
+
+const WeeklyWalletPage: React.FC = () => {
+  const [wallets, setWallets] = useState<WeeklyWallet[]>([]);
+  const [drivers, setDrivers] = useState<Driver[]>([]);
   const [loading, setLoading] = useState(true);
-  const [summaries, setSummaries] = useState<DriverSummary[]>([]);
-  const [rentalSlabs, setRentalSlabs] = useState<RentalSlab[]>([]);
-  const [weeklyWallets, setWeeklyWallets] = useState<WeeklyWallet[]>([]);
-  const [dailyEntries, setDailyEntries] = useState<DailyEntry[]>([]);
-  
-  // Filters
+  const [isFormOpen, setIsFormOpen] = useState(false);
   const [filterDriver, setFilterDriver] = useState('');
-  const [filterWeek, setFilterWeek] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
   
-  // Pagination
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
-  
-  // UI States for Collapsible Sections
-  const [isBalancesExpanded, setIsBalancesExpanded] = useState(false); 
-  const [isRentalExpanded, setIsRentalExpanded] = useState(false);
-  const [isBillingExpanded, setIsBillingExpanded] = useState(true);
+  // Duplicate Warning State
+  const [duplicateWarning, setDuplicateWarning] = useState<{ active: boolean, existingId: string, payload: WeeklyWallet } | null>(null);
 
-  // Edit State for Billing
-  const [editingBillId, setEditingBillId] = useState<string | null>(null);
-  const [adjustmentValue, setAdjustmentValue] = useState<number>(0);
-  const [adjustmentsMap, setAdjustmentsMap] = useState<Record<string, number>>({});
-  
-  // Copy Feedback State
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  // Helper to get Monday of the week for a given date
+  const getMonday = (d: Date) => {
+    d = new Date(d);
+    const day = d.getDay(),
+      diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    return new Date(d.setDate(diff));
+  };
+
+  const getWeekRange = (dateStr: string) => {
+      if (!dateStr) return { start: '', end: '', label: '' };
+      const d = new Date(dateStr);
+      const monday = getMonday(d);
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+      
+      const startISO = monday.toISOString().split('T')[0];
+      const endISO = sunday.toISOString().split('T')[0];
+      
+      // Label in DD-MM-YYYY format
+      const startLabel = startISO.split('-').reverse().join('-');
+      const endLabel = endISO.split('-').reverse().join('-');
+      
+      return {
+          start: startISO,
+          end: endISO,
+          label: `${startLabel} to ${endLabel}`
+      };
+  };
+
+  const initialFormState: Partial<WeeklyWallet> = {
+    weekStartDate: '', // Explicitly empty
+    driver: '',
+    earnings: 0,
+    refund: 0,
+    diff: 0,
+    cash: 0,
+    charges: 0,
+    trips: 0,
+    notes: ''
+  };
+
+  const [formData, setFormData] = useState<Partial<WeeklyWallet>>(initialFormState);
+  // Separate state for the date picker display
+  const [selectedDate, setSelectedDate] = useState(''); // Explicitly empty
 
   useEffect(() => {
     loadData();
+    // Removed default date setting
   }, []);
 
   const loadData = async () => {
     setLoading(true);
-    const [summaryData, slabData, weeklyData, dailyData] = await Promise.all([
-        storageService.getSummary(),
-        storageService.getDriverRentalSlabs(), // Use Driver Slabs
+    const [w, d] = await Promise.all([
         storageService.getWeeklyWallets(),
-        storageService.getDailyEntries()
+        storageService.getDrivers()
     ]);
-    setSummaries(summaryData.driverSummaries);
-    setRentalSlabs(slabData.sort((a, b) => a.minTrips - b.minTrips));
-    setWeeklyWallets(weeklyData);
-    setDailyEntries(dailyData);
+    setWallets(w.sort((a, b) => new Date(b.weekStartDate).getTime() - new Date(a.weekStartDate).getTime()));
+    setDrivers(d.filter(driver => !driver.terminationDate));
     setLoading(false);
   };
 
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(val);
-  };
-
-  const filteredSummaries = summaries.filter(s => 
-    filterDriver === '' || s.driver.toLowerCase().includes(filterDriver.toLowerCase())
+  const calculatedWalletWeek = (
+    (formData.earnings || 0) + 
+    (formData.refund || 0) - 
+    ((formData.diff || 0) + (formData.cash || 0) + (formData.charges || 0))
   );
 
-  // --- BILLING SUMMARY LOGIC ---
-  const getBillingSummary = () => {
-    const today = new Date();
-    today.setHours(0,0,0,0);
-
-    const bills = weeklyWallets.map(wallet => {
-
-       const endDate = new Date(wallet.weekEndDate);
-       
-       const isWeekCompleted = today > endDate;
-
-       if (!isWeekCompleted) return null; 
-
-       const relevantDaily = dailyEntries.filter(d => {
-            // Normalize comparisons to avoid timezone offsets and capitalization mismatches
-          const entryDate = d.date;
-          return (
-            d.driver.trim().toLowerCase() === wallet.driver.trim().toLowerCase() &&
-            entryDate >= wallet.weekStartDate &&
-            entryDate <= wallet.weekEndDate
-          );
-       });
-
-       const totalTrips = wallet.trips; 
-       
-       let rentTotal = 0;
-       let rentRateUsed = 0;
-       // Updated logic: if < 70, use slab. 70+ uses actual daily sum or high slab?
-       // Prompt said "if trip total ... is below 70 keep the rent is based on Driver Rental Reference else take the rent of the Daily Entries"
-       // New Driver Slab has 70+ tier. 
-       // I will stick to the prompt's explicit logic: < 70 -> Slab, >= 70 -> Daily Entries Actual Sum.
-       
-       const isLowTrips = totalTrips < 70;
-
-       if (isLowTrips) {
-           const slab = rentalSlabs.find(s => 
-               totalTrips >= s.minTrips && (s.maxTrips === null || totalTrips <= s.maxTrips)
-           );
-           rentRateUsed = slab ? slab.rentAmount : 950; 
-           rentTotal = rentRateUsed * 7;
-       } else {
-           rentTotal = relevantDaily.reduce((sum, d) => sum + d.rent, 0);
-           rentRateUsed = relevantDaily.length > 0 ? rentTotal / relevantDaily.length : 0; 
-       }
-
-       const collection = relevantDaily.reduce((sum, d) => sum + d.collection, 0);
-       const fuel = relevantDaily.reduce((sum, d) => sum + d.fuel, 0);
-       const overdue = relevantDaily.reduce((sum, d) => sum + d.due, 0);
-       const walletAmount = wallet.walletWeek;
-
-       const adjustment = adjustmentsMap[wallet.id] || 0;
-       const payout = collection - rentTotal - fuel + overdue + walletAmount + adjustment;
-
-       return {
-           id: wallet.id,
-           weekRange: `${wallet.weekStartDate} to ${wallet.weekEndDate}`,
-           weekKey: wallet.weekStartDate, 
-           driver: wallet.driver,
-           qrCode: relevantDaily[0]?.qrCode || 'N/A',
-           trips: totalTrips,
-           rentPerDay: rentRateUsed,
-           rentTotal,
-           collection,
-           fuel,
-           wallet: walletAmount,
-           overdue,
-           adjustments: adjustment,
-           payout,
-           dailyDetails: relevantDaily,
-           weeklyDetails: wallet
-       };
-    }).filter((item): item is NonNullable<typeof item> => item !== null); 
-
-    return bills.filter(b => {
-        const matchesDriver = filterDriver === '' || b.driver.toLowerCase().includes(filterDriver.toLowerCase());
-        const matchesWeek = filterWeek === '' || b.weekKey === filterWeek;
-        return matchesDriver && matchesWeek;
-    });
-  };
-
-  const billingData = getBillingSummary();
-  const totalPages = Math.ceil(billingData.length / itemsPerPage);
-  const paginatedData = billingData.slice(
-    (currentPage - 1) * itemsPerPage, 
-    currentPage * itemsPerPage
-  );
-  
-  const uniqueWeeks = Array.from(new Set(weeklyWallets
-    .filter(w => new Date() > new Date(w.weekEndDate))
-    .map(w => w.weekStartDate)))
-    .sort((a: string, b: string) => new Date(b).getTime() - new Date(a).getTime());
-
-  const handleEditAdjustment = (billId: string, currentVal: number) => {
-      setEditingBillId(billId);
-      setAdjustmentValue(currentVal);
-  };
-
-  const saveAdjustment = () => {
-      if (editingBillId) {
-          setAdjustmentsMap(prev => ({ ...prev, [editingBillId]: adjustmentValue }));
-          setEditingBillId(null);
+  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const dateVal = e.target.value;
+      setSelectedDate(dateVal);
+      if (dateVal) {
+          const range = getWeekRange(dateVal);
+          setFormData(prev => ({ ...prev, weekStartDate: range.start, weekEndDate: range.end }));
+      } else {
+          setFormData(prev => ({ ...prev, weekStartDate: '', weekEndDate: '' }));
       }
   };
 
-  const generateBillHTML = (bill: any) => {
-      const dailyRows = bill.dailyDetails.map((d: any) => `
-        <tr>
-          <td style="padding: 8px; border-bottom: 1px solid #eee;">${d.date}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #eee;">${d.driver}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #eee;">${d.vehicle}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #eee;">${d.shift}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #eee; font-size: 10px;">${d.qrCode || '-'}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">${formatCurrency(d.rent)}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">${formatCurrency(d.collection)}</td>
-        </tr>
-      `).join('');
-
-      return `<!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="UTF-8">
-            <title>Bill - ${bill.driver}</title>
-            <style>
-              body { font-family: 'Helvetica', sans-serif; padding: 40px; color: #333; max-width: 800px; mx-auto; }
-              .header { text-align: center; margin-bottom: 40px; border-bottom: 2px solid #eee; padding-bottom: 20px; }
-              .company-name { font-size: 24px; font-weight: bold; color: #4f46e5; }
-              .sub-company { font-size: 14px; color: #666; margin-top: 5px; }
-              .bill-title { font-size: 20px; margin-bottom: 20px; font-weight: bold; text-align: center; text-transform: uppercase; letter-spacing: 1px; }
-              .meta { display: flex; justify-content: space-between; margin-bottom: 30px; background: #f8fafc; padding: 20px; border-radius: 8px; }
-              .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 30px; font-size: 14px; }
-              .label { font-weight: bold; color: #64748b; }
-              .value { text-align: right; font-weight: bold; }
-              .positive { color: #16a34a; }
-              .negative { color: #dc2626; }
-              .total-section { background: #f1f5f9; padding: 20px; border-radius: 8px; margin-top: 20px; }
-              .total-row { font-size: 20px; font-weight: bold; display: flex; justify-content: space-between; border-top: 2px solid #cbd5e1; padding-top: 15px; }
-              .section-title { font-size: 14px; font-weight: bold; margin-top: 40px; margin-bottom: 10px; text-transform: uppercase; border-bottom: 1px solid #eee; padding-bottom: 5px; }
-              table { width: 100%; border-collapse: collapse; font-size: 12px; }
-              th { text-align: left; background: #f8fafc; padding: 8px; color: #64748b; font-weight: bold; }
-              .footer { margin-top: 60px; font-size: 10px; text-align: center; color: #94a3b8; }
-              .wallet-total-row { border-top: 1px solid #ccc; margin-top: 5px; padding-top: 5px; font-weight: bold; color: #4f46e5; }
-            </style>
-          </head>
-          <body>
-            <div class="header">
-              <div class="company-name">ENCHO CABS</div>
-              <div class="sub-company">A Unit of Encho Enterprises</div>
-            </div>
-            
-            <div class="meta">
-               <div>
-                 <div><strong>Driver:</strong> ${bill.driver}</div>
-                 <div style="margin-top:5px;"><strong>Vehicle QR:</strong> ${bill.qrCode}</div>
-               </div>
-               <div style="text-align:right;">
-                 <div><strong>Week:</strong> ${bill.weekRange}</div>
-                 <div style="margin-top:5px;"><strong>Generated:</strong> ${new Date().toLocaleDateString()}</div>
-               </div>
-            </div>
-
-            <div class="bill-title">Payment Statement</div>
-            
-            <div class="summary-grid">
-               <div class="label">Total Trips</div><div class="value">${bill.trips}</div>
-               <div class="label">Rent / Day (Applied)</div><div class="value">${formatCurrency(bill.rentPerDay)}</div>
-               <div class="label">Weekly Rent Applied</div><div class="value negative">- ${formatCurrency(bill.rentTotal)}</div>
-               <div class="label">Fuel Advances</div><div class="value negative">- ${formatCurrency(bill.fuel)}</div>
-               <div class="label">Wallet Earnings (Weekly)</div><div class="value positive">+ ${formatCurrency(bill.wallet)}</div>
-               <div class="label">Rental Collection</div><div class="value positive">+ ${formatCurrency(bill.collection)}</div>
-               <div class="label">Previous Dues/Credit</div><div class="value">${formatCurrency(bill.overdue)}</div>
-               <div class="label">Adjustments</div><div class="value">${formatCurrency(bill.adjustments)}</div>
-            </div>
-            
-            <div class="total-section">
-               <div class="total-row">
-                  <div>NET PAYOUT</div>
-                  <div>${formatCurrency(bill.payout)}</div>
-               </div>
-            </div>
-
-            <div class="section-title">DAILY ACTIVITY LOG</div>
-            <table>
-              <thead><tr><th>DATE</th><th>DRIVER</th><th>VEHICLE</th><th>SHIFT</th><th>QR</th><th style="text-align:right">RENT</th><th style="text-align:right">COLLECTION</th></tr></thead>
-              <tbody>${dailyRows}</tbody>
-            </table>
-
-            <div class="section-title">WEEKLY WALLET BREAKDOWN</div>
-             <div class="summary-grid" style="grid-template-columns: 1fr 1fr; font-size: 12px; gap: 5px;">
-               <div class="label">Gross Earnings</div><div class="value">${formatCurrency(bill.weeklyDetails.earnings)}</div>
-               <div class="label">Refunds</div><div class="value">${formatCurrency(bill.weeklyDetails.refund)}</div>
-               <div class="label">Deductions</div><div class="value negative">-${formatCurrency(bill.weeklyDetails.diff)}</div>
-               <div class="label">Charges</div><div class="value negative">-${formatCurrency(bill.weeklyDetails.charges)}</div>
-               <div class="label">Cash (Wallet)</div><div class="value negative">-${formatCurrency(bill.weeklyDetails.cash)}</div>
-               <div class="label wallet-total-row">Wallet Total</div><div class="value wallet-total-row">${formatCurrency(bill.wallet)}</div>
-            </div>
-
-            <div class="footer">
-               System Generated Bill • Encho Cabs
-            </div>
-          </body>
-        </html>
-      `;
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value, type } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'number' ? parseFloat(value) || 0 : value
+    }));
   };
 
-  const downloadBill = (bill: any) => {
-      const content = generateBillHTML(bill);
-      const blob = new Blob([content], { type: 'text/html;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Bill_${bill.driver}_${bill.id.substring(0,6)}.html`;
-      a.click();
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.weekStartDate) {
+        alert("Please select a date to determine the week range.");
+        return;
+    }
+    if (!formData.driver) return;
+
+    const range = getWeekRange(selectedDate);
+    
+    // Check for Duplicate
+    const duplicate = wallets.find(w => 
+        w.driver === formData.driver && 
+        w.weekStartDate === range.start && 
+        w.id !== editingId
+    );
+
+    const newWallet: WeeklyWallet = {
+      id: formData.id || crypto.randomUUID(),
+      weekStartDate: range.start,
+      weekEndDate: range.end,
+      driver: formData.driver || 'Unknown',
+      earnings: Number(formData.earnings),
+      refund: Number(formData.refund),
+      diff: Number(formData.diff),
+      cash: Number(formData.cash),
+      charges: Number(formData.charges),
+      trips: Number(formData.trips),
+      walletWeek: calculatedWalletWeek,
+      notes: formData.notes
+    };
+
+    if (duplicate) {
+        setDuplicateWarning({
+            active: true,
+            existingId: duplicate.id,
+            payload: newWallet
+        });
+        return;
+    }
+
+    await storageService.saveWeeklyWallet(newWallet);
+    resetForm();
+    loadData();
   };
 
-  const copyBillLink = (bill: any) => {
-      const content = generateBillHTML(bill);
-      const blob = new Blob([content], { type: 'text/html;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      
-      navigator.clipboard.writeText(url).then(() => {
-          setCopiedId(bill.id);
-          setTimeout(() => setCopiedId(null), 2000);
-      });
+  const handleOverrideConfirm = async () => {
+      if (!duplicateWarning) return;
+
+      const walletToSave = {
+          ...duplicateWarning.payload,
+          id: duplicateWarning.existingId // Overwrite existing ID
+      };
+
+      await storageService.saveWeeklyWallet(walletToSave);
+      setDuplicateWarning(null);
+      resetForm();
+      loadData();
+  };
+
+  const handleEdit = (wallet: WeeklyWallet) => {
+    setFormData(wallet);
+    setSelectedDate(wallet.weekStartDate); // Set picker to start date
+    setEditingId(wallet.id);
+    setIsFormOpen(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const resetForm = () => {
+    setFormData(initialFormState);
+    setSelectedDate('');
+    setEditingId(null);
+    setIsFormOpen(false);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (confirm('Delete this weekly record?')) {
+      await storageService.deleteWeeklyWallet(id);
+      loadData();
+    }
+  };
+
+  const filteredWallets = wallets.filter(w => 
+    filterDriver === '' || w.driver.toLowerCase().includes(filterDriver.toLowerCase())
+  );
+  
+  // Strict DD-MM-YYYY formatter
+  const formatDate = (dateStr: string) => {
+      if (!dateStr) return '';
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}-${month}-${year}`;
+  };
+
+  // Format Date Range for Display
+  const formatWeekRange = (start: string, end: string) => {
+      if(!start || !end) return '';
+      return `${formatDate(start)} - ${formatDate(end)}`;
   };
 
   return (
-    <div className="max-w-[1600px] mx-auto space-y-8 animate-fade-in pb-20">
-       <div className="flex items-center space-x-4 mb-2">
-          <div className="p-3 bg-indigo-900/10 rounded-xl text-indigo-700 shadow-sm border border-indigo-100">
-             <FileText size={28} />
-          </div>
-          <div>
-            <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Driver Billings</h2>
-            <p className="text-slate-500 mt-1 font-medium">Manage billing statements and balances.</p>
-          </div>
-       </div>
+    <div className="max-w-7xl mx-auto space-y-8 animate-fade-in">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Weekly Wallet</h2>
+          <p className="text-slate-500 mt-1">Calculate weekly driver payouts and deductions.</p>
+        </div>
+        <button 
+          onClick={() => setIsFormOpen(!isFormOpen)}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
+        >
+          {isFormOpen ? <X size={20} /> : <Plus size={20} />}
+          <span>{isFormOpen ? 'Close Form' : 'Add Weekly Data'}</span>
+        </button>
+      </div>
 
-       {/* 1. COLLAPSIBLE DRIVER BALANCES SECTION */}
-       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden transition-all duration-300">
-          <div 
-            className={`px-6 py-5 flex justify-between items-center cursor-pointer transition-colors ${isBalancesExpanded ? 'bg-slate-50/80 border-b border-slate-100' : 'hover:bg-slate-50'}`}
-            onClick={() => setIsBalancesExpanded(!isBalancesExpanded)}
-          >
-             <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg transition-transform duration-300 ${isBalancesExpanded ? 'bg-slate-200 rotate-180' : 'bg-slate-100'}`}>
-                    <ChevronDown size={20} className="text-slate-600" />
-                </div>
-                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                   <Users size={20} className="text-indigo-500"/> Driver Balances (Overall)
-                </h3>
-             </div>
-             
-             {!isBalancesExpanded && (
-                 <span className="text-xs font-bold text-slate-400 bg-slate-50 px-3 py-1 rounded-full border border-slate-100">
-                    {summaries.length} Drivers
-                 </span>
-             )}
-          </div>
-
-          {isBalancesExpanded && (
-            <div className="p-0 animate-fade-in">
-               <div className="px-6 py-3 bg-white border-b border-slate-50 flex justify-end">
-                  <div className="relative group w-64">
-                    <input 
-                      type="text" 
-                      placeholder="Filter drivers..." 
-                      value={filterDriver}
-                      onChange={(e) => setFilterDriver(e.target.value)}
-                      className="pl-9 pr-4 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all w-full"
-                    />
-                    <Users size={14} className="absolute left-3 top-2.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-                  </div>
-               </div>
-
-               <div className="overflow-x-auto max-h-[500px] scrollbar-thin">
-                  <table className="w-full text-sm text-left">
-                    <thead className="text-xs text-slate-500 uppercase bg-slate-50/80 sticky top-0 backdrop-blur-sm z-10 border-b border-slate-200">
-                      <tr>
-                        <th className="px-6 py-4 font-semibold tracking-wider">Driver</th>
-                        <th className="px-6 py-4 font-semibold text-right tracking-wider">Collection</th>
-                        <th className="px-6 py-4 font-semibold text-right tracking-wider">Rent</th>
-                        <th className="px-6 py-4 font-semibold text-right tracking-wider">Fuel</th>
-                        <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet</th>
-                        <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Balance</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {loading ? (
-                         <tr><td colSpan={6} className="p-8 text-center text-slate-400">Loading balances...</td></tr>
-                      ) : filteredSummaries.length === 0 ? (
-                         <tr><td colSpan={6} className="p-8 text-center text-slate-400">No drivers found.</td></tr>
-                      ) : (
-                        filteredSummaries.map((driver) => (
-                          <tr key={driver.driver} className="hover:bg-slate-50 transition-colors group">
-                            <td className="px-6 py-4 font-bold text-slate-700 group-hover:text-indigo-600 transition-colors">{driver.driver}</td>
-                            <td className="px-6 py-4 text-right text-slate-600 font-medium">{formatCurrency(driver.totalCollection)}</td>
-                            <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalRent)}</td>
-                            <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalFuel)}</td>
-                            <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalWalletWeek)}</td>
-                            <td className="px-6 py-4 text-right">
-                              <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-bold border ${
-                                driver.finalTotal < 0 
-                                  ? 'bg-rose-50 text-rose-700 border-rose-100' 
-                                  : 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                              }`}>
-                                {formatCurrency(driver.finalTotal)}
-                              </span>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-               </div>
-            </div>
-          )}
-       </div>
-
-
-       {/* 2. DRIVER BILLING SUMMARY (New Section) */}
-       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden transition-all duration-300">
-          <div 
-            className={`px-6 py-5 flex justify-between items-center cursor-pointer transition-colors ${isBillingExpanded ? 'bg-slate-50/80 border-b border-slate-100' : 'hover:bg-slate-50'}`}
-            onClick={() => setIsBillingExpanded(!isBillingExpanded)}
-          >
-             <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg transition-transform duration-300 ${isBillingExpanded ? 'bg-slate-200 rotate-180' : 'bg-slate-100'}`}>
-                    <ChevronDown size={20} className="text-slate-600" />
-                </div>
-                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                   <Briefcase size={20} className="text-indigo-500"/> Billing History (Completed Weeks)
-                </h3>
-             </div>
-          </div>
-
-          {isBillingExpanded && (
-             <div className="p-0 animate-fade-in">
-                {/* Filters Row */}
-                <div className="px-6 py-4 bg-slate-50 border-b border-slate-100 flex gap-4 justify-end">
-                    <div className="relative group w-48">
-                        <select 
-                            value={filterWeek} 
-                            onChange={(e) => setFilterWeek(e.target.value)}
-                            className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
-                        >
-                            <option value="">All Past Weeks</option>
-                            {uniqueWeeks.map(w => (
-                                <option key={w} value={w}>Week of {w}</option>
-                            ))}
-                        </select>
-                        <Calendar size={14} className="absolute left-3 top-2.5 text-slate-400 pointer-events-none" />
-                        <ChevronDown size={14} className="absolute right-3 top-2.5 text-slate-400 pointer-events-none" />
-                    </div>
-                    
-                    <div className="relative group w-48">
-                        <input 
-                          type="text" 
-                          placeholder="Search driver..." 
-                          value={filterDriver}
-                          onChange={(e) => setFilterDriver(e.target.value)}
-                          className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        />
-                        <Users size={14} className="absolute left-3 top-2.5 text-slate-400" />
-                    </div>
-                </div>
-
-                <div className="overflow-x-auto">
-                    <table className="w-full text-xs text-left whitespace-nowrap">
-                       <thead className="bg-slate-50 text-slate-500 uppercase font-bold border-b border-slate-100">
-                          <tr>
-                             <th className="px-6 py-4">Week Range</th>
-                             <th className="px-6 py-4">Driver</th>
-                             <th className="px-6 py-4">QR</th>
-                             <th className="px-6 py-4 text-center">Trips</th>
-                             <th className="px-6 py-4 text-right">Rent / Day</th>
-                             <th className="px-6 py-4 text-right">Rent Total</th>
-                             <th className="px-6 py-4 text-right">Collection</th>
-                             <th className="px-6 py-4 text-right">Fuel</th>
-                             <th className="px-6 py-4 text-right">Wallet</th>
-                             <th className="px-6 py-4 text-right">Overdue</th>
-                             <th className="px-6 py-4 text-right">Adjustments</th>
-                             <th className="px-6 py-4 text-right">Payout</th>
-                             <th className="px-6 py-4 text-center bg-slate-50 sticky right-0 z-10 shadow-[-4px_0_10px_-2px_rgba(0,0,0,0.05)]">Actions</th>
-                          </tr>
-                       </thead>
-                       <tbody className="divide-y divide-slate-100">
-                          {paginatedData.length === 0 ? (
-                             <tr><td colSpan={13} className="p-8 text-center text-slate-400">No completed billings found.</td></tr>
-                          ) : (
-                             paginatedData.map((bill) => (
-                                <tr key={bill!.id} className="hover:bg-slate-50 transition-colors">
-                                   <td className="px-6 py-4 font-medium text-slate-600">{bill!.weekRange}</td>
-                                   <td className="px-6 py-4 font-bold text-slate-800">{bill!.driver}</td>
-                                   <td className="px-6 py-4 text-slate-500">{bill!.qrCode}</td>
-                                   <td className="px-6 py-4 font-bold text-center">
-                                      {bill!.trips}
-                                      {bill!.trips < 70 && <span className="ml-1 text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Low</span>}
-                                   </td>
-                                   <td className="px-6 py-4 text-right text-slate-500">{formatCurrency(bill!.rentPerDay)}</td>
-                                   <td className="px-6 py-4 text-right font-medium text-rose-600">-{formatCurrency(bill!.rentTotal)}</td>
-                                   <td className="px-6 py-4 text-right font-medium text-emerald-600">+{formatCurrency(bill!.collection)}</td>
-                                   <td className="px-6 py-4 text-right text-rose-500">-{formatCurrency(bill!.fuel)}</td>
-                                   <td className="px-6 py-4 text-right text-indigo-600">+{formatCurrency(bill!.wallet)}</td>
-                                   <td className="px-6 py-4 text-right text-slate-500">{formatCurrency(bill!.overdue)}</td>
-                                   <td className="px-6 py-4 text-right text-amber-600 font-medium">{formatCurrency(bill!.adjustments)}</td>
-                                   <td className="px-6 py-4 text-right">
-                                      <span className={`px-3 py-1 rounded-lg font-bold border ${bill!.payout < 0 ? 'bg-rose-50 text-rose-700 border-rose-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>
-                                         {formatCurrency(bill!.payout)}
-                                      </span>
-                                   </td>
-                                   <td className="px-6 py-4 text-center bg-white sticky right-0 z-10 shadow-[-4px_0_10px_-2px_rgba(0,0,0,0.02)]">
-                                      <div className="flex items-center justify-center gap-2">
-                                         <button onClick={() => handleEditAdjustment(bill!.id, bill!.adjustments)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Edit Adjustments">
-                                            <Edit2 size={16} />
-                                         </button>
-                                         <button 
-                                            onClick={() => copyBillLink(bill!)} 
-                                            className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors relative" 
-                                            title="Copy Bill Link"
-                                         >
-                                            {copiedId === bill!.id ? <Check size={16} className="text-emerald-600" /> : <Copy size={16} />}
-                                         </button>
-                                         <button onClick={() => downloadBill(bill)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Download Bill">
-                                            <Download size={16} />
-                                         </button>
-                                      </div>
-                                   </td>
-                                </tr>
-                             ))
-                          )}
-                       </tbody>
-                    </table>
-                </div>
-                
-                {/* Pagination Controls */}
-                {totalPages > 1 && (
-                   <div className="px-6 py-4 bg-white border-t border-slate-100 flex justify-between items-center">
-                      <p className="text-xs text-slate-400">
-                         Page {currentPage} of {totalPages}
-                      </p>
-                      <div className="flex gap-2">
-                         <button 
-                           disabled={currentPage === 1} 
-                           onClick={() => setCurrentPage(p => p - 1)}
-                           className={`p-2 rounded-lg border ${currentPage === 1 ? 'border-slate-100 text-slate-300' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                         >
-                            <ChevronLeft size={16} />
-                         </button>
-                         <button 
-                           disabled={currentPage === totalPages} 
-                           onClick={() => setCurrentPage(p => p + 1)}
-                           className={`p-2 rounded-lg border ${currentPage === totalPages ? 'border-slate-100 text-slate-300' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                         >
-                            <ChevronRight size={16} />
-                         </button>
-                      </div>
-                   </div>
-                )}
-             </div>
-          )}
-       </div>
-
-
-       {/* 3. DRIVER RENTAL REFERENCE SECTION (Collapsible) */}
-       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden transition-all duration-300">
-          <div 
-            className={`px-6 py-5 flex justify-between items-center cursor-pointer transition-colors ${isRentalExpanded ? 'bg-slate-50/80 border-b border-slate-100' : 'hover:bg-slate-50'}`}
-            onClick={() => setIsRentalExpanded(!isRentalExpanded)}
-          >
-             <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg transition-transform duration-300 ${isRentalExpanded ? 'bg-slate-200 rotate-180' : 'bg-slate-100'}`}>
-                    <ChevronDown size={20} className="text-slate-600" />
-                </div>
-                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                    <Briefcase size={20} className="text-emerald-600"/> Driver Rental Reference
-                </h3>
-             </div>
-          </div>
-
-          {isRentalExpanded && (
-              <div className="p-0 animate-fade-in">
-                 <table className="w-full text-sm text-left">
-                    <thead className="bg-white text-xs uppercase font-bold text-slate-500 border-b border-slate-100">
-                       <tr>
-                          <th className="px-8 py-4 w-1/2 pl-20">Trip Range</th>
-                          <th className="px-8 py-4 w-1/2">Rent Amount</th>
-                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                       {rentalSlabs.length === 0 ? (
-                          <tr><td colSpan={2} className="p-6 text-center text-slate-400">No rental plan configured.</td></tr>
-                       ) : (
-                          rentalSlabs.map((slab) => (
-                             <tr key={slab.id} className="hover:bg-slate-50 transition-colors">
-                                <td className="px-8 py-4 pl-20 font-bold text-slate-700">
-                                   {slab.minTrips} – {slab.maxTrips === null ? '∞' : slab.maxTrips}
-                                </td>
-                                <td className="px-8 py-4 font-bold text-emerald-600">
-                                   {formatCurrency(slab.rentAmount)}
-                                </td>
-                             </tr>
-                          ))
-                       )}
-                    </tbody>
-                 </table>
+      {/* Modern Split Form */}
+      {isFormOpen && (
+        <div className="bg-white rounded-2xl shadow-xl border border-indigo-100 overflow-hidden ring-4 ring-indigo-50/50">
+           {/* Form Header */}
+           <div className="bg-slate-50/80 px-8 py-5 border-b border-slate-200 flex justify-between items-center backdrop-blur-sm">
+              <div className="flex items-center gap-3">
+                 <div className={`p-2 rounded-lg ${editingId ? 'bg-amber-100 text-amber-600' : 'bg-indigo-100 text-indigo-600'}`}>
+                    <Wallet size={20} />
+                 </div>
+                 <div>
+                    <h3 className="font-bold text-slate-800 text-lg">{editingId ? 'Edit Weekly Record' : 'New Weekly Calculation'}</h3>
+                    <p className="text-xs text-slate-500 font-medium">Auto-calculates Wallet Balance</p>
+                 </div>
               </div>
-          )}
-       </div>
+              <button onClick={resetForm} className="text-slate-400 hover:text-rose-500 hover:bg-rose-50 p-2 rounded-full transition-all">
+                 <X size={20} />
+              </button>
+           </div>
 
-       {/* ADJUSTMENT EDIT MODAL */}
-       {editingBillId && (
+           <form onSubmit={handleSubmit} className="p-8">
+              {/* Context Row */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-6 mb-8">
+                 <div className="lg:col-span-4">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1 mb-1.5 block">Driver</label>
+                    <div className="relative">
+                       <select required name="driver" value={formData.driver} onChange={handleInputChange} className="w-full pl-4 pr-10 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-900 font-bold focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer">
+                          <option value="">Select Driver...</option>
+                          {drivers.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+                       </select>
+                       <ChevronDown className="absolute right-4 top-3.5 text-slate-400 pointer-events-none" size={16} />
+                    </div>
+                 </div>
+                 <div className="lg:col-span-4">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1 mb-1.5 block">Select Date in Week</label>
+                    <div className={`relative flex items-center gap-3 p-1 rounded-xl border ${!selectedDate ? 'border-rose-200 bg-rose-50' : 'border-transparent'}`}>
+                       <input 
+                         type="date" 
+                         value={selectedDate} 
+                         onChange={handleDateChange} 
+                         required 
+                         className="flex-1 pl-4 pr-4 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-900 font-medium focus:ring-2 focus:ring-indigo-500 outline-none" 
+                       />
+                       <div className="bg-indigo-50 px-3 py-2 rounded-lg border border-indigo-100 min-w-[140px] text-center">
+                          <span className="text-[10px] text-indigo-400 font-bold uppercase block">Week Range</span>
+                          <span className="text-xs text-indigo-700 font-bold">{getWeekRange(selectedDate).label || 'Select Date'}</span>
+                       </div>
+                    </div>
+                 </div>
+                 <div className="lg:col-span-2">
+                    <InputField label="Trips Count" name="trips" type="number" value={formData.trips} onChange={handleInputChange} className="bg-slate-50 border-0 ring-1 ring-slate-200" />
+                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 relative">
+                 {/* Vertical Divider for Desktop */}
+                 <div className="hidden lg:block absolute left-1/2 top-0 bottom-0 w-px bg-slate-100 -ml-px"></div>
+
+                 {/* LEFT: Income (Green Theme) */}
+                 <div className="space-y-6">
+                    <div className="flex items-center gap-2 mb-2">
+                       <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
+                          <TrendingUp size={16} />
+                       </div>
+                       <h4 className="font-bold text-slate-700">Earnings & Credits</h4>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                       <InputField label="Earnings (₹)" name="earnings" type="number" value={formData.earnings} onChange={handleInputChange} className="border-emerald-200 focus:ring-emerald-500 focus:border-emerald-500 text-emerald-900 font-bold" />
+                       <InputField label="Refund (₹)" name="refund" type="number" value={formData.refund} onChange={handleInputChange} className="border-emerald-100 focus:ring-emerald-500" />
+                    </div>
+                 </div>
+
+                 {/* RIGHT: Deductions (Red Theme) */}
+                 <div className="space-y-6">
+                    <div className="flex items-center gap-2 mb-2">
+                       <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center text-rose-600">
+                          <TrendingDown size={16} />
+                       </div>
+                       <h4 className="font-bold text-slate-700">Deductions</h4>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                       <InputField label="Diff (₹)" name="diff" type="number" value={formData.diff} onChange={handleInputChange} className="border-rose-100 focus:ring-rose-500" />
+                       <InputField label="Cash (₹)" name="cash" type="number" value={formData.cash} onChange={handleInputChange} className="border-rose-100 focus:ring-rose-500" />
+                       <InputField label="Charges (₹)" name="charges" type="number" value={formData.charges} onChange={handleInputChange} className="border-rose-100 focus:ring-rose-500" />
+                    </div>
+                 </div>
+              </div>
+
+              {/* Calculation & Footer */}
+              <div className="mt-10 bg-slate-900 rounded-xl p-6 flex flex-col md:flex-row items-center justify-between gap-6 shadow-lg">
+                 <div className="flex items-center gap-4">
+                    <div className={`p-3 rounded-full ${calculatedWalletWeek < 0 ? 'bg-rose-500 text-white' : 'bg-emerald-500 text-white'}`}>
+                       <Wallet size={24} />
+                    </div>
+                    <div>
+                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Calculated Wallet Week</p>
+                       <div className="flex items-baseline gap-2">
+                          <span className={`text-3xl font-bold ${calculatedWalletWeek < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                             {calculatedWalletWeek < 0 ? '-' : '+'}₹{Math.abs(calculatedWalletWeek).toFixed(2)}
+                          </span>
+                          <span className="text-xs text-slate-500 font-medium px-2 py-0.5 bg-slate-800 rounded-md">
+                             {calculatedWalletWeek < 0 ? 'Driver Owes' : 'Payable to Driver'}
+                          </span>
+                       </div>
+                    </div>
+                 </div>
+
+                 <div className="flex gap-3 w-full md:w-auto">
+                    <button type="button" onClick={resetForm} className="flex-1 md:flex-none px-6 py-3 text-slate-300 font-bold hover:bg-slate-800 rounded-xl transition-colors">Cancel</button>
+                    <button type="submit" className="flex-1 md:flex-none px-8 py-3 bg-white text-slate-900 font-bold rounded-xl hover:bg-indigo-50 shadow-lg shadow-white/10 transition-all flex items-center justify-center gap-2 active:scale-95">
+                       {editingId ? 'Update Record' : 'Save Calculation'} <ArrowRight size={18} />
+                    </button>
+                 </div>
+              </div>
+           </form>
+        </div>
+      )}
+
+      {/* DUPLICATE WARNING MODAL */}
+      {duplicateWarning && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-              <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 border-t-4 border-amber-500">
-                  <div className="flex justify-between items-center mb-4">
-                      <h3 className="text-lg font-bold text-slate-800">Edit Adjustments</h3>
-                      <button onClick={() => setEditingBillId(null)}><X size={20} className="text-slate-400 hover:text-slate-600"/></button>
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden ring-4 ring-amber-50">
+                  <div className="bg-amber-50 p-6 border-b border-amber-100 flex items-center gap-3">
+                      <div className="bg-white p-2 rounded-full text-amber-500 shadow-sm"><AlertOctagon size={28} /></div>
+                      <div>
+                          <h3 className="font-bold text-amber-900 text-lg">Duplicate Week</h3>
+                      </div>
                   </div>
-                  <p className="text-slate-500 text-sm mb-4">Add or subtract an extra amount for this bill.</p>
-                  
-                  <div className="relative mb-6">
-                      <span className="absolute left-4 top-3 text-slate-400 font-bold">₹</span>
-                      <input 
-                          type="number" 
-                          autoFocus
-                          value={adjustmentValue}
-                          onChange={(e) => setAdjustmentValue(parseFloat(e.target.value) || 0)}
-                          className="w-full pl-8 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
-                      />
-                  </div>
-
-                  <div className="flex gap-3">
-                      <button onClick={() => setEditingBillId(null)} className="flex-1 py-2.5 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50">Cancel</button>
-                      <button onClick={saveAdjustment} className="flex-1 py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2">
-                          <Save size={16} /> Save
-                      </button>
+                  <div className="p-6">
+                      <p className="text-slate-600 font-medium leading-relaxed mb-4">
+                          Driver <strong>{duplicateWarning.payload.driver}</strong> already has a wallet entry for the week starting <strong>{duplicateWarning.payload.weekStartDate.split('-').reverse().join('-')}</strong>.
+                      </p>
+                      <div className="flex gap-3">
+                          <button 
+                            onClick={() => setDuplicateWarning(null)}
+                            className="flex-1 py-3 border border-slate-200 text-slate-600 rounded-xl font-bold hover:bg-slate-50 transition-colors"
+                          >
+                              Cancel
+                          </button>
+                          <button 
+                            onClick={handleOverrideConfirm}
+                            className="flex-1 py-3 bg-amber-500 text-white rounded-xl font-bold hover:bg-amber-600 shadow-lg shadow-amber-500/20 transition-colors"
+                          >
+                              Override
+                          </button>
+                      </div>
                   </div>
               </div>
           </div>
-       )}
+      )}
 
+      {/* Filters */}
+      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row gap-5 items-center justify-between">
+        <div className="flex items-center gap-2 text-slate-500">
+          <Search size={18} />
+          <span className="text-sm font-semibold uppercase tracking-wide">Search Records</span>
+        </div>
+        <div className="w-full md:w-72 relative">
+           <input 
+             type="text" 
+             placeholder="Filter by driver..." 
+             value={filterDriver} 
+             onChange={e => setFilterDriver(e.target.value)}
+             className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" 
+           />
+           <Search size={16} className="absolute left-3.5 top-3 text-slate-400" />
+        </div>
+      </div>
+
+      {/* List */}
+      <div className="bg-white rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left">
+            <thead className="text-xs text-slate-500 uppercase bg-slate-50/50 border-b border-slate-100">
+              <tr>
+                <th className="px-6 py-4 font-semibold tracking-wider">Week Range</th>
+                <th className="px-6 py-4 font-semibold tracking-wider">Driver</th>
+                <th className="px-6 py-4 font-semibold text-center tracking-wider">Trips</th>
+                <th className="px-6 py-4 font-semibold text-right tracking-wider">Earnings</th>
+                <th className="px-6 py-4 font-semibold text-right tracking-wider">Refund</th>
+                <th className="px-6 py-4 font-semibold text-right tracking-wider">Deductions</th>
+                <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet Week</th>
+                <th className="px-6 py-4 font-semibold text-center tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {loading ? (
+                <tr><td colSpan={8} className="p-12 text-center text-slate-400">Loading wallet data...</td></tr>
+              ) : filteredWallets.length === 0 ? (
+                <tr><td colSpan={8} className="p-12 text-center text-slate-400">No records found.</td></tr>
+              ) : (
+                filteredWallets.map(w => {
+                  const deductions = (w.diff || 0) + (w.cash || 0) + (w.charges || 0);
+                  return (
+                    <tr key={w.id} className="hover:bg-slate-50/80 transition-colors group">
+                      <td className="px-6 py-4 text-slate-600 font-medium whitespace-nowrap">
+                         <div className="flex items-center gap-2">
+                            <Calendar size={14} className="text-slate-400" />
+                            {formatWeekRange(w.weekStartDate, w.weekEndDate)}
+                         </div>
+                      </td>
+                      <td className="px-6 py-4 font-bold text-slate-800">{w.driver}</td>
+                      <td className="px-6 py-4 text-center font-bold text-slate-600 bg-slate-50/50">{w.trips || 0}</td>
+                      <td className="px-6 py-4 text-right text-emerald-600 font-medium">+₹{w.earnings}</td>
+                      <td className="px-6 py-4 text-right text-emerald-600 font-medium">+₹{w.refund}</td>
+                      <td className="px-6 py-4 text-right text-rose-500 font-medium">-₹{deductions.toFixed(2)}</td>
+                      <td className="px-6 py-4 text-right">
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold border ${
+                          w.walletWeek < 0 
+                            ? 'bg-rose-50 text-rose-700 border-rose-100' 
+                            : 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                        }`}>
+                          {w.walletWeek < 0 ? '' : '+'}₹{w.walletWeek.toFixed(2)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <div className="flex items-center justify-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => handleEdit(w)} className="text-slate-400 hover:text-indigo-600 p-2 hover:bg-indigo-50 rounded-lg transition-colors"><Edit2 size={16} /></button>
+                          <button onClick={() => handleDelete(w.id)} className="text-slate-400 hover:text-rose-600 p-2 hover:bg-rose-50 rounded-lg transition-colors"><Trash2 size={16} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 };
 
-export default DriverBillingsPage;
+export default WeeklyWalletPage;
