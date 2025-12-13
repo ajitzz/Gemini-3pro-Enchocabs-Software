@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, CheckCircle, FileSpreadsheet, XCircle, AlertTriangle, X, UserPlus, AlertOctagon, ArrowRight, Save, Play, Download, Eye, RefreshCw } from 'lucide-react';
+import { Upload, CheckCircle, XCircle, AlertTriangle, X, UserPlus, AlertOctagon, Eye, RefreshCw } from 'lucide-react';
 import { storageService } from '../services/storageService';
-import { DailyEntry, WeeklyWallet, Driver, AssetMaster } from '../types';
+import { DailyEntry, Driver, AssetMaster } from '../types';
 
 declare const XLSX: any;
 
@@ -55,9 +55,8 @@ interface ImportState {
 }
 
 const ImportPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'daily' | 'weekly'>('daily');
   const [file, setFile] = useState<File | null>(null);
-   const [isXLSXReady, setIsXLSXReady] = useState<boolean>(typeof XLSX !== 'undefined');
+  const [isXLSXReady, setIsXLSXReady] = useState<boolean>(typeof XLSX !== 'undefined');
   // System Data State
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [existingEntries, setExistingEntries] = useState<DailyEntry[]>([]);
@@ -134,106 +133,80 @@ const ImportPage: React.FC = () => {
 
   // --- PARSING HELPERS ---
 
-  // Clean cell value
   const cleanCell = (val: any): string => {
     if (val === undefined || val === null) return '';
     return String(val).trim();
   };
 
-  const parseExcelDate = (val: any): string => {
-    if (!val) return '';
+  const parseExcelDate = (inputVal: any): string => {
+    if (!inputVal) return '';
     
-    const buildISODate = (year: number, month: number, day: number) => {
-      const fullYear = year < 100 ? 2000 + year : year;
+    const buildISODate = (y: number, m: number, d: number) => {
+      const fullYear = y < 100 ? 2000 + y : y;
       if (fullYear < 2000 || fullYear > 2100) return '';
-    const d = new Date(Date.UTC(fullYear, month - 1, day));
-      if (d.getUTCFullYear() !== fullYear || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) return '';
-      const mm = month.toString().padStart(2, '0');
-      const dd = day.toString().padStart(2, '0');
+      const dateObj = new Date(fullYear, m - 1, d);
+      if (dateObj.getFullYear() !== fullYear || dateObj.getMonth() !== m - 1 || dateObj.getDate() !== d) return '';
+      const mm = m.toString().padStart(2, '0');
+      const dd = d.toString().padStart(2, '0');
       return `${fullYear}-${mm}-${dd}`;
     };
-const normalizedFromParts = (a: number, b: number, c: number) => {
-      // Try year-first, then day-first to avoid swapping month/day for DD-MM-YYYY imports
-      const yearFirst = buildISODate(a, b, c);
-      if (yearFirst) return yearFirst;
-      return buildISODate(c, b, a);
-    };
+
     try {
-       // Excel serial number
-      if (typeof val === 'number') {
-        const date = new Date(Math.round((val - 25569) * 86400 * 1000));
-        return buildISODate(date.getFullYear(), date.getMonth() + 1, date.getDate());
+      if (typeof inputVal === 'number') {
+        const excelDate = new Date(Math.round((inputVal - 25569) * 86400 * 1000));
+        return buildISODate(excelDate.getFullYear(), excelDate.getMonth() + 1, excelDate.getDate());
       }
 
-      const strVal = String(val).trim();
- if (!strVal) return '';
+      const strVal = String(inputVal).trim();
 
-      // Already ISO
-      if (/^\d{4}-\d{2}-\d{2}$/.test(strVal)) return strVal;
-      // Numeric strings (Excel serial values or yyyymmdd)
       if (/^-?\d+(?:\.\d+)?$/.test(strVal)) {
-        const asNumber = Number(strVal);
-
-        // Try serial number interpretation first
-        const serialDate = new Date(Math.round((asNumber - 25569) * 86400 * 1000));
-        const serialISO = buildISODate(serialDate.getUTCFullYear(), serialDate.getUTCMonth() + 1, serialDate.getUTCDate());
-        if (serialISO) return serialISO;
-
-        // Try yyyymmdd compact format (e.g., 20240131)
         if (strVal.length === 8) {
-          const year = parseInt(strVal.slice(0, 4), 10);
-          const month = parseInt(strVal.slice(4, 6), 10);
-          const day = parseInt(strVal.slice(6, 8), 10);
-          const compactISO = buildISODate(year, month, day);
-          if (compactISO) return compactISO;
+          const y = parseInt(strVal.slice(0, 4), 10);
+          const m = parseInt(strVal.slice(4, 6), 10);
+          const d = parseInt(strVal.slice(6, 8), 10);
+          const res = buildISODate(y, m, d);
+          if (res) return res;
         }
-  }
-
-      // Handle slash/dash/dot separated strings with explicit day & month recognition (DD/MM/YYYY, MM/DD/YYYY, YYYY/MM/DD)
-      const datePattern = /^(\d{1,4})[\/.-](\d{1,2})[\/.-](\d{1,4})$/;
-      const match = strVal.match(datePattern);
-      if (match) {
-        const a = parseInt(match[1], 10);
-        const b = parseInt(match[2], 10);
-        const c = parseInt(match[3], 10);
-
-        // Try YYYY-MM-DD and DD-MM-YYYY explicitly to keep DD as day for imports
-        const isoFromParts = normalizedFromParts(a, b, c);
-        if (isoFromParts) return isoFromParts;
-
-      
-       // Fallback to MM/DD/YYYY style
-        const mmddyyyy = buildISODate(c, a, b);
-        if (mmddyyyy) return mmddyyyy;
       }
 
-      // Native Date parsing fallback
-      const native = new Date(val);
-         const native = new Date(strVal);
-      if (!isNaN(native.getTime()) && native.getUTCFullYear() > 2000) {
-        return buildISODate(native.getUTCFullYear(), native.getUTCMonth() + 1, native.getUTCDate());
+      const datePattern = /^(\d{1,4})[\/.-](\d{1,2})[\/.-](\d{1,4})(.*)$/;
+      const match = strVal.match(datePattern);
+      
+      if (match) {
+        const part1 = parseInt(match[1], 10);
+        const part2 = parseInt(match[2], 10);
+        const part3 = parseInt(match[3], 10);
+
+        if (part3 >= 1000) {
+             const res = buildISODate(part3, part2, part1);
+             if (res) return res;
+        }
+        
+        if (part1 >= 1000) {
+             const res = buildISODate(part1, part2, part3);
+             if (res) return res;
+        }
+
+        const res = buildISODate(part3 >= 100 ? part3 : 2000 + part3, part2, part1);
+        if (res) return res;
       }
     } catch (e) {
       return '';
     }
-  
-
-
     return '';
   };
 
   const getNumber = (val: any) => {
     if (!val) return 0;
-    const str = String(val).replace(/[^\d.-]/g, ''); // Remove currency, commas
+    const str = String(val).replace(/[^\d.-]/g, ''); 
     if (str === '' || str === '#N/A' || str.toLowerCase() === 'null') return 0;
     const n = parseFloat(str);
     return isNaN(n) ? 0 : n;
   };
 
-  // Helper to construct SkippedRow object
   const createSkippedRow = (rowObj: any, index: number, reason: string): SkippedRow => {
     return {
-      rowNumber: index + 1, // Visual row number
+      rowNumber: index + 1,
       date: cleanCell(rowObj.date),
       driver: cleanCell(rowObj.driver),
       qrCode: cleanCell(rowObj.qrCode),
@@ -243,7 +216,7 @@ const normalizedFromParts = (a: number, b: number, c: number) => {
       collection: cleanCell(rowObj.collection),
       fuel: cleanCell(rowObj.fuel),
       due: cleanCell(rowObj.due),
-        payout: cleanCell(rowObj.payout),
+      payout: cleanCell(rowObj.payout),
       rejectReason: reason
     };
   };
@@ -271,7 +244,7 @@ const normalizedFromParts = (a: number, b: number, c: number) => {
     setCurrentConflict(null);
     setShowSkippedModal(false);
   };
-//
+
   const startImport = async () => {
        if (!file) return;
     if (!isXLSXReady || typeof XLSX === 'undefined') {
@@ -288,7 +261,6 @@ const normalizedFromParts = (a: number, b: number, c: number) => {
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
         
-        // 1. Read as Array of Arrays (Header: 1)
         const rawRows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
         
         if (rawRows.length === 0) {
@@ -297,52 +269,46 @@ const normalizedFromParts = (a: number, b: number, c: number) => {
           return;
         }
 
-        // 2. Locate Header Row
         let headerRowIndex = -1;
-let bestMatchCount = 0;
+        let bestMatchCount = 0;
         let colIndices: Record<string, number> = {};
 
        for (let i = 0; i < Math.min(rawRows.length, 30); i++) {
             const normalizedRow = rawRows[i].map(cell => String(cell).toLowerCase().trim());
             let matchCount = 0;
             
-
             REQUIRED_DAILY_COLUMNS.forEach(col => {
               if (col.keys.some(k => normalizedRow.some(cell => cell.includes(k.toLowerCase())))) {
                     matchCount++;
                 }
             });
 
-if (matchCount > bestMatchCount) {
+            if (matchCount > bestMatchCount) {
                 const candidate: Record<string, number> = {};
                 REQUIRED_DAILY_COLUMNS.forEach(col => {
-                  
-               const idx = normalizedRow.findIndex(cell => col.keys.some(k => cell.includes(k.toLowerCase())));
-                    candidate[col.field] = idx;
+                  const idx = normalizedRow.findIndex(cell => col.keys.some(k => cell.includes(k.toLowerCase())));
+                  candidate[col.field] = idx;
                 });
- bestMatchCount = matchCount;
+                bestMatchCount = matchCount;
                 headerRowIndex = i;
                 colIndices = candidate;
             }
         }
 
-if (headerRowIndex === -1 || bestMatchCount < 3) {
+        if (headerRowIndex === -1 || bestMatchCount < 3) {
             alert("Could not detect header row. Please check column names (Date, Driver, etc.)");
             setImportState(prev => ({ ...prev, status: 'idle' }));
             return;
         }
-          // Ensure we have a usable Date column reference; if not found, default to first column
+        
         if (colIndices.date === -1 || colIndices.date === undefined) {
             colIndices.date = 0;
         }
 
-
-        // 3. Process Data Rows (Stop at Table End)
         const processedQueue: any[] = [];
-           const skippedFromParse: SkippedRow[] = [];
+        const skippedFromParse: SkippedRow[] = [];
         let blankStreak = 0;
         const isGarbageRow = (row: any[]) => {
-            // Consider rows with only a weekday label or metadata as empty so we can find table end quickly
             const nonEmpty = row.filter(c => String(c || '').trim() !== '');
             if (nonEmpty.length === 0) return true;
             if (nonEmpty.length === 1) {
@@ -353,58 +319,47 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
             return false;
         };
 
-
         for (let i = headerRowIndex + 1; i < rawRows.length; i++) {
             const row = rawRows[i];
             
-            
-            // Safety: Pad row if short
             while (row.length < Object.keys(colIndices).length) row.push("");
 
-            // Stop Conditions
-          // A. Check for section headers of other tables
             const firstCellRaw = String(row[0] || '').toLowerCase();
             if (firstCellRaw.includes('driver summary') || firstCellRaw.includes('weekly status') || firstCellRaw.includes('profit') || firstCellRaw.includes('loss')) break;
             if (firstCellRaw.includes('total')) break;
 
-          // B. Check for Blank/Garbage Streak (End of block)
             if (isGarbageRow(row)) {
                 blankStreak++;
-                if (blankStreak > 3) break; // Assume end of table after 3 empty/garbage rows
+                if (blankStreak > 3) break; 
                 continue;
             } else {
                 blankStreak = 0;
             }
 
-            // C. Extract Data via Index
             const rowObj: any = {};
-            // Using mapped indices ensures we don't read "Drivers" from column 3 if it's actually in column 1 in a different table
             REQUIRED_DAILY_COLUMNS.forEach(col => {
                 const idx = colIndices[col.field];
                 rowObj[col.field] = idx !== -1 && idx !== undefined ? cleanCell(row[idx]) : '';
             });
 
-            // Store original line number for reference
             rowObj._line = i + 1;
 
-            // Check if it's a valid data row (Must have Date)
             const parsedDate = parseExcelDate(rowObj.date);
             
             if (parsedDate) {
-               processedQueue.push({ ...rowObj, date: parsedDate }); // Store parsed ISO date
+               processedQueue.push({ ...rowObj, date: parsedDate }); 
              } else if (Object.values(rowObj).some(v => String(v || '').trim() !== '')) {
-               skippedFromParse.push(createSkippedRow(rowObj, i, 'Invalid or missing date'));
-                }
+               skippedFromParse.push(createSkippedRow(rowObj, i, 'Invalid or missing date. Format must be DD/MM/YYYY'));
+            }
         }
 
         if (processedQueue.length === 0) {
             setImportState(prev => ({ ...prev, skippedRows: [...prev.skippedRows, ...skippedFromParse], status: 'idle' }));
-             alert(`No valid data rows found after header. ${skippedFromParse.length > 0 ? 'Rows failed date parsing. Please verify the Date column (e.g., DD/MM/YYYY).' : ''}`);
+             alert(`No valid data rows found. ${skippedFromParse.length > 0 ? 'Rows failed date parsing. Please use DD/MM/YYYY format.' : ''}`);
              return;
         }
 
         setImportState(prev => ({ ...prev, queue: processedQueue, skippedRows: [...prev.skippedRows, ...skippedFromParse], status: 'processing' }));
-
 
       } catch (err) {
         console.error(err);
@@ -422,7 +377,6 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
   useEffect(() => {
     if (importState.status === 'processing' && importState.queue.length > 0) {
       if (importState.currentIndex < importState.queue.length) {
-        // Reduced timeout for speed
         const timer = setTimeout(() => validateCurrentRow(), 5);
         return () => clearTimeout(timer);
       } else {
@@ -433,9 +387,8 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
 
   const validateCurrentRow = () => {
     const { queue, currentIndex } = importState;
-    const mapped = queue[currentIndex]; // Already mapped & cleaned in startImport
+    const mapped = queue[currentIndex]; 
     
-    // --- VALIDATION 3: CHECK MANDATORY FIELDS ---
     const missingFields = REQUIRED_DAILY_COLUMNS.filter(col => col.required && !mapped[col.field]);
     
     if (missingFields.length > 0) {
@@ -444,38 +397,35 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
     }
 
     const driverName = mapped.driver;
-    const dateStr = mapped.date; // Already parsed
+    const dateStr = mapped.date; 
 
-    // --- VALIDATION 1: DRIVER EXISTS CHECK ---
-    // Check if driver exists AT ALL (Active or Terminated)
     const existingDriver = driversRef.current.find(d => d.name.toLowerCase() === driverName.toLowerCase());
     
     if (!existingDriver) {
-      // Not found anywhere
       pauseWithConflict('DRIVER_MISSING', mapped, currentIndex, { driverName });
       return;
     }
 
     if (existingDriver.terminationDate) {
-       // Found but Terminated - Prompt to Reactivate
        pauseWithConflict('DRIVER_TERMINATED', mapped, currentIndex, { driver: existingDriver });
        return;
     }
 
-    // --- VALIDATION 2: DUPLICATE ENTRY CHECK ---
     const duplicate = existingEntriesRef.current.find(e => 
       e.date === dateStr && 
-      e.driver.toLowerCase() === driverName.toLowerCase() &&
+      e.driver.toLowerCase() === existingDriver.name.toLowerCase() &&
       !importState.overriddenIds.includes(e.id)
     );
 
     const batchDuplicate = importState.validEntries.find(e => 
-      e.date === dateStr && e.driver.toLowerCase() === driverName.toLowerCase()
+      e.date === dateStr && e.driver.toLowerCase() === existingDriver.name.toLowerCase()
     );
+
+    const validDriverName = existingDriver.name;
 
     if (duplicate || batchDuplicate) {
         const newEntryObj = {
-          driver: driverName,
+          driver: validDriverName,
           date: dateStr,
           vehicle: mapped.vehicle,
           shift: mapped.shift,
@@ -495,13 +445,12 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
       return;
     }
 
-    // --- ALL VALID ---
     const newEntry: DailyEntry = {
       id: crypto.randomUUID(),
       date: dateStr,
       day: mapped.day || new Date(dateStr).toLocaleDateString('en-US', { weekday: 'long' }),
       vehicle: mapped.vehicle, 
-      driver: driverName,
+      driver: validDriverName, 
       shift: mapped.shift,
       qrCode: mapped.qrCode,
       rent: getNumber(mapped.rent),
@@ -543,7 +492,6 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
     
     if (!nameToAdd) return alert("Name required");
     
-    // Check duplication against existing drivers before adding
     const duplicateName = driversRef.current.find(d => d.name.toLowerCase() === nameToAdd.toLowerCase());
     if (duplicateName) {
         if (duplicateName.terminationDate) {
@@ -555,7 +503,7 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
     }
 
     const newDriver: Driver = {
-      id: '', // Empty string, let backend generate UUID
+      id: '',
       name: nameToAdd,
       mobile: mobileToAdd,
       joinDate: new Date().toISOString().split('T')[0],
@@ -569,7 +517,6 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
     try {
         const savedDriver = await storageService.saveDriver(newDriver);
         
-        // Update reference with the FULL driver object returned by API (including new ID)
         const updatedDrivers = [...driversRef.current, savedDriver];
         driversRef.current = updatedDrivers;
         setDrivers(updatedDrivers); 
@@ -588,7 +535,6 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
     if (!driver) return;
 
     try {
-        // Reactivate: Keep ID, clear termination date, set status active
         const updatedDriver: Driver = {
             ...driver,
             terminationDate: undefined,
@@ -597,12 +543,11 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
         
         await storageService.saveDriver(updatedDriver);
         
-        // Update local ref
         const updatedList = driversRef.current.map(d => d.id === driver.id ? updatedDriver : d);
         driversRef.current = updatedList;
         setDrivers(updatedList);
         
-        resumeImport(false); // Retry current row now that driver is active
+        resumeImport(false); 
     } catch (e: any) {
         alert("Failed to reactivate: " + e.message);
     }
@@ -613,7 +558,6 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
     const { queue, currentIndex } = importState;
     const row = queue[currentIndex];
     
-    // Add current to skipped list
     const skippedRow = createSkippedRow(row, currentIndex, `Driver not found/active: ${driverName}`);
     
     setImportState(prev => ({
@@ -726,7 +670,7 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
       <div className="flex items-center justify-between">
         <div>
            <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Smart Import</h2>
-           <p className="text-slate-500 mt-1">Strict multi-step validation with conflict resolution.</p>
+           <p className="text-slate-500 mt-1">Strict DD/MM/YYYY validation with conflict resolution.</p>
         </div>
       </div>
 
@@ -740,7 +684,7 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
                   <Upload size={40} />
                 </div>
                 <h3 className="text-xl font-bold text-slate-700">Drop Daily Entry CSV</h3>
-                <p className="text-slate-400 mt-2 font-medium">Smart detection of tables & dates.</p>
+                <p className="text-slate-400 mt-2 font-medium">Smart detection of tables & dates (DD/MM/YYYY).</p>
               </div>
   <button onClick={startImport} disabled={!file || !isXLSXReady} className="mt-8 px-8 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 disabled:opacity-50 disabled:shadow-none hover:bg-indigo-700 transition-all">
                  Start Validation
@@ -1010,3 +954,4 @@ if (headerRowIndex === -1 || bestMatchCount < 3) {
 };
 
 export default ImportPage;
+
