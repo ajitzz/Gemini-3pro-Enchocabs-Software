@@ -33,6 +33,28 @@ export interface WeeklyWallet {
   notes?: string;
 }
 
+// NEW: Persisted Billing Record
+export interface DriverBillingRecord {
+  id: string;
+  driverId?: string;
+  driverName: string;
+  qrCode: string;
+  weekStartDate: string;
+  weekEndDate: string;
+  daysWorked: number;
+  trips: number;
+  rentPerDay: number;
+  rentTotal: number;
+  collection: number;
+  fuel: number;
+  wallet: number;
+  walletOverdue: number; // From DailyEntry.due
+  adjustments: number;
+  payout: number;
+  status: 'Pending' | 'Paid' | 'Finalized';
+  generatedAt: string;
+}
+
 export interface Driver {
   id: string;
   name: string;
@@ -164,3 +186,4 @@ export interface AuthUser {
   photoURL?: string;
   driverId?: string;
 }
+
