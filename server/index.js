@@ -845,9 +845,21 @@ app.post('/api/manager-access', async (req, res) => {
   }
 });
 
-initDb().then(() => {
+initDb()
+  .then(async () => {
+    try {
+      await syncDriverBillings();
+      setInterval(() => {
+        syncDriverBillings().catch((err) => console.error('Driver billing sync failed:', err));
+      }, 5 * 60 * 1000);
+    } catch (err) {
+      console.error('Initial driver billing sync failed:', err);
+    }
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
     });
-});
+ })
+  .catch((err) => {
+    console.error('Initialization failed:', err);
+  });
 
