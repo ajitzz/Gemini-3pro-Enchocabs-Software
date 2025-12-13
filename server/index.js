@@ -13,7 +13,29 @@ const PORT = process.env.PORT || 3000;
 // --- INITIALIZATION SQL ---
 const initDb = async () => {
   try {
-    // Ensure weekly_wallets has required columns
+    // Enable UUID extension
+    await db.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
+
+    // 1. Create Tables if not exist
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS drivers (
+        id UUID PRIMARY KEY,
+        name TEXT NOT NULL,
+        mobile TEXT,
+        email TEXT,
+        join_date DATE DEFAULT CURRENT_DATE,
+        termination_date DATE,
+        deposit NUMERIC DEFAULT 0,
+        qr_code TEXT,
+        vehicle TEXT,
+        status TEXT DEFAULT 'Active',
+        current_shift TEXT DEFAULT 'Day',
+        default_rent NUMERIC DEFAULT 0,
+        notes TEXT,
+        is_manager BOOLEAN DEFAULT FALSE
+      );
+    `);
+
     await db.query(`
       CREATE TABLE IF NOT EXISTS weekly_wallets (
         id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -33,8 +55,32 @@ const initDb = async () => {
         notes TEXT
       );
     `);
+
+    // NEW TABLE: driver_billings (Fixes 404 Error)
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS driver_billings (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        driver_id UUID,
+        driver_name TEXT NOT NULL,
+        qr_code TEXT,
+        week_start_date DATE,
+        week_end_date DATE,
+        days_worked INT,
+        trips INT,
+        rent_per_day NUMERIC DEFAULT 0,
+        rent_total NUMERIC DEFAULT 0,
+        collection NUMERIC DEFAULT 0,
+        fuel NUMERIC DEFAULT 0,
+        wallet NUMERIC DEFAULT 0,
+        wallet_overdue NUMERIC DEFAULT 0,
+        adjustments NUMERIC DEFAULT 0,
+        payout NUMERIC DEFAULT 0,
+        status TEXT DEFAULT 'Finalized',
+        generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
     
-    // Add columns if missing (Migration)
+    // 2. Migrations / Updates
     await db.query(`
       DO $$
       BEGIN
@@ -49,21 +95,88 @@ const initDb = async () => {
           END IF;
       END $$;
     `);
-    console.log("Database schema verified.");
+
+    // 3. Schema Constraints & Data Cleanup
+    await db.query(`
+      UPDATE drivers 
+      SET mobile = NULL 
+      WHERE mobile IS NOT NULL 
+      AND (trim(mobile) = '' OR mobile = '0' OR mobile = '.' OR mobile = '-' OR lower(mobile) = 'n/a' OR lower(mobile) = 'null' OR lower(mobile) = 'undefined');
+    `);
+    
+    await db.query(`
+      UPDATE drivers 
+      SET qr_code = NULL 
+      WHERE qr_code IS NOT NULL 
+      AND (trim(qr_code) = '' OR qr_code = '0' OR qr_code = '.' OR qr_code = '-' OR lower(qr_code) = 'n/a' OR lower(qr_code) = 'null');
+    `);
+
+    console.log("Database initialized. Tables ready.");
   } catch (err) {
     console.error("DB Init Error:", err);
   }
 };
 
-initDb();
+// --- DRIVER BILLINGS ENDPOINTS (NEW) ---
+app.get('/api/driver-billings', async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT 
+        id, driver_id as "driverId", driver_name as "driverName", qr_code as "qrCode",
+        to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate", 
+        to_char(week_end_date, 'YYYY-MM-DD') as "weekEndDate",
+        days_worked as "daysWorked", trips, rent_per_day as "rentPerDay", 
+        rent_total as "rentTotal", collection, fuel, wallet, 
+        wallet_overdue as "walletOverdue", adjustments, payout, status, 
+        generated_at as "generatedAt"
+      FROM driver_billings 
+      ORDER BY week_start_date DESC, driver_name ASC
+    `);
+    const safeRows = result.rows.map(r => ({
+      ...r,
+      daysWorked: Number(r.daysWorked), trips: Number(r.trips),
+      rentPerDay: Number(r.rentPerDay), rentTotal: Number(r.rentTotal),
+      collection: Number(r.collection), fuel: Number(r.fuel),
+      wallet: Number(r.wallet), walletOverdue: Number(r.walletOverdue),
+      adjustments: Number(r.adjustments), payout: Number(r.payout)
+    }));
+    res.json(safeRows);
+  } catch (err) { 
+    console.error("Error fetching billings:", err);
+    res.status(500).json({ error: err.message }); 
+  }
+});
 
-// --- HELPERS ---
-const snakeToCamel = (str) => str.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
-const mapKeys = (obj) => {
-  const newObj = {};
-  for (let key in obj) newObj[snakeToCamel(key)] = obj[key];
-  return newObj;
-};
+app.post('/api/driver-billings', async (req, res) => {
+  const b = req.body;
+  try {
+    const q = `
+      INSERT INTO driver_billings (
+        id, driver_id, driver_name, qr_code, week_start_date, week_end_date,
+        days_worked, trips, rent_per_day, rent_total, collection, fuel,
+        wallet, wallet_overdue, adjustments, payout, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+      ON CONFLICT (id) DO UPDATE SET
+        driver_name=$3, qr_code=$4, week_start_date=$5, week_end_date=$6,
+        days_worked=$7, trips=$8, rent_per_day=$9, rent_total=$10, collection=$11, fuel=$12,
+        wallet=$13, wallet_overdue=$14, adjustments=$15, payout=$16, status=$17
+      RETURNING *;
+    `;
+    const result = await db.query(q, [
+      b.id || uuidv4(), b.driverId, b.driverName, b.qrCode, b.weekStartDate, b.weekEndDate,
+      b.daysWorked, b.trips, b.rentPerDay, b.rentTotal, b.collection, b.fuel,
+      b.wallet, b.walletOverdue, b.adjustments, b.payout, b.status || 'Finalized'
+    ]);
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/driver-billings/:id', async (req, res) => {
+  try {
+    await db.query('DELETE FROM driver_billings WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
 // --- DRIVERS ---
 app.get('/api/drivers', async (req, res) => {
@@ -75,48 +188,62 @@ app.get('/api/drivers', async (req, res) => {
 
 app.post('/api/drivers', async (req, res) => {
   const d = req.body;
-  
-  // UUID FIX: Generate a new ID if one isn't provided or is empty
   const idToUse = (d.id && d.id.trim().length > 0) ? d.id : uuidv4();
-
   const client = await db.pool.connect();
 
   try {
     await client.query('BEGIN');
+    const nameToSave = d.name.trim();
+    let mobileToSave = null;
+    if (d.mobile) {
+        const clean = String(d.mobile).trim();
+        if (clean.length > 0 && !['null', 'undefined', 'n/a', '-', '0', 'none', '.'].includes(clean.toLowerCase())) {
+            mobileToSave = clean;
+        }
+    }
+    let qrToSave = null;
+    if (d.qrCode) {
+        const cleanQr = String(d.qrCode).trim();
+        if (cleanQr.length > 0 && !['null', 'undefined', 'n/a', '-', '0', 'none', '.'].includes(cleanQr.toLowerCase())) {
+            qrToSave = cleanQr;
+        }
+    }
 
-    // 1. Check Name Duplication
-    const nameCheck = await client.query('SELECT * FROM drivers WHERE lower(name) = lower($1) AND id != $2', [d.name, idToUse]);
+    const nameCheck = await client.query('SELECT * FROM drivers WHERE lower(name) = lower($1) AND id != $2', [nameToSave, idToUse]);
     if (nameCheck.rows.length > 0) {
         const existing = nameCheck.rows[0];
         await client.query('ROLLBACK');
-        return res.status(409).json({ error: `Driver name "${d.name}" already exists (Status: ${existing.status || 'Active'}).` });
+        return res.status(409).json({ error: `Driver name "${nameToSave}" already exists (Status: ${existing.status || 'Active'}).` });
     }
 
-    // 2. Check Mobile Duplication (Only if mobile is provided)
-    if (d.mobile && d.mobile.trim().length > 0) {
-        const mobileCheck = await client.query('SELECT * FROM drivers WHERE mobile = $1 AND id != $2', [d.mobile, idToUse]);
+    if (mobileToSave) {
+        const mobileCheck = await client.query('SELECT * FROM drivers WHERE mobile = $1 AND id != $2', [mobileToSave, idToUse]);
         if (mobileCheck.rows.length > 0) {
+            const existing = mobileCheck.rows[0];
             await client.query('ROLLBACK');
-            return res.status(409).json({ error: `Mobile number "${d.mobile}" is already assigned to driver "${mobileCheck.rows[0].name}".` });
+            return res.status(409).json({ error: `Mobile number "${mobileToSave}" is already assigned to driver "${existing.name}".` });
         }
     }
 
-    // 3. Handle Name Change Propagation
-    // Check if driver exists and name is different
+    if (qrToSave) {
+        const qrCheck = await client.query('SELECT * FROM drivers WHERE qr_code = $1 AND id != $2', [qrToSave, idToUse]);
+        if (qrCheck.rows.length > 0) {
+            const existing = qrCheck.rows[0];
+            await client.query('ROLLBACK');
+            return res.status(409).json({ error: `QR Code "${qrToSave}" is already assigned to driver "${existing.name}".` });
+        }
+    }
+
     const currentDriverRes = await client.query('SELECT name FROM drivers WHERE id = $1', [idToUse]);
     if (currentDriverRes.rows.length > 0) {
         const oldName = currentDriverRes.rows[0].name;
-        const newName = d.name;
-        
-        if (oldName !== newName) {
-            console.log(`Renaming driver from "${oldName}" to "${newName}" in history...`);
-            // Update daily entries and weekly wallets which rely on the name text
-            await client.query('UPDATE daily_entries SET driver = $1 WHERE driver = $2', [newName, oldName]);
-            await client.query('UPDATE weekly_wallets SET driver = $1 WHERE driver = $2', [newName, oldName]);
+        if (oldName !== nameToSave) {
+            await client.query('UPDATE daily_entries SET driver = $1 WHERE driver = $2', [nameToSave, oldName]);
+            await client.query('UPDATE weekly_wallets SET driver = $1 WHERE driver = $2', [nameToSave, oldName]);
+            await client.query('UPDATE driver_billings SET driver_name = $1 WHERE driver_name = $2', [nameToSave, oldName]);
         }
     }
 
-    // 4. Upsert using idToUse
     const q = `
       INSERT INTO drivers (id, name, mobile, email, join_date, termination_date, deposit, qr_code, vehicle, status, current_shift, default_rent, notes, is_manager)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
@@ -124,12 +251,23 @@ app.post('/api/drivers', async (req, res) => {
         name=$2, mobile=$3, email=$4, join_date=$5, termination_date=$6, deposit=$7, qr_code=$8, vehicle=$9, status=$10, current_shift=$11, default_rent=$12, notes=$13, is_manager=$14
       RETURNING *;
     `;
-    const result = await client.query(q, [idToUse, d.name, d.mobile, d.email, d.joinDate, d.terminationDate || null, d.deposit, d.qrCode, d.vehicle, d.status, d.currentShift, d.defaultRent, d.notes, d.isManager]);
+    const result = await client.query(q, [
+      idToUse, nameToSave, mobileToSave, d.email, d.joinDate, d.terminationDate || null, 
+      d.deposit, qrToSave, d.vehicle, d.status, d.currentShift, d.defaultRent, d.notes, d.isManager
+    ]);
     
     await client.query('COMMIT');
     res.json(result.rows[0]);
   } catch (err) { 
     await client.query('ROLLBACK');
+    if (err.code === '23505') {
+        let msg = "Duplicate entry detected in database.";
+        if (err.detail && err.detail.includes('mobile')) msg = "This mobile number is already in use.";
+        else if (err.detail && err.detail.includes('qr_code')) msg = "This QR code is already in use.";
+        else if (err.detail && err.detail.includes('name')) msg = "This driver name already exists.";
+        return res.status(409).json({ error: msg });
+    }
+    console.error("Driver Save Error:", err);
     res.status(500).json({ error: err.message }); 
   } finally {
     client.release();
@@ -137,12 +275,8 @@ app.post('/api/drivers', async (req, res) => {
 });
 
 app.delete('/api/drivers/:id', async (req, res) => {
-  console.log(`Received DELETE request for driver ID: ${req.params.id}`);
   try {
     const result = await db.query('DELETE FROM drivers WHERE id = $1', [req.params.id]);
-    if (result.rowCount === 0) {
-        console.log(`Driver ID ${req.params.id} not found in DB, but returning success to ensure idempotency.`);
-    }
     res.json({ success: true });
   } catch (err) { 
     console.error("Delete Error:", err);
@@ -154,7 +288,6 @@ app.delete('/api/drivers/:id', async (req, res) => {
 app.get('/api/daily-entries', async (req, res) => {
   try {
     const result = await db.query(`SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, notes FROM daily_entries ORDER BY date DESC`);
-    // Convert numeric strings to numbers for frontend safety
     const safeRows = result.rows.map(r => ({
       ...r,
       rent: Number(r.rent), collection: Number(r.collection), fuel: Number(r.fuel), due: Number(r.due), payout: Number(r.payout)
@@ -183,15 +316,23 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
+    const qrCodes = [...new Set(entries.map(e => (e.qrCode || '').trim()).filter(Boolean))];
+    let qrToDriver = {};
+    if (qrCodes.length > 0) {
+      const qrRes = await client.query(`SELECT qr_code, name FROM drivers WHERE qr_code = ANY($1::text[])`, [qrCodes]);
+      qrRes.rows.forEach(r => { qrToDriver[String(r.qr_code || '').trim()] = r.name; });
+    }
+
     for (const e of entries) {
+      const canonicalDriver = (e.qrCode && qrToDriver[String(e.qrCode).trim()]) ? qrToDriver[String(e.qrCode).trim()] : e.driver;
       const q = `
         INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, payout, notes)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
         ON CONFLICT (id) DO UPDATE SET
-          date=$2, day=$3, vehicle=$4, driver=$5, shift=$6, qr_code=$7, rent=$8, collection=$9, fuel=$10, due=$11, payout=$12, notes=$13;
+          date=$2, day=$3, vehicle=$4, driver=$5, shift=$6, qr_code=$7,
+          rent=$8, collection=$9, fuel=$10, due=$11, payout=$12, notes=$13;
       `;
-      // Updated: Use DO UPDATE to allow overrides (e.g. rent updates)
-      await client.query(q, [e.id, e.date, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, e.notes]);
+      await client.query(q, [e.id, e.date, e.day, e.vehicle, canonicalDriver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, e.notes]);
     }
     await client.query('COMMIT');
     res.json({ success: true });
@@ -262,7 +403,7 @@ app.post('/api/assets', async (req, res) => {
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('DELETE FROM assets'); // Full replace to match localStorage behavior
+    await client.query('DELETE FROM assets'); 
     for (const v of vehicles) await client.query("INSERT INTO assets (type, value) VALUES ('vehicle', $1)", [v]);
     for (const q of qrCodes) await client.query("INSERT INTO assets (type, value) VALUES ('qrcode', $1)", [q]);
     await client.query('COMMIT');
@@ -310,13 +451,7 @@ app.post('/api/rental-slabs/:type', async (req, res) => {
 // --- COMPANY SUMMARIES ---
 app.get('/api/company-summaries', async (req, res) => {
   try {
-    console.log("Fetching company summaries list...");
-    // 1. Fetch parent table
     const summaries = await db.query(`SELECT id, to_char(start_date, 'YYYY-MM-DD') as "startDate", to_char(end_date, 'YYYY-MM-DD') as "endDate", file_name as "fileName", imported_at as "importedAt", note FROM company_summaries`);
-    
-    console.log(`Found ${summaries.rows.length} summaries. Fetching rows...`);
-
-    // 2. Fetch children
     const fullData = await Promise.all(summaries.rows.map(async (s) => {
       try {
           const rows = await db.query(`
@@ -347,7 +482,6 @@ app.get('/api/company-summaries', async (req, res) => {
           
           const cleanRows = rows.rows.map(r => {
               const n = {...r};
-              // Ensure numbers are Numbers
               const numKeys = ['onroadDays','dailyRentApplied', 'weeklyIndemnityFees', 'netWeeklyLeaseRental', 'totalEarning', 'uberCashCollection', 'toll', 'driverSubscriptionCharge', 'uberIncentive', 'uberWeekOs', 'olaWeekOs', 'vehicleLevelAdjustment', 'tds', 'challan', 'accident', 'deadMile', 'currentOs'];
               numKeys.forEach(k => n[k] = Number(n[k] || 0));
               return n;
@@ -355,16 +489,11 @@ app.get('/api/company-summaries', async (req, res) => {
 
           return { ...s, rows: cleanRows };
       } catch (childErr) {
-          console.error(`Error fetching rows for summary ${s.id}:`, childErr);
-          throw childErr; // Propagate to main catch
+          throw childErr;
       }
     }));
-    
     res.json(fullData);
-  } catch (err) { 
-      console.error("API GET Error (/company-summaries):", err.message);
-      res.status(500).json({ error: err.message }); 
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/company-summaries', async (req, res) => {
@@ -372,15 +501,11 @@ app.post('/api/company-summaries', async (req, res) => {
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
-    
-    // Delete existing if ID matches (Update logic)
     await client.query('DELETE FROM company_summaries WHERE id = $1', [s.id]);
-    
     await client.query(
       'INSERT INTO company_summaries (id, start_date, end_date, file_name, imported_at, note) VALUES ($1, $2, $3, $4, $5, $6)',
       [s.id, s.startDate, s.endDate, s.fileName, s.importedAt, s.note]
     );
-
     for (const r of s.rows) {
       await client.query(`
         INSERT INTO company_summary_rows (
@@ -394,12 +519,10 @@ app.post('/api/company-summaries', async (req, res) => {
         r.uberIncentive, r.uberWeekOs, r.olaWeekOs, r.vehicleLevelAdjustment, r.tds, r.challan, r.accident, r.deadMile, r.currentOs
       ]);
     }
-
     await client.query('COMMIT');
     res.json(s);
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error("API POST Error (/company-summaries):", err.message);
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
@@ -413,7 +536,7 @@ app.delete('/api/company-summaries/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- LEAVES ---
+// --- LEAVES, SHIFTS, CONFIG ---
 app.get('/api/leaves', async (req, res) => {
   try {
     const result = await db.query(`SELECT id, driver_id as "driverId", to_char(start_date, 'YYYY-MM-DD') as "startDate", to_char(end_date, 'YYYY-MM-DD') as "endDate", to_char(actual_return_date, 'YYYY-MM-DD') as "actualReturnDate", days, reason FROM leaves`);
@@ -424,13 +547,7 @@ app.get('/api/leaves', async (req, res) => {
 app.post('/api/leaves', async (req, res) => {
   const l = req.body;
   try {
-    const q = `
-      INSERT INTO leaves (id, driver_id, start_date, end_date, actual_return_date, days, reason)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      ON CONFLICT (id) DO UPDATE SET
-        driver_id=$2, start_date=$3, end_date=$4, actual_return_date=$5, days=$6, reason=$7
-      RETURNING *;
-    `;
+    const q = `INSERT INTO leaves (id, driver_id, start_date, end_date, actual_return_date, days, reason) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO UPDATE SET driver_id=$2, start_date=$3, end_date=$4, actual_return_date=$5, days=$6, reason=$7 RETURNING *`;
     const result = await db.query(q, [l.id, l.driverId, l.startDate, l.endDate, l.actualReturnDate, l.days, l.reason]);
     res.json(result.rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -443,7 +560,6 @@ app.delete('/api/leaves/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- SHIFTS ---
 app.get('/api/shifts', async (req, res) => {
   try {
     const result = await db.query(`SELECT id, driver_id as "driverId", shift, to_char(start_date, 'YYYY-MM-DD') as "startDate", to_char(end_date, 'YYYY-MM-DD') as "endDate" FROM shifts`);
@@ -454,23 +570,15 @@ app.get('/api/shifts', async (req, res) => {
 app.post('/api/shifts', async (req, res) => {
   const s = req.body;
   try {
-    const q = `
-      INSERT INTO shifts (id, driver_id, shift, start_date, end_date)
-      VALUES ($1, $2, $3, $4, $5)
-      ON CONFLICT (id) DO UPDATE SET
-        driver_id=$2, shift=$3, start_date=$4, end_date=$5
-      RETURNING *;
-    `;
+    const q = `INSERT INTO shifts (id, driver_id, shift, start_date, end_date) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO UPDATE SET driver_id=$2, shift=$3, start_date=$4, end_date=$5 RETURNING *`;
     const result = await db.query(q, [s.id, s.driverId, s.shift, s.startDate, s.endDate]);
     res.json(result.rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- CONFIG & ACCESS ---
 app.get('/api/header-mappings', async (req, res) => {
   try {
     const result = await db.query(`SELECT internal_key as "internalKey", label, excel_header as "excelHeader", required FROM header_mappings`);
-    // If empty, return defaults (handled in frontend logic usually, but here we can return empty array)
     res.json(result.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -519,7 +627,6 @@ app.delete('/api/admin-access/:email', async (req, res) => {
 app.get('/api/manager-access', async (req, res) => {
   try {
     const result = await db.query('SELECT manager_id, child_driver_id FROM manager_access');
-    // Group by manager_id for frontend format: { managerId, childDriverIds: [] }
     const map = {};
     result.rows.forEach(row => {
       if (!map[row.manager_id]) map[row.manager_id] = [];
@@ -549,6 +656,9 @@ app.post('/api/manager-access', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+initDb().then(() => {
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
 });
+
