@@ -334,7 +334,7 @@ const DailyEntryPage: React.FC = () => {
             vehicle: selectedDriver?.vehicle || prev.vehicle,
             qrCode: selectedDriver?.qrCode || prev.qrCode,
             shift: selectedDriver?.currentShift || prev.shift || 'Day',
-            rent: selectedDriver?.defaultRent // Let undefined flow if no default set
+            rent: selectedDriver?.defaultRent || undefined // Treat 0 as undefined to show empty field
         }));
     } else {
         setFormData(prev => ({
