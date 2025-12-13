@@ -11,17 +11,66 @@ app.use(express.json({ limit: '50mb' })); // Support large Excel imports
 const PORT = process.env.PORT || 3000;
 // --- DATE HELPERS ---
 const normalizeDriver = (name = '') => name.toLowerCase().trim();
+onst toISODate = (rawVal) => {
+  if (!rawVal) return '';
+
+  // Direct Date object
+  if (rawVal instanceof Date && !isNaN(rawVal)) {
+    return rawVal.toISOString().slice(0, 10);
+  }
+
+  const str = String(rawVal).trim();
+  if (!str) return '';
+
+  // Already ISO
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+
+  const buildIso = (y, m, d) => {
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return '';
+    return dt.toISOString().slice(0, 10);
+  };
+
+  // Handle separated formats (DD-MM-YYYY, DD/MM/YYYY, YYYY-MM-DD, etc.)
+  const parts = str.split(/[\/.-]/).filter(Boolean);
+  if (parts.length === 3) {
+    const nums = parts.map((p) => parseInt(p, 10));
+
+    // Year-first (YYYY-MM-DD or YYYY/DD/MM)
+    if (parts[0].length === 4) {
+      const iso = buildIso(nums[0], nums[1], nums[2]);
+      if (iso) return iso;
+    }
+
+    // Day-first (DD-MM-YYYY or DD/MM/YYYY)
+    if (parts[2].length === 4) {
+      const iso = buildIso(nums[2], nums[1], nums[0]);
+      if (iso) return iso;
+    }
+  }
+
+  // Fallback to native parsing
+  const native = new Date(str);
+  if (!isNaN(native)) {
+    return native.toISOString().slice(0, 10);
+  }
+
+  return '';
+};
+  
 const getMondayISO = (dateStr) => {
-  if (!dateStr) return '';
-  const d = new Date(`${dateStr}T00:00:00Z`);
+  const isoDate = toISODate(dateStr);
+  if (!isoDate) return '';
+  const d = new Date(`${isoDate}T00:00:00Z`);
   const day = d.getUTCDay();
   const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1);
   d.setUTCDate(diff);
   return d.toISOString().slice(0, 10);
 };
 const getSundayISO = (mondayStr) => {
-  if (!mondayStr) return '';
-  const d = new Date(`${mondayStr}T00:00:00Z`);
+ const isoDate = toISODate(mondayStr);
+  if (!isoDate) return '';
+  const d = new Date(`${isoDate}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + 6);
   return d.toISOString().slice(0, 10);
 };
@@ -158,10 +207,12 @@ const calculateDriverBillings = async () => {
     if (!start) return;
     const driverKey = normalizeDriver(w.driver);
     const key = `${start}__${driverKey}`;
+    const resolvedEnd = toISODate(w.week_end_date) || getSundayISO(start);
     walletMap.set(key, {
       ...w,
       week_start_date: start,
       week_end_date: w.week_end_date || getSundayISO(start),
+      week_end_date: resolvedEnd,
       trips: Number(w.trips) || 0,
       wallet_week: Number(w.wallet_week) || 0,
       rent_override: w.rent_override !== null ? Number(w.rent_override) : null,
@@ -483,6 +534,8 @@ app.get('/api/daily-entries', async (req, res) => {
 app.post('/api/daily-entries', async (req, res) => {
   const e = req.body;
   try {
+     const isoDate = toISODate(e.date);
+    if (!isoDate) return res.status(400).json({ error: 'Invalid date format' });
     const q = `
       INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, payout, notes)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
@@ -490,7 +543,7 @@ app.post('/api/daily-entries', async (req, res) => {
         date=$2, day=$3, vehicle=$4, driver=$5, shift=$6, qr_code=$7, rent=$8, collection=$9, fuel=$10, due=$11, payout=$12, notes=$13
       RETURNING *;
     `;
-    const result = await db.query(q, [e.id, e.date, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, e.notes]);
+     const result = await db.query(q, [e.id, isoDate, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, e.notes]);
     await syncDriverBillings();
     res.json(result.rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -510,6 +563,8 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
 
     for (const e of entries) {
       const canonicalDriver = (e.qrCode && qrToDriver[String(e.qrCode).trim()]) ? qrToDriver[String(e.qrCode).trim()] : e.driver;
+      const isoDate = toISODate(e.date);
+      if (!isoDate) throw new Error(`Invalid date format for entry ${e.id || e.date}`);
       const q = `
         INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, payout, notes)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
@@ -517,7 +572,7 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
           date=$2, day=$3, vehicle=$4, driver=$5, shift=$6, qr_code=$7,
           rent=$8, collection=$9, fuel=$10, due=$11, payout=$12, notes=$13;
       `;
-      await client.query(q, [e.id, e.date, e.day, e.vehicle, canonicalDriver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, e.notes]);
+     await client.query(q, [e.id, isoDate, e.day, e.vehicle, canonicalDriver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, e.notes]);
     }
     await client.query('COMMIT');
     await syncDriverBillings();
@@ -556,6 +611,9 @@ app.get('/api/weekly-wallets', async (req, res) => {
 app.post('/api/weekly-wallets', async (req, res) => {
   const w = req.body;
   try {
+    const startISO = toISODate(w.weekStartDate);
+    const endISO = toISODate(w.weekEndDate || (startISO ? getSundayISO(startISO) : ''));
+    if (!startISO) return res.status(400).json({ error: 'Invalid week start date' });
     const q = `
       INSERT INTO weekly_wallets (id, driver, week_start_date, week_end_date, earnings, refund, diff, cash, charges, trips, wallet_week, days_worked_override, rent_override, adjustments, notes)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
@@ -563,7 +621,7 @@ app.post('/api/weekly-wallets', async (req, res) => {
         driver=$2, week_start_date=$3, week_end_date=$4, earnings=$5, refund=$6, diff=$7, cash=$8, charges=$9, trips=$10, wallet_week=$11, days_worked_override=$12, rent_override=$13, adjustments=$14, notes=$15
       RETURNING *;
     `;
-    const result = await db.query(q, [w.id, w.driver, w.weekStartDate, w.weekEndDate, w.earnings, w.refund, w.diff, w.cash, w.charges, w.trips, w.walletWeek, w.daysWorkedOverride ?? null, w.rentOverride ?? null, w.adjustments || 0, w.notes]);
+    const result = await db.query(q, [w.id, w.driver, startISO, endISO || null, w.earnings, w.refund, w.diff, w.cash, w.charges, w.trips, w.walletWeek, w.daysWorkedOverride ?? null, w.rentOverride ?? null, w.adjustments || 0, w.notes]);
     await syncDriverBillings();
     res.json(result.rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
