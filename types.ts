@@ -33,7 +33,7 @@ export interface WeeklyWallet {
   notes?: string;
 }
 
-// NEW: Persisted Billing Record
+// NEW: Persisted Billing Record (Required for DriverBillingsPage)
 export interface DriverBillingRecord {
   id: string;
   driverId?: string;
