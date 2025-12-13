@@ -207,6 +207,72 @@ const getSundayISO = (mondayStr) => {
   return d.toISOString().slice(0, 10);
 };
 
+// --- DATE HELPERS ---
+const normalizeDriver = (name = '') => name.toLowerCase().trim();
+const toISODate = (rawVal) => {
+  if (!rawVal) return '';
+
+  // Direct Date object
+  if (rawVal instanceof Date && !isNaN(rawVal)) {
+    return rawVal.toISOString().slice(0, 10);
+  }
+
+  const str = String(rawVal).trim();
+  if (!str) return '';
+
+  // Already ISO
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+
+  const buildIso = (y, m, d) => {
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return '';
+    return dt.toISOString().slice(0, 10);
+  };
+
+  // Handle separated formats (DD-MM-YYYY, DD/MM/YYYY, YYYY-MM-DD, etc.)
+  const parts = str.split(/[\/.-]/).filter(Boolean);
+  if (parts.length === 3) {
+    const nums = parts.map((p) => parseInt(p, 10));
+
+    // Year-first (YYYY-MM-DD or YYYY/DD/MM)
+    if (parts[0].length === 4) {
+      const iso = buildIso(nums[0], nums[1], nums[2]);
+      if (iso) return iso;
+    }
+
+    // Day-first (DD-MM-YYYY or DD/MM/YYYY)
+    if (parts[2].length === 4) {
+      const iso = buildIso(nums[2], nums[1], nums[0]);
+      if (iso) return iso;
+    }
+  }
+
+  // Fallback to native parsing
+  const native = new Date(str);
+  if (!isNaN(native)) {
+    return native.toISOString().slice(0, 10);
+  }
+
+  return '';
+};
+
+const getMondayISO = (dateStr) => {
+  const isoDate = toISODate(dateStr);
+  if (!isoDate) return '';
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  const day = d.getUTCDay();
+  const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1);
+  d.setUTCDate(diff);
+  return d.toISOString().slice(0, 10);
+};
+const getSundayISO = (mondayStr) => {
+  const isoDate = toISODate(mondayStr);
+  if (!isoDate) return '';
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 6);
+  return d.toISOString().slice(0, 10);
+};
+
 // --- INITIALIZATION SQL ---
 const initDb = async () => {
   try {
@@ -257,13 +323,13 @@ const initDb = async () => {
     await db.query(`
       CREATE TABLE IF NOT EXISTS driver_billings (
         id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-        driver_id UUID,
+        driver_id TEXT,
         driver_name TEXT NOT NULL,
         qr_code TEXT,
-        week_start_date DATE,
-        week_end_date DATE,
-        days_worked INT,
-        trips INT,
+        week_start_date DATE NOT NULL,
+        week_end_date DATE NOT NULL,
+        days_worked NUMERIC DEFAULT 0,
+        trips NUMERIC DEFAULT 0,
         rent_per_day NUMERIC DEFAULT 0,
         rent_total NUMERIC DEFAULT 0,
         collection NUMERIC DEFAULT 0,
@@ -300,6 +366,31 @@ const initDb = async () => {
           ) THEN
               ALTER TABLE driver_billings ADD CONSTRAINT unique_driver_week UNIQUE (driver_name, week_start_date);
           END IF;
+
+          -- Align table definition with expected schema for billing aggregation
+          IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='driver_billings' AND column_name='driver_id' AND data_type <> 'text') THEN
+              ALTER TABLE driver_billings ALTER COLUMN driver_id TYPE TEXT USING driver_id::text;
+          END IF;
+          IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='driver_billings' AND column_name='days_worked' AND data_type <> 'numeric') THEN
+              ALTER TABLE driver_billings ALTER COLUMN days_worked TYPE NUMERIC USING days_worked::numeric;
+          END IF;
+          IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='driver_billings' AND column_name='trips' AND data_type <> 'numeric') THEN
+              ALTER TABLE driver_billings ALTER COLUMN trips TYPE NUMERIC USING trips::numeric;
+          END IF;
+          IF NOT EXISTS (
+              SELECT 1 FROM information_schema.columns
+              WHERE table_name='driver_billings' AND column_name='week_start_date' AND is_nullable='NO'
+          ) THEN
+              ALTER TABLE driver_billings ALTER COLUMN week_start_date SET NOT NULL;
+          END IF;
+          IF NOT EXISTS (
+              SELECT 1 FROM information_schema.columns
+              WHERE table_name='driver_billings' AND column_name='week_end_date' AND is_nullable='NO'
+          ) THEN
+              ALTER TABLE driver_billings ALTER COLUMN week_end_date SET NOT NULL;
+          END IF;
+          ALTER TABLE driver_billings ALTER COLUMN days_worked SET DEFAULT 0;
+          ALTER TABLE driver_billings ALTER COLUMN trips SET DEFAULT 0;
       END $$;
     `);
 
