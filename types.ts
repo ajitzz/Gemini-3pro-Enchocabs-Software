@@ -46,6 +46,7 @@ export interface DriverBillingRecord {
   rentPerDay: number;
   rentTotal: number;
   collection: number;
+  due: number;
   fuel: number;
   wallet: number;
   walletOverdue: number; // From DailyEntry.due
