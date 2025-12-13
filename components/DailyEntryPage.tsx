@@ -5,7 +5,7 @@ import { storageService } from '../services/storageService';
 import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check, AlertOctagon } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
-const InputField = ({ label, name, type = "text", value, onChange, placeholder, required = false, className = "", readOnly = false }: any) => (
+const InputField = ({ label, name, type = "text", value, onChange, onKeyDown, placeholder, required = false, className = "", readOnly = false }: any) => (
   <div className="flex flex-col gap-1.5">
      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">{label}</label>
      <input 
@@ -14,6 +14,7 @@ const InputField = ({ label, name, type = "text", value, onChange, placeholder, 
        type={type}
        value={value ?? ''}
        onChange={onChange}
+       onKeyDown={onKeyDown}
        placeholder={placeholder}
        readOnly={readOnly}
        step="0.01"
@@ -334,7 +335,7 @@ const DailyEntryPage: React.FC = () => {
             vehicle: selectedDriver?.vehicle || prev.vehicle,
             qrCode: selectedDriver?.qrCode || prev.qrCode,
             shift: selectedDriver?.currentShift || prev.shift || 'Day',
-            rent: selectedDriver?.defaultRent || undefined // Treat 0 as undefined to show empty field
+            rent: selectedDriver?.defaultRent // Let undefined flow if no default set
         }));
     } else {
         setFormData(prev => ({
@@ -344,60 +345,63 @@ const DailyEntryPage: React.FC = () => {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.date || !formData.driver) return;
-    
-    // Explicit Validation for Mandatory Numbers
-    if (formData.collection === undefined || formData.rent === undefined) {
-        alert("Collection and Rent are mandatory fields.");
-        return;
+  const handleSubmit = async (e: React.FormEvent | React.KeyboardEvent) => {
+    if (e.type === 'submit' || (e as React.KeyboardEvent).key === 'Enter') {
+        e.preventDefault();
+        
+        if (!formData.date || !formData.driver) return;
+        
+        // Explicit Validation for Mandatory Numbers
+        if (formData.collection === undefined || formData.rent === undefined) {
+            alert("Collection and Rent are mandatory fields.");
+            return;
+        }
+
+        // Check for duplicate entry on same day
+        const duplicateEntry = entries.find(entry => 
+          entry.date === formData.date && 
+          entry.driver === formData.driver && 
+          entry.id !== editingId
+        );
+
+        const dateObj = new Date(formData.date);
+        const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'long' });
+
+        // Use existing ID if editing, otherwise generate new one (but will be overridden if duplicate exists)
+        const newEntry: DailyEntry = {
+          id: formData.id || crypto.randomUUID(),
+          date: formData.date,
+          day: dayName,
+          vehicle: formData.vehicle || 'Unknown',
+          driver: formData.driver || 'Unknown',
+          shift: formData.shift || 'Day',
+          rent: Number(formData.rent),
+          collection: Number(formData.collection),
+          fuel: Number(formData.fuel || 0),
+          due: Number(formData.due || 0),
+          payout: Number(formData.payout || 0), 
+          qrCode: formData.qrCode,
+          notes: formData.notes
+        };
+
+        if (duplicateEntry) {
+          setDuplicateWarning({
+            active: true,
+            existingId: duplicateEntry.id,
+            payload: newEntry
+          });
+          return;
+        }
+
+        await storageService.saveDailyEntry(newEntry);
+        
+        if (editingId) {
+          resetForm(); 
+        } else {
+          resetFormAfterSave(formData.date);
+        }
+        loadData();
     }
-
-    // Check for duplicate entry on same day
-    const duplicateEntry = entries.find(entry => 
-      entry.date === formData.date && 
-      entry.driver === formData.driver && 
-      entry.id !== editingId
-    );
-
-    const dateObj = new Date(formData.date);
-    const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'long' });
-
-    // Use existing ID if editing, otherwise generate new one (but will be overridden if duplicate exists)
-    const newEntry: DailyEntry = {
-      id: formData.id || crypto.randomUUID(),
-      date: formData.date,
-      day: dayName,
-      vehicle: formData.vehicle || 'Unknown',
-      driver: formData.driver || 'Unknown',
-      shift: formData.shift || 'Day',
-      rent: Number(formData.rent),
-      collection: Number(formData.collection),
-      fuel: Number(formData.fuel || 0),
-      due: Number(formData.due || 0),
-      payout: Number(formData.payout || 0), 
-      qrCode: formData.qrCode,
-      notes: formData.notes
-    };
-
-    if (duplicateEntry) {
-      setDuplicateWarning({
-        active: true,
-        existingId: duplicateEntry.id,
-        payload: newEntry
-      });
-      return;
-    }
-
-    await storageService.saveDailyEntry(newEntry);
-    
-    if (editingId) {
-      resetForm(); 
-    } else {
-      resetFormAfterSave(formData.date);
-    }
-    loadData();
   };
 
   const handleOverrideConfirm = async () => {
@@ -606,7 +610,7 @@ const DailyEntryPage: React.FC = () => {
           <div className="lg:col-span-4 h-px bg-slate-100 my-2"></div>
 
           {/* Primary Financials */}
-          <InputField label="Collection (₹)" name="collection" type="number" value={formData.collection} onChange={handleInputChange} required className="font-bold text-emerald-700 text-lg" placeholder="Enter Amount" />
+          <InputField label="Collection (₹)" name="collection" type="number" value={formData.collection} onChange={handleInputChange} onKeyDown={handleSubmit} required className="font-bold text-emerald-700 text-lg" placeholder="Enter Amount" />
           
           <div className="relative">
              <InputField label="Rent (₹)" name="rent" type="number" value={formData.rent} onChange={handleInputChange} required placeholder="Enter Rent" />
