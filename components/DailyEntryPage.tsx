@@ -12,7 +12,7 @@ const InputField = ({ label, name, type = "text", value, onChange, placeholder, 
        required={required}
        name={name}
        type={type}
-       value={value}
+       value={value ?? ''}
        onChange={onChange}
        placeholder={placeholder}
        readOnly={readOnly}
@@ -105,9 +105,10 @@ interface ColumnFilterProps {
   onFilterChange: (key: string, values: string[]) => void;
   label: string;
   alignRight?: boolean;
+  formatter?: (val: string) => string; // New Formatter Prop
 }
 
-const ColumnFilter: React.FC<ColumnFilterProps> = ({ columnKey, data, activeFilters, onFilterChange, label, alignRight = false }) => {
+const ColumnFilter: React.FC<ColumnFilterProps> = ({ columnKey, data, activeFilters, onFilterChange, label, alignRight = false, formatter }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedValues, setSelectedValues] = useState<Set<string>>(new Set(activeFilters[columnKey] || []));
@@ -121,12 +122,19 @@ const ColumnFilter: React.FC<ColumnFilterProps> = ({ columnKey, data, activeFilt
       const val = String(item[columnKey] ?? '');
       if (val) values.add(val);
     });
-    return Array.from(values).sort();
-  }, [data, columnKey]);
+    // Sort logic
+    return Array.from(values).sort((a, b) => {
+       // Heuristic: If formatter is used (likely date), sort descending
+       if (formatter) return b.localeCompare(a); 
+       return a.localeCompare(b);
+    });
+  }, [data, columnKey, formatter]);
 
-  const filteredUniqueValues = uniqueValues.filter(v => 
-    v.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredUniqueValues = uniqueValues.filter(v => {
+    // Search against formatted value if formatter exists
+    const displayVal = formatter ? formatter(v) : v;
+    return displayVal.toLowerCase().includes(searchTerm.toLowerCase());
+  });
 
   // Sync internal state when external filters change (e.g. clear all)
   useEffect(() => {
@@ -215,6 +223,7 @@ const ColumnFilter: React.FC<ColumnFilterProps> = ({ columnKey, data, activeFilt
               ) : (
                  filteredUniqueValues.map(val => {
                    const isSelected = selectedValues.has(val);
+                   const displayVal = formatter ? formatter(val) : val;
                    return (
                      <div 
                         key={val} 
@@ -224,7 +233,7 @@ const ColumnFilter: React.FC<ColumnFilterProps> = ({ columnKey, data, activeFilt
                         <div className={`w-4 h-4 rounded border flex items-center justify-center ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'}`}>
                            {isSelected && <Check size={10} className="text-white" />}
                         </div>
-                        <span className="text-xs text-slate-600 truncate" title={val}>{val}</span>
+                        <span className="text-xs text-slate-600 truncate" title={displayVal}>{displayVal}</span>
                      </div>
                    );
                  })
@@ -281,8 +290,8 @@ const DailyEntryPage: React.FC = () => {
     vehicle: '',
     driver: '',
     shift: 'Day',
-    rent: 0,
-    collection: 0,
+    rent: undefined,
+    collection: undefined,
     fuel: 0,
     due: 0,
     payout: 0, // New field
@@ -325,12 +334,12 @@ const DailyEntryPage: React.FC = () => {
             vehicle: selectedDriver?.vehicle || prev.vehicle,
             qrCode: selectedDriver?.qrCode || prev.qrCode,
             shift: selectedDriver?.currentShift || prev.shift || 'Day',
-            rent: selectedDriver?.defaultRent || prev.rent || 0
+            rent: selectedDriver?.defaultRent // Let undefined flow if no default set
         }));
     } else {
         setFormData(prev => ({
             ...prev,
-            [name]: type === 'number' ? parseFloat(value) || 0 : value
+            [name]: type === 'number' ? (value === '' ? undefined : parseFloat(value)) : value
         }));
     }
   };
@@ -338,6 +347,12 @@ const DailyEntryPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.date || !formData.driver) return;
+    
+    // Explicit Validation for Mandatory Numbers
+    if (formData.collection === undefined || formData.rent === undefined) {
+        alert("Collection and Rent are mandatory fields.");
+        return;
+    }
 
     // Check for duplicate entry on same day
     const duplicateEntry = entries.find(entry => 
@@ -359,9 +374,9 @@ const DailyEntryPage: React.FC = () => {
       shift: formData.shift || 'Day',
       rent: Number(formData.rent),
       collection: Number(formData.collection),
-      fuel: Number(formData.fuel),
-      due: Number(formData.due),
-      payout: Number(formData.payout), 
+      fuel: Number(formData.fuel || 0),
+      due: Number(formData.due || 0),
+      payout: Number(formData.payout || 0), 
       qrCode: formData.qrCode,
       notes: formData.notes
     };
@@ -512,6 +527,17 @@ const DailyEntryPage: React.FC = () => {
       setColumnFilters({});
   };
 
+  // Strict DD-MM-YYYY formatter
+  const formatDate = (dateStr: string) => {
+      if (!dateStr) return '-';
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}-${month}-${year}`;
+  };
+
   return (
     <div className="max-w-[1920px] mx-auto space-y-8 pb-20">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
@@ -580,11 +606,11 @@ const DailyEntryPage: React.FC = () => {
           <div className="lg:col-span-4 h-px bg-slate-100 my-2"></div>
 
           {/* Primary Financials */}
-          <InputField label="Collection (₹)" name="collection" type="number" value={formData.collection} onChange={handleInputChange} required className="font-bold text-emerald-700 text-lg" />
+          <InputField label="Collection (₹)" name="collection" type="number" value={formData.collection} onChange={handleInputChange} required className="font-bold text-emerald-700 text-lg" placeholder="Enter Amount" />
           
           <div className="relative">
-             <InputField label="Rent (₹)" name="rent" type="number" value={formData.rent} onChange={handleInputChange} required />
-             <p className="absolute -bottom-5 left-1 text-[10px] text-slate-400 font-medium">Auto-filled default</p>
+             <InputField label="Rent (₹)" name="rent" type="number" value={formData.rent} onChange={handleInputChange} required placeholder="Enter Rent" />
+             <p className="absolute -bottom-5 left-1 text-[10px] text-slate-400 font-medium">Auto-filled if default set</p>
           </div>
           
           <div className="lg:col-span-2">
@@ -606,13 +632,13 @@ const DailyEntryPage: React.FC = () => {
           {/* Optional Fields (Fuel / Due / Payout) */}
           {showOptionalFields && (
             <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 bg-slate-50 p-6 rounded-2xl border border-slate-100 animate-fade-in">
-              <InputField label="Fuel Given (₹)" name="fuel" type="number" value={formData.fuel} onChange={handleInputChange} className="border-amber-200 focus:ring-amber-500 text-amber-700" />
+              <InputField label="Fuel Given (₹)" name="fuel" type="number" value={formData.fuel === 0 ? '' : formData.fuel} onChange={handleInputChange} className="border-amber-200 focus:ring-amber-500 text-amber-700" placeholder="0" />
               <div className="lg:col-span-1">
-                 <InputField label="Due (+/-)" name="due" type="number" value={formData.due} onChange={handleInputChange} />
+                 <InputField label="Due (+/-)" name="due" type="number" value={formData.due === 0 ? '' : formData.due} onChange={handleInputChange} placeholder="0" />
                  <p className="text-[10px] text-slate-400 mt-1 ml-1">+ Driver Owes / - You Owe</p>
               </div>
               <div className="lg:col-span-1">
-                 <InputField label="Payout (Paid to Driver)" name="payout" type="number" value={formData.payout} onChange={handleInputChange} className="border-emerald-200 focus:ring-emerald-500 text-emerald-700" />
+                 <InputField label="Payout (Paid to Driver)" name="payout" type="number" value={formData.payout === 0 ? '' : formData.payout} onChange={handleInputChange} className="border-emerald-200 focus:ring-emerald-500 text-emerald-700" placeholder="0" />
               </div>
               <div className="lg:col-span-1 flex items-center">
                  <p className="text-xs text-slate-400 leading-relaxed">Use these fields for specific adjustments or payments made directly.</p>
@@ -709,7 +735,7 @@ const DailyEntryPage: React.FC = () => {
             <thead className="text-xs text-slate-500 uppercase bg-slate-50/50 border-b border-slate-100">
               <tr>
                 <th className="px-6 py-4 font-semibold tracking-wider min-w-[120px]">
-                    <ColumnFilter columnKey="date" label="Date" data={entries} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} />
+                    <ColumnFilter columnKey="date" label="Date" data={entries} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} formatter={formatDate} />
                 </th>
                 <th className="px-6 py-4 font-semibold tracking-wider min-w-[180px]">
                     <div className="flex items-center gap-1">
@@ -753,7 +779,7 @@ const DailyEntryPage: React.FC = () => {
                 filteredEntries.map(entry => (
                   <tr key={entry.id} className="hover:bg-slate-50/80 transition-colors group">
                     <td className="px-6 py-4 text-slate-900 whitespace-nowrap font-medium">
-                      {entry.date ? entry.date.split('-').reverse().join('-') : '-'} <span className="text-slate-400 text-xs ml-1 font-normal">({entry.day.substring(0,3)})</span>
+                      {formatDate(entry.date)} <span className="text-slate-400 text-xs ml-1 font-normal">({entry.day.substring(0,3)})</span>
                     </td>
                     <td className="px-6 py-4 font-medium text-slate-900">
                         {entry.driver}
@@ -807,3 +833,4 @@ const DailyEntryPage: React.FC = () => {
 };
 
 export default DailyEntryPage;
+
