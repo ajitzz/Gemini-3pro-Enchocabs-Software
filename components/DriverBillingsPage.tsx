@@ -43,20 +43,19 @@ const DriverBillingsPage: React.FC = () => {
     setLoading(true);
     try {
         // Load critical data first
- const [summaryData, slabData, weeklyData, dailyData, driverData] = await Promise.all([
+        const [summaryData, slabData, weeklyData, dailyData, driverData] = await Promise.all([
             storageService.getSummary(),
             storageService.getDriverRentalSlabs(),
             storageService.getWeeklyWallets(),
             storageService.getDailyEntries(),
             storageService.getDrivers()
         ]);
-        
+
         setSummaries(summaryData.driverSummaries);
         setRentalSlabs(slabData.sort((a, b) => a.minTrips - b.minTrips));
         setWeeklyWallets(weeklyData);
         setDailyEntries(dailyData.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
         setDrivers(driverData);
-        
 
         // Attempt to load billings separately to handle 404/500 gracefully during deployment/migration
         try {
@@ -133,20 +132,24 @@ const DriverBillingsPage: React.FC = () => {
 
   // --- 1. BILLING ENGINE ---
   const allBills = useMemo(() => {
-const mapped = billingRecords.map((bill) => {
+    const mapped = billingRecords.map((bill) => {
         const weekKey = bill.weekStartDate;
         const weekRange = `${toDisplayDate(bill.weekStartDate)} to ${toDisplayDate(bill.weekEndDate)}`;
         const matchingWallet = weeklyWallets.find(w =>
             getMondayISO(w.weekStartDate) === weekKey && normalize(w.driver) === normalize(bill.driverName)
         );
- const isRentOverridden = matchingWallet?.rentOverride !== undefined && matchingWallet?.rentOverride !== null;
+        const isRentOverridden = matchingWallet?.rentOverride !== undefined && matchingWallet?.rentOverride !== null;
         const dailyDetails = dailyEntries.filter(d => {
             const range = getWeekRange(d.date);
             return range.start === weekKey && normalize(d.driver) === normalize(bill.driverName);
         });
+        const normalizedDue = bill.due !== undefined ? bill.due : (bill.walletOverdue || 0);
+        const normalizedWalletOverdue = bill.walletOverdue !== undefined ? bill.walletOverdue : normalizedDue;
 
         return {
             ...bill,
+            due: normalizedDue,
+            walletOverdue: normalizedWalletOverdue,
             driver: bill.driverName,
             weekRange,
             weekKey,
@@ -162,13 +165,10 @@ const mapped = billingRecords.map((bill) => {
         };
     });
 
-
-
     return mapped.sort((a, b) => {
         if (b.weekKey !== a.weekKey) return b.weekKey.localeCompare(a.weekKey);
         return a.driver.localeCompare(b.driver);
     });
-
   }, [billingRecords, dailyEntries, weeklyWallets]);
 
   // --- FILTERS ---
@@ -202,19 +202,20 @@ const mapped = billingRecords.map((bill) => {
                   aggMap.set(bill.driver, {
                       id: `agg-${bill.driver}`,
                       driver: bill.driver,
-                      qrCode: bill.qrCode,
-                      daysWorked: 0,
-                      trips: 0,
-                      rentTotal: 0,
-                      collection: 0,
-                      fuel: 0,
-                      wallet: 0,
-                      overdue: 0,
-                      adjustments: 0,
-                      payout: 0,
-                      weekRange: 'All Time',
-                      isAggregate: true,
-                      isProvisional: false,
+                  qrCode: bill.qrCode,
+                  daysWorked: 0,
+                  trips: 0,
+                  rentTotal: 0,
+                  collection: 0,
+                  due: 0,
+                  fuel: 0,
+                  wallet: 0,
+                  walletOverdue: 0,
+                  adjustments: 0,
+                  payout: 0,
+                  weekRange: 'All Time',
+                  isAggregate: true,
+                  isProvisional: false,
                       isSaved: false
                   });
               }
@@ -222,14 +223,16 @@ const mapped = billingRecords.map((bill) => {
               const entry = aggMap.get(bill.driver);
               // Use standardized field
               const ovr = (bill as any).walletOverdue || 0;
+              const dueVal = (bill as any).due !== undefined ? (bill as any).due : ovr;
 
               entry.daysWorked += (bill.daysWorked || 0);
               entry.trips += (bill.trips || 0);
               entry.rentTotal += (bill.rentTotal || 0);
               entry.collection += (bill.collection || 0);
+              entry.due += dueVal;
               entry.fuel += (bill.fuel || 0);
               entry.wallet += (bill.wallet || 0);
-              entry.overdue += ovr;
+              entry.walletOverdue += ovr;
               entry.adjustments += (bill.adjustments || 0);
               entry.payout += (bill.payout || 0);
           });
@@ -267,13 +270,12 @@ const mapped = billingRecords.map((bill) => {
   const saveBillChanges = async () => {
       if (!editingBillId) return;
       const bill = allBills.find(b => b.id === editingBillId);
-     if (!bill || !bill.weeklyDetails) return;
+      if (!bill || !bill.weeklyDetails) return;
 
       try {
           // If provisional, CREATE wallet
           const walletId = bill.isProvisional ? crypto.randomUUID() : bill.weeklyDetails.id || crypto.randomUUID();
 
-          
           const updatedWallet: WeeklyWallet = {
               id: walletId,
               driver: bill.driver,
@@ -285,7 +287,7 @@ const mapped = billingRecords.map((bill) => {
               cash: bill.weeklyDetails.cash || 0,
               charges: bill.weeklyDetails.charges || 0,
               trips: bill.weeklyDetails.trips || 0,
-               walletWeek: bill.weeklyDetails.walletWeek || 0,
+              walletWeek: bill.weeklyDetails.walletWeek || 0,
               daysWorkedOverride: editFormData.daysWorked,
               rentOverride: editFormData.rentPerDay,
               adjustments: editFormData.adjustments,
@@ -316,6 +318,7 @@ const mapped = billingRecords.map((bill) => {
           rentPerDay: bill.rentPerDay,
           rentTotal: bill.rentTotal,
           collection: bill.collection,
+          due: bill.due,
           fuel: bill.fuel,
           wallet: bill.wallet,
           walletOverdue: bill.walletOverdue, // Uses normalized field
@@ -390,6 +393,7 @@ const mapped = billingRecords.map((bill) => {
                <div class="label">Fuel Advances</div><div class="value negative">- ${formatCurrency(bill.fuel)}</div>
                <div class="label">Wallet Earnings</div><div class="value positive">+ ${formatCurrency(bill.wallet)}</div>
                <div class="label">Rental Collection</div><div class="value positive">+ ${formatCurrency(bill.collection)}</div>
+               <div class="label">Daily Dues</div><div class="value">${formatCurrency(bill.due)}</div>
                <div class="label">Wallet Overdue (Dues)</div><div class="value">${formatCurrency(bill.walletOverdue)}</div>
                <div class="label">Adjustments</div><div class="value">${formatCurrency(bill.adjustments)}</div>
             </div>
@@ -617,6 +621,7 @@ const mapped = billingRecords.map((bill) => {
                              <th className="px-6 py-4 text-right">RENT / DAY</th>
                              <th className="px-6 py-4 text-right">RENT TOTAL</th>
                              <th className="px-6 py-4 text-right">COLLECTION</th>
+                             <th className="px-6 py-4 text-right">DUE</th>
                              <th className="px-6 py-4 text-right">FUEL</th>
                              <th className="px-6 py-4 text-right">WALLET</th>
                              <th className="px-6 py-4 text-right">WALLET OVERDUE</th>
@@ -627,7 +632,7 @@ const mapped = billingRecords.map((bill) => {
                        </thead>
                        <tbody className="divide-y divide-slate-100">
                           {displayedBills.length === 0 ? (
-                             <tr><td colSpan={13} className="p-12 text-center text-slate-400">No billings found for this week.</td></tr>
+                             <tr><td colSpan={14} className="p-12 text-center text-slate-400">No billings found for this week.</td></tr>
                           ) : (
                              displayedBills.map((bill) => (
                                 <React.Fragment key={bill.id}>
@@ -659,6 +664,7 @@ const mapped = billingRecords.map((bill) => {
                                    </td>
                                    <td className="px-6 py-4 text-right font-medium text-rose-600">-{formatCurrency(bill.rentTotal)}</td>
                                    <td className="px-6 py-4 text-right font-bold text-emerald-600">+{formatCurrency(bill.collection)}</td>
+                                   <td className="px-6 py-4 text-right text-slate-600">{formatCurrency(bill.due)}</td>
                                    <td className="px-6 py-4 text-right text-rose-500">-{formatCurrency(bill.fuel)}</td>
                                    <td className="px-6 py-4 text-right text-indigo-600">
                                        {bill.isProvisional ? <span className="text-slate-300">-</span> : `+${formatCurrency(bill.wallet)}`}
@@ -708,7 +714,7 @@ const mapped = billingRecords.map((bill) => {
                                 </tr>
                                 {expandedBillIds.has(bill.id) && (
                                   <tr key={`${bill.id}-expanded`}>
-                                      <td colSpan={13} className="px-6 py-4 bg-slate-50/50 shadow-inner">
+                                      <td colSpan={14} className="px-6 py-4 bg-slate-50/50 shadow-inner">
                                           <div className="text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Daily Breakdown for {bill.driver}</div>
                                           <table className="w-full text-xs bg-white rounded-lg border border-slate-200 overflow-hidden">
                                               <thead className="bg-slate-100 text-slate-500 font-semibold">

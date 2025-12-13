@@ -138,28 +138,48 @@ const ImportPage: React.FC = () => {
     return String(val).trim();
   };
 
-  const parseExcelDate = (inputVal: any): string => {
-    if (!inputVal) return '';
-    
-    const buildISODate = (y: number, m: number, d: number) => {
-      const fullYear = y < 100 ? 2000 + y : y;
+  const parseExcelDate = (val: any): string => {
+    if (!val) return '';
+
+    const buildISODate = (year: number, month: number, day: number) => {
+      const fullYear = year < 100 ? 2000 + year : year;
       if (fullYear < 2000 || fullYear > 2100) return '';
-      const dateObj = new Date(fullYear, m - 1, d);
-      if (dateObj.getFullYear() !== fullYear || dateObj.getMonth() !== m - 1 || dateObj.getDate() !== d) return '';
-      const mm = m.toString().padStart(2, '0');
-      const dd = d.toString().padStart(2, '0');
+      const d = new Date(Date.UTC(fullYear, month - 1, day));
+      if (d.getUTCFullYear() !== fullYear || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) return '';
+      const mm = month.toString().padStart(2, '0');
+      const dd = day.toString().padStart(2, '0');
       return `${fullYear}-${mm}-${dd}`;
     };
 
+    const normalizedFromParts = (a: number, b: number, c: number) => {
+      // Try year-first, then day-first to avoid swapping month/day for DD-MM-YYYY imports
+      const yearFirst = buildISODate(a, b, c);
+      if (yearFirst) return yearFirst;
+      return buildISODate(c, b, a);
+    };
+
     try {
-      if (typeof inputVal === 'number') {
-        const excelDate = new Date(Math.round((inputVal - 25569) * 86400 * 1000));
-        return buildISODate(excelDate.getFullYear(), excelDate.getMonth() + 1, excelDate.getDate());
+      // Excel serial number
+      if (typeof val === 'number') {
+        const date = new Date(Math.round((val - 25569) * 86400 * 1000));
+        return buildISODate(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
       }
 
-      const strVal = String(inputVal).trim();
+      const strVal = String(val).trim();
+      if (!strVal) return '';
+
+      // Already ISO
+      if (/^\d{4}-\d{2}-\d{2}$/.test(strVal)) return strVal;
 
       if (/^-?\d+(?:\.\d+)?$/.test(strVal)) {
+        const asNumber = Number(strVal);
+
+        // Try serial number interpretation first
+        const serialDate = new Date(Math.round((asNumber - 25569) * 86400 * 1000));
+        const serialISO = buildISODate(serialDate.getUTCFullYear(), serialDate.getUTCMonth() + 1, serialDate.getUTCDate());
+        if (serialISO) return serialISO;
+
+        // Try yyyymmdd compact format (e.g., 20240131)
         if (strVal.length === 8) {
           const y = parseInt(strVal.slice(0, 4), 10);
           const m = parseInt(strVal.slice(4, 6), 10);
@@ -173,26 +193,28 @@ const ImportPage: React.FC = () => {
       const match = strVal.match(datePattern);
       
       if (match) {
-        const part1 = parseInt(match[1], 10);
-        const part2 = parseInt(match[2], 10);
-        const part3 = parseInt(match[3], 10);
+        const a = parseInt(match[1], 10);
+        const b = parseInt(match[2], 10);
+        const c = parseInt(match[3], 10);
 
-        if (part3 >= 1000) {
-             const res = buildISODate(part3, part2, part1);
-             if (res) return res;
-        }
-        
-        if (part1 >= 1000) {
-             const res = buildISODate(part1, part2, part3);
-             if (res) return res;
-        }
+        // Try YYYY-MM-DD and DD-MM-YYYY explicitly to keep DD as day for imports
+        const isoFromParts = normalizedFromParts(a, b, c);
+        if (isoFromParts) return isoFromParts;
 
-        const res = buildISODate(part3 >= 100 ? part3 : 2000 + part3, part2, part1);
-        if (res) return res;
+        // Fallback to MM/DD/YYYY style
+        const mmddyyyy = buildISODate(c, a, b);
+        if (mmddyyyy) return mmddyyyy;
+      }
+
+      // Native Date parsing fallback
+      const native = new Date(strVal);
+      if (!isNaN(native.getTime()) && native.getUTCFullYear() > 2000) {
+        return buildISODate(native.getUTCFullYear(), native.getUTCMonth() + 1, native.getUTCDate());
       }
     } catch (e) {
       return '';
     }
+
     return '';
   };
 

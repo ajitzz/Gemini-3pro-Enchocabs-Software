@@ -75,6 +75,72 @@ const getSundayISO = (mondayStr) => {
   return d.toISOString().slice(0, 10);
 };
 
+// --- DATE HELPERS ---
+const normalizeDriver = (name = '') => name.toLowerCase().trim();
+const toISODate = (rawVal) => {
+  if (!rawVal) return '';
+
+  // Direct Date object
+  if (rawVal instanceof Date && !isNaN(rawVal)) {
+    return rawVal.toISOString().slice(0, 10);
+  }
+
+  const str = String(rawVal).trim();
+  if (!str) return '';
+
+  // Already ISO
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+
+  const buildIso = (y, m, d) => {
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return '';
+    return dt.toISOString().slice(0, 10);
+  };
+
+  // Handle separated formats (DD-MM-YYYY, DD/MM/YYYY, YYYY-MM-DD, etc.)
+  const parts = str.split(/[\/.-]/).filter(Boolean);
+  if (parts.length === 3) {
+    const nums = parts.map((p) => parseInt(p, 10));
+
+    // Year-first (YYYY-MM-DD or YYYY/DD/MM)
+    if (parts[0].length === 4) {
+      const iso = buildIso(nums[0], nums[1], nums[2]);
+      if (iso) return iso;
+    }
+
+    // Day-first (DD-MM-YYYY or DD/MM/YYYY)
+    if (parts[2].length === 4) {
+      const iso = buildIso(nums[2], nums[1], nums[0]);
+      if (iso) return iso;
+    }
+  }
+
+  // Fallback to native parsing
+  const native = new Date(str);
+  if (!isNaN(native)) {
+    return native.toISOString().slice(0, 10);
+  }
+
+  return '';
+};
+
+const getMondayISO = (dateStr) => {
+  const isoDate = toISODate(dateStr);
+  if (!isoDate) return '';
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  const day = d.getUTCDay();
+  const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1);
+  d.setUTCDate(diff);
+  return d.toISOString().slice(0, 10);
+};
+const getSundayISO = (mondayStr) => {
+  const isoDate = toISODate(mondayStr);
+  if (!isoDate) return '';
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 6);
+  return d.toISOString().slice(0, 10);
+};
+
 // --- INITIALIZATION SQL ---
 const initDb = async () => {
   try {
@@ -135,6 +201,7 @@ const initDb = async () => {
         rent_per_day NUMERIC DEFAULT 0,
         rent_total NUMERIC DEFAULT 0,
         collection NUMERIC DEFAULT 0,
+        due NUMERIC DEFAULT 0,
         fuel NUMERIC DEFAULT 0,
         wallet NUMERIC DEFAULT 0,
         wallet_overdue NUMERIC DEFAULT 0,
@@ -157,6 +224,15 @@ const initDb = async () => {
           END IF;
           IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='weekly_wallets' AND column_name='adjustments') THEN
               ALTER TABLE weekly_wallets ADD COLUMN adjustments NUMERIC DEFAULT 0;
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='driver_billings' AND column_name='due') THEN
+              ALTER TABLE driver_billings ADD COLUMN due NUMERIC DEFAULT 0;
+          END IF;
+          IF NOT EXISTS (
+              SELECT 1 FROM information_schema.table_constraints
+              WHERE table_name='driver_billings' AND constraint_name='unique_driver_week'
+          ) THEN
+              ALTER TABLE driver_billings ADD CONSTRAINT unique_driver_week UNIQUE (driver_name, week_start_date);
           END IF;
       END $$;
     `);
@@ -201,6 +277,7 @@ const calculateDriverBillings = async () => {
   driverRes.rows.forEach((d) => {
     driverIndex.set(normalizeDriver(d.name), { id: d.id, qrCode: d.qr_code });
   });
+
   const walletMap = new Map();
   walletRes.rows.forEach((w) => {
     const start = getMondayISO(w.week_start_date);
@@ -211,7 +288,6 @@ const calculateDriverBillings = async () => {
     walletMap.set(key, {
       ...w,
       week_start_date: start,
-      week_end_date: w.week_end_date || getSundayISO(start),
       week_end_date: resolvedEnd,
       trips: Number(w.trips) || 0,
       wallet_week: Number(w.wallet_week) || 0,
@@ -232,7 +308,7 @@ const calculateDriverBillings = async () => {
       collection: Number(d.collection) || 0,
       fuel: Number(d.fuel) || 0,
       due: Number(d.due) || 0
-        });
+    });
     dailyGroups.set(key, group);
   });
 
@@ -254,20 +330,21 @@ const calculateDriverBillings = async () => {
       const shift = (e.shift || '').toLowerCase().trim();
       return !['leave', 'off', 'absent'].includes(shift);
     }).length;
+
     const trips = wallet ? wallet.trips : 0;
     const slab = rentalSlabs.find((s) => trips >= s.minTrips && (s.maxTrips === null || trips <= s.maxTrips));
     const rentPerDay = wallet && wallet.rent_override !== null && wallet.rent_override !== undefined
       ? wallet.rent_override
       : (slab ? slab.rentAmount : 0);
 
-    const rentTotal = rentPerDay * daysWorked;
-    const collection = entries.reduce((sum, e) => sum + e.collection, 0);
-    const fuel = entries.reduce((sum, e) => sum + e.fuel, 0);
-    const overdue = entries.reduce((sum, e) => sum + e.due, 0);
-    const walletAmount = wallet ? wallet.wallet_week : 0;
-    const adjustments = wallet ? wallet.adjustments : 0;
+  const rentTotal = rentPerDay * daysWorked;
+  const collection = entries.reduce((sum, e) => sum + e.collection, 0);
+  const due = entries.reduce((sum, e) => sum + e.due, 0);
+  const fuel = entries.reduce((sum, e) => sum + e.fuel, 0);
+  const walletAmount = wallet ? wallet.wallet_week : 0;
+  const adjustments = wallet ? wallet.adjustments : 0;
 
-    const payout = collection - rentTotal - fuel + overdue + walletAmount + adjustments;
+  const payout = collection - rentTotal - fuel + due + walletAmount + adjustments;
 
     billings.push({
       driver_id: driverInfo.id || null,
@@ -279,10 +356,11 @@ const calculateDriverBillings = async () => {
       trips,
       rent_per_day: rentPerDay,
       rent_total: rentTotal,
-       collection,
+      collection,
+      due,
       fuel,
       wallet: walletAmount,
-      wallet_overdue: overdue,
+      wallet_overdue: due,
       adjustments,
       payout,
       status: 'Finalized'
@@ -306,7 +384,7 @@ const syncDriverBillings = async () => {
       if (!keyToId.has(key)) keyToId.set(key, r.id);
     });
 
-     for (const bill of billings) {
+    for (const bill of billings) {
       const billKey = `${normalizeDriver(bill.driver_name)}__${bill.week_start_date}`;
       const existingId = keyToId.get(billKey);
       const idToUse = existingId || uuidv4();
@@ -314,23 +392,23 @@ const syncDriverBillings = async () => {
       await client.query(
         `INSERT INTO driver_billings (
           id, driver_id, driver_name, qr_code, week_start_date, week_end_date,
-          days_worked, trips, rent_per_day, rent_total, collection, fuel,
+          days_worked, trips, rent_per_day, rent_total, collection, due, fuel,
           wallet, wallet_overdue, adjustments, payout, status, generated_at
         ) VALUES (
           $1, $2, $3, $4, $5, $6,
-          $7, $8, $9, $10, $11, $12,
-          $13, $14, $15, $16, $17, NOW()
+          $7, $8, $9, $10, $11, $12, $13,
+          $14, $15, $16, $17, $18, NOW()
         )
         ON CONFLICT (id) DO UPDATE SET
           driver_id = $2, driver_name = $3, qr_code = $4,
           week_start_date = $5, week_end_date = $6,
           days_worked = $7, trips = $8, rent_per_day = $9, rent_total = $10,
-          collection = $11, fuel = $12, wallet = $13, wallet_overdue = $14,
-          adjustments = $15, payout = $16, status = $17, generated_at = NOW();
+          collection = $11, due = $12, fuel = $13, wallet = $14, wallet_overdue = $15,
+          adjustments = $16, payout = $17, status = $18, generated_at = NOW();
         `,
         [
           idToUse, bill.driver_id, bill.driver_name, bill.qr_code, bill.week_start_date, bill.week_end_date,
-          bill.days_worked, bill.trips, bill.rent_per_day, bill.rent_total, bill.collection, bill.fuel,
+          bill.days_worked, bill.trips, bill.rent_per_day, bill.rent_total, bill.collection, bill.due, bill.fuel,
           bill.wallet, bill.wallet_overdue, bill.adjustments, bill.payout, bill.status
         ]
       );
@@ -350,17 +428,19 @@ const syncDriverBillings = async () => {
     client.release();
   }
 };
+
 app.get('/api/driver-billings', async (req, res) => {
   try {
     await syncDriverBillings();
+
     const result = await db.query(`
       SELECT
         id, driver_id as "driverId", driver_name as "driverName", qr_code as "qrCode",
-        to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate", 
+        to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate",
         to_char(week_end_date, 'YYYY-MM-DD') as "weekEndDate",
         days_worked as "daysWorked", trips, rent_per_day as "rentPerDay",
-        rent_total as "rentTotal", collection, fuel, wallet,
-        wallet_overdue as "walletOverdue", adjustments, payout, status, 
+        rent_total as "rentTotal", collection, due, fuel, wallet,
+        wallet_overdue as "walletOverdue", adjustments, payout, status,
         generated_at as "generatedAt"
       FROM driver_billings
       ORDER BY week_start_date DESC, driver_name ASC
@@ -369,7 +449,7 @@ app.get('/api/driver-billings', async (req, res) => {
       ...r,
       daysWorked: Number(r.daysWorked), trips: Number(r.trips),
       rentPerDay: Number(r.rentPerDay), rentTotal: Number(r.rentTotal),
-      collection: Number(r.collection), fuel: Number(r.fuel),
+      collection: Number(r.collection), due: Number(r.due), fuel: Number(r.fuel),
       wallet: Number(r.wallet), walletOverdue: Number(r.walletOverdue),
       adjustments: Number(r.adjustments), payout: Number(r.payout)
     }));
@@ -382,22 +462,23 @@ app.get('/api/driver-billings', async (req, res) => {
 
 app.post('/api/driver-billings', async (req, res) => {
   const b = req.body;
+  const dueValue = b.due !== undefined && b.due !== null ? b.due : 0;
   try {
     const q = `
       INSERT INTO driver_billings (
         id, driver_id, driver_name, qr_code, week_start_date, week_end_date,
-        days_worked, trips, rent_per_day, rent_total, collection, fuel,
+        days_worked, trips, rent_per_day, rent_total, collection, due, fuel,
         wallet, wallet_overdue, adjustments, payout, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
       ON CONFLICT (id) DO UPDATE SET
         driver_id=$2, driver_name=$3, qr_code=$4, week_start_date=$5, week_end_date=$6,
-        days_worked=$7, trips=$8, rent_per_day=$9, rent_total=$10, collection=$11, fuel=$12,
-        wallet=$13, wallet_overdue=$14, adjustments=$15, payout=$16, status=$17
+        days_worked=$7, trips=$8, rent_per_day=$9, rent_total=$10, collection=$11, due=$12, fuel=$13,
+        wallet=$14, wallet_overdue=$15, adjustments=$16, payout=$17, status=$18
       RETURNING *;
     `;
     const result = await db.query(q, [
       b.id || uuidv4(), b.driverId, b.driverName, b.qrCode, b.weekStartDate, b.weekEndDate,
-      b.daysWorked, b.trips, b.rentPerDay, b.rentTotal, b.collection, b.fuel,
+      b.daysWorked, b.trips, b.rentPerDay, b.rentTotal, b.collection, dueValue, b.fuel,
       b.wallet, b.walletOverdue, b.adjustments, b.payout, b.status || 'Finalized'
     ]);
     await syncDriverBillings();
@@ -534,8 +615,9 @@ app.get('/api/daily-entries', async (req, res) => {
 app.post('/api/daily-entries', async (req, res) => {
   const e = req.body;
   try {
-     const isoDate = toISODate(e.date);
+    const isoDate = toISODate(e.date);
     if (!isoDate) return res.status(400).json({ error: 'Invalid date format' });
+
     const q = `
       INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, payout, notes)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
@@ -543,7 +625,7 @@ app.post('/api/daily-entries', async (req, res) => {
         date=$2, day=$3, vehicle=$4, driver=$5, shift=$6, qr_code=$7, rent=$8, collection=$9, fuel=$10, due=$11, payout=$12, notes=$13
       RETURNING *;
     `;
-     const result = await db.query(q, [e.id, isoDate, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, e.notes]);
+    const result = await db.query(q, [e.id, isoDate, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, e.notes]);
     await syncDriverBillings();
     res.json(result.rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -572,7 +654,7 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
           date=$2, day=$3, vehicle=$4, driver=$5, shift=$6, qr_code=$7,
           rent=$8, collection=$9, fuel=$10, due=$11, payout=$12, notes=$13;
       `;
-     await client.query(q, [e.id, isoDate, e.day, e.vehicle, canonicalDriver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, e.notes]);
+      await client.query(q, [e.id, isoDate, e.day, e.vehicle, canonicalDriver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, e.notes]);
     }
     await client.query('COMMIT');
     await syncDriverBillings();
@@ -614,6 +696,7 @@ app.post('/api/weekly-wallets', async (req, res) => {
     const startISO = toISODate(w.weekStartDate);
     const endISO = toISODate(w.weekEndDate || (startISO ? getSundayISO(startISO) : ''));
     if (!startISO) return res.status(400).json({ error: 'Invalid week start date' });
+
     const q = `
       INSERT INTO weekly_wallets (id, driver, week_start_date, week_end_date, earnings, refund, diff, cash, charges, trips, wallet_week, days_worked_override, rent_override, adjustments, notes)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
@@ -913,10 +996,11 @@ initDb()
     } catch (err) {
       console.error('Initial driver billing sync failed:', err);
     }
+
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
     });
- })
+  })
   .catch((err) => {
     console.error('Initialization failed:', err);
   });
