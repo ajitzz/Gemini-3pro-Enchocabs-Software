@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { storageService } from '../services/storageService';
-import { DriverSummary, RentalSlab, WeeklyWallet, DailyEntry, Driver, LeaveRecord, DriverBillingRecord } from '../types';
+import { DriverSummary, RentalSlab, WeeklyWallet, DailyEntry, Driver, DriverBillingRecord } from '../types';
 import { Users, ChevronDown, FileText, Briefcase, Download, Edit2, Save, X, Calendar, ChevronLeft, ChevronRight, Check, Copy, RotateCcw, Search, Clock, ChevronUp, Lock, AlertTriangle } from 'lucide-react';
 
 const DriverBillingsPage: React.FC = () => {
@@ -11,8 +11,7 @@ const DriverBillingsPage: React.FC = () => {
   const [weeklyWallets, setWeeklyWallets] = useState<WeeklyWallet[]>([]);
   const [dailyEntries, setDailyEntries] = useState<DailyEntry[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
-  const [leaves, setLeaves] = useState<LeaveRecord[]>([]);
-  const [savedBillings, setSavedBillings] = useState<DriverBillingRecord[]>([]);
+  const [billingRecords, setBillingRecords] = useState<DriverBillingRecord[]>([]);
   const [billingApiError, setBillingApiError] = useState(false);
   
   // Filter & View State
@@ -44,30 +43,28 @@ const DriverBillingsPage: React.FC = () => {
     setLoading(true);
     try {
         // Load critical data first
-        const [summaryData, slabData, weeklyData, dailyData, driverData, leaveData] = await Promise.all([
+        const [summaryData, slabData, weeklyData, dailyData, driverData] = await Promise.all([
             storageService.getSummary(),
             storageService.getDriverRentalSlabs(),
             storageService.getWeeklyWallets(),
             storageService.getDailyEntries(),
-            storageService.getDrivers(),
-            storageService.getLeaves()
+            storageService.getDrivers()
         ]);
-        
+
         setSummaries(summaryData.driverSummaries);
         setRentalSlabs(slabData.sort((a, b) => a.minTrips - b.minTrips));
         setWeeklyWallets(weeklyData);
         setDailyEntries(dailyData.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
         setDrivers(driverData);
-        setLeaves(leaveData);
 
         // Attempt to load billings separately to handle 404/500 gracefully during deployment/migration
         try {
             const billingData = await storageService.getDriverBillings();
-            setSavedBillings(billingData);
+            setBillingRecords(billingData);
             setBillingApiError(false);
         } catch (billingErr) {
             console.warn("Could not load saved billings (endpoint might be missing):", billingErr);
-            setSavedBillings([]);
+            setBillingRecords([]);
             setBillingApiError(true);
         }
 
@@ -135,192 +132,44 @@ const DriverBillingsPage: React.FC = () => {
 
   // --- 1. BILLING ENGINE ---
   const allBills = useMemo(() => {
-    const billMap = new Map<string, any>();
-
-    // 1. Process Existing Weekly Wallets (Anchor for calculated bills)
-    weeklyWallets.forEach(wallet => {
-        const startISO = getMondayISO(wallet.weekStartDate);
-        const driverNorm = normalize(wallet.driver);
-        
-        if (!startISO || !driverNorm) return;
-
-        const key = `${startISO}_${driverNorm}`;
-        
-        billMap.set(key, {
-            source: 'wallet',
-            walletData: wallet,
-            dailyEntries: [], 
-            driver: wallet.driver,
-            startDate: startISO,
-            endDate: getWeekRange(startISO).end 
-        });
-    });
-
-    // 2. Process Daily Entries
-    dailyEntries.forEach(entry => {
-        if (!isValidDateStr(entry.date)) return;
-        
-        const { start: weekStart, end: weekEnd } = getWeekRange(entry.date);
-        if (!weekStart) return;
-
-        const driverNorm = normalize(entry.driver);
-        const key = `${weekStart}_${driverNorm}`;
-
-        if (!billMap.has(key)) {
-            // New Provisional Bill
-            billMap.set(key, {
-                source: 'provisional',
-                walletData: null,
-                dailyEntries: [],
-                driver: entry.driver,
-                startDate: weekStart,
-                endDate: weekEnd
-            });
-        }
-
-        const bill = billMap.get(key);
-        bill.dailyEntries.push(entry);
-    });
-
-    // 3. Compute Aggregates & Match with Saved Records
-    const computedBills = Array.from(billMap.values()).map(data => {
-        // CHECK FOR SAVED BILL
-        const savedRecord = savedBillings.find(b => 
-            b.weekStartDate === data.startDate && 
-            normalize(b.driverName) === normalize(data.driver)
+    const mapped = billingRecords.map((bill) => {
+        const weekKey = bill.weekStartDate;
+        const weekRange = `${toDisplayDate(bill.weekStartDate)} to ${toDisplayDate(bill.weekEndDate)}`;
+        const matchingWallet = weeklyWallets.find(w =>
+            getMondayISO(w.weekStartDate) === weekKey && normalize(w.driver) === normalize(bill.driverName)
         );
-
-        if (savedRecord) {
-            return {
-                ...savedRecord,
-                driver: savedRecord.driverName,
-                // Ensure walletOverdue is populated
-                walletOverdue: savedRecord.walletOverdue,
-                isSaved: true,
-                weekRange: `${toDisplayDate(savedRecord.weekStartDate)} to ${toDisplayDate(savedRecord.weekEndDate)}`,
-                weekKey: savedRecord.weekStartDate,
-                startDate: savedRecord.weekStartDate,
-                endDate: savedRecord.weekEndDate,
-                dailyDetails: data.dailyEntries, // Attach live details even if finalized, for reference
-                weeklyDetails: data.walletData || {},
-                isProvisional: false,
-                isAggregate: false
-            };
-        }
-
-        // --- DYNAMIC CALCULATION (Provisional) ---
-        const { source, walletData, dailyEntries: entries } = data;
-        
-        // Sums
-        const collection = entries.reduce((sum: number, d: any) => sum + (Number(d.collection) || 0), 0);
-        const fuel = entries.reduce((sum: number, d: any) => sum + (Number(d.fuel) || 0), 0);
-        
-        // Wallet Overdue = Sum of Daily Due
-        const overdue = entries.reduce((sum: number, d: any) => sum + (Number(d.due) || 0), 0);
-        
-        // Days Worked Calculation: Count DailyEntry records where shift is NOT 'Leave', 'Off', or 'Absent'
-        const entriesCount = entries.filter((d: any) => {
-           const shiftVal = d.shift ? d.shift.toLowerCase().trim() : '';
-           return !['leave', 'off', 'absent'].includes(shiftVal);
-        }).length;
-
-        let trips = 0;
-        let daysWorked = entriesCount; 
-        let rentPerDay = 0;
-        let walletAmount = 0;
-        let adjustments = 0;
-        let isRentOverridden = false;
-        let isProvisional = source === 'provisional';
-
-        if (walletData) {
-            trips = Number(walletData.trips) || 0;
-            walletAmount = Number(walletData.walletWeek) || 0;
-            adjustments = Number(walletData.adjustments) || 0;
-            
-            // Rent Calculation Logic
-            // 1. Check for manual override in wallet
-            if (walletData.rentOverride !== undefined && walletData.rentOverride !== null) {
-                rentPerDay = Number(walletData.rentOverride);
-                isRentOverridden = true;
-            } else {
-                // 2. Fallback to Rental Slab based on trips
-                const slab = rentalSlabs.find(s => trips >= s.minTrips && (s.maxTrips === null || trips <= s.maxTrips));
-                rentPerDay = slab ? slab.rentAmount : 0;
-            }
-
-            if (walletData.daysWorkedOverride !== undefined && walletData.daysWorkedOverride !== null) {
-                daysWorked = Number(walletData.daysWorkedOverride);
-            }
-        } else {
-            // Provisional Fallback if no wallet data exists yet (Trips = 0)
-            if (entries.length > 0) {
-               // Estimate rent from daily logs average if needed, or 0
-               const totalRentLogged = entries.reduce((sum: number, d: any) => sum + (Number(d.rent) || 0), 0);
-               rentPerDay = totalRentLogged / entries.length;
-            }
-        }
-
-        const rentTotal = rentPerDay * daysWorked;
-        // Payout Formula: Collection - Rent Total - Fuel + Overdue + Wallet + Adjustments
-        const finalPayout = collection - rentTotal - fuel + overdue + walletAmount + adjustments;
+        const isRentOverridden = matchingWallet?.rentOverride !== undefined && matchingWallet?.rentOverride !== null;
+        const dailyDetails = dailyEntries.filter(d => {
+            const range = getWeekRange(d.date);
+            return range.start === weekKey && normalize(d.driver) === normalize(bill.driverName);
+        });
+        const normalizedDue = bill.due !== undefined ? bill.due : (bill.walletOverdue || 0);
+        const normalizedWalletOverdue = bill.walletOverdue !== undefined ? bill.walletOverdue : normalizedDue;
 
         return {
-            id: walletData ? walletData.id : `prov_${data.startDate}_${data.driver}`,
-            weekRange: `${toDisplayDate(data.startDate)} to ${toDisplayDate(data.endDate)}`,
-            weekKey: data.startDate,
-            startDate: data.startDate,
-            endDate: data.endDate,
-            driver: data.driver,
-            qrCode: entries[0]?.qrCode || 'N/A',
-            trips, 
-            rentPerDay, 
-            daysWorked,
-            calculatedDays: entriesCount, 
-            rentTotal, 
-            collection, 
-            fuel, 
-            wallet: walletAmount, 
-            walletOverdue: overdue, 
-            adjustments, 
-            payout: finalPayout,
-            dailyDetails: entries,
-            weeklyDetails: walletData || {},
-            isProvisional,
+            ...bill,
+            due: normalizedDue,
+            walletOverdue: normalizedWalletOverdue,
+            driver: bill.driverName,
+            weekRange,
+            weekKey,
+            startDate: bill.weekStartDate,
+            endDate: bill.weekEndDate,
+            calculatedDays: bill.daysWorked,
+            dailyDetails,
+            weeklyDetails: matchingWallet ?? null,
+            isProvisional: false,
             isRentOverridden,
             isAggregate: false,
-            isSaved: false
+            isSaved: true
         };
     });
 
-    // Ensure we also include Saved Bills that might not have current daily/weekly data locally (historical)
-    savedBillings.forEach(saved => {
-        const key = `${saved.weekStartDate}_${normalize(saved.driverName)}`;
-        if (!billMap.has(key)) {
-             computedBills.push({
-                ...saved,
-                driver: saved.driverName,
-                walletOverdue: saved.walletOverdue,
-                isSaved: true,
-                weekRange: `${toDisplayDate(saved.weekStartDate)} to ${toDisplayDate(saved.weekEndDate)}`,
-                weekKey: saved.weekStartDate,
-                startDate: saved.weekStartDate,
-                endDate: saved.weekEndDate,
-                dailyDetails: [],
-                weeklyDetails: {},
-                isProvisional: false,
-                isAggregate: false
-             });
-        }
-    });
-
-    const validBills = computedBills.filter(b => b.dailyDetails?.length > 0 || !b.isProvisional || b.isSaved);
-
-    return validBills.sort((a, b) => {
+    return mapped.sort((a, b) => {
         if (b.weekKey !== a.weekKey) return b.weekKey.localeCompare(a.weekKey);
         return a.driver.localeCompare(b.driver);
     });
-
-  }, [weeklyWallets, dailyEntries, rentalSlabs, savedBillings]);
+  }, [billingRecords, dailyEntries, weeklyWallets]);
 
   // --- FILTERS ---
   const availableWeeks = useMemo(() => {
@@ -353,19 +202,20 @@ const DriverBillingsPage: React.FC = () => {
                   aggMap.set(bill.driver, {
                       id: `agg-${bill.driver}`,
                       driver: bill.driver,
-                      qrCode: bill.qrCode,
-                      daysWorked: 0,
-                      trips: 0,
-                      rentTotal: 0,
-                      collection: 0,
-                      fuel: 0,
-                      wallet: 0,
-                      overdue: 0,
-                      adjustments: 0,
-                      payout: 0,
-                      weekRange: 'All Time',
-                      isAggregate: true,
-                      isProvisional: false,
+                  qrCode: bill.qrCode,
+                  daysWorked: 0,
+                  trips: 0,
+                  rentTotal: 0,
+                  collection: 0,
+                  due: 0,
+                  fuel: 0,
+                  wallet: 0,
+                  walletOverdue: 0,
+                  adjustments: 0,
+                  payout: 0,
+                  weekRange: 'All Time',
+                  isAggregate: true,
+                  isProvisional: false,
                       isSaved: false
                   });
               }
@@ -373,14 +223,16 @@ const DriverBillingsPage: React.FC = () => {
               const entry = aggMap.get(bill.driver);
               // Use standardized field
               const ovr = (bill as any).walletOverdue || 0;
+              const dueVal = (bill as any).due !== undefined ? (bill as any).due : ovr;
 
               entry.daysWorked += (bill.daysWorked || 0);
               entry.trips += (bill.trips || 0);
               entry.rentTotal += (bill.rentTotal || 0);
               entry.collection += (bill.collection || 0);
+              entry.due += dueVal;
               entry.fuel += (bill.fuel || 0);
               entry.wallet += (bill.wallet || 0);
-              entry.overdue += ovr;
+              entry.walletOverdue += ovr;
               entry.adjustments += (bill.adjustments || 0);
               entry.payout += (bill.payout || 0);
           });
@@ -418,28 +270,28 @@ const DriverBillingsPage: React.FC = () => {
   const saveBillChanges = async () => {
       if (!editingBillId) return;
       const bill = allBills.find(b => b.id === editingBillId);
-      if (!bill) return;
+      if (!bill || !bill.weeklyDetails) return;
 
       try {
           // If provisional, CREATE wallet
-          const walletId = bill.isProvisional ? crypto.randomUUID() : bill.weeklyDetails.id;
-          
+          const walletId = bill.isProvisional ? crypto.randomUUID() : bill.weeklyDetails.id || crypto.randomUUID();
+
           const updatedWallet: WeeklyWallet = {
               id: walletId,
               driver: bill.driver,
               weekStartDate: bill.startDate,
               weekEndDate: bill.endDate,
-              earnings: bill.weeklyDetails?.earnings || 0,
-              refund: bill.weeklyDetails?.refund || 0,
-              diff: bill.weeklyDetails?.diff || 0,
-              cash: bill.weeklyDetails?.cash || 0,
-              charges: bill.weeklyDetails?.charges || 0,
-              trips: bill.weeklyDetails?.trips || 0,
-              walletWeek: bill.weeklyDetails?.walletWeek || 0,
+              earnings: bill.weeklyDetails.earnings || 0,
+              refund: bill.weeklyDetails.refund || 0,
+              diff: bill.weeklyDetails.diff || 0,
+              cash: bill.weeklyDetails.cash || 0,
+              charges: bill.weeklyDetails.charges || 0,
+              trips: bill.weeklyDetails.trips || 0,
+              walletWeek: bill.weeklyDetails.walletWeek || 0,
               daysWorkedOverride: editFormData.daysWorked,
               rentOverride: editFormData.rentPerDay,
               adjustments: editFormData.adjustments,
-              notes: bill.weeklyDetails?.notes || 'Generated from Billing Page'
+              notes: bill.weeklyDetails.notes || 'Generated from Billing Page'
           };
 
           await storageService.saveWeeklyWallet(updatedWallet);
@@ -466,6 +318,7 @@ const DriverBillingsPage: React.FC = () => {
           rentPerDay: bill.rentPerDay,
           rentTotal: bill.rentTotal,
           collection: bill.collection,
+          due: bill.due,
           fuel: bill.fuel,
           wallet: bill.wallet,
           walletOverdue: bill.walletOverdue, // Uses normalized field
@@ -487,7 +340,7 @@ const DriverBillingsPage: React.FC = () => {
   const resetToDefaults = async () => {
       if (!editingBillId) return;
       const bill = allBills.find(b => b.id === editingBillId);
-      if (!bill) return;
+      if (!bill || !bill.weeklyDetails) return;
       if (!confirm("Are you sure? This will revert overrides to standard slab calculations.")) return;
 
       try {
@@ -540,6 +393,7 @@ const DriverBillingsPage: React.FC = () => {
                <div class="label">Fuel Advances</div><div class="value negative">- ${formatCurrency(bill.fuel)}</div>
                <div class="label">Wallet Earnings</div><div class="value positive">+ ${formatCurrency(bill.wallet)}</div>
                <div class="label">Rental Collection</div><div class="value positive">+ ${formatCurrency(bill.collection)}</div>
+               <div class="label">Daily Dues</div><div class="value">${formatCurrency(bill.due)}</div>
                <div class="label">Wallet Overdue (Dues)</div><div class="value">${formatCurrency(bill.walletOverdue)}</div>
                <div class="label">Adjustments</div><div class="value">${formatCurrency(bill.adjustments)}</div>
             </div>
@@ -767,6 +621,7 @@ const DriverBillingsPage: React.FC = () => {
                              <th className="px-6 py-4 text-right">RENT / DAY</th>
                              <th className="px-6 py-4 text-right">RENT TOTAL</th>
                              <th className="px-6 py-4 text-right">COLLECTION</th>
+                             <th className="px-6 py-4 text-right">DUE</th>
                              <th className="px-6 py-4 text-right">FUEL</th>
                              <th className="px-6 py-4 text-right">WALLET</th>
                              <th className="px-6 py-4 text-right">WALLET OVERDUE</th>
@@ -777,7 +632,7 @@ const DriverBillingsPage: React.FC = () => {
                        </thead>
                        <tbody className="divide-y divide-slate-100">
                           {displayedBills.length === 0 ? (
-                             <tr><td colSpan={13} className="p-12 text-center text-slate-400">No billings found for this week.</td></tr>
+                             <tr><td colSpan={14} className="p-12 text-center text-slate-400">No billings found for this week.</td></tr>
                           ) : (
                              displayedBills.map((bill) => (
                                 <React.Fragment key={bill.id}>
@@ -809,6 +664,7 @@ const DriverBillingsPage: React.FC = () => {
                                    </td>
                                    <td className="px-6 py-4 text-right font-medium text-rose-600">-{formatCurrency(bill.rentTotal)}</td>
                                    <td className="px-6 py-4 text-right font-bold text-emerald-600">+{formatCurrency(bill.collection)}</td>
+                                   <td className="px-6 py-4 text-right text-slate-600">{formatCurrency(bill.due)}</td>
                                    <td className="px-6 py-4 text-right text-rose-500">-{formatCurrency(bill.fuel)}</td>
                                    <td className="px-6 py-4 text-right text-indigo-600">
                                        {bill.isProvisional ? <span className="text-slate-300">-</span> : `+${formatCurrency(bill.wallet)}`}
@@ -858,7 +714,7 @@ const DriverBillingsPage: React.FC = () => {
                                 </tr>
                                 {expandedBillIds.has(bill.id) && (
                                   <tr key={`${bill.id}-expanded`}>
-                                      <td colSpan={13} className="px-6 py-4 bg-slate-50/50 shadow-inner">
+                                      <td colSpan={14} className="px-6 py-4 bg-slate-50/50 shadow-inner">
                                           <div className="text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Daily Breakdown for {bill.driver}</div>
                                           <table className="w-full text-xs bg-white rounded-lg border border-slate-200 overflow-hidden">
                                               <thead className="bg-slate-100 text-slate-500 font-semibold">
