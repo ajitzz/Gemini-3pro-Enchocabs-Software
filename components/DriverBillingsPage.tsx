@@ -1,8 +1,8 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { storageService } from '../services/storageService';
-import { DriverSummary, RentalSlab, WeeklyWallet, DailyEntry, Driver, LeaveRecord } from '../types';
-import { Users, ChevronDown, FileText, Briefcase, Download, Edit2, Save, X, Calendar, ChevronLeft, ChevronRight, Check, Copy, RotateCcw, Search } from 'lucide-react';
+import { DriverSummary, RentalSlab, WeeklyWallet, DailyEntry, Driver, LeaveRecord, DriverBillingRecord } from '../types';
+import { Users, ChevronDown, FileText, Briefcase, Download, Edit2, Save, X, Calendar, ChevronLeft, ChevronRight, Check, Copy, RotateCcw, Search, Clock, ChevronUp, Lock, AlertTriangle } from 'lucide-react';
 
 const DriverBillingsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
@@ -12,10 +12,13 @@ const DriverBillingsPage: React.FC = () => {
   const [dailyEntries, setDailyEntries] = useState<DailyEntry[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [leaves, setLeaves] = useState<LeaveRecord[]>([]);
+  const [savedBillings, setSavedBillings] = useState<DriverBillingRecord[]>([]);
+  const [billingApiError, setBillingApiError] = useState(false);
   
   // Filter & View State
   const [filterDriver, setFilterDriver] = useState('');
-  const [currentWeekIndex, setCurrentWeekIndex] = useState(0); // 0 = Latest week
+  const [currentWeekIndex, setCurrentWeekIndex] = useState(0); // 0 = Latest week, -1 = All Time
+  const [expandedBillIds, setExpandedBillIds] = useState<Set<string>>(new Set());
   
   // UI Toggles
   const [isBalancesExpanded, setIsBalancesExpanded] = useState(false); 
@@ -40,6 +43,7 @@ const DriverBillingsPage: React.FC = () => {
   const loadData = async () => {
     setLoading(true);
     try {
+        // Load critical data first
         const [summaryData, slabData, weeklyData, dailyData, driverData, leaveData] = await Promise.all([
             storageService.getSummary(),
             storageService.getDriverRentalSlabs(),
@@ -48,12 +52,25 @@ const DriverBillingsPage: React.FC = () => {
             storageService.getDrivers(),
             storageService.getLeaves()
         ]);
+        
         setSummaries(summaryData.driverSummaries);
         setRentalSlabs(slabData.sort((a, b) => a.minTrips - b.minTrips));
         setWeeklyWallets(weeklyData);
-        setDailyEntries(dailyData);
+        setDailyEntries(dailyData.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
         setDrivers(driverData);
         setLeaves(leaveData);
+
+        // Attempt to load billings separately to handle 404/500 gracefully during deployment/migration
+        try {
+            const billingData = await storageService.getDriverBillings();
+            setSavedBillings(billingData);
+            setBillingApiError(false);
+        } catch (billingErr) {
+            console.warn("Could not load saved billings (endpoint might be missing):", billingErr);
+            setSavedBillings([]);
+            setBillingApiError(true);
+        }
+
     } catch (err) {
         console.error("Error loading billing data:", err);
     } finally {
@@ -65,193 +82,328 @@ const DriverBillingsPage: React.FC = () => {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(val);
   };
 
-  // --- STRICT DATE HELPERS ---
-  
-  // Converts string to UTC Midnight Timestamp for accurate range comparison
-  const toNormalizedTimestamp = (dateStr: string) => {
-      if (!dateStr) return 0;
-      
-      // Strict YYYY-MM-DD parsing to avoid browser timezone offsets
-      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-          const [y, m, d] = dateStr.split('-').map(Number);
-          return Date.UTC(y, m - 1, d);
-      }
-
-      // Fallback
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return 0;
-      return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  // --- ROBUST DATE HELPERS (UTC STRICT) ---
+  const isValidDateStr = (dateStr: any) => {
+      if (!dateStr || typeof dateStr !== 'string') return false;
+      const clean = dateStr.substring(0, 10);
+      // Basic format check YYYY-MM-DD
+      return /^\d{4}-\d{2}-\d{2}$/.test(clean) && !clean.startsWith('1970');
   };
 
-  // Converts ISO string to DD-MM-YYYY for display
-  const toDisplayDate = (dateStr: string) => {
-      if (!dateStr) return '-';
-      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-          const [y, m, d] = dateStr.split('-');
-          return `${d}-${m}-${y}`;
-      }
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return dateStr;
-      return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+  // Forces any date to its Week Start (Monday) in UTC to align imports and manual data
+  const getMondayISO = (dateStr: string) => {
+      if (!isValidDateStr(dateStr)) return '';
+      const clean = dateStr.substring(0, 10);
+      const parts = clean.split('-');
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      
+      const d = new Date(Date.UTC(year, month, day));
+      const dayOfWeek = d.getUTCDay(); // 0 (Sun) to 6 (Sat)
+      
+      // Calculate diff to Monday (Sun=0 -> -6, Mon=1 -> 0, Tue=2 -> -1)
+      const diff = d.getUTCDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+      
+      d.setUTCDate(diff);
+      return d.toISOString().split('T')[0];
+  };
+
+  const getWeekRange = (dateStr: string) => {
+      const startISO = getMondayISO(dateStr);
+      if (!startISO) return { start: '', end: '' };
+      
+      const parts = startISO.split('-');
+      const startUTC = new Date(Date.UTC(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2])));
+      
+      startUTC.setUTCDate(startUTC.getUTCDate() + 6);
+      const endISO = startUTC.toISOString().split('T')[0];
+      
+      return { start: startISO, end: endISO };
+  };
+
+  const toDisplayDate = (isoDate: string) => {
+      if (!isValidDateStr(isoDate)) return '-';
+      return isoDate.substring(0, 10).split('-').reverse().join('-');
   };
 
   const filteredSummaries = summaries.filter(s => 
     filterDriver === '' || s.driver.toLowerCase().includes(filterDriver.toLowerCase())
   );
 
-  // --- CORE BILLING ENGINE ---
+  const normalize = (s: string) => s ? s.toLowerCase().replace(/[^a-z0-9]/g, '').trim() : '';
+
+  // --- 1. BILLING ENGINE ---
   const allBills = useMemo(() => {
-    return weeklyWallets.map(wallet => {
-       const startTs = toNormalizedTimestamp(wallet.weekStartDate);
-       const endTs = toNormalizedTimestamp(wallet.weekEndDate);
-       
-       if (startTs === 0 || endTs === 0) return null;
+    const billMap = new Map<string, any>();
 
-       // 1. Normalize Driver Name for Matching
-       const normalize = (s: string) => s ? s.toLowerCase().replace(/\s+/g, ' ').trim() : '';
-       const walletDriverNorm = normalize(wallet.driver);
-       const driverObj = drivers.find(d => normalize(d.name) === walletDriverNorm);
+    // 1. Process Existing Weekly Wallets (Anchor for calculated bills)
+    weeklyWallets.forEach(wallet => {
+        const startISO = getMondayISO(wallet.weekStartDate);
+        const driverNorm = normalize(wallet.driver);
+        
+        if (!startISO || !driverNorm) return;
 
-       // 2. Filter Daily Entries for this specific week and driver
-       const relevantDaily = dailyEntries.filter(d => {
-          const entryTs = toNormalizedTimestamp(d.date);
-          if (entryTs === 0) return false;
-          
-          // Check Date Range
-          const inRange = entryTs >= startTs && entryTs <= endTs;
-          if (!inRange) return false;
+        const key = `${startISO}_${driverNorm}`;
+        
+        billMap.set(key, {
+            source: 'wallet',
+            walletData: wallet,
+            dailyEntries: [], 
+            driver: wallet.driver,
+            startDate: startISO,
+            endDate: getWeekRange(startISO).end 
+        });
+    });
 
-          // Check Driver Identity (Name match matches primarily)
-          const entryDriverNorm = normalize(d.driver);
-          return entryDriverNorm === walletDriverNorm;
-       });
+    // 2. Process Daily Entries
+    dailyEntries.forEach(entry => {
+        if (!isValidDateStr(entry.date)) return;
+        
+        const { start: weekStart, end: weekEnd } = getWeekRange(entry.date);
+        if (!weekStart) return;
 
-       // 3. Aggregate Data from Daily Entries
-       const collection = relevantDaily.reduce((sum, d) => sum + (Number(d.collection) || 0), 0);
-       const fuel = relevantDaily.reduce((sum, d) => sum + (Number(d.fuel) || 0), 0);
-       // 'Due' in Daily Entry usually tracks daily balances. 
-       // Summing it adds previous day's +/- balance to this bill.
-       const overdue = relevantDaily.reduce((sum, d) => sum + (Number(d.due) || 0), 0);
+        const driverNorm = normalize(entry.driver);
+        const key = `${weekStart}_${driverNorm}`;
 
-       // 4. Calculate Days Worked (Excluding Leaves/Offs)
-       const driverId = driverObj?.id;
-       const calculatedDays = relevantDaily.filter(d => {
+        if (!billMap.has(key)) {
+            // New Provisional Bill
+            billMap.set(key, {
+                source: 'provisional',
+                walletData: null,
+                dailyEntries: [],
+                driver: entry.driver,
+                startDate: weekStart,
+                endDate: weekEnd
+            });
+        }
+
+        const bill = billMap.get(key);
+        bill.dailyEntries.push(entry);
+    });
+
+    // 3. Compute Aggregates & Match with Saved Records
+    const computedBills = Array.from(billMap.values()).map(data => {
+        // CHECK FOR SAVED BILL
+        const savedRecord = savedBillings.find(b => 
+            b.weekStartDate === data.startDate && 
+            normalize(b.driverName) === normalize(data.driver)
+        );
+
+        if (savedRecord) {
+            return {
+                ...savedRecord,
+                driver: savedRecord.driverName,
+                // Ensure walletOverdue is populated
+                walletOverdue: savedRecord.walletOverdue,
+                isSaved: true,
+                weekRange: `${toDisplayDate(savedRecord.weekStartDate)} to ${toDisplayDate(savedRecord.weekEndDate)}`,
+                weekKey: savedRecord.weekStartDate,
+                startDate: savedRecord.weekStartDate,
+                endDate: savedRecord.weekEndDate,
+                dailyDetails: data.dailyEntries, // Attach live details even if finalized, for reference
+                weeklyDetails: data.walletData || {},
+                isProvisional: false,
+                isAggregate: false
+            };
+        }
+
+        // --- DYNAMIC CALCULATION (Provisional) ---
+        const { source, walletData, dailyEntries: entries } = data;
+        
+        // Sums
+        const collection = entries.reduce((sum: number, d: any) => sum + (Number(d.collection) || 0), 0);
+        const fuel = entries.reduce((sum: number, d: any) => sum + (Number(d.fuel) || 0), 0);
+        
+        // Wallet Overdue = Sum of Daily Due
+        const overdue = entries.reduce((sum: number, d: any) => sum + (Number(d.due) || 0), 0);
+        
+        // Days Worked Calculation: Count DailyEntry records where shift is NOT 'Leave', 'Off', or 'Absent'
+        const entriesCount = entries.filter((d: any) => {
            const shiftVal = d.shift ? d.shift.toLowerCase().trim() : '';
-           if (['leave', 'off', 'absent', 'holiday'].includes(shiftVal)) return false;
+           return !['leave', 'off', 'absent'].includes(shiftVal);
+        }).length;
 
-           if (driverId) {
-               const entryTs = toNormalizedTimestamp(d.date);
-               const onLeave = leaves.some(l => {
-                   if (l.driverId !== driverId) return false;
-                   const lStartTs = toNormalizedTimestamp(l.startDate);
-                   const lEndTs = toNormalizedTimestamp(l.actualReturnDate || l.endDate);
-                   
-                   // Check strictly if entry date falls within leave
-                   if (l.actualReturnDate) {
-                       return entryTs >= lStartTs && entryTs < lEndTs;
-                   } else {
-                       return entryTs >= lStartTs && entryTs <= lEndTs;
-                   }
-               });
-               if (onLeave) return false;
-           }
-           return true;
-       }).length;
+        let trips = 0;
+        let daysWorked = entriesCount; 
+        let rentPerDay = 0;
+        let walletAmount = 0;
+        let adjustments = 0;
+        let isRentOverridden = false;
+        let isProvisional = source === 'provisional';
 
-       // 5. Rent Calculation
-       const totalTrips = wallet.trips; 
-       // Find appropriate slab
-       const slab = rentalSlabs.find(s => 
-           totalTrips >= s.minTrips && (s.maxTrips === null || totalTrips <= s.maxTrips)
-       );
-       
-       let rentRateUsed = 0;
-       if (wallet.rentOverride !== undefined && wallet.rentOverride !== null) {
-           rentRateUsed = wallet.rentOverride;
-       } else if (relevantDaily.length > 0 && totalTrips >= 70) {
-           // Heuristic: If high trips, maybe average daily rent is preferred? 
-           // Standard logic usually prefers Slab unless manual override. 
-           // Reverting to Slab preference to keep it deterministic unless override exists.
-           rentRateUsed = slab ? slab.rentAmount : 0;
-       } else {
-           rentRateUsed = slab ? slab.rentAmount : 0;
-       }
-       
-       const daysWorked = wallet.daysWorkedOverride !== undefined && wallet.daysWorkedOverride !== null 
-           ? wallet.daysWorkedOverride 
-           : calculatedDays;
+        if (walletData) {
+            trips = Number(walletData.trips) || 0;
+            walletAmount = Number(walletData.walletWeek) || 0;
+            adjustments = Number(walletData.adjustments) || 0;
+            
+            // Rent Calculation Logic
+            // 1. Check for manual override in wallet
+            if (walletData.rentOverride !== undefined && walletData.rentOverride !== null) {
+                rentPerDay = Number(walletData.rentOverride);
+                isRentOverridden = true;
+            } else {
+                // 2. Fallback to Rental Slab based on trips
+                const slab = rentalSlabs.find(s => trips >= s.minTrips && (s.maxTrips === null || trips <= s.maxTrips));
+                rentPerDay = slab ? slab.rentAmount : 0;
+            }
 
-       const rentTotal = rentRateUsed * daysWorked;
-       
-       // 6. Final Payout Formula
-       // Payout = Collection - Rent - Fuel + DailyDues + WalletEarnings + Adjustments
-       const walletAmount = wallet.walletWeek; 
-       const adjustment = wallet.adjustments || 0;
-       
-       const payout = collection - rentTotal - fuel + overdue + walletAmount + adjustment;
+            if (walletData.daysWorkedOverride !== undefined && walletData.daysWorkedOverride !== null) {
+                daysWorked = Number(walletData.daysWorkedOverride);
+            }
+        } else {
+            // Provisional Fallback if no wallet data exists yet (Trips = 0)
+            if (entries.length > 0) {
+               // Estimate rent from daily logs average if needed, or 0
+               const totalRentLogged = entries.reduce((sum: number, d: any) => sum + (Number(d.rent) || 0), 0);
+               rentPerDay = totalRentLogged / entries.length;
+            }
+        }
 
-       return {
-           id: wallet.id,
-           weekRange: `${toDisplayDate(wallet.weekStartDate)} to ${toDisplayDate(wallet.weekEndDate)}`,
-           weekKey: wallet.weekStartDate,
-           weekEndDate: wallet.weekEndDate,
-           driver: wallet.driver,
-           qrCode: relevantDaily[0]?.qrCode || 'N/A',
-           trips: totalTrips,
-           rentPerDay: rentRateUsed,
-           slabRent: slab ? slab.rentAmount : 0, 
-           isRentOverridden: wallet.rentOverride !== undefined && wallet.rentOverride !== null,
-           daysWorked: daysWorked,
-           calculatedDays, 
-           rentTotal,
-           collection,
-           fuel,
-           wallet: walletAmount,
-           overdue,
-           adjustments: adjustment,
-           payout,
-           dailyDetails: relevantDaily,
-           weeklyDetails: wallet
-       };
-    })
-    .filter(b => b !== null)
-    .sort((a, b) => new Date(b!.weekKey).getTime() - new Date(a!.weekKey).getTime());
-  }, [weeklyWallets, dailyEntries, rentalSlabs, drivers, leaves]);
+        const rentTotal = rentPerDay * daysWorked;
+        // Payout Formula: Collection - Rent Total - Fuel + Overdue + Wallet + Adjustments
+        const finalPayout = collection - rentTotal - fuel + overdue + walletAmount + adjustments;
 
-  // --- PAGINATION & WEEK SELECTION ---
+        return {
+            id: walletData ? walletData.id : `prov_${data.startDate}_${data.driver}`,
+            weekRange: `${toDisplayDate(data.startDate)} to ${toDisplayDate(data.endDate)}`,
+            weekKey: data.startDate,
+            startDate: data.startDate,
+            endDate: data.endDate,
+            driver: data.driver,
+            qrCode: entries[0]?.qrCode || 'N/A',
+            trips, 
+            rentPerDay, 
+            daysWorked,
+            calculatedDays: entriesCount, 
+            rentTotal, 
+            collection, 
+            fuel, 
+            wallet: walletAmount, 
+            walletOverdue: overdue, 
+            adjustments, 
+            payout: finalPayout,
+            dailyDetails: entries,
+            weeklyDetails: walletData || {},
+            isProvisional,
+            isRentOverridden,
+            isAggregate: false,
+            isSaved: false
+        };
+    });
+
+    // Ensure we also include Saved Bills that might not have current daily/weekly data locally (historical)
+    savedBillings.forEach(saved => {
+        const key = `${saved.weekStartDate}_${normalize(saved.driverName)}`;
+        if (!billMap.has(key)) {
+             computedBills.push({
+                ...saved,
+                driver: saved.driverName,
+                walletOverdue: saved.walletOverdue,
+                isSaved: true,
+                weekRange: `${toDisplayDate(saved.weekStartDate)} to ${toDisplayDate(saved.weekEndDate)}`,
+                weekKey: saved.weekStartDate,
+                startDate: saved.weekStartDate,
+                endDate: saved.weekEndDate,
+                dailyDetails: [],
+                weeklyDetails: {},
+                isProvisional: false,
+                isAggregate: false
+             });
+        }
+    });
+
+    const validBills = computedBills.filter(b => b.dailyDetails?.length > 0 || !b.isProvisional || b.isSaved);
+
+    return validBills.sort((a, b) => {
+        if (b.weekKey !== a.weekKey) return b.weekKey.localeCompare(a.weekKey);
+        return a.driver.localeCompare(b.driver);
+    });
+
+  }, [weeklyWallets, dailyEntries, rentalSlabs, savedBillings]);
+
+  // --- FILTERS ---
   const availableWeeks = useMemo(() => {
-      // @ts-ignore
-      const weeks = Array.from(new Set(allBills.map(b => b.weekKey)));
-      return weeks.sort((a, b) => new Date(b as string).getTime() - new Date(a as string).getTime());
+      const weeks = Array.from(new Set(allBills.map(b => b.weekKey))) as string[];
+      return weeks.sort((a, b) => b.localeCompare(a));
   }, [allBills]);
 
   const weekOptions = useMemo(() => {
-      return availableWeeks.map((weekKey, index) => {
-           // @ts-ignore
+      const opts = availableWeeks.map((weekKey, index) => {
            const bill = allBills.find(b => b.weekKey === weekKey);
            return { 
                index: index, 
                label: bill ? bill.weekRange : toDisplayDate(weekKey as string)
            };
       });
+      return [{ index: -1, label: "All Time (Aggregate)" }, ...opts];
   }, [availableWeeks, allBills]);
 
   const currentWeekKey = availableWeeks[currentWeekIndex];
   
   const displayedBills = useMemo(() => {
+      if (currentWeekIndex === -1) {
+          // --- ALL TIME AGGREGATE LOGIC ---
+          const aggMap = new Map<string, any>();
+          
+          allBills.forEach(bill => {
+              if (filterDriver && !bill.driver.toLowerCase().includes(filterDriver.toLowerCase())) return;
+
+              if (!aggMap.has(bill.driver)) {
+                  aggMap.set(bill.driver, {
+                      id: `agg-${bill.driver}`,
+                      driver: bill.driver,
+                      qrCode: bill.qrCode,
+                      daysWorked: 0,
+                      trips: 0,
+                      rentTotal: 0,
+                      collection: 0,
+                      fuel: 0,
+                      wallet: 0,
+                      overdue: 0,
+                      adjustments: 0,
+                      payout: 0,
+                      weekRange: 'All Time',
+                      isAggregate: true,
+                      isProvisional: false,
+                      isSaved: false
+                  });
+              }
+              
+              const entry = aggMap.get(bill.driver);
+              // Use standardized field
+              const ovr = (bill as any).walletOverdue || 0;
+
+              entry.daysWorked += (bill.daysWorked || 0);
+              entry.trips += (bill.trips || 0);
+              entry.rentTotal += (bill.rentTotal || 0);
+              entry.collection += (bill.collection || 0);
+              entry.fuel += (bill.fuel || 0);
+              entry.wallet += (bill.wallet || 0);
+              entry.overdue += ovr;
+              entry.adjustments += (bill.adjustments || 0);
+              entry.payout += (bill.payout || 0);
+          });
+
+          return Array.from(aggMap.values()).map(e => ({
+              ...e,
+              rentPerDay: e.daysWorked > 0 ? e.rentTotal / e.daysWorked : 0
+          }));
+      }
+
       if (!currentWeekKey) return [];
-      // @ts-ignore
+      
       return allBills.filter(b => b.weekKey === currentWeekKey && 
         (filterDriver === '' || b.driver.toLowerCase().includes(filterDriver.toLowerCase()))
       );
-  }, [allBills, currentWeekKey, filterDriver]);
+  }, [allBills, currentWeekKey, filterDriver, currentWeekIndex]);
 
-  const currentWeekRange = displayedBills.length > 0 ? displayedBills[0]!.weekRange : (
-      currentWeekKey ? `${toDisplayDate(currentWeekKey as string)} (Empty)` : ''
-  );
+  const currentWeekRange = currentWeekIndex === -1 ? "All Time Summary" : (displayedBills.length > 0 && displayedBills[0] ? displayedBills[0].weekRange : (
+      currentWeekKey ? `${toDisplayDate(currentWeekKey as string)}` : ''
+  ));
 
-  const goToPreviousWeek = () => { if (currentWeekIndex < availableWeeks.length - 1) setCurrentWeekIndex(prev => prev + 1); };
-  const goToNextWeek = () => { if (currentWeekIndex > 0) setCurrentWeekIndex(prev => prev - 1); };
+  const goToPreviousWeek = () => { if (currentWeekIndex !== -1 && currentWeekIndex < availableWeeks.length - 1) setCurrentWeekIndex(prev => prev + 1); };
+  const goToNextWeek = () => { if (currentWeekIndex !== -1 && currentWeekIndex > 0) setCurrentWeekIndex(prev => prev - 1); };
 
   // --- ACTIONS ---
   const openEditModal = (bill: any) => {
@@ -265,31 +417,84 @@ const DriverBillingsPage: React.FC = () => {
 
   const saveBillChanges = async () => {
       if (!editingBillId) return;
-      const bill = allBills.find(b => b!.id === editingBillId);
+      const bill = allBills.find(b => b.id === editingBillId);
       if (!bill) return;
 
       try {
-          const updatedWallet: WeeklyWallet = { 
-              ...bill.weeklyDetails, 
+          // If provisional, CREATE wallet
+          const walletId = bill.isProvisional ? crypto.randomUUID() : bill.weeklyDetails.id;
+          
+          const updatedWallet: WeeklyWallet = {
+              id: walletId,
+              driver: bill.driver,
+              weekStartDate: bill.startDate,
+              weekEndDate: bill.endDate,
+              earnings: bill.weeklyDetails?.earnings || 0,
+              refund: bill.weeklyDetails?.refund || 0,
+              diff: bill.weeklyDetails?.diff || 0,
+              cash: bill.weeklyDetails?.cash || 0,
+              charges: bill.weeklyDetails?.charges || 0,
+              trips: bill.weeklyDetails?.trips || 0,
+              walletWeek: bill.weeklyDetails?.walletWeek || 0,
               daysWorkedOverride: editFormData.daysWorked,
               rentOverride: editFormData.rentPerDay,
-              adjustments: editFormData.adjustments
+              adjustments: editFormData.adjustments,
+              notes: bill.weeklyDetails?.notes || 'Generated from Billing Page'
           };
+
           await storageService.saveWeeklyWallet(updatedWallet);
           setEditingBillId(null);
           await loadData(); 
       } catch (err) {
           console.error(err);
+          alert("Failed to save bill changes");
+      }
+  };
+
+  const finalizeBill = async (bill: any) => {
+      if (!confirm(`Are you sure you want to finalize this bill for ${bill.driver}? This will lock the values for history.`)) return;
+      
+      const newRecord: DriverBillingRecord = {
+          id: crypto.randomUUID(),
+          driverName: bill.driver,
+          driverId: drivers.find(d => d.name === bill.driver)?.id,
+          qrCode: bill.qrCode,
+          weekStartDate: bill.startDate,
+          weekEndDate: bill.endDate,
+          daysWorked: bill.daysWorked,
+          trips: bill.trips,
+          rentPerDay: bill.rentPerDay,
+          rentTotal: bill.rentTotal,
+          collection: bill.collection,
+          fuel: bill.fuel,
+          wallet: bill.wallet,
+          walletOverdue: bill.walletOverdue, // Uses normalized field
+          adjustments: bill.adjustments,
+          payout: bill.payout,
+          status: 'Finalized',
+          generatedAt: new Date().toISOString()
+      };
+
+      try {
+          await storageService.saveDriverBilling(newRecord);
+          await loadData();
+          alert("Bill finalized successfully.");
+      } catch (err: any) {
+          alert("Failed to finalize bill: " + err.message);
       }
   };
 
   const resetToDefaults = async () => {
       if (!editingBillId) return;
-      const bill = allBills.find(b => b!.id === editingBillId);
+      const bill = allBills.find(b => b.id === editingBillId);
       if (!bill) return;
       if (!confirm("Are you sure? This will revert overrides to standard slab calculations.")) return;
 
       try {
+          if (bill.isProvisional) {
+              setEditingBillId(null);
+              return;
+          }
           const updatedWallet: WeeklyWallet = {
               ...bill.weeklyDetails,
               daysWorkedOverride: undefined, 
@@ -302,9 +507,9 @@ const DriverBillingsPage: React.FC = () => {
       } catch (err) { console.error(err); }
   };
 
-  // --- PDF GENERATION ---
+  // --- PDF ---
   const generateBillHTML = (bill: any) => {
-      const dailyRows = bill.dailyDetails.map((d: any) => `
+      const dailyRows = bill.dailyDetails ? bill.dailyDetails.map((d: any) => `
         <tr>
           <td style="padding: 8px; border-bottom: 1px solid #eee;">${toDisplayDate(d.date)}</td>
           <td style="padding: 8px; border-bottom: 1px solid #eee;">${d.driver}</td>
@@ -314,94 +519,33 @@ const DriverBillingsPage: React.FC = () => {
           <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">${formatCurrency(d.rent)}</td>
           <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">${formatCurrency(d.collection)}</td>
         </tr>
-      `).join('');
-
-      const genDate = new Date();
-      const genDateStr = `${String(genDate.getDate()).padStart(2,'0')}-${String(genDate.getMonth()+1).padStart(2,'0')}-${genDate.getFullYear()}`;
+      `).join('') : '';
 
       return `<!DOCTYPE html>
         <html>
           <head>
-            <meta charset="UTF-8">
-            <title>Bill - ${bill.driver}</title>
-            <style>
-              body { font-family: 'Helvetica', sans-serif; padding: 40px; color: #333; max-width: 800px; mx-auto; }
-              .header { text-align: center; margin-bottom: 40px; border-bottom: 2px solid #eee; padding-bottom: 20px; }
-              .company-name { font-size: 24px; font-weight: bold; color: #4f46e5; }
-              .sub-company { font-size: 14px; color: #666; margin-top: 5px; }
-              .bill-title { font-size: 20px; margin-bottom: 20px; font-weight: bold; text-align: center; text-transform: uppercase; letter-spacing: 1px; }
-              .meta { display: flex; justify-content: space-between; margin-bottom: 30px; background: #f8fafc; padding: 20px; border-radius: 8px; }
-              .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 30px; font-size: 14px; }
-              .label { font-weight: bold; color: #64748b; }
-              .value { text-align: right; font-weight: bold; }
-              .positive { color: #16a34a; }
-              .negative { color: #dc2626; }
-              .total-section { background: #f1f5f9; padding: 20px; border-radius: 8px; margin-top: 20px; }
-              .total-row { font-size: 20px; font-weight: bold; display: flex; justify-content: space-between; border-top: 2px solid #cbd5e1; padding-top: 15px; }
-              .section-title { font-size: 14px; font-weight: bold; margin-top: 40px; margin-bottom: 10px; text-transform: uppercase; border-bottom: 1px solid #eee; padding-bottom: 5px; }
-              table { width: 100%; border-collapse: collapse; font-size: 12px; }
-              th { text-align: left; background: #f8fafc; padding: 8px; color: #64748b; font-weight: bold; }
-              .footer { margin-top: 60px; font-size: 10px; text-align: center; color: #94a3b8; }
-              .wallet-total-row { border-top: 1px solid #ccc; margin-top: 5px; padding-top: 5px; font-weight: bold; color: #4f46e5; }
-            </style>
+            <meta charset="UTF-8"><title>Bill - ${bill.driver}</title>
+            <style>body{font-family:'Helvetica',sans-serif;padding:40px;color:#333;max-width:800px;mx-auto}.header{text-align:center;margin-bottom:40px;border-bottom:2px solid #eee;padding-bottom:20px}.company-name{font-size:24px;font-weight:bold;color:#4f46e5}.bill-title{font-size:20px;margin-bottom:20px;font-weight:bold;text-align:center;text-transform:uppercase;letter-spacing:1px}.meta{display:flex;justify-content:space-between;margin-bottom:30px;background:#f8fafc;padding:20px;border-radius:8px}.summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:30px;font-size:14px}.label{font-weight:bold;color:#64748b}.value{text-align:right;font-weight:bold}.positive{color:#16a34a}.negative{color:#dc2626}.total-section{background:#f1f5f9;padding:20px;border-radius:8px;margin-top:20px}.total-row{font-size:20px;font-weight:bold;display:flex;justify-content:space-between;border-top:2px solid #cbd5e1;padding-top:15px}.section-title{font-size:14px;font-weight:bold;margin-top:40px;margin-bottom:10px;text-transform:uppercase;border-bottom:1px solid #eee;padding-bottom:5px}table{width:100%;border-collapse:collapse;font-size:12px}th{text-align:left;background:#f8fafc;padding:8px;color:#64748b;font-weight:bold}.footer{margin-top:60px;font-size:10px;text-align:center;color:#94a3b8}.provisional-stamp{position:absolute;top:150px;left:50%;transform:translate(-50%,-50%) rotate(-15deg);font-size:60px;color:rgba(200,200,200,0.3);font-weight:bold;border:4px solid rgba(200,200,200,0.3);padding:10px 40px;border-radius:10px;pointer-events:none}</style>
           </head>
           <body>
-            <div class="header">
-              <div class="company-name">ENCHO CABS</div>
-              <div class="sub-company">A Unit of Encho Enterprises</div>
-            </div>
-            
-            <div class="meta">
-               <div>
-                 <div><strong>Driver:</strong> ${bill.driver}</div>
-                 <div style="margin-top:5px;"><strong>Vehicle QR:</strong> ${bill.qrCode}</div>
-               </div>
-               <div style="text-align:right;">
-                 <div><strong>Week:</strong> ${bill.weekRange}</div>
-                 <div style="margin-top:5px;"><strong>Generated:</strong> ${genDateStr}</div>
-               </div>
-            </div>
-
-            <div class="bill-title">Payment Statement</div>
-            
+            ${bill.isProvisional ? '<div class="provisional-stamp">PROVISIONAL</div>' : ''}
+            <div class="header"><div class="company-name">ENCHO CABS</div><div>A Unit of Encho Enterprises</div></div>
+            <div class="meta"><div><div><strong>Driver:</strong> ${bill.driver}</div><div style="margin-top:5px;"><strong>Vehicle QR:</strong> ${bill.qrCode}</div></div><div style="text-align:right;"><div><strong>Week:</strong> ${bill.weekRange}</div></div></div>
+            <div class="bill-title">${bill.isProvisional ? 'Provisional Statement' : (bill.isSaved ? 'Finalized Bill' : 'Payment Statement')}</div>
             <div class="summary-grid">
-               <div class="label">Total Trips</div><div class="value">${bill.trips}</div>
-               <div class="label">Rent / Day (Applied)</div><div class="value">${formatCurrency(bill.rentPerDay)}</div>
+               <div class="label">Total Trips (Wallet)</div><div class="value">${bill.trips}</div>
+               <div class="label">Rent / Day</div><div class="value">${formatCurrency(bill.rentPerDay)}</div>
                <div class="label">Days Worked</div><div class="value">${bill.daysWorked}</div>
-               <div class="label">Total Rent (${formatCurrency(bill.rentPerDay)} × ${bill.daysWorked})</div><div class="value negative">- ${formatCurrency(bill.rentTotal)}</div>
+               <div class="label">Total Rent</div><div class="value negative">- ${formatCurrency(bill.rentTotal)}</div>
                <div class="label">Fuel Advances</div><div class="value negative">- ${formatCurrency(bill.fuel)}</div>
-               <div class="label">Wallet Earnings (Weekly)</div><div class="value positive">+ ${formatCurrency(bill.wallet)}</div>
+               <div class="label">Wallet Earnings</div><div class="value positive">+ ${formatCurrency(bill.wallet)}</div>
                <div class="label">Rental Collection</div><div class="value positive">+ ${formatCurrency(bill.collection)}</div>
-               <div class="label">Previous Dues/Credit</div><div class="value">${formatCurrency(bill.overdue)}</div>
+               <div class="label">Wallet Overdue (Dues)</div><div class="value">${formatCurrency(bill.walletOverdue)}</div>
                <div class="label">Adjustments</div><div class="value">${formatCurrency(bill.adjustments)}</div>
             </div>
-            
-            <div class="total-section">
-               <div class="total-row">
-                  <div>NET PAYOUT</div>
-                  <div>${formatCurrency(bill.payout)}</div>
-               </div>
-            </div>
-
-            <div class="section-title">DAILY ACTIVITY LOG</div>
-            <table>
-              <thead><tr><th>DATE</th><th>DRIVER</th><th>VEHICLE</th><th>SHIFT</th><th>QR</th><th style="text-align:right">RENT</th><th style="text-align:right">COLLECTION</th></tr></thead>
-              <tbody>${dailyRows}</tbody>
-            </table>
-
-            <div class="section-title">WEEKLY WALLET BREAKDOWN</div>
-             <div class="summary-grid" style="grid-template-columns: 1fr 1fr; font-size: 12px; gap: 5px;">
-               <div class="label">Gross Earnings</div><div class="value">${formatCurrency(bill.weeklyDetails.earnings)}</div>
-               <div class="label">Refunds</div><div class="value">${formatCurrency(bill.weeklyDetails.refund)}</div>
-               <div class="label">Deductions</div><div class="value negative">-${formatCurrency(bill.weeklyDetails.diff)}</div>
-               <div class="label">Charges</div><div class="value negative">-${formatCurrency(bill.weeklyDetails.charges)}</div>
-               <div class="label">Cash (Wallet)</div><div class="value negative">-${formatCurrency(bill.weeklyDetails.cash)}</div>
-               <div class="label wallet-total-row">Wallet Total</div><div class="value wallet-total-row">${formatCurrency(bill.wallet)}</div>
-            </div>
-
-            <div class="footer">
-               System Generated Bill • Encho Cabs
-            </div>
+            <div class="total-section"><div class="total-row"><div>NET PAYOUT</div><div>${formatCurrency(bill.payout)}</div></div></div>
+            ${dailyRows ? `<div class="section-title">DAILY ACTIVITY LOG</div><table><thead><tr><th>DATE</th><th>DRIVER</th><th>VEHICLE</th><th>SHIFT</th><th>QR</th><th style="text-align:right">RENT</th><th style="text-align:right">COLLECTION</th></tr></thead><tbody>${dailyRows}</tbody></table>` : ''}
+            <div class="footer">System Generated Bill • Encho Cabs</div>
           </body>
         </html>
       `;
@@ -418,14 +562,15 @@ const DriverBillingsPage: React.FC = () => {
   };
 
   const copyBillLink = (bill: any) => {
-      const content = generateBillHTML(bill);
-      const blob = new Blob([content], { type: 'text/html;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      
-      navigator.clipboard.writeText(url).then(() => {
-          setCopiedId(bill.id);
-          setTimeout(() => setCopiedId(null), 2000);
-      });
+      setCopiedId(bill.id);
+      setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const toggleExpandBill = (id: string) => {
+      const newSet = new Set(expandedBillIds);
+      if (newSet.has(id)) newSet.delete(id);
+      else newSet.add(id);
+      setExpandedBillIds(newSet);
   };
 
   return (
@@ -522,7 +667,7 @@ const DriverBillingsPage: React.FC = () => {
        </div>
 
 
-       {/* 2. DRIVER BILLING SUMMARY (New Section) */}
+       {/* 2. DRIVER BILLING SUMMARY */}
        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden transition-all duration-300">
           <div 
             className={`px-6 py-5 flex justify-between items-center cursor-pointer transition-colors ${isBillingExpanded ? 'bg-slate-50/80 border-b border-slate-100' : 'hover:bg-slate-50'}`}
@@ -540,6 +685,13 @@ const DriverBillingsPage: React.FC = () => {
 
           {isBillingExpanded && (
              <div className="p-0 animate-fade-in">
+                {billingApiError && (
+                    <div className="bg-amber-50 p-4 border-b border-amber-100 text-amber-800 text-sm flex items-center gap-2 px-6">
+                        <AlertTriangle size={16} />
+                        <span><strong>Connection Warning:</strong> Billing history server endpoint is unavailable. Showing calculated data only.</span>
+                    </div>
+                )}
+                
                 {/* Week Pagination & Filters */}
                 <div className="px-6 py-6 bg-slate-50 border-b border-slate-100 flex flex-col items-center gap-6">
                     
@@ -547,14 +699,14 @@ const DriverBillingsPage: React.FC = () => {
                     <div className="flex items-center bg-white rounded-2xl border border-slate-200 shadow-sm p-1.5 w-full max-w-md mx-auto justify-between">
                         <button 
                             onClick={goToPreviousWeek} 
-                            disabled={currentWeekIndex >= availableWeeks.length - 1}
+                            disabled={currentWeekIndex === -1 || currentWeekIndex >= availableWeeks.length - 1}
                             className="p-3 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl disabled:opacity-30 disabled:hover:bg-transparent transition-colors flex-shrink-0"
                         >
                             <ChevronLeft size={24} />
                         </button>
                         
                         <div className="px-4 text-center flex-1 relative group cursor-pointer">
-                            {currentWeekKey ? (
+                            {currentWeekKey || currentWeekIndex === -1 ? (
                                 <>
                                     <div className="flex flex-col items-center pointer-events-none">
                                         <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Billing Period</span>
@@ -584,7 +736,7 @@ const DriverBillingsPage: React.FC = () => {
 
                         <button 
                             onClick={goToNextWeek} 
-                            disabled={currentWeekIndex === 0}
+                            disabled={currentWeekIndex === -1 || currentWeekIndex === 0}
                             className="p-3 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl disabled:opacity-30 disabled:hover:bg-transparent transition-colors flex-shrink-0"
                         >
                             <ChevronRight size={24} />
@@ -608,19 +760,19 @@ const DriverBillingsPage: React.FC = () => {
                     <table className="w-full text-xs text-left whitespace-nowrap">
                        <thead className="bg-slate-50 text-slate-500 uppercase font-bold border-b border-slate-100">
                           <tr>
-                             <th className="px-6 py-4">Driver</th>
+                             <th className="px-6 py-4">DRIVER</th>
                              <th className="px-6 py-4">QR</th>
-                             <th className="px-6 py-4 text-center">Days Worked</th>
-                             <th className="px-6 py-4 text-center">Trips</th>
-                             <th className="px-6 py-4 text-right">Rent / Day</th>
-                             <th className="px-6 py-4 text-right">Rent Total</th>
-                             <th className="px-6 py-4 text-right">Collection</th>
-                             <th className="px-6 py-4 text-right">Fuel</th>
-                             <th className="px-6 py-4 text-right">Wallet</th>
-                             <th className="px-6 py-4 text-right">Overdue</th>
-                             <th className="px-6 py-4 text-right">Adjustments</th>
-                             <th className="px-6 py-4 text-right">Payout</th>
-                             <th className="px-6 py-4 text-center bg-slate-50 sticky right-0 z-10 shadow-[-4px_0_10px_-2px_rgba(0,0,0,0.05)]">Actions</th>
+                             <th className="px-6 py-4 text-center">DAYS WORKED</th>
+                             <th className="px-6 py-4 text-center">TRIPS</th>
+                             <th className="px-6 py-4 text-right">RENT / DAY</th>
+                             <th className="px-6 py-4 text-right">RENT TOTAL</th>
+                             <th className="px-6 py-4 text-right">COLLECTION</th>
+                             <th className="px-6 py-4 text-right">FUEL</th>
+                             <th className="px-6 py-4 text-right">WALLET</th>
+                             <th className="px-6 py-4 text-right">WALLET OVERDUE</th>
+                             <th className="px-6 py-4 text-right">ADJUSTMENTS</th>
+                             <th className="px-6 py-4 text-right">PAYOUT</th>
+                             <th className="px-6 py-4 text-center bg-slate-50 sticky right-0 z-10 shadow-[-4px_0_10px_-2px_rgba(0,0,0,0.05)]">ACTIONS</th>
                           </tr>
                        </thead>
                        <tbody className="divide-y divide-slate-100">
@@ -628,51 +780,117 @@ const DriverBillingsPage: React.FC = () => {
                              <tr><td colSpan={13} className="p-12 text-center text-slate-400">No billings found for this week.</td></tr>
                           ) : (
                              displayedBills.map((bill) => (
-                                <tr key={bill!.id} className="hover:bg-slate-50 transition-colors">
-                                   <td className="px-6 py-4 font-bold text-slate-800">{bill!.driver}</td>
-                                   <td className="px-6 py-4 text-slate-500">{bill!.qrCode}</td>
+                                <React.Fragment key={bill.id}>
+                                <tr className={`hover:bg-slate-50 transition-colors ${bill.isProvisional ? 'bg-amber-50/30' : bill.isSaved ? 'bg-indigo-50/20' : ''}`}>
+                                   <td className="px-6 py-4 font-bold text-slate-800 flex items-center gap-2">
+                                      <button 
+                                        onClick={() => toggleExpandBill(bill.id)} 
+                                        className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600 transition-colors"
+                                      >
+                                          {expandedBillIds.has(bill.id) ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
+                                      </button>
+                                      {bill.driver}
+                                      {bill.isProvisional && <span className="ml-1 px-1.5 py-0.5 rounded text-[9px] bg-amber-100 text-amber-700 uppercase tracking-wide border border-amber-200">Prov</span>}
+                                      {bill.isSaved && <span className="ml-1 px-1.5 py-0.5 rounded text-[9px] bg-indigo-100 text-indigo-700 uppercase tracking-wide border border-indigo-200 flex items-center gap-0.5"><Lock size={8}/> Saved</span>}
+                                   </td>
+                                   <td className="px-6 py-4 text-slate-500">{bill.qrCode}</td>
                                    <td className="px-6 py-4 text-center">
-                                      <span className={`font-bold ${bill!.daysWorked !== bill!.calculatedDays ? 'text-amber-600 bg-amber-50 px-2 py-0.5 rounded' : 'text-slate-800'}`}>
-                                          {bill!.daysWorked}
+                                      <span className={`font-bold ${bill.daysWorked !== bill.calculatedDays && !bill.isAggregate ? 'text-amber-600 bg-amber-50 px-2 py-0.5 rounded' : 'text-slate-800'}`}>
+                                          {bill.daysWorked}
                                       </span>
                                    </td>
                                    <td className="px-6 py-4 font-bold text-center">
-                                      {bill!.trips}
+                                      {bill.isProvisional ? <span className="text-slate-300">-</span> : bill.trips}
                                    </td>
                                    <td className="px-6 py-4 text-right">
-                                      <span className={`${bill!.isRentOverridden ? 'text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded' : 'text-slate-500'}`}>
-                                          {formatCurrency(bill!.rentPerDay)}
+                                      <span className={`${bill.isRentOverridden && !bill.isAggregate ? 'text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded' : 'text-slate-500'}`}>
+                                          {formatCurrency(bill.rentPerDay)}
                                       </span>
                                    </td>
-                                   <td className="px-6 py-4 text-right font-medium text-rose-600">-{formatCurrency(bill!.rentTotal)}</td>
-                                   <td className="px-6 py-4 text-right font-bold text-emerald-600">+{formatCurrency(bill!.collection)}</td>
-                                   <td className="px-6 py-4 text-right text-rose-500">-{formatCurrency(bill!.fuel)}</td>
-                                   <td className="px-6 py-4 text-right text-indigo-600">+{formatCurrency(bill!.wallet)}</td>
-                                   <td className="px-6 py-4 text-right text-slate-500">{formatCurrency(bill!.overdue)}</td>
-                                   <td className="px-6 py-4 text-right text-amber-600 font-medium">{formatCurrency(bill!.adjustments)}</td>
+                                   <td className="px-6 py-4 text-right font-medium text-rose-600">-{formatCurrency(bill.rentTotal)}</td>
+                                   <td className="px-6 py-4 text-right font-bold text-emerald-600">+{formatCurrency(bill.collection)}</td>
+                                   <td className="px-6 py-4 text-right text-rose-500">-{formatCurrency(bill.fuel)}</td>
+                                   <td className="px-6 py-4 text-right text-indigo-600">
+                                       {bill.isProvisional ? <span className="text-slate-300">-</span> : `+${formatCurrency(bill.wallet)}`}
+                                   </td>
+                                   <td className="px-6 py-4 text-right text-slate-500">{formatCurrency(bill.walletOverdue)}</td>
+                                   <td className="px-6 py-4 text-right text-amber-600 font-medium">{formatCurrency(bill.adjustments)}</td>
                                    <td className="px-6 py-4 text-right">
-                                      <span className={`px-3 py-1 rounded-lg font-bold border ${bill!.payout < 0 ? 'bg-rose-50 text-rose-700 border-rose-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>
-                                         {formatCurrency(bill!.payout)}
+                                      <span className={`px-3 py-1 rounded-lg font-bold border ${bill.payout < 0 ? 'bg-rose-50 text-rose-700 border-rose-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>
+                                         {formatCurrency(bill.payout)}
                                       </span>
                                    </td>
                                    <td className="px-6 py-4 text-center bg-white sticky right-0 z-10 shadow-[-4px_0_10px_-2px_rgba(0,0,0,0.02)]">
                                       <div className="flex items-center justify-center gap-2">
-                                         <button onClick={() => openEditModal(bill!)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Edit Bill Details">
-                                            <Edit2 size={16} />
-                                         </button>
-                                         <button 
-                                            onClick={() => copyBillLink(bill!)} 
-                                            className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors relative" 
-                                            title="Copy Bill Link"
-                                         >
-                                            {copiedId === bill!.id ? <Check size={16} className="text-emerald-600" /> : <Copy size={16} />}
-                                         </button>
-                                         <button onClick={() => downloadBill(bill)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Download Bill">
-                                            <Download size={16} />
-                                         </button>
+                                         {!bill.isAggregate && (
+                                            <>
+                                                {!bill.isSaved && (
+                                                    <>
+                                                    <button onClick={() => openEditModal(bill)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Edit Bill Details">
+                                                        <Edit2 size={16} />
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => finalizeBill(bill)} 
+                                                        className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" 
+                                                        title="Finalize & Save Bill"
+                                                    >
+                                                        <Save size={16} />
+                                                    </button>
+                                                    </>
+                                                )}
+                                                <button 
+                                                    onClick={() => copyBillLink(bill)} 
+                                                    className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors relative" 
+                                                    title="Copy Bill Link"
+                                                >
+                                                    {copiedId === bill.id ? <Check size={16} className="text-emerald-600" /> : <Copy size={16} />}
+                                                </button>
+                                                <button onClick={() => downloadBill(bill)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Download Bill">
+                                                    <Download size={16} />
+                                                </button>
+                                            </>
+                                         )}
+                                         {bill.isAggregate && (
+                                             <span className="text-[10px] text-slate-400 italic">Aggregate</span>
+                                         )}
                                       </div>
                                    </td>
                                 </tr>
+                                {expandedBillIds.has(bill.id) && (
+                                  <tr key={`${bill.id}-expanded`}>
+                                      <td colSpan={13} className="px-6 py-4 bg-slate-50/50 shadow-inner">
+                                          <div className="text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Daily Breakdown for {bill.driver}</div>
+                                          <table className="w-full text-xs bg-white rounded-lg border border-slate-200 overflow-hidden">
+                                              <thead className="bg-slate-100 text-slate-500 font-semibold">
+                                                  <tr>
+                                                      <th className="px-4 py-2 text-left">Date</th>
+                                                      <th className="px-4 py-2 text-left">Shift</th>
+                                                      <th className="px-4 py-2 text-right">Collection</th>
+                                                      <th className="px-4 py-2 text-right">Rent</th>
+                                                      <th className="px-4 py-2 text-right">Fuel</th>
+                                                      <th className="px-4 py-2 text-right">Due</th>
+                                                  </tr>
+                                              </thead>
+                                              <tbody className="divide-y divide-slate-100">
+                                                  {(bill.dailyDetails || []).map((d: any) => (
+                                                      <tr key={d.id}>
+                                                          <td className="px-4 py-2 text-slate-700">{toDisplayDate(d.date)}</td>
+                                                          <td className="px-4 py-2 text-slate-600">{d.shift}</td>
+                                                          <td className="px-4 py-2 text-right text-emerald-600 font-medium">{formatCurrency(d.collection)}</td>
+                                                          <td className="px-4 py-2 text-right text-slate-600">{formatCurrency(d.rent)}</td>
+                                                          <td className="px-4 py-2 text-right text-rose-500">{formatCurrency(d.fuel)}</td>
+                                                          <td className="px-4 py-2 text-right text-slate-500">{formatCurrency(d.due)}</td>
+                                                      </tr>
+                                                  ))}
+                                                  {(!bill.dailyDetails || bill.dailyDetails.length === 0) && (
+                                                      <tr><td colSpan={6} className="p-4 text-center text-slate-400">No daily entries linked to this bill period.</td></tr>
+                                                  )}
+                                              </tbody>
+                                          </table>
+                                      </td>
+                                  </tr>
+                                )}
+                             </React.Fragment>
                              ))
                           )}
                        </tbody>
@@ -795,3 +1013,4 @@ const DriverBillingsPage: React.FC = () => {
 };
 
 export default DriverBillingsPage;
+
