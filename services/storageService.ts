@@ -1,5 +1,5 @@
 
-import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping, ManagerAccess, AdminAccess } from '../types';
+import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping, ManagerAccess, AdminAccess, DriverBillingRecord } from '../types';
 
 // logic: Use local proxy in dev (npm run dev), use Render URL in production (Vercel)
 const isLocal = ((import.meta as any).env && (import.meta as any).env.DEV) || 
@@ -167,6 +167,11 @@ export const storageService = {
   saveWeeklyWalletsBulk: async (newWallets: WeeklyWallet[]): Promise<void> => Promise.all(newWallets.map(w => api.post('/weekly-wallets', w))).then(() => {}),
   deleteWeeklyWallet: async (id: string): Promise<void> => api.delete(`/weekly-wallets/${id}`),
 
+  // --- Driver Billings (NEW) ---
+  getDriverBillings: async (): Promise<DriverBillingRecord[]> => api.get('/driver-billings'),
+  saveDriverBilling: async (billing: DriverBillingRecord): Promise<DriverBillingRecord> => api.post('/driver-billings', billing),
+  deleteDriverBilling: async (id: string): Promise<void> => api.delete(`/driver-billings/${id}`),
+
   // --- Drivers ---
   getDrivers: async (): Promise<Driver[]> => api.get('/drivers'),
   saveDriver: async (driver: Driver): Promise<Driver> => api.post('/drivers', driver),
@@ -290,3 +295,4 @@ export const storageService = {
     return { driverSummaries, global };
   }
 };
+
