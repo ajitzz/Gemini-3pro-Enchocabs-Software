@@ -142,25 +142,36 @@ const ImportPage: React.FC = () => {
 
   const parseExcelDate = (val: any): string => {
     if (!val) return '';
-    
+
     const buildISODate = (year: number, month: number, day: number) => {
       const fullYear = year < 100 ? 2000 + year : year;
       if (fullYear < 2000 || fullYear > 2100) return '';
-      const d = new Date(fullYear, month - 1, day);
-      if (d.getFullYear() !== fullYear || d.getMonth() !== month - 1 || d.getDate() !== day) return '';
+      const d = new Date(Date.UTC(fullYear, month - 1, day));
+      if (d.getUTCFullYear() !== fullYear || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) return '';
       const mm = month.toString().padStart(2, '0');
       const dd = day.toString().padStart(2, '0');
       return `${fullYear}-${mm}-${dd}`;
     };
 
+    const normalizedFromParts = (a: number, b: number, c: number) => {
+      // Try year-first, then day-first to avoid swapping month/day for DD-MM-YYYY imports
+      const yearFirst = buildISODate(a, b, c);
+      if (yearFirst) return yearFirst;
+      return buildISODate(c, b, a);
+    };
+
     try {
-       // Excel serial number
+      // Excel serial number
       if (typeof val === 'number') {
         const date = new Date(Math.round((val - 25569) * 86400 * 1000));
-        return buildISODate(date.getFullYear(), date.getMonth() + 1, date.getDate());
+        return buildISODate(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
       }
 
       const strVal = String(val).trim();
+      if (!strVal) return '';
+
+      // Already ISO
+      if (/^\d{4}-\d{2}-\d{2}$/.test(strVal)) return strVal;
 
       // Numeric strings (Excel serial values or yyyymmdd)
       if (/^-?\d+(?:\.\d+)?$/.test(strVal)) {
@@ -168,7 +179,7 @@ const ImportPage: React.FC = () => {
 
         // Try serial number interpretation first
         const serialDate = new Date(Math.round((asNumber - 25569) * 86400 * 1000));
-        const serialISO = buildISODate(serialDate.getFullYear(), serialDate.getMonth() + 1, serialDate.getDate());
+        const serialISO = buildISODate(serialDate.getUTCFullYear(), serialDate.getUTCMonth() + 1, serialDate.getUTCDate());
         if (serialISO) return serialISO;
 
         // Try yyyymmdd compact format (e.g., 20240131)
@@ -179,7 +190,7 @@ const ImportPage: React.FC = () => {
           const compactISO = buildISODate(year, month, day);
           if (compactISO) return compactISO;
         }
-  }
+      }
 
       // Handle slash/dash/dot separated strings with explicit day & month recognition (DD/MM/YYYY, MM/DD/YYYY, YYYY/MM/DD)
       const datePattern = /^(\d{1,4})[\/.-](\d{1,2})[\/.-](\d{1,4})$/;
@@ -189,29 +200,23 @@ const ImportPage: React.FC = () => {
         const b = parseInt(match[2], 10);
         const c = parseInt(match[3], 10);
 
-        // Try DD/MM/YYYY first for the provided sample files
-        const ddmmyyyy = buildISODate(c >= 100 ? c : 2000 + c, b, a);
-        if (ddmmyyyy) return ddmmyyyy;
+        // Try YYYY-MM-DD and DD-MM-YYYY explicitly to keep DD as day for imports
+        const isoFromParts = normalizedFromParts(a, b, c);
+        if (isoFromParts) return isoFromParts;
 
-        // Try YYYY/MM/DD
-        const yyyymmdd = buildISODate(a, b, c);
-        if (yyyymmdd) return yyyymmdd;
-
-        // Fallback to MM/DD/YYYY
-        const mmddyyyy = buildISODate(c >= 100 ? c : 2000 + c, a, b);
+        // Fallback to MM/DD/YYYY style
+        const mmddyyyy = buildISODate(c, a, b);
         if (mmddyyyy) return mmddyyyy;
       }
 
       // Native Date parsing fallback
-      const native = new Date(val);
-      if (!isNaN(native.getTime()) && native.getFullYear() > 2000) {
-        return buildISODate(native.getFullYear(), native.getMonth() + 1, native.getDate());
+      const native = new Date(strVal);
+      if (!isNaN(native.getTime()) && native.getUTCFullYear() > 2000) {
+        return buildISODate(native.getUTCFullYear(), native.getUTCMonth() + 1, native.getUTCDate());
       }
     } catch (e) {
       return '';
     }
-  
-
 
     return '';
   };
