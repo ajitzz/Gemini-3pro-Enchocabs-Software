@@ -482,6 +482,14 @@ const initDb = async () => {
 };
 
 // --- DRIVER BILLINGS (AUTO SYNCED) ---
+const defaultDriverRentalSlabs = [
+  { minTrips: 0, maxTrips: 49, rentAmount: 957 },
+  { minTrips: 50, maxTrips: 54, rentAmount: 885 },
+  { minTrips: 55, maxTrips: 59, rentAmount: 842 },
+  { minTrips: 60, maxTrips: 64, rentAmount: 772 },
+  { minTrips: 65, maxTrips: 69, rentAmount: 700 },
+  { minTrips: 70, maxTrips: null, rentAmount: 550 },
+];
 const calculateDriverBillings = async () => {
   const [slabRes, walletRes, dailyRes, driverRes] = await Promise.all([
     db.query("SELECT min_trips as \"minTrips\", max_trips as \"maxTrips\", rent_amount as \"rentAmount\" FROM rental_slabs WHERE slab_type = 'driver' ORDER BY min_trips"),
@@ -495,7 +503,7 @@ const calculateDriverBillings = async () => {
     maxTrips: r.maxTrips === null ? null : Number(r.maxTrips),
     rentAmount: Number(r.rentAmount)
   }));
-
+const driverRentalSlabs = rentalSlabs.length > 0 ? rentalSlabs : defaultDriverRentalSlabs;
   const driverIndex = new Map();
   driverRes.rows.forEach((d) => {
     driverIndex.set(normalizeDriver(d.name), { id: d.id, qrCode: d.qr_code });
@@ -559,7 +567,7 @@ const calculateDriverBillings = async () => {
       : daysWorkedCalculated;
 
     const trips = wallet ? wallet.trips : 0;
-    const slab = rentalSlabs.find((s) => trips >= s.minTrips && (s.maxTrips === null || trips <= s.maxTrips));
+const slab = driverRentalSlabs.find((s) => trips >= s.minTrips && (s.maxTrips === null || trips <= s.maxTrips));
 
     let rentPerDay = 0;
 
