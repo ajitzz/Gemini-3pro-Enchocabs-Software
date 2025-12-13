@@ -9,6 +9,71 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' })); // Support large Excel imports
 
 const PORT = process.env.PORT || 3000;
+// --- DATE HELPERS ---
+const normalizeDriver = (name = '') => name.toLowerCase().trim();
+onst toISODate = (rawVal) => {
+  if (!rawVal) return '';
+
+  // Direct Date object
+  if (rawVal instanceof Date && !isNaN(rawVal)) {
+    return rawVal.toISOString().slice(0, 10);
+  }
+
+  const str = String(rawVal).trim();
+  if (!str) return '';
+
+  // Already ISO
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+
+  const buildIso = (y, m, d) => {
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return '';
+    return dt.toISOString().slice(0, 10);
+  };
+
+  // Handle separated formats (DD-MM-YYYY, DD/MM/YYYY, YYYY-MM-DD, etc.)
+  const parts = str.split(/[\/.-]/).filter(Boolean);
+  if (parts.length === 3) {
+    const nums = parts.map((p) => parseInt(p, 10));
+
+    // Year-first (YYYY-MM-DD or YYYY/DD/MM)
+    if (parts[0].length === 4) {
+      const iso = buildIso(nums[0], nums[1], nums[2]);
+      if (iso) return iso;
+    }
+
+    // Day-first (DD-MM-YYYY or DD/MM/YYYY)
+    if (parts[2].length === 4) {
+      const iso = buildIso(nums[2], nums[1], nums[0]);
+      if (iso) return iso;
+    }
+  }
+
+  // Fallback to native parsing
+  const native = new Date(str);
+  if (!isNaN(native)) {
+    return native.toISOString().slice(0, 10);
+  }
+
+  return '';
+};
+  
+const getMondayISO = (dateStr) => {
+  const isoDate = toISODate(dateStr);
+  if (!isoDate) return '';
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  const day = d.getUTCDay();
+  const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1);
+  d.setUTCDate(diff);
+  return d.toISOString().slice(0, 10);
+};
+const getSundayISO = (mondayStr) => {
+ const isoDate = toISODate(mondayStr);
+  if (!isoDate) return '';
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 6);
+  return d.toISOString().slice(0, 10);
+};
 
 // --- DATE HELPERS ---
 const normalizeDriver = (name = '') => name.toLowerCase().trim();
