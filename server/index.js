@@ -141,6 +141,72 @@ const getSundayISO = (mondayStr) => {
   return d.toISOString().slice(0, 10);
 };
 
+// --- DATE HELPERS ---
+const normalizeDriver = (name = '') => name.toLowerCase().trim();
+const toISODate = (rawVal) => {
+  if (!rawVal) return '';
+
+  // Direct Date object
+  if (rawVal instanceof Date && !isNaN(rawVal)) {
+    return rawVal.toISOString().slice(0, 10);
+  }
+
+  const str = String(rawVal).trim();
+  if (!str) return '';
+
+  // Already ISO
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+
+  const buildIso = (y, m, d) => {
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return '';
+    return dt.toISOString().slice(0, 10);
+  };
+
+  // Handle separated formats (DD-MM-YYYY, DD/MM/YYYY, YYYY-MM-DD, etc.)
+  const parts = str.split(/[\/.-]/).filter(Boolean);
+  if (parts.length === 3) {
+    const nums = parts.map((p) => parseInt(p, 10));
+
+    // Year-first (YYYY-MM-DD or YYYY/DD/MM)
+    if (parts[0].length === 4) {
+      const iso = buildIso(nums[0], nums[1], nums[2]);
+      if (iso) return iso;
+    }
+
+    // Day-first (DD-MM-YYYY or DD/MM/YYYY)
+    if (parts[2].length === 4) {
+      const iso = buildIso(nums[2], nums[1], nums[0]);
+      if (iso) return iso;
+    }
+  }
+
+  // Fallback to native parsing
+  const native = new Date(str);
+  if (!isNaN(native)) {
+    return native.toISOString().slice(0, 10);
+  }
+
+  return '';
+};
+
+const getMondayISO = (dateStr) => {
+  const isoDate = toISODate(dateStr);
+  if (!isoDate) return '';
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  const day = d.getUTCDay();
+  const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1);
+  d.setUTCDate(diff);
+  return d.toISOString().slice(0, 10);
+};
+const getSundayISO = (mondayStr) => {
+  const isoDate = toISODate(mondayStr);
+  if (!isoDate) return '';
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 6);
+  return d.toISOString().slice(0, 10);
+};
+
 // --- INITIALIZATION SQL ---
 const initDb = async () => {
   try {
@@ -292,7 +358,8 @@ const calculateDriverBillings = async () => {
       trips: Number(w.trips) || 0,
       wallet_week: Number(w.wallet_week) || 0,
       rent_override: w.rent_override !== null ? Number(w.rent_override) : null,
-      adjustments: Number(w.adjustments || 0)
+      adjustments: Number(w.adjustments || 0),
+      days_worked_override: w.days_worked_override !== null ? Number(w.days_worked_override) : null
     });
   });
 
@@ -326,25 +393,38 @@ const calculateDriverBillings = async () => {
     if (!weekStart) return;
     const weekEnd = wallet?.week_end_date || getSundayISO(weekStart);
 
-    const daysWorked = entries.filter((e) => {
+    const daysWorkedCalculated = entries.filter((e) => {
       const shift = (e.shift || '').toLowerCase().trim();
-      return !['leave', 'off', 'absent'].includes(shift);
+      return !['leave', 'off', 'absent', 'holiday'].includes(shift);
     }).length;
+    const daysWorked = wallet && wallet.days_worked_override !== null && wallet.days_worked_override !== undefined
+      ? Number(wallet.days_worked_override)
+      : daysWorkedCalculated;
 
     const trips = wallet ? wallet.trips : 0;
-    const slab = rentalSlabs.find((s) => trips >= s.minTrips && (s.maxTrips === null || trips <= s.maxTrips));
-    const rentPerDay = wallet && wallet.rent_override !== null && wallet.rent_override !== undefined
-      ? wallet.rent_override
-      : (slab ? slab.rentAmount : 0);
+    const slab = trips > 0
+      ? rentalSlabs.find((s) => trips >= s.minTrips && (s.maxTrips === null || trips <= s.maxTrips))
+      : undefined;
 
-  const rentTotal = rentPerDay * daysWorked;
-  const collection = entries.reduce((sum, e) => sum + e.collection, 0);
-  const due = entries.reduce((sum, e) => sum + e.due, 0);
-  const fuel = entries.reduce((sum, e) => sum + e.fuel, 0);
-  const walletAmount = wallet ? wallet.wallet_week : 0;
-  const adjustments = wallet ? wallet.adjustments : 0;
+    const totalDailyRent = entries.reduce((sum, e) => sum + (Number(e.rent) || 0), 0);
+    let rentPerDay = 0;
 
-  const payout = collection - rentTotal - fuel + due + walletAmount + adjustments;
+    if (wallet && wallet.rent_override !== null && wallet.rent_override !== undefined) {
+      rentPerDay = wallet.rent_override;
+    } else if (slab) {
+      rentPerDay = slab.rentAmount;
+    } else if (daysWorked > 0 && totalDailyRent > 0) {
+      rentPerDay = totalDailyRent / daysWorked;
+    }
+
+    const rentTotal = rentPerDay * daysWorked;
+    const collection = entries.reduce((sum, e) => sum + e.collection, 0);
+    const due = entries.reduce((sum, e) => sum + e.due, 0);
+    const fuel = entries.reduce((sum, e) => sum + e.fuel, 0);
+    const walletAmount = wallet ? wallet.wallet_week : 0;
+    const adjustments = wallet ? wallet.adjustments : 0;
+
+    const payout = collection - rentTotal - fuel + due + walletAmount + adjustments;
 
     billings.push({
       driver_id: driverInfo.id || null,
