@@ -271,7 +271,7 @@ const normalizedFromParts = (a: number, b: number, c: number) => {
     setCurrentConflict(null);
     setShowSkippedModal(false);
   };
-
+//
   const startImport = async () => {
        if (!file) return;
     if (!isXLSXReady || typeof XLSX === 'undefined') {
