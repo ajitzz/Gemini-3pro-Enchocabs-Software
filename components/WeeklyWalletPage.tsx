@@ -1,8 +1,8 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { WeeklyWallet, Driver } from '../types';
 import { storageService } from '../services/storageService';
-import { Plus, Trash2, Search, Edit2, X, ChevronDown, Wallet, TrendingUp, TrendingDown, Calendar, ArrowRight, AlertOctagon, FileDown } from 'lucide-react';
+import { Plus, Trash2, Search, Edit2, X, ChevronDown, Wallet, TrendingUp, TrendingDown, Calendar, ArrowRight, AlertOctagon, FileDown, ChevronLeft, ChevronRight } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
 const InputField = ({ label, name, type = "text", value, onChange, placeholder, required = false, className = "", icon: Icon }: any) => (
@@ -31,6 +31,7 @@ const WeeklyWalletPage: React.FC = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [filterDriver, setFilterDriver] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [currentWeekIndex, setCurrentWeekIndex] = useState<number>(-1);
   
   // Duplicate Warning State
   const [duplicateWarning, setDuplicateWarning] = useState<{ active: boolean, existingId: string, payload: WeeklyWallet } | null>(null);
@@ -64,6 +65,12 @@ const WeeklyWalletPage: React.FC = () => {
       };
   };
 
+  // Format Date Range for Display
+  const formatWeekRange = (start: string, end: string) => {
+      if(!start || !end) return '';
+      return `${start.split('-').reverse().join('-')} - ${end.split('-').reverse().join('-')}`;
+  };
+
   const initialFormState: Partial<WeeklyWallet> = {
     weekStartDate: '', // Explicitly empty
     driver: '',
@@ -84,6 +91,35 @@ const WeeklyWalletPage: React.FC = () => {
     loadData();
     // Removed default date setting
   }, []);
+
+  const weekOptions = useMemo(() => {
+    const weekMap = new Map<string, { start: string; end: string }>();
+    wallets.forEach(w => {
+      if (!weekMap.has(w.weekStartDate)) {
+        weekMap.set(w.weekStartDate, { start: w.weekStartDate, end: w.weekEndDate });
+      }
+    });
+
+    return Array.from(weekMap.values())
+      .sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime())
+      .map((week, index) => ({
+        ...week,
+        index,
+        label: formatWeekRange(week.start, week.end)
+      }));
+  }, [wallets]);
+
+  useEffect(() => {
+    if (weekOptions.length === 0) {
+      setCurrentWeekIndex(-1);
+      return;
+    }
+
+    setCurrentWeekIndex(prev => {
+      if (prev >= 0 && prev < weekOptions.length) return prev;
+      return 0;
+    });
+  }, [weekOptions]);
 
   const loadData = async () => {
     setLoading(true);
@@ -203,9 +239,41 @@ const WeeklyWalletPage: React.FC = () => {
     }
   };
 
-  const filteredWallets = wallets.filter(w =>
+  const selectedWeek = currentWeekIndex >= 0 ? weekOptions[currentWeekIndex] : null;
+
+  const weekFilteredWallets = selectedWeek
+    ? wallets.filter(w => w.weekStartDate === selectedWeek.start)
+    : wallets;
+
+  const filteredWallets = weekFilteredWallets.filter(w =>
     filterDriver === '' || w.driver.toLowerCase().includes(filterDriver.toLowerCase())
   );
+
+  const weekTotals = useMemo(() => {
+    return filteredWallets.reduce(
+      (acc, w) => {
+        const deductions = (w.diff || 0) + (w.cash || 0) + (w.charges || 0);
+        return {
+          trips: acc.trips + (w.trips || 0),
+          earnings: acc.earnings + (w.earnings || 0),
+          refund: acc.refund + (w.refund || 0),
+          deductions: acc.deductions + deductions,
+          walletWeek: acc.walletWeek + (w.walletWeek || 0)
+        };
+      },
+      { trips: 0, earnings: 0, refund: 0, deductions: 0, walletWeek: 0 }
+    );
+  }, [filteredWallets]);
+
+  const goToPreviousWeek = () => {
+    if (weekOptions.length === 0) return;
+    setCurrentWeekIndex(prev => Math.min(prev + 1, weekOptions.length - 1));
+  };
+
+  const goToNextWeek = () => {
+    if (weekOptions.length === 0) return;
+    setCurrentWeekIndex(prev => Math.max(prev - 1, 0));
+  };
 
   const downloadCSV = (headers: string[], rows: (string | number | null | undefined)[][], filename: string) => {
     const csvRows = [headers.join(',')];
@@ -253,12 +321,6 @@ const WeeklyWalletPage: React.FC = () => {
     downloadCSV(headers, rows, `weekly-wallet-${driverLabel}-${timestamp}`);
   };
   
-  // Format Date Range for Display
-  const formatWeekRange = (start: string, end: string) => {
-      if(!start || !end) return '';
-      return `${start.split('-').reverse().join('-')} - ${end.split('-').reverse().join('-')}`;
-  };
-
   return (
     <div className="max-w-7xl mx-auto space-y-8 animate-fade-in">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
@@ -434,26 +496,70 @@ const WeeklyWalletPage: React.FC = () => {
           </div>
       )}
 
-      {/* Filters */}
-      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row gap-5 items-center justify-between">
-        <div className="flex items-center gap-2 text-slate-500">
-          <Search size={18} />
-          <span className="text-sm font-semibold uppercase tracking-wide">Search Records</span>
-        </div>
-        <div className="w-full md:w-72 relative">
-           <input 
-             type="text" 
-             placeholder="Filter by driver..." 
-             value={filterDriver} 
-             onChange={e => setFilterDriver(e.target.value)}
-             className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" 
-           />
-           <Search size={16} className="absolute left-3.5 top-3 text-slate-400" />
-        </div>
-      </div>
-
-      {/* List */}
+      {/* Records */}
       <div className="bg-white rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100 overflow-hidden">
+        <div className="px-6 py-6 bg-slate-50 border-b border-slate-100 flex flex-col items-center gap-6">
+          <div className="flex items-center bg-white rounded-2xl border border-slate-200 shadow-sm p-1.5 w-full max-w-md mx-auto justify-between">
+            <button
+              onClick={goToPreviousWeek}
+              disabled={currentWeekIndex === -1 || currentWeekIndex >= weekOptions.length - 1}
+              className="p-3 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl disabled:opacity-30 disabled:hover:bg-transparent transition-colors flex-shrink-0"
+            >
+              <ChevronLeft size={24} />
+            </button>
+
+            <div className="px-4 text-center flex-1 relative group cursor-pointer">
+              {selectedWeek || currentWeekIndex === -1 ? (
+                <>
+                  <div className="flex flex-col items-center pointer-events-none">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Wallet Period</span>
+                    <span className="text-base md:text-lg font-bold text-slate-800 flex items-center justify-center gap-2 group-hover:text-indigo-600 transition-colors">
+                      <Calendar size={18} className="text-indigo-500 mb-0.5" />
+                      {selectedWeek ? selectedWeek.label : 'No Data Available'}
+                      {weekOptions.length > 0 && <ChevronDown size={14} className="text-slate-300 group-hover:text-indigo-400 transition-colors" />}
+                    </span>
+                  </div>
+                  {weekOptions.length > 0 && (
+                    <select
+                      value={currentWeekIndex}
+                      onChange={(e) => setCurrentWeekIndex(Number(e.target.value))}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer appearance-none"
+                      title="Select Week"
+                    >
+                      {weekOptions.map((opt) => (
+                        <option key={opt.index} value={opt.index}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </>
+              ) : (
+                <span className="text-sm text-slate-400 font-medium">No Data Available</span>
+              )}
+            </div>
+
+            <button
+              onClick={goToNextWeek}
+              disabled={currentWeekIndex === -1 || currentWeekIndex === 0}
+              className="p-3 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl disabled:opacity-30 disabled:hover:bg-transparent transition-colors flex-shrink-0"
+            >
+              <ChevronRight size={24} />
+            </button>
+          </div>
+
+          <div className="relative group w-full max-w-md">
+            <input
+              type="text"
+              placeholder="Search driver in selected week..."
+              value={filterDriver}
+              onChange={(e) => setFilterDriver(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
+            />
+            <Search size={18} className="absolute left-3.5 top-3.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+          </div>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="text-xs text-slate-500 uppercase bg-slate-50/50 border-b border-slate-100">
@@ -509,6 +615,29 @@ const WeeklyWalletPage: React.FC = () => {
                 })
               )}
             </tbody>
+            {filteredWallets.length > 0 && (
+              <tfoot className="bg-slate-50/80 border-t border-slate-100">
+                <tr>
+                  <td className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500" colSpan={2}>
+                    Week Totals
+                  </td>
+                  <td className="px-6 py-4 text-center font-bold text-slate-700">{weekTotals.trips}</td>
+                  <td className="px-6 py-4 text-right font-bold text-emerald-700">+₹{weekTotals.earnings.toFixed(2)}</td>
+                  <td className="px-6 py-4 text-right font-bold text-emerald-700">+₹{weekTotals.refund.toFixed(2)}</td>
+                  <td className="px-6 py-4 text-right font-bold text-rose-600">-₹{weekTotals.deductions.toFixed(2)}</td>
+                  <td className="px-6 py-4 text-right">
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold border ${
+                      weekTotals.walletWeek < 0
+                        ? 'bg-rose-50 text-rose-700 border-rose-100'
+                        : 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                    }`}>
+                      {weekTotals.walletWeek < 0 ? '' : '+'}₹{weekTotals.walletWeek.toFixed(2)}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4" />
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </div>
