@@ -390,6 +390,16 @@ const syncDriverBillings = async () => {
         ]
       );
 
+      // Keep daily entries in sync with the computed rent/day for the week.
+      await client.query(
+        `UPDATE daily_entries
+         SET rent = $1
+         WHERE lower(driver) = lower($2)
+           AND date >= $3 AND date <= $4
+           AND rent > 0`,
+        [bill.rent_per_day, bill.driver_name, bill.week_start_date, bill.week_end_date]
+      );
+
       staleIds.delete(idToUse);
     }
 

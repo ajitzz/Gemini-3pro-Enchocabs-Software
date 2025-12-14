@@ -680,23 +680,21 @@ const DriverBillingsPage: React.FC = () => {
                                       <div className="flex items-center justify-center gap-2">
                                          {!bill.isAggregate && (
                                             <>
+                                                <button onClick={() => openEditModal(bill)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Edit Adjustments / Rent">
+                                                    <Edit2 size={16} />
+                                                </button>
                                                 {!bill.isSaved && (
-                                                    <>
-                                                    <button onClick={() => openEditModal(bill)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Edit Bill Details">
-                                                        <Edit2 size={16} />
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => finalizeBill(bill)} 
-                                                        className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" 
+                                                    <button
+                                                        onClick={() => finalizeBill(bill)}
+                                                        className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
                                                         title="Finalize & Save Bill"
                                                     >
                                                         <Save size={16} />
                                                     </button>
-                                                    </>
                                                 )}
-                                                <button 
-                                                    onClick={() => copyBillLink(bill)} 
-                                                    className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors relative" 
+                                                <button
+                                                    onClick={() => copyBillLink(bill)}
+                                                    className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors relative"
                                                     title="Copy Bill Link"
                                                 >
                                                     {copiedId === bill.id ? <Check size={16} className="text-emerald-600" /> : <Copy size={16} />}
@@ -811,7 +809,7 @@ const DriverBillingsPage: React.FC = () => {
                       <h3 className="text-lg font-bold text-slate-800">Edit Bill Details</h3>
                       <button onClick={() => setEditingBillId(null)}><X size={20} className="text-slate-400 hover:text-slate-600"/></button>
                   </div>
-                  <p className="text-slate-500 text-sm mb-4">Modify the parameters for this specific bill.</p>
+                  <p className="text-slate-500 text-sm mb-4">Modify the parameters for this specific bill. Updates will refresh the billing summary and push rent changes to linked daily entries for the same week.</p>
                   
                   <div className="space-y-4 mb-6">
                       <div>
