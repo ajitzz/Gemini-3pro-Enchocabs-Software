@@ -190,3 +190,4 @@ CREATE TABLE IF NOT EXISTS system_flags (
   flag_value TEXT,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
