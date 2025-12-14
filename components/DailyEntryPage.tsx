@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { DailyEntry, Driver, LeaveRecord } from '../types';
 import { storageService } from '../services/storageService';
-import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check, AlertOctagon, Download } from 'lucide-react';
+import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check, AlertOctagon } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
 const InputField = ({ label, name, type = "text", value, onChange, onKeyDown, placeholder, required = false, className = "", readOnly = false }: any) => (
@@ -542,43 +542,6 @@ const DailyEntryPage: React.FC = () => {
       return `${day}-${month}-${year}`;
   };
 
-  const exportDailyEntries = () => {
-      if (filteredEntries.length === 0) {
-          alert('No daily entries to export for the current view.');
-          return;
-      }
-
-      const headers = [
-        'Date', 'Driver', 'Vehicle', 'Shift', 'Collection', 'Rent', 'Fuel', 'Due', 'Payout', 'QR Code', 'Notes'
-      ];
-
-      const rows = filteredEntries.map(entry => ([
-          formatDate(entry.date),
-          entry.driver,
-          entry.vehicle,
-          entry.shift,
-          entry.collection,
-          entry.rent,
-          entry.fuel,
-          entry.due,
-          entry.payout ?? 0,
-          entry.qrCode || '',
-          entry.notes || ''
-      ]));
-
-      const csv = [headers, ...rows]
-        .map(row => row.map(cell => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
-        .join('\n');
-
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'daily-entries.csv';
-      link.click();
-      URL.revokeObjectURL(url);
-  };
-
   return (
     <div className="max-w-[1920px] mx-auto space-y-8 pb-20">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
@@ -586,22 +549,13 @@ const DailyEntryPage: React.FC = () => {
           <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Daily Entries</h2>
           <p className="text-slate-500 mt-1">Record daily collections and expenses.</p>
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={exportDailyEntries}
-            className="bg-white text-slate-700 border border-slate-200 px-4 py-2.5 rounded-xl font-medium flex items-center gap-2 shadow-sm hover:bg-slate-50 transition-all"
-          >
-            <Download size={18} />
-            <span>Export CSV</span>
-          </button>
-          <button
-            onClick={() => setIsFormOpen(!isFormOpen)}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
-          >
-            {isFormOpen ? <X size={20} /> : <Plus size={20} />}
-            <span>{isFormOpen ? 'Close Form' : 'New Entry'}</span>
-          </button>
-        </div>
+        <button 
+          onClick={() => setIsFormOpen(!isFormOpen)}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
+        >
+          {isFormOpen ? <X size={20} /> : <Plus size={20} />}
+          <span>{isFormOpen ? 'Close Form' : 'New Entry'}</span>
+        </button>
       </div>
 
       {/* Entry Form */}
