@@ -282,6 +282,9 @@ const DailyEntryPage: React.FC = () => {
   // Column Filters State
   const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>({});
 
+  // Pagination State
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
+
   // Duplicate Warning State
   const [duplicateWarning, setDuplicateWarning] = useState<{ active: boolean, existingId: string, payload: DailyEntry } | null>(null);
 
@@ -537,6 +540,17 @@ const DailyEntryPage: React.FC = () => {
     downloadCSV(headers, rows, `daily-entries-${driverLabel}-${timestamp}`);
   };
 
+  // Strict DD-MM-YYYY formatter
+  const formatDate = (dateStr: string) => {
+      if (!dateStr) return '-';
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}-${month}-${year}`;
+  };
+
   // Filter Logic: Global Dates AND Column Specific Filters
   const filteredEntries = useMemo(() => {
     return entries.filter(entry => {
@@ -566,6 +580,101 @@ const DailyEntryPage: React.FC = () => {
     });
   }, [entries, filterDateStart, filterDateEnd, filterDriver, columnFilters]);
 
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  const getWeekStartDate = (dateStr: string) => {
+      const date = new Date(dateStr);
+      const day = date.getDay();
+      const diffToMonday = day === 0 ? 6 : day - 1;
+      date.setDate(date.getDate() - diffToMonday);
+      return date;
+  };
+
+  const paginatedPages = useMemo(() => {
+      if (filteredEntries.length === 0) return [] as any[];
+
+      const sorted = [...filteredEntries].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      const pages: any[] = [];
+      let currentPage: any = null;
+
+      sorted.forEach(entry => {
+          const entryDate = new Date(entry.date);
+          const entryMonth = entryDate.getMonth();
+          const entryYear = entryDate.getFullYear();
+          const weekStart = getWeekStartDate(entry.date);
+          const weekStartMonth = weekStart.getMonth();
+          const weekStartYear = weekStart.getFullYear();
+
+          if (!currentPage) {
+              currentPage = {
+                  month: entryMonth,
+                  year: entryYear,
+                  entries: [],
+                  startDate: entry.date,
+                  endDate: entry.date,
+                  hasSpillover: false
+              };
+          }
+
+          const belongsToCurrentMonth = entryMonth === currentPage.month && entryYear === currentPage.year;
+          const continuesCurrentWeek = weekStartMonth === currentPage.month && weekStartYear === currentPage.year;
+
+          if (belongsToCurrentMonth || continuesCurrentWeek) {
+              currentPage.entries.push(entry);
+              currentPage.endDate = entry.date;
+              if (!belongsToCurrentMonth && continuesCurrentWeek) {
+                  currentPage.hasSpillover = true;
+              }
+          } else {
+              pages.push({
+                  ...currentPage,
+                  entries: [...currentPage.entries].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+                  label: `${monthNames[currentPage.month]} ${currentPage.year}${currentPage.hasSpillover ? ' (week overlap)' : ''}`
+              });
+
+              currentPage = {
+                  month: entryMonth,
+                  year: entryYear,
+                  entries: [entry],
+                  startDate: entry.date,
+                  endDate: entry.date,
+                  hasSpillover: false
+              };
+          }
+      });
+
+      if (currentPage) {
+          pages.push({
+              ...currentPage,
+              entries: [...currentPage.entries].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+              label: `${monthNames[currentPage.month]} ${currentPage.year}${currentPage.hasSpillover ? ' (week overlap)' : ''}`
+          });
+      }
+
+      return pages;
+  }, [filteredEntries]);
+
+  useEffect(() => {
+      if (paginatedPages.length === 0) {
+          setCurrentPageIndex(0);
+      } else {
+          setCurrentPageIndex(paginatedPages.length - 1);
+      }
+  }, [paginatedPages.length]);
+
+  const displayedEntries = paginatedPages[currentPageIndex]?.entries || [];
+  const currentPageMeta = paginatedPages[currentPageIndex];
+  const currentPageLabel = currentPageMeta ? currentPageMeta.label : 'No data';
+  const currentPageRange = currentPageMeta ? `${formatDate(currentPageMeta.startDate)} – ${formatDate(currentPageMeta.endDate)}` : '';
+
+  const goToPreviousPage = () => {
+      setCurrentPageIndex(prev => Math.max(0, prev - 1));
+  };
+
+  const goToNextPage = () => {
+      setCurrentPageIndex(prev => Math.min(paginatedPages.length - 1, prev + 1));
+  };
+
   // Determine if any filter is active
   const isAnyFilterActive = filterDateStart !== '' || filterDateEnd !== '' || filterDriver !== '' || Object.values(columnFilters).some((v) => (v as string[]).length > 0);
 
@@ -574,17 +683,6 @@ const DailyEntryPage: React.FC = () => {
       setFilterDateEnd('');
       setFilterDriver('');
       setColumnFilters({});
-  };
-
-  // Strict DD-MM-YYYY formatter
-  const formatDate = (dateStr: string) => {
-      if (!dateStr) return '-';
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return dateStr;
-      const day = String(d.getDate()).padStart(2, '0');
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const year = d.getFullYear();
-      return `${day}-${month}-${year}`;
   };
 
   return (
@@ -788,6 +886,35 @@ const DailyEntryPage: React.FC = () => {
 
       {/* Table */}
       <div className="bg-white rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100 overflow-hidden">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 px-6 py-4 border-b border-slate-100 bg-slate-50/60">
+            <div>
+                <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Records Window</p>
+                <p className="text-sm font-bold text-slate-800">{currentPageLabel}</p>
+                {currentPageRange && <p className="text-xs text-slate-400">{currentPageRange}</p>}
+                {currentPageMeta?.hasSpillover && (
+                    <p className="text-[11px] text-amber-600 font-semibold">Includes next month dates to complete the week.</p>
+                )}
+            </div>
+            <div className="flex items-center gap-2">
+                <button
+                  onClick={goToPreviousPage}
+                  disabled={currentPageIndex === 0 || paginatedPages.length === 0}
+                  className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold disabled:opacity-50 hover:border-indigo-200 hover:text-indigo-600 transition-colors"
+                >
+                    Prev
+                </button>
+                <span className="text-xs text-slate-500 font-semibold">
+                    Page {paginatedPages.length === 0 ? 0 : currentPageIndex + 1} of {paginatedPages.length}
+                </span>
+                <button
+                  onClick={goToNextPage}
+                  disabled={paginatedPages.length === 0 || currentPageIndex >= paginatedPages.length - 1}
+                  className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold disabled:opacity-50 hover:border-indigo-200 hover:text-indigo-600 transition-colors"
+                >
+                    Next
+                </button>
+            </div>
+        </div>
         <div className="overflow-x-auto min-h-[400px]">
           <table className="w-full text-sm text-left">
             <thead className="text-xs text-slate-500 uppercase bg-slate-50/50 border-b border-slate-100">
@@ -831,10 +958,10 @@ const DailyEntryPage: React.FC = () => {
             <tbody className="divide-y divide-slate-50">
               {loading ? (
                 <tr><td colSpan={11} className="px-6 py-12 text-center text-slate-400">Loading entries...</td></tr>
-              ) : filteredEntries.length === 0 ? (
+              ) : displayedEntries.length === 0 ? (
                 <tr><td colSpan={11} className="px-6 py-12 text-center text-slate-400">No entries found matching criteria.</td></tr>
               ) : (
-                filteredEntries.map(entry => (
+                displayedEntries.map((entry: DailyEntry) => (
                   <tr key={entry.id} className="hover:bg-slate-50/80 transition-colors group">
                     <td className="px-6 py-4 text-slate-900 whitespace-nowrap font-medium">
                       {formatDate(entry.date)} <span className="text-slate-400 text-xs ml-1 font-normal">({entry.day.substring(0,3)})</span>
