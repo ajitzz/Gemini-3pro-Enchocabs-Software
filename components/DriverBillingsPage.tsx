@@ -406,11 +406,11 @@ const DriverBillingsPage: React.FC = () => {
         <tr>
           <td style="padding: 8px; border-bottom: 1px solid #eee;">${toDisplayDate(d.date)}</td>
           <td style="padding: 8px; border-bottom: 1px solid #eee;">${d.driver}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #eee;">${d.vehicle}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #eee;">${d.shift}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #eee; font-size: 10px;">${d.qrCode || '-'}</td>
           <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">${formatCurrency(d.rent)}</td>
           <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">${formatCurrency(d.collection)}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">${formatCurrency(d.fuel)}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">${formatCurrency(d.due)}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">${formatCurrency(d.adjustments ?? 0)}</td>
         </tr>
       `).join('') : '';
 
@@ -438,7 +438,7 @@ const DriverBillingsPage: React.FC = () => {
                <div class="label">Adjustments</div><div class="value">${formatCurrency(bill.adjustments)}</div>
             </div>
             <div class="total-section"><div class="total-row"><div>NET PAYOUT</div><div>${formatCurrency(bill.payout)}</div></div></div>
-            ${dailyRows ? `<div class="section-title">DAILY ACTIVITY LOG</div><table><thead><tr><th>DATE</th><th>DRIVER</th><th>VEHICLE</th><th>SHIFT</th><th>QR</th><th style="text-align:right">RENT</th><th style="text-align:right">COLLECTION</th></tr></thead><tbody>${dailyRows}</tbody></table>` : ''}
+            ${dailyRows ? `<div class="section-title">DAILY ACTIVITY LOG</div><table><thead><tr><th>DATE</th><th>DRIVER</th><th style="text-align:right">RENT</th><th style="text-align:right">COLLECTION</th><th style="text-align:right">FUEL</th><th style="text-align:right">DUES</th><th style="text-align:right">ADJUSTMENTS</th></tr></thead><tbody>${dailyRows}</tbody></table>` : ''}
             <div class="footer">System Generated Bill • Encho Cabs</div>
           </body>
         </html>
