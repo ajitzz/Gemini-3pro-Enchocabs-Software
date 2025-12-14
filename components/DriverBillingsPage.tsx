@@ -263,9 +263,29 @@ const DriverBillingsPage: React.FC = () => {
       setEditFormData({
           daysWorked: bill.daysWorked,
           rentPerDay: bill.rentPerDay,
-          adjustments: bill.adjustments || 0
+           adjustments: bill.adjustments || 0
       });
   };
+    const buildWalletPayload = (bill: any): WeeklyWallet => {
+      return {
+          id: bill.weeklyDetails?.id || bill.walletId || crypto.randomUUID(),
+          driver: bill.driver,
+          weekStartDate: bill.startDate,
+          weekEndDate: bill.endDate,
+          earnings: bill.weeklyDetails?.earnings ?? bill.collection ?? 0,
+          refund: bill.weeklyDetails?.refund ?? 0,
+          diff: bill.weeklyDetails?.diff ?? 0,
+          cash: bill.weeklyDetails?.cash ?? 0,
+          charges: bill.weeklyDetails?.charges ?? 0,
+          trips: bill.weeklyDetails?.trips ?? bill.trips ?? 0,
+          walletWeek: bill.weeklyDetails?.walletWeek ?? bill.wallet ?? 0,
+          daysWorkedOverride: bill.weeklyDetails?.daysWorkedOverride,
+          rentOverride: bill.weeklyDetails?.rentOverride,
+          adjustments: bill.weeklyDetails?.adjustments ?? bill.adjustments ?? 0,
+          notes: bill.weeklyDetails?.notes || 'Generated from Billing Page'
+      };
+  };
+
 
   const buildWalletPayload = (bill: any): WeeklyWallet => {
       return {
@@ -293,9 +313,8 @@ const DriverBillingsPage: React.FC = () => {
       if (!bill) return;
 
       try {
-          // If no weekly record exists, create a stub so the edit persists.
+           // If no weekly record exists, create a stub so the edit persists.
           const baseWallet = buildWalletPayload(bill);
-
           const updatedWallet: WeeklyWallet = {
               ...baseWallet,
               daysWorkedOverride: editFormData.daysWorked,
@@ -357,9 +376,9 @@ const DriverBillingsPage: React.FC = () => {
               setEditingBillId(null);
               return;
           }
-          const baseWallet = buildWalletPayload(bill);
+        const baseWallet = buildWalletPayload(bill);
           const updatedWallet: WeeklyWallet = {
-              ...baseWallet,
+             ...baseWallet,
               daysWorkedOverride: undefined,
               rentOverride: undefined,
               adjustments: 0
@@ -694,15 +713,16 @@ const DriverBillingsPage: React.FC = () => {
                                                     <Edit2 size={16} />
                                                 </button>
                                                 {!bill.isSaved && (
-                                                    <button
+                                                  <button
                                                         onClick={() => finalizeBill(bill)}
                                                         className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
                                                         title="Finalize & Save Bill"
                                                     >
                                                         <Save size={16} />
                                                     </button>
+                                               
                                                 )}
-                                                <button
+                                               <button
                                                     onClick={() => copyBillLink(bill)}
                                                     className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors relative"
                                                     title="Copy Bill Link"
