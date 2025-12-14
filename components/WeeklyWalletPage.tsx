@@ -249,24 +249,16 @@ const WeeklyWalletPage: React.FC = () => {
     filterDriver === '' || w.driver.toLowerCase().includes(filterDriver.toLowerCase())
   );
 
-  const toNumber = (value: number | string | undefined | null) => Number(value) || 0;
-
   const weekTotals = useMemo(() => {
     return filteredWallets.reduce(
       (acc, w) => {
-        const earnings = toNumber(w.earnings);
-        const refund = toNumber(w.refund);
-        const diff = toNumber(w.diff);
-        const cash = toNumber(w.cash);
-        const charges = toNumber(w.charges);
-        const deductions = diff + cash + charges;
-
+        const deductions = (w.diff || 0) + (w.cash || 0) + (w.charges || 0);
         return {
-          trips: acc.trips + toNumber(w.trips),
-          earnings: acc.earnings + earnings,
-          refund: acc.refund + refund,
+          trips: acc.trips + (w.trips || 0),
+          earnings: acc.earnings + (w.earnings || 0),
+          refund: acc.refund + (w.refund || 0),
           deductions: acc.deductions + deductions,
-          walletWeek: acc.walletWeek + (earnings + refund - deductions)
+          walletWeek: acc.walletWeek + (w.walletWeek || 0)
         };
       },
       { trips: 0, earnings: 0, refund: 0, deductions: 0, walletWeek: 0 }
