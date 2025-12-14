@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { DailyEntry, Driver, LeaveRecord } from '../types';
 import { storageService } from '../services/storageService';
-import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check, AlertOctagon } from 'lucide-react';
+import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check, AlertOctagon, FileDown } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
 const InputField = ({ label, name, type = "text", value, onChange, onKeyDown, placeholder, required = false, className = "", readOnly = false }: any) => (
@@ -492,6 +492,51 @@ const DailyEntryPage: React.FC = () => {
     }));
   };
 
+  const downloadCSV = (headers: string[], rows: (string | number | null | undefined)[][], filename: string) => {
+    const csvRows = [headers.join(',')];
+
+    rows.forEach(row => {
+      const formatted = row.map((val) => {
+        if (val === undefined || val === null) return '';
+        const strVal = String(val).replace(/"/g, '""');
+        return /[",\n]/.test(strVal) ? `"${strVal}"` : strVal;
+      });
+      csvRows.push(formatted.join(','));
+    });
+
+    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${filename}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
+  const handleExportDailyEntries = () => {
+    if (filteredEntries.length === 0) {
+      alert('No entries available to export.');
+      return;
+    }
+
+    const headers = ['Date', 'Driver', 'Vehicle', 'Shift', 'Collection', 'Rent', 'Fuel', 'Due', 'Payout', 'Notes'];
+    const rows = filteredEntries.map(entry => [
+      formatDate(entry.date),
+      entry.driver,
+      entry.vehicle,
+      entry.shift,
+      entry.collection,
+      entry.rent,
+      entry.fuel,
+      entry.due,
+      entry.payout,
+      entry.notes || ''
+    ]);
+
+    const driverLabel = filterDriver ? filterDriver.replace(/\s+/g, '-').toLowerCase() : 'all-drivers';
+    const timestamp = new Date().toISOString().split('T')[0];
+    downloadCSV(headers, rows, `daily-entries-${driverLabel}-${timestamp}`);
+  };
+
   // Filter Logic: Global Dates AND Column Specific Filters
   const filteredEntries = useMemo(() => {
     return entries.filter(entry => {
@@ -549,13 +594,22 @@ const DailyEntryPage: React.FC = () => {
           <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Daily Entries</h2>
           <p className="text-slate-500 mt-1">Record daily collections and expenses.</p>
         </div>
-        <button 
-          onClick={() => setIsFormOpen(!isFormOpen)}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
-        >
-          {isFormOpen ? <X size={20} /> : <Plus size={20} />}
-          <span>{isFormOpen ? 'Close Form' : 'New Entry'}</span>
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleExportDailyEntries}
+            className="bg-white text-indigo-600 border border-indigo-100 px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all hover:border-indigo-200 hover:shadow-md"
+          >
+            <FileDown size={18} />
+            <span>Export CSV</span>
+          </button>
+          <button
+            onClick={() => setIsFormOpen(!isFormOpen)}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
+          >
+            {isFormOpen ? <X size={20} /> : <Plus size={20} />}
+            <span>{isFormOpen ? 'Close Form' : 'New Entry'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Entry Form */}
