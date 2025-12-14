@@ -249,6 +249,22 @@ const WeeklyWalletPage: React.FC = () => {
     filterDriver === '' || w.driver.toLowerCase().includes(filterDriver.toLowerCase())
   );
 
+  const weekTotals = useMemo(() => {
+    return filteredWallets.reduce(
+      (acc, w) => {
+        const deductions = (w.diff || 0) + (w.cash || 0) + (w.charges || 0);
+        return {
+          trips: acc.trips + (w.trips || 0),
+          earnings: acc.earnings + (w.earnings || 0),
+          refund: acc.refund + (w.refund || 0),
+          deductions: acc.deductions + deductions,
+          walletWeek: acc.walletWeek + (w.walletWeek || 0)
+        };
+      },
+      { trips: 0, earnings: 0, refund: 0, deductions: 0, walletWeek: 0 }
+    );
+  }, [filteredWallets]);
+
   const goToPreviousWeek = () => {
     if (weekOptions.length === 0) return;
     setCurrentWeekIndex(prev => Math.min(prev + 1, weekOptions.length - 1));
@@ -599,6 +615,29 @@ const WeeklyWalletPage: React.FC = () => {
                 })
               )}
             </tbody>
+            {filteredWallets.length > 0 && (
+              <tfoot className="bg-slate-50/80 border-t border-slate-100">
+                <tr>
+                  <td className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500" colSpan={2}>
+                    Week Totals
+                  </td>
+                  <td className="px-6 py-4 text-center font-bold text-slate-700">{weekTotals.trips}</td>
+                  <td className="px-6 py-4 text-right font-bold text-emerald-700">+₹{weekTotals.earnings.toFixed(2)}</td>
+                  <td className="px-6 py-4 text-right font-bold text-emerald-700">+₹{weekTotals.refund.toFixed(2)}</td>
+                  <td className="px-6 py-4 text-right font-bold text-rose-600">-₹{weekTotals.deductions.toFixed(2)}</td>
+                  <td className="px-6 py-4 text-right">
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold border ${
+                      weekTotals.walletWeek < 0
+                        ? 'bg-rose-50 text-rose-700 border-rose-100'
+                        : 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                    }`}>
+                      {weekTotals.walletWeek < 0 ? '' : '+'}₹{weekTotals.walletWeek.toFixed(2)}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4" />
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </div>
