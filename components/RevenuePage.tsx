@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { storageService } from '../services/storageService';
-import { CompanyWeeklySummary, DailyEntry, WeeklyWallet, RentalSlab } from '../types';
+import { CompanyWeeklySummary, DailyEntry, WeeklyWallet, RentalSlab, DriverBillingRecord } from '../types';
 import { Calculator, AlertTriangle, CheckCircle, TrendingUp, TrendingDown, DollarSign, Wallet, ShieldCheck, ShieldAlert, Calendar, RefreshCcw, ArrowRight, Filter, ChevronRight, History, Layers, ChevronDown } from 'lucide-react';
 
 // --- Types for Internal Calculations ---
@@ -40,6 +40,7 @@ const RevenuePage: React.FC = () => {
   const [dailyEntries, setDailyEntries] = useState<DailyEntry[]>([]);
   const [weeklyWallets, setWeeklyWallets] = useState<WeeklyWallet[]>([]);
   const [rentalSlabs, setRentalSlabs] = useState<RentalSlab[]>([]);
+  const [driverBillings, setDriverBillings] = useState<DriverBillingRecord[]>([]);
 
   // Selection State
   const [selectionMode, setSelectionMode] = useState<'SINGLE' | 'RANGE'>('SINGLE');
@@ -61,6 +62,15 @@ const RevenuePage: React.FC = () => {
       storageService.getWeeklyWallets(),
       storageService.getDriverRentalSlabs()
     ]);
+
+    // Driver billings are used as the authoritative revenue source. Fail silently to avoid blocking the page.
+    try {
+      const billingData = await storageService.getDriverBillings();
+      setDriverBillings(billingData);
+    } catch (err) {
+      console.warn('Could not load driver billings:', err);
+      setDriverBillings([]);
+    }
     const sortedSummaries = s.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
     
     setRawSummaries(sortedSummaries);
@@ -106,6 +116,12 @@ const RevenuePage: React.FC = () => {
           const dt = new Date(d.date);
           return dt >= startDate && dt <= endDate;
       });
+
+      // Billing history (authoritative revenue)
+      const relevantBillings = driverBillings.filter(b => {
+          const billWeekStart = new Date(b.weekStartDate);
+          return billWeekStart >= startDate && billWeekStart <= endDate;
+      });
       
       // Inputs from Weekly Wallets (Billing History)
       // Logic: Include wallets that START within this week's range. 
@@ -123,6 +139,7 @@ const RevenuePage: React.FC = () => {
 
       let driversPayments = 0; // Total Rent Collected (Revenue)
       let driversWalletRaw = 0; // Total Wallet Payouts + Adjustments (Expense)
+      let driversPaymentsFromStats = 0;
 
       // Use centralized service logic to ensure consistency with Billing History overrides
       // If a wallet exists in 'relevantWallets', calculateDriverStats will use it (Overrides/Adjustments).
@@ -134,10 +151,17 @@ const RevenuePage: React.FC = () => {
               relevantWallets, // Scope to this week
               rentalSlabs
           );
-          
-          driversPayments += stats.totalRent;
+
+          driversPaymentsFromStats += stats.totalRent;
           driversWalletRaw += stats.totalWalletWeek;
       });
+
+      // Override revenue with billing history when available to match Driver Billings totals
+      if (relevantBillings.length > 0) {
+          driversPayments = relevantBillings.reduce((sum, bill) => sum + (bill.rentTotal || 0), 0);
+      } else {
+          driversPayments = driversPaymentsFromStats;
+      }
 
       // Charges for Fraud Check (Aggregate from relevant wallets)
       const totalCharges = relevantWallets.reduce((sum, w) => sum + w.charges, 0);
@@ -177,7 +201,7 @@ const RevenuePage: React.FC = () => {
         fraudCheckDiff
       };
     });
-  }, [rawSummaries, dailyEntries, weeklyWallets, rentalSlabs]);
+  }, [rawSummaries, dailyEntries, weeklyWallets, rentalSlabs, driverBillings]);
 
   // --- 2. SELECTION LOGIC ---
   const activeWeeks = useMemo(() => {
