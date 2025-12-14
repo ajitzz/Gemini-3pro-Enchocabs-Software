@@ -362,11 +362,11 @@ const DriverPortalPage: React.FC = () => {
         <tr>
           <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #334155;">${formatDate(d.date)}</td>
           <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #334155;">${d.driver}</td>
-          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #334155;">${d.vehicle}</td>
-          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #334155;">${d.shift}</td>
-          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #334155; font-size: 11px;">${d.qrCode || '-'}</td>
           <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #334155;">${formatCurrency(d.rent)}</td>
           <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #16a34a;">${formatCurrency(d.collection)}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #dc2626;">${formatCurrency(d.fuel)}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #334155;">${formatCurrency(d.due)}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #f59e0b;">${formatCurrency(d.adjustments ?? 0)}</td>
         </tr>
       `).join('');
 
@@ -439,7 +439,7 @@ const DriverPortalPage: React.FC = () => {
             </div>
             <div class="section-title" style="margin-top: 40px; text-align: left;">Daily Activity Log</div>
             <table>
-              <thead><tr><th>Date</th><th>Driver</th><th>Vehicle</th><th>Shift</th><th>QR</th><th style="text-align:right">Rent</th><th style="text-align:right">Collection</th></tr></thead>
+              <thead><tr><th>Date</th><th>Driver</th><th style="text-align:right">Rent</th><th style="text-align:right">Collection</th><th style="text-align:right">Fuel</th><th style="text-align:right">Dues</th><th style="text-align:right">Adjustments</th></tr></thead>
               <tbody>${dailyRows}</tbody>
             </table>
             <div class="wallet-section">
