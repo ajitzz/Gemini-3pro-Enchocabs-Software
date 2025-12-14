@@ -669,7 +669,12 @@ const DailyEntryPage: React.FC = () => {
 
   const totals = useMemo(() => {
       const sumField = (key: keyof DailyEntry) =>
-          Math.round(displayedEntries.reduce((sum, entry) => sum + Number(entry[key] ?? 0), 0));
+          Math.round(
+              displayedEntries.reduce(
+                  (sum: number, entry: DailyEntry) => sum + Number(entry[key] ?? 0),
+                  0
+              )
+          );
 
       return {
             rent: sumField('rent'),

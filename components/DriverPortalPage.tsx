@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { storageService } from '../services/storageService';
-import { DailyEntry, WeeklyWallet, Driver, RentalSlab } from '../types';
+import { CashMode, DailyEntry, WeeklyWallet, Driver, RentalSlab } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { 
   Download, Calendar, Wallet, FileText, ChevronRight, LogOut, 
@@ -35,6 +35,10 @@ const DriverPortalPage: React.FC = () => {
   // UI State
   const [activeTab, setActiveTab] = useState<'home' | 'daily' | 'billing'>('home');
   const [selectedBill, setSelectedBill] = useState<any | null>(null);
+  const [cashMode, setCashMode] = useState<CashMode>('trips');
+  const [updatingCashMode, setUpdatingCashMode] = useState(false);
+
+  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
   useEffect(() => {
     // Initial Load based on Authenticated User
@@ -42,6 +46,29 @@ const DriverPortalPage: React.FC = () => {
         initializePortal();
     }
   }, [user]);
+
+  useEffect(() => {
+    const loadCashMode = async () => {
+        const mode = await storageService.getCashMode();
+        setCashMode(mode);
+    };
+    loadCashMode();
+  }, []);
+
+  const toggleCashMode = async () => {
+      if (!isAdmin) return;
+      const nextMode: CashMode = cashMode === 'blocked' ? 'trips' : 'blocked';
+      setUpdatingCashMode(true);
+      try {
+          await storageService.setCashMode(nextMode);
+          setCashMode(nextMode);
+      } catch (err) {
+          console.error('Failed to update cash mode', err);
+          alert('Could not update cash mode. Please try again.');
+      } finally {
+          setUpdatingCashMode(false);
+      }
+  };
 
   const initializePortal = async () => {
       setInitError(null);
@@ -563,9 +590,20 @@ const DriverPortalPage: React.FC = () => {
            <div className="flex justify-between items-center px-1">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Hi, {viewingAsDriver.name.split(' ')[0]}</h2>
-                    <p className="text-slate-500 text-xs font-medium flex items-center gap-1.5 mt-1">
-                        <span className={`w-2 h-2 rounded-full ${viewingAsDriver.status === 'Active' ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
-                        {viewingAsDriver.vehicle || 'No Vehicle Assigned'}
+                    <p className="text-slate-500 text-xs font-medium flex items-center gap-2 mt-1 flex-wrap">
+                        <button
+                            onClick={isAdmin ? toggleCashMode : undefined}
+                            disabled={!isAdmin || updatingCashMode}
+                            title={isAdmin ? 'Toggle cash handling mode for all drivers' : 'Visible to everyone; only admins can toggle'}
+                            className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-bold transition-all ${cashMode === 'blocked' ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-emerald-50 border-emerald-200 text-emerald-600'} ${isAdmin ? 'hover:shadow-sm' : 'cursor-default'} ${updatingCashMode ? 'opacity-70' : ''}`}
+                        >
+                            <span className={`w-2 h-2 rounded-full ${cashMode === 'blocked' ? 'bg-rose-500' : 'bg-emerald-500'}`}></span>
+                            {cashMode === 'blocked' ? 'Cash Blocked' : 'Cash Trips'}
+                        </button>
+                        <span className="flex items-center gap-1.5">
+                            <span className={`w-2 h-2 rounded-full ${viewingAsDriver.status === 'Active' ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
+                            {viewingAsDriver.vehicle || 'No Vehicle Assigned'}
+                        </span>
                     </p>
                 </div>
                 <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 border border-indigo-100">
