@@ -263,40 +263,49 @@ const DriverBillingsPage: React.FC = () => {
       setEditFormData({
           daysWorked: bill.daysWorked,
           rentPerDay: bill.rentPerDay,
-          adjustments: bill.adjustments
+          adjustments: bill.adjustments || 0
       });
+  };
+
+  const buildWalletPayload = (bill: any): WeeklyWallet => {
+      return {
+          id: bill.weeklyDetails?.id || bill.walletId || crypto.randomUUID(),
+          driver: bill.driver,
+          weekStartDate: bill.startDate,
+          weekEndDate: bill.endDate,
+          earnings: bill.weeklyDetails?.earnings ?? bill.collection ?? 0,
+          refund: bill.weeklyDetails?.refund ?? 0,
+          diff: bill.weeklyDetails?.diff ?? 0,
+          cash: bill.weeklyDetails?.cash ?? 0,
+          charges: bill.weeklyDetails?.charges ?? 0,
+          trips: bill.weeklyDetails?.trips ?? bill.trips ?? 0,
+          walletWeek: bill.weeklyDetails?.walletWeek ?? bill.wallet ?? 0,
+          daysWorkedOverride: bill.weeklyDetails?.daysWorkedOverride,
+          rentOverride: bill.weeklyDetails?.rentOverride,
+          adjustments: bill.weeklyDetails?.adjustments ?? bill.adjustments ?? 0,
+          notes: bill.weeklyDetails?.notes || 'Generated from Billing Page'
+      };
   };
 
   const saveBillChanges = async () => {
       if (!editingBillId) return;
       const bill = allBills.find(b => b.id === editingBillId);
-      if (!bill || !bill.weeklyDetails) return;
+      if (!bill) return;
 
       try {
-          // If provisional, CREATE wallet
-          const walletId = bill.isProvisional ? crypto.randomUUID() : bill.weeklyDetails.id || crypto.randomUUID();
+          // If no weekly record exists, create a stub so the edit persists.
+          const baseWallet = buildWalletPayload(bill);
 
           const updatedWallet: WeeklyWallet = {
-              id: walletId,
-              driver: bill.driver,
-              weekStartDate: bill.startDate,
-              weekEndDate: bill.endDate,
-              earnings: bill.weeklyDetails.earnings || 0,
-              refund: bill.weeklyDetails.refund || 0,
-              diff: bill.weeklyDetails.diff || 0,
-              cash: bill.weeklyDetails.cash || 0,
-              charges: bill.weeklyDetails.charges || 0,
-              trips: bill.weeklyDetails.trips || 0,
-              walletWeek: bill.weeklyDetails.walletWeek || 0,
+              ...baseWallet,
               daysWorkedOverride: editFormData.daysWorked,
               rentOverride: editFormData.rentPerDay,
-              adjustments: editFormData.adjustments,
-              notes: bill.weeklyDetails.notes || 'Generated from Billing Page'
+              adjustments: editFormData.adjustments
           };
 
           await storageService.saveWeeklyWallet(updatedWallet);
           setEditingBillId(null);
-          await loadData(); 
+          await loadData();
       } catch (err) {
           console.error(err);
           alert("Failed to save bill changes");
@@ -340,7 +349,7 @@ const DriverBillingsPage: React.FC = () => {
   const resetToDefaults = async () => {
       if (!editingBillId) return;
       const bill = allBills.find(b => b.id === editingBillId);
-      if (!bill || !bill.weeklyDetails) return;
+      if (!bill) return;
       if (!confirm("Are you sure? This will revert overrides to standard slab calculations.")) return;
 
       try {
@@ -348,9 +357,10 @@ const DriverBillingsPage: React.FC = () => {
               setEditingBillId(null);
               return;
           }
+          const baseWallet = buildWalletPayload(bill);
           const updatedWallet: WeeklyWallet = {
-              ...bill.weeklyDetails,
-              daysWorkedOverride: undefined, 
+              ...baseWallet,
+              daysWorkedOverride: undefined,
               rentOverride: undefined,
               adjustments: 0
           };
