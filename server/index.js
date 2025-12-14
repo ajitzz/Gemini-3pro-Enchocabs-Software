@@ -287,6 +287,9 @@ const driverRentalSlabs = rentalSlabs.length > 0 ? rentalSlabs : defaultDriverRe
   allKeys.forEach((key) => {
     const wallet = walletMap.get(key);
     const entries = dailyGroups.get(key) || [];
+        // Only generate a billing record when both weekly wallet data and daily entries exist for the week
+    if (!wallet || entries.length === 0) return;
+
     const driverName = wallet?.driver || entries[0]?.driver;
     if (!driverName) return;
 
