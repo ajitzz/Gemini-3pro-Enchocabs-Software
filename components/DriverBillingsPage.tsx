@@ -287,6 +287,26 @@ const DriverBillingsPage: React.FC = () => {
   };
 
 
+  const buildWalletPayload = (bill: any): WeeklyWallet => {
+      return {
+          id: bill.weeklyDetails?.id || bill.walletId || crypto.randomUUID(),
+          driver: bill.driver,
+          weekStartDate: bill.startDate,
+          weekEndDate: bill.endDate,
+          earnings: bill.weeklyDetails?.earnings ?? bill.collection ?? 0,
+          refund: bill.weeklyDetails?.refund ?? 0,
+          diff: bill.weeklyDetails?.diff ?? 0,
+          cash: bill.weeklyDetails?.cash ?? 0,
+          charges: bill.weeklyDetails?.charges ?? 0,
+          trips: bill.weeklyDetails?.trips ?? bill.trips ?? 0,
+          walletWeek: bill.weeklyDetails?.walletWeek ?? bill.wallet ?? 0,
+          daysWorkedOverride: bill.weeklyDetails?.daysWorkedOverride,
+          rentOverride: bill.weeklyDetails?.rentOverride,
+          adjustments: bill.weeklyDetails?.adjustments ?? bill.adjustments ?? 0,
+          notes: bill.weeklyDetails?.notes || 'Generated from Billing Page'
+      };
+  };
+
   const saveBillChanges = async () => {
       if (!editingBillId) return;
       const bill = allBills.find(b => b.id === editingBillId);
