@@ -133,9 +133,9 @@ const WeeklyWalletPage: React.FC = () => {
   };
 
   const calculatedWalletWeek = (
-    (formData.earnings || 0) + 
-    (formData.refund || 0) - 
-    ((formData.diff || 0) + (formData.cash || 0) + (formData.charges || 0))
+    (formData.earnings || 0) +
+    (formData.refund || 0) -
+    ((formData.diff || 0) + (formData.cash || 0))
   );
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -254,21 +254,33 @@ const WeeklyWalletPage: React.FC = () => {
     return Number.isFinite(num) ? num : 0;
   };
 
+  const calculateWalletWeek = (wallet: WeeklyWallet) => {
+    return (
+      toNumber(wallet.earnings) +
+      toNumber(wallet.refund) -
+      (toNumber(wallet.diff) + toNumber(wallet.cash))
+    );
+  };
+
+  const calculateDeductions = (wallet: WeeklyWallet) => {
+    return toNumber(wallet.diff) + toNumber(wallet.cash);
+  };
+
+  const calculateWalletAfterCharges = (wallet: WeeklyWallet) => {
+    return calculateWalletWeek(wallet) - toNumber(wallet.charges);
+  };
+
   const weekTotals = useMemo(() => {
     return filteredWallets.reduce(
-      (acc, w) => {
-        const diff = toNumber(w.diff);
-        const cash = toNumber(w.cash);
-        const charges = toNumber(w.charges);
-        const deductions = diff + cash + charges;
-        const walletWeek = toNumber(w.walletWeek);
-        const walletAfterCharges = walletWeek - charges;
+      (acc, wallet) => {
+        const walletWeek = calculateWalletWeek(wallet);
+        const walletAfterCharges = calculateWalletAfterCharges(wallet);
 
         return {
-          trips: acc.trips + toNumber(w.trips),
-          earnings: acc.earnings + toNumber(w.earnings),
-          refund: acc.refund + toNumber(w.refund),
-          deductions: acc.deductions + deductions,
+          trips: acc.trips + toNumber(wallet.trips),
+          earnings: acc.earnings + toNumber(wallet.earnings),
+          refund: acc.refund + toNumber(wallet.refund),
+          deductions: acc.deductions + calculateDeductions(wallet),
           walletWeek: acc.walletWeek + walletWeek,
           walletAfterCharges: acc.walletAfterCharges + walletAfterCharges
         };
@@ -315,12 +327,9 @@ const WeeklyWalletPage: React.FC = () => {
 
     const headers = ['Week Range', 'Driver', 'Trips', 'Earnings', 'Refund', 'Deductions', 'Wallet Week', 'Wallet (- Charges)', 'Notes'];
     const rows = filteredWallets.map(wallet => {
-      const diff = toNumber(wallet.diff);
-      const cash = toNumber(wallet.cash);
-      const charges = toNumber(wallet.charges);
-      const walletWeek = toNumber(wallet.walletWeek);
-      const deductions = diff + cash + charges;
-      const walletAfterCharges = walletWeek - charges;
+      const deductions = calculateDeductions(wallet);
+      const walletWeek = calculateWalletWeek(wallet);
+      const walletAfterCharges = calculateWalletAfterCharges(wallet);
       return [
         formatWeekRange(wallet.weekStartDate, wallet.weekEndDate),
         wallet.driver,
@@ -328,7 +337,7 @@ const WeeklyWalletPage: React.FC = () => {
         wallet.earnings,
         wallet.refund,
         deductions.toFixed(2),
-        wallet.walletWeek,
+        walletWeek.toFixed(2),
         walletAfterCharges.toFixed(2),
         wallet.notes || ''
       ];
@@ -600,12 +609,10 @@ const WeeklyWalletPage: React.FC = () => {
                 <tr><td colSpan={9} className="p-12 text-center text-slate-400">No records found.</td></tr>
               ) : (
                 filteredWallets.map(w => {
-                  const diff = toNumber(w.diff);
-                  const cash = toNumber(w.cash);
                   const charges = toNumber(w.charges);
-                  const walletWeek = toNumber(w.walletWeek);
-                  const deductions = diff + cash + charges;
-                  const walletAfterCharges = walletWeek - charges;
+                  const walletWeek = calculateWalletWeek(w);
+                  const deductions = calculateDeductions(w);
+                  const walletAfterCharges = calculateWalletAfterCharges(w);
                   return (
                     <tr key={w.id} className="hover:bg-slate-50/80 transition-colors group">
                       <td className="px-6 py-4 text-slate-600 font-medium whitespace-nowrap">
