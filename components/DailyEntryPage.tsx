@@ -668,14 +668,15 @@ const DailyEntryPage: React.FC = () => {
   const currentPageRange = currentPageMeta ? `${formatDate(currentPageMeta.startDate)} – ${formatDate(currentPageMeta.endDate)}` : '';
 
   const totals = useMemo(() => {
-      const sumField = (key: keyof DailyEntry) => displayedEntries.reduce((sum, entry) => sum + Number(entry[key] || 0), 0);
+      const sumField = (key: keyof DailyEntry) =>
+          Math.round(displayedEntries.reduce((sum, entry) => sum + Number(entry[key] ?? 0), 0));
 
       return {
-          rent: Math.round(sumField('rent')),
-          collection: Math.round(sumField('collection')),
-          fuel: Math.round(sumField('fuel')),
-          due: Math.round(sumField('due')),
-          payout: Math.round(sumField('payout')),
+            rent: sumField('rent'),
+          collection: sumField('collection'),
+          fuel: sumField('fuel'),
+          due: sumField('due'),
+          payout: sumField('payout'),
       };
   }, [displayedEntries]);
 
