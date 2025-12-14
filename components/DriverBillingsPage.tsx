@@ -79,6 +79,10 @@ const DriverBillingsPage: React.FC = () => {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(val);
   };
 
+  const formatIntegerCurrency = (val: number) => {
+    return `₹${Math.round(val).toLocaleString('en-IN')}`;
+  };
+
   // --- ROBUST DATE HELPERS (UTC STRICT) ---
   const isValidDateStr = (dateStr: any) => {
       if (!dateStr || typeof dateStr !== 'string') return false;
@@ -253,6 +257,33 @@ const DriverBillingsPage: React.FC = () => {
   const currentWeekRange = currentWeekIndex === -1 ? "All Time Summary" : (displayedBills.length > 0 && displayedBills[0] ? displayedBills[0].weekRange : (
       currentWeekKey ? `${toDisplayDate(currentWeekKey as string)}` : ''
   ));
+
+  const billingTotals = useMemo(() => {
+      return displayedBills.reduce((acc, bill) => {
+          acc.daysWorked += bill.daysWorked || 0;
+          acc.trips += bill.trips || 0;
+          acc.rentTotal += bill.rentTotal || 0;
+          acc.collection += bill.collection || 0;
+          acc.due += bill.due || 0;
+          acc.fuel += bill.fuel || 0;
+          acc.wallet += bill.wallet || 0;
+          acc.walletOverdue += bill.walletOverdue || 0;
+          acc.adjustments += bill.adjustments || 0;
+          acc.payout += bill.payout || 0;
+          return acc;
+      }, {
+          daysWorked: 0,
+          trips: 0,
+          rentTotal: 0,
+          collection: 0,
+          due: 0,
+          fuel: 0,
+          wallet: 0,
+          walletOverdue: 0,
+          adjustments: 0,
+          payout: 0
+      });
+  }, [displayedBills]);
 
   const goToPreviousWeek = () => { if (currentWeekIndex !== -1 && currentWeekIndex < availableWeeks.length - 1) setCurrentWeekIndex(prev => prev + 1); };
   const goToNextWeek = () => { if (currentWeekIndex !== -1 && currentWeekIndex > 0) setCurrentWeekIndex(prev => prev - 1); };
@@ -520,10 +551,30 @@ const DriverBillingsPage: React.FC = () => {
                               </span>
                             </td>
                           </tr>
-                        ))
+                       ))
                       )}
-                    </tbody>
-                  </table>
+                   </tbody>
+                   {displayedBills.length > 0 && (
+                      <tfoot className="bg-slate-50 text-slate-700 font-bold border-t border-slate-100">
+                        <tr>
+                          <td className="px-6 py-3">Totals</td>
+                          <td className="px-6 py-3 text-slate-400">—</td>
+                          <td className="px-6 py-3 text-center">{Math.round(billingTotals.daysWorked)}</td>
+                          <td className="px-6 py-3 text-center">{Math.round(billingTotals.trips)}</td>
+                          <td className="px-6 py-3 text-right text-slate-400">—</td>
+                          <td className="px-6 py-3 text-right text-rose-600">-{formatIntegerCurrency(billingTotals.rentTotal)}</td>
+                          <td className="px-6 py-3 text-right text-emerald-600">+{formatIntegerCurrency(billingTotals.collection)}</td>
+                          <td className="px-6 py-3 text-right">{formatIntegerCurrency(billingTotals.due)}</td>
+                          <td className="px-6 py-3 text-right text-rose-500">-{formatIntegerCurrency(billingTotals.fuel)}</td>
+                          <td className="px-6 py-3 text-right text-indigo-600">+{formatIntegerCurrency(billingTotals.wallet)}</td>
+                          <td className="px-6 py-3 text-right">{formatIntegerCurrency(billingTotals.walletOverdue)}</td>
+                          <td className="px-6 py-3 text-right text-amber-600">{formatIntegerCurrency(billingTotals.adjustments)}</td>
+                          <td className="px-6 py-3 text-right">{formatIntegerCurrency(billingTotals.payout)}</td>
+                          <td className="px-6 py-3 text-center bg-white sticky right-0 shadow-[-4px_0_10px_-2px_rgba(0,0,0,0.02)]">—</td>
+                        </tr>
+                      </tfoot>
+                   )}
+                </table>
                </div>
             </div>
           )}
