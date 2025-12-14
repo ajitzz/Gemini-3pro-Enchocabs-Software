@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { WeeklyWallet, Driver } from '../types';
 import { storageService } from '../services/storageService';
-import { Plus, Trash2, Search, Edit2, X, ChevronDown, Wallet, TrendingUp, TrendingDown, Calendar, ArrowRight, AlertOctagon } from 'lucide-react';
+import { Plus, Trash2, Search, Edit2, X, ChevronDown, Wallet, TrendingUp, TrendingDown, Calendar, ArrowRight, AlertOctagon, Download } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
 const InputField = ({ label, name, type = "text", value, onChange, placeholder, required = false, className = "", icon: Icon }: any) => (
@@ -203,14 +203,53 @@ const WeeklyWalletPage: React.FC = () => {
     }
   };
 
-  const filteredWallets = wallets.filter(w => 
+  const filteredWallets = wallets.filter(w =>
     filterDriver === '' || w.driver.toLowerCase().includes(filterDriver.toLowerCase())
   );
-  
+
   // Format Date Range for Display
   const formatWeekRange = (start: string, end: string) => {
       if(!start || !end) return '';
       return `${start.split('-').reverse().join('-')} - ${end.split('-').reverse().join('-')}`;
+  };
+
+  const exportWeeklyWallets = () => {
+      if (filteredWallets.length === 0) {
+          alert('No weekly wallet records to export for the current view.');
+          return;
+      }
+
+      const headers = [
+        'Driver', 'Week Range', 'Trips', 'Wallet Week', 'Earnings', 'Refund', 'Diff', 'Cash', 'Charges', 'Rent Override', 'Days Worked Override', 'Adjustments', 'Notes'
+      ];
+
+      const rows = filteredWallets.map(wallet => ([
+        wallet.driver,
+        formatWeekRange(wallet.weekStartDate, wallet.weekEndDate),
+        wallet.trips,
+        wallet.walletWeek,
+        wallet.earnings,
+        wallet.refund,
+        wallet.diff,
+        wallet.cash,
+        wallet.charges,
+        wallet.rentOverride ?? '',
+        wallet.daysWorkedOverride ?? '',
+        wallet.adjustments ?? 0,
+        wallet.notes || ''
+      ]));
+
+      const csv = [headers, ...rows]
+        .map(row => row.map(cell => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
+        .join('\n');
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'weekly-wallet.csv';
+      link.click();
+      URL.revokeObjectURL(url);
   };
 
   return (
@@ -220,13 +259,22 @@ const WeeklyWalletPage: React.FC = () => {
           <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Weekly Wallet</h2>
           <p className="text-slate-500 mt-1">Calculate weekly driver payouts and deductions.</p>
         </div>
-        <button 
-          onClick={() => setIsFormOpen(!isFormOpen)}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
-        >
-          {isFormOpen ? <X size={20} /> : <Plus size={20} />}
-          <span>{isFormOpen ? 'Close Form' : 'Add Weekly Data'}</span>
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={exportWeeklyWallets}
+            className="bg-white text-slate-700 border border-slate-200 px-4 py-2.5 rounded-xl font-medium flex items-center gap-2 shadow-sm hover:bg-slate-50 transition-all"
+          >
+            <Download size={18} />
+            <span>Export CSV</span>
+          </button>
+          <button
+            onClick={() => setIsFormOpen(!isFormOpen)}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
+          >
+            {isFormOpen ? <X size={20} /> : <Plus size={20} />}
+            <span>{isFormOpen ? 'Close Form' : 'Add Weekly Data'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Modern Split Form */}

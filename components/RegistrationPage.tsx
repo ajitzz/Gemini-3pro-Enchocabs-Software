@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { Driver, LeaveRecord, ManagerAccess } from '../types';
 import { storageService } from '../services/storageService';
-import { UserPlus, Edit2, Clock, FileText, X, AlertTriangle, ShieldCheck, Users, CheckSquare, Square, AlertOctagon, Mail, Loader2, Trash2, Archive, RefreshCcw } from 'lucide-react';
+import { UserPlus, Edit2, Clock, FileText, X, AlertTriangle, ShieldCheck, Users, CheckSquare, Square, AlertOctagon, Mail, Loader2, Trash2, Archive, RefreshCcw, Download } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
 const InputField = ({ label, value, onChange, placeholder, type = "text", required = false, className = "" }: any) => (
@@ -270,6 +270,41 @@ const RegistrationPage: React.FC = () => {
   // Filter Drivers based on Toggle
   const displayedDrivers = drivers.filter(d => showTerminated ? !!d.terminationDate : !d.terminationDate);
 
+  const exportDrivers = () => {
+      if (displayedDrivers.length === 0) {
+          alert('No driver records to export for the current view.');
+          return;
+      }
+
+      const headers = ['Name', 'Mobile', 'Email', 'Join Date', 'Vehicle', 'Status', 'Deposit', 'QR Code', 'Current Shift', 'Termination Date', 'Notes'];
+
+      const rows = displayedDrivers.map(driver => ([
+        driver.name,
+        driver.mobile,
+        driver.email || '',
+        driver.joinDate,
+        driver.vehicle,
+        driver.status,
+        driver.deposit,
+        driver.qrCode,
+        driver.currentShift,
+        driver.terminationDate || '',
+        driver.notes || ''
+      ]));
+
+      const csv = [headers, ...rows]
+        .map(row => row.map(cell => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
+        .join('\n');
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'drivers.csv';
+      link.click();
+      URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="max-w-7xl mx-auto space-y-8 animate-fade-in pb-20">
       <div className="flex flex-col md:flex-row justify-between items-end gap-4">
@@ -278,14 +313,21 @@ const RegistrationPage: React.FC = () => {
            <p className="text-slate-500 mt-1">Onboard drivers and manage deposits.</p>
         </div>
         <div className="flex gap-3">
-            <button 
+            <button
                 onClick={() => setShowTerminated(!showTerminated)}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all ${showTerminated ? 'bg-slate-800 text-white shadow-lg' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
             >
                 <Archive size={18} />
                 {showTerminated ? 'View Active Drivers' : 'View Terminated'}
             </button>
-            <button 
+            <button
+                onClick={exportDrivers}
+                className="bg-white text-slate-700 border border-slate-200 px-4 py-2.5 rounded-xl font-medium flex items-center gap-2 shadow-sm hover:bg-slate-50 transition-all"
+            >
+                <Download size={18} />
+                <span>Export CSV</span>
+            </button>
+            <button
                onClick={() => {
                  setIsDriverFormOpen(!isDriverFormOpen);
                  if(!isDriverFormOpen) setDriverForm({ joinDate: new Date().toISOString().split('T')[0], deposit: 0, status: 'Active', qrCode: '', vehicle: '', currentShift: 'Day', notes: '', isManager: false, email: '' });
