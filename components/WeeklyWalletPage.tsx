@@ -249,19 +249,31 @@ const WeeklyWalletPage: React.FC = () => {
     filterDriver === '' || w.driver.toLowerCase().includes(filterDriver.toLowerCase())
   );
 
+  const toNumber = (value: number | string | null | undefined) => {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : 0;
+  };
+
   const weekTotals = useMemo(() => {
     return filteredWallets.reduce(
       (acc, w) => {
-        const deductions = (w.diff || 0) + (w.cash || 0) + (w.charges || 0);
+        const diff = toNumber(w.diff);
+        const cash = toNumber(w.cash);
+        const charges = toNumber(w.charges);
+        const deductions = diff + cash + charges;
+        const walletWeek = toNumber(w.walletWeek);
+        const walletAfterCharges = walletWeek - charges;
+
         return {
-          trips: acc.trips + (w.trips || 0),
-          earnings: acc.earnings + (w.earnings || 0),
-          refund: acc.refund + (w.refund || 0),
+          trips: acc.trips + toNumber(w.trips),
+          earnings: acc.earnings + toNumber(w.earnings),
+          refund: acc.refund + toNumber(w.refund),
           deductions: acc.deductions + deductions,
-          walletWeek: acc.walletWeek + (w.walletWeek || 0)
+          walletWeek: acc.walletWeek + walletWeek,
+          walletAfterCharges: acc.walletAfterCharges + walletAfterCharges
         };
       },
-      { trips: 0, earnings: 0, refund: 0, deductions: 0, walletWeek: 0 }
+      { trips: 0, earnings: 0, refund: 0, deductions: 0, walletWeek: 0, walletAfterCharges: 0 }
     );
   }, [filteredWallets]);
 
@@ -301,9 +313,14 @@ const WeeklyWalletPage: React.FC = () => {
       return;
     }
 
-    const headers = ['Week Range', 'Driver', 'Trips', 'Earnings', 'Refund', 'Deductions', 'Wallet Week', 'Notes'];
+    const headers = ['Week Range', 'Driver', 'Trips', 'Earnings', 'Refund', 'Deductions', 'Wallet Week', 'Wallet (- Charges)', 'Notes'];
     const rows = filteredWallets.map(wallet => {
-      const deductions = (wallet.diff || 0) + (wallet.cash || 0) + (wallet.charges || 0);
+      const diff = toNumber(wallet.diff);
+      const cash = toNumber(wallet.cash);
+      const charges = toNumber(wallet.charges);
+      const walletWeek = toNumber(wallet.walletWeek);
+      const deductions = diff + cash + charges;
+      const walletAfterCharges = walletWeek - charges;
       return [
         formatWeekRange(wallet.weekStartDate, wallet.weekEndDate),
         wallet.driver,
@@ -312,6 +329,7 @@ const WeeklyWalletPage: React.FC = () => {
         wallet.refund,
         deductions.toFixed(2),
         wallet.walletWeek,
+        walletAfterCharges.toFixed(2),
         wallet.notes || ''
       ];
     });
@@ -571,17 +589,23 @@ const WeeklyWalletPage: React.FC = () => {
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Refund</th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Deductions</th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet Week</th>
+                <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet /- Charges</th>
                 <th className="px-6 py-4 font-semibold text-center tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {loading ? (
-                <tr><td colSpan={8} className="p-12 text-center text-slate-400">Loading wallet data...</td></tr>
+                <tr><td colSpan={9} className="p-12 text-center text-slate-400">Loading wallet data...</td></tr>
               ) : filteredWallets.length === 0 ? (
-                <tr><td colSpan={8} className="p-12 text-center text-slate-400">No records found.</td></tr>
+                <tr><td colSpan={9} className="p-12 text-center text-slate-400">No records found.</td></tr>
               ) : (
                 filteredWallets.map(w => {
-                  const deductions = (w.diff || 0) + (w.cash || 0) + (w.charges || 0);
+                  const diff = toNumber(w.diff);
+                  const cash = toNumber(w.cash);
+                  const charges = toNumber(w.charges);
+                  const walletWeek = toNumber(w.walletWeek);
+                  const deductions = diff + cash + charges;
+                  const walletAfterCharges = walletWeek - charges;
                   return (
                     <tr key={w.id} className="hover:bg-slate-50/80 transition-colors group">
                       <td className="px-6 py-4 text-slate-600 font-medium whitespace-nowrap">
@@ -597,11 +621,20 @@ const WeeklyWalletPage: React.FC = () => {
                       <td className="px-6 py-4 text-right text-rose-500 font-medium">-₹{deductions.toFixed(2)}</td>
                       <td className="px-6 py-4 text-right">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold border ${
-                          w.walletWeek < 0 
-                            ? 'bg-rose-50 text-rose-700 border-rose-100' 
+                          walletWeek < 0
+                            ? 'bg-rose-50 text-rose-700 border-rose-100'
                             : 'bg-emerald-50 text-emerald-700 border-emerald-100'
                         }`}>
-                          {w.walletWeek < 0 ? '' : '+'}₹{w.walletWeek.toFixed(2)}
+                          {walletWeek < 0 ? '' : '+'}₹{walletWeek.toFixed(2)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold border ${
+                          walletAfterCharges < 0
+                            ? 'bg-rose-50 text-rose-700 border-rose-100'
+                            : 'bg-indigo-50 text-indigo-700 border-indigo-100'
+                        }`}>
+                          {walletAfterCharges < 0 ? '' : '+'}₹{walletAfterCharges.toFixed(2)}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-center">
@@ -632,6 +665,15 @@ const WeeklyWalletPage: React.FC = () => {
                         : 'bg-emerald-50 text-emerald-700 border-emerald-100'
                     }`}>
                       {weekTotals.walletWeek < 0 ? '' : '+'}₹{weekTotals.walletWeek.toFixed(2)}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold border ${
+                      weekTotals.walletAfterCharges < 0
+                        ? 'bg-rose-50 text-rose-700 border-rose-100'
+                        : 'bg-indigo-50 text-indigo-700 border-indigo-100'
+                    }`}>
+                      {weekTotals.walletAfterCharges < 0 ? '' : '+'}₹{weekTotals.walletAfterCharges.toFixed(2)}
                     </span>
                   </td>
                   <td className="px-6 py-4" />
