@@ -667,6 +667,18 @@ const DailyEntryPage: React.FC = () => {
   const currentPageLabel = currentPageMeta ? currentPageMeta.label : 'No data';
   const currentPageRange = currentPageMeta ? `${formatDate(currentPageMeta.startDate)} – ${formatDate(currentPageMeta.endDate)}` : '';
 
+  const totals = useMemo(() => {
+      const sumField = (key: keyof DailyEntry) => displayedEntries.reduce((sum, entry) => sum + Number(entry[key] || 0), 0);
+
+      return {
+          rent: Math.round(sumField('rent')),
+          collection: Math.round(sumField('collection')),
+          fuel: Math.round(sumField('fuel')),
+          due: Math.round(sumField('due')),
+          payout: Math.round(sumField('payout')),
+      };
+  }, [displayedEntries]);
+
   const goToPreviousPage = () => {
       setCurrentPageIndex(prev => Math.max(0, prev - 1));
   };
@@ -1010,6 +1022,18 @@ const DailyEntryPage: React.FC = () => {
                 ))
               )}
             </tbody>
+            <tfoot className="bg-slate-50 border-t border-slate-100">
+              <tr>
+                <td className="px-6 py-4 font-bold text-slate-700" colSpan={4}>Totals</td>
+                <td className="px-6 py-4 text-right font-bold text-slate-700">₹{totals.rent}</td>
+                <td className="px-6 py-4 text-right font-bold text-slate-700">₹{totals.collection}</td>
+                <td className="px-6 py-4 text-right font-bold text-slate-700">₹{totals.fuel}</td>
+                <td className="px-6 py-4 text-right font-bold text-slate-700">{totals.due > 0 ? '+' : ''}{totals.due}</td>
+                <td className="px-6 py-4 text-right font-bold text-slate-700">₹{totals.payout}</td>
+                <td className="px-6 py-4"></td>
+                <td className="px-6 py-4"></td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </div>
