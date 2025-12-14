@@ -1,5 +1,5 @@
 
-import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping, ManagerAccess, AdminAccess, DriverBillingRecord } from '../types';
+import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping, ManagerAccess, AdminAccess, DriverBillingRecord, CashMode } from '../types';
 
 // logic: Use local proxy in dev (npm run dev), use Render URL in production (Vercel)
 const isLocal = ((import.meta as any).env && (import.meta as any).env.DEV) || 
@@ -183,6 +183,20 @@ export const storageService = {
   getAuthorizedAdmins: async (): Promise<AdminAccess[]> => api.get('/admin-access'),
   addAuthorizedAdmin: async (admin: AdminAccess): Promise<void> => api.post('/admin-access', admin),
   removeAuthorizedAdmin: async (email: string): Promise<void> => api.delete(`/admin-access/${email}`),
+
+  // --- System Flags ---
+  getCashMode: async (): Promise<CashMode> => {
+    try {
+      const res = await api.get('/system-flags/cash-mode');
+      return res.value === 'blocked' ? 'blocked' : 'trips';
+    } catch (error) {
+      console.error('Failed to load cash mode flag:', error);
+      return 'trips';
+    }
+  },
+  setCashMode: async (mode: CashMode): Promise<void> => {
+    await api.post('/system-flags/cash-mode', { value: mode });
+  },
 
   // --- Shifts & Leaves ---
   getDriverShifts: async (): Promise<DriverShiftRecord[]> => api.get('/shifts'),

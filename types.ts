@@ -180,6 +180,8 @@ export interface AdminAccess {
 
 export type UserRole = 'super_admin' | 'admin' | 'driver';
 
+export type CashMode = 'blocked' | 'trips';
+
 export interface AuthUser {
   email: string;
   name: string;

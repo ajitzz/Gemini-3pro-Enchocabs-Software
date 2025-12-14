@@ -183,3 +183,10 @@ CREATE TABLE IF NOT EXISTS assets (
   value TEXT,
   PRIMARY KEY (type, value)
 );
+
+-- 15. System Flags (Feature Toggles)
+CREATE TABLE IF NOT EXISTS system_flags (
+  flag_key TEXT PRIMARY KEY,
+  flag_value TEXT,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
