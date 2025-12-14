@@ -2,6 +2,7 @@
 const express = require('express');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
+const { OAuth2Client } = require('google-auth-library');
 const db = require('./db');
 const app = express();
 
@@ -9,6 +10,9 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' })); // Support large Excel imports
 
 const PORT = process.env.PORT || 3000;
+const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'enchoenterprises@gmail.com').toLowerCase();
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || '';
+const oauthClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 // --- DATE HELPERS ---
 const normalizeDriver = (name = '') => name.toLowerCase().trim();
 const toISODate = (rawVal) => {
@@ -144,6 +148,61 @@ const initDb = async () => {
         payout NUMERIC DEFAULT 0,
         status TEXT DEFAULT 'Finalized',
         generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS leaves (
+        id UUID PRIMARY KEY,
+        driver_id UUID,
+        start_date DATE,
+        end_date DATE,
+        actual_return_date DATE,
+        days INTEGER,
+        reason TEXT
+      );
+    `);
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS shifts (
+        id UUID PRIMARY KEY,
+        driver_id UUID,
+        shift TEXT,
+        start_date DATE,
+        end_date DATE
+      );
+    `);
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS header_mappings (
+        internal_key TEXT PRIMARY KEY,
+        label TEXT,
+        excel_header TEXT,
+        required BOOLEAN
+      );
+    `);
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS admin_access (
+        email TEXT PRIMARY KEY,
+        added_by TEXT,
+        added_at TIMESTAMP
+      );
+    `);
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS manager_access (
+        manager_id UUID,
+        child_driver_id UUID,
+        PRIMARY KEY (manager_id, child_driver_id)
+      );
+    `);
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS assets (
+        type TEXT,
+        value TEXT,
+        PRIMARY KEY (type, value)
       );
     `);
     
@@ -417,6 +476,54 @@ const syncDriverBillings = async () => {
     client.release();
   }
 };
+
+// --- AUTHENTICATION ---
+app.post('/api/auth/google', async (req, res) => {
+  const { token, clientId } = req.body || {};
+
+  if (!token) {
+    return res.status(400).json({ error: 'Missing Google token' });
+  }
+
+  try {
+    const ticket = await oauthClient.verifyIdToken({
+      idToken: token,
+      audience: clientId || GOOGLE_CLIENT_ID || undefined,
+    });
+
+    const payload = ticket.getPayload() || {};
+    const email = (payload.email || '').toLowerCase();
+    if (!email) {
+      return res.status(400).json({ error: 'Email not found in Google profile' });
+    }
+
+    let role = 'driver';
+    let driverId = null;
+    let name = payload.name || 'User';
+    const photoURL = payload.picture;
+
+    if (email === SUPER_ADMIN_EMAIL) {
+      role = 'super_admin';
+    } else {
+      const adminRes = await db.query('SELECT email FROM admin_access WHERE lower(email) = lower($1) LIMIT 1', [email]);
+      if (adminRes.rows.length > 0) {
+        role = 'admin';
+      } else {
+        const driverRes = await db.query('SELECT id, name FROM drivers WHERE lower(email) = lower($1) LIMIT 1', [email]);
+        if (driverRes.rows.length === 0) {
+          return res.status(403).json({ error: 'Unauthorized: email not registered' });
+        }
+        driverId = driverRes.rows[0].id;
+        name = driverRes.rows[0].name || name;
+      }
+    }
+
+    res.json({ email, name, role, photoURL, driverId });
+  } catch (err) {
+    console.error('Google authentication failed:', err.message || err);
+    res.status(401).json({ error: 'Invalid Google token' });
+  }
+});
 
 app.get('/api/driver-billings', async (req, res) => {
   try {
