@@ -587,8 +587,8 @@ const DriverPortalPage: React.FC = () => {
        <main className="max-w-md mx-auto p-6 space-y-6">
            
            {/* Profile Header Block */}
-           <div className="flex justify-between items-start px-1">
-                <div className="flex flex-col gap-2">
+           <div className="flex justify-between items-center px-1">
+                <div>
                     <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Hi, {viewingAsDriver.name.split(' ')[0]}</h2>
                     <p className="text-slate-500 text-xs font-medium flex items-center gap-2 mt-1 flex-wrap">
                         <button
@@ -606,17 +606,8 @@ const DriverPortalPage: React.FC = () => {
                         </span>
                     </p>
                 </div>
-                <div className="flex flex-col items-end gap-1">
-                    <div className="flex items-center gap-1.5 text-slate-600 text-sm font-semibold">
-                        <span className="text-xs font-bold uppercase text-slate-400">Vehicle</span>
-                        <span>{viewingAsDriver.vehicle || 'No Vehicle Assigned'}</span>
-                    </div>
-                    <button
-                        className={`self-start text-[10px] px-2.5 py-1 rounded-full font-bold border ${cashMode === 'blocked' ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-emerald-50 border-emerald-200 text-emerald-600'}`}
-                        aria-label="Cash mode indicator"
-                    >
-                        {cashMode === 'blocked' ? 'Blocked' : 'Trips'}
-                    </button>
+                <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 border border-indigo-100">
+                    <UserCircle size={24} />
                 </div>
            </div>
 
