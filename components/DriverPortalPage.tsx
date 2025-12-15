@@ -268,21 +268,22 @@ const DriverPortalPage: React.FC = () => {
       const now = new Date();
       const currentMonth = now.getMonth();
       const currentYear = now.getFullYear();
-      
-      const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const prevMonth = prevMonthDate.getMonth();
-      const prevMonthYear = prevMonthDate.getFullYear();
+
+      const monthStart = new Date(currentYear, currentMonth, 1);
+      const monthEnd = new Date(currentYear, currentMonth + 1, 0);
 
       let monthCollection = 0;
       let monthRent = 0;
-      let prevMonthDues = 0;
+      let totalDues = 0;
       let yearCollection = 0;
       let monthTrips = 0;
-      
+
       rawDaily.forEach(entry => {
           const d = new Date(entry.date);
           const eYear = d.getFullYear();
           const eMonth = d.getMonth();
+
+          totalDues += entry.due;
 
           // Current Year
           if (eYear === currentYear) {
@@ -294,12 +295,8 @@ const DriverPortalPage: React.FC = () => {
               }
           }
           
-          // Previous Month
-          if (eYear === prevMonthYear && eMonth === prevMonth) {
-              prevMonthDues += entry.due;
-          }
       });
-      
+
       // Calculate Month Trips from Weekly Data (as Daily doesn't store trips explicitly)
       rawWeekly.forEach(w => {
           if (!w.weekEndDate) return;
@@ -309,19 +306,31 @@ const DriverPortalPage: React.FC = () => {
           }
       });
 
+      const currentMonthWeeks = rawWeekly.filter(w => {
+          const startD = new Date(w.weekStartDate);
+          const endD = new Date(w.weekEndDate);
+
+          return startD <= monthEnd && endD >= monthStart;
+      });
+
+      const monthEarningsTotal = currentMonthWeeks.reduce((sum, w) => sum + (w.earnings || 0), 0);
+      const monthEarningRanges = currentMonthWeeks.map(w => `${formatDate(w.weekStartDate)} - ${formatDate(w.weekEndDate)}`);
+
       // Latest Week Details
       const latestWeekly = rawWeekly.length > 0 ? rawWeekly[0] : null;
       const latestWeekTrips = latestWeekly ? latestWeekly.trips : 0;
       const latestWeekEarnings = latestWeekly ? latestWeekly.earnings : 0;
 
       return { 
-          monthCollection, 
-          monthRent, 
-          prevMonthDues, 
+          monthCollection,
+          monthRent,
+          totalDues,
           yearCollection,
           latestWeekTrips,
           latestWeekEarnings,
-          monthTrips
+          monthTrips,
+          monthEarningsTotal,
+          monthEarningRanges
       };
   }, [rawDaily, rawWeekly]);
 
@@ -357,10 +366,12 @@ const DriverPortalPage: React.FC = () => {
               data: {
                   monthRent: aggregatedStats.monthRent,
                   monthCollection: aggregatedStats.monthCollection,
-                  prevDues: aggregatedStats.prevMonthDues
+                  totalDues: aggregatedStats.totalDues,
+                  monthEarningsTotal: aggregatedStats.monthEarningsTotal,
+                  monthEarningRanges: aggregatedStats.monthEarningRanges
               }
           };
-      } 
+      }
       // BILLING: Net Payout & This Month Total Earnings
       else {
           return {
@@ -375,7 +386,7 @@ const DriverPortalPage: React.FC = () => {
               },
               right: {
                   label: "This Month's Earnings",
-                  value: aggregatedStats.monthCollection, // Value: This Month Collection
+                  value: aggregatedStats.monthEarningsTotal, // Value: This Month Collection (weekly rollup)
                   subtext: `${formatInt(aggregatedStats.monthTrips)} Trips (This Month)`,
                   isCurrency: true,
                   colorClass: 'bg-white',
@@ -623,8 +634,20 @@ const DriverPortalPage: React.FC = () => {
                {topCards.isConsolidated ? (
                    <div className="col-span-2 bg-white p-5 rounded-[24px] border border-slate-100 shadow-sm flex flex-col justify-center">
                        <div className="flex justify-between items-center mb-3 pb-3 border-b border-slate-50">
-                           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Month Stats (Current)</h3>
-                           <span className="text-[10px] bg-slate-50 text-slate-500 px-2 py-1 rounded-full font-bold">Consolidated</span>
+                           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Month Total Earnings</h3>
+                           <div className="text-right">
+                               <p className="text-sm font-extrabold text-slate-800 leading-none">
+                                   {/* @ts-ignore */}
+                                   {formatCurrencyInt(topCards.data.monthEarningsTotal || 0)}
+                               </p>
+                               <p className="text-[9px] text-slate-400 font-semibold mt-1 leading-tight">
+                                   {/* @ts-ignore */}
+                                   {topCards.data.monthEarningRanges?.length
+                                       ? // @ts-ignore
+                                         topCards.data.monthEarningRanges.join(' • ')
+                                       : 'No weekly data'}
+                               </p>
+                           </div>
                        </div>
                        <div className="grid grid-cols-3 gap-2 text-center divide-x divide-slate-100">
                            <div>
@@ -642,10 +665,10 @@ const DriverPortalPage: React.FC = () => {
                                </p>
                            </div>
                            <div>
-                               <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">Prev Month Dues</p>
+                               <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">Dues</p>
                                <p className="text-base font-bold text-rose-500">
                                    {/* @ts-ignore */}
-                                   {formatCurrencyInt(topCards.data.prevDues)}
+                                   {formatCurrencyInt(topCards.data.totalDues)}
                                </p>
                            </div>
                        </div>
