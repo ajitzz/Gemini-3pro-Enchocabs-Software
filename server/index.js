@@ -139,6 +139,24 @@ const initDb = async () => {
     `);
 
     await db.query(`
+      CREATE TABLE IF NOT EXISTS daily_entries (
+        id UUID PRIMARY KEY,
+        date DATE,
+        day TEXT,
+        vehicle TEXT,
+        driver TEXT,
+        shift TEXT,
+        qr_code TEXT,
+        rent NUMERIC,
+        collection NUMERIC,
+        fuel NUMERIC DEFAULT 0,
+        due NUMERIC DEFAULT 0,
+        payout NUMERIC DEFAULT 0,
+        notes TEXT
+      );
+    `);
+
+    await db.query(`
       CREATE TABLE IF NOT EXISTS weekly_wallets (
         id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
         driver TEXT,
@@ -265,6 +283,18 @@ const initDb = async () => {
               WHERE table_name='driver_billings' AND constraint_name='unique_driver_week'
           ) THEN
               ALTER TABLE driver_billings ADD CONSTRAINT unique_driver_week UNIQUE (driver_name, week_start_date);
+          END IF;
+
+          -- Clean duplicate daily entries (case-insensitive driver match) before enforcing uniqueness
+          DELETE FROM daily_entries a
+          USING daily_entries b
+          WHERE a.date = b.date AND LOWER(a.driver) = LOWER(b.driver) AND a.ctid > b.ctid;
+
+          -- Enforce strict one-entry-per-driver-per-day rule
+          IF NOT EXISTS (
+              SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'daily_entries_driver_date_key'
+          ) THEN
+              CREATE UNIQUE INDEX daily_entries_driver_date_key ON daily_entries (LOWER(driver), date);
           END IF;
 
           -- Align table definition with expected schema for billing aggregation
@@ -752,6 +782,15 @@ app.post('/api/daily-entries', async (req, res) => {
     const isoDate = toISODate(e.date);
     if (!isoDate) return res.status(400).json({ error: 'Invalid date format' });
 
+    const normalizedDriver = normalizeDriver(e.driver);
+    const duplicateCheck = await db.query(
+      `SELECT id FROM daily_entries WHERE date = $1 AND LOWER(driver) = $2 AND ($3::uuid IS NULL OR id <> $3)`
+      , [isoDate, normalizedDriver, e.id || null]
+    );
+    if (duplicateCheck.rowCount > 0) {
+      return res.status(409).json({ error: 'Driver already has an entry for this date. Please edit or delete the existing record.' });
+    }
+
     const q = `
       INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, payout, notes)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
@@ -762,7 +801,12 @@ app.post('/api/daily-entries', async (req, res) => {
     const result = await db.query(q, [e.id, isoDate, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, e.notes]);
     await syncDriverBillings();
     res.json(result.rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'Driver already has an entry for this date. Please edit or delete the existing record.' });
+    }
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post('/api/daily-entries/bulk', async (req, res) => {
@@ -770,6 +814,7 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
+    const keyToId = new Map();
     const qrCodes = [...new Set(entries.map(e => (e.qrCode || '').trim()).filter(Boolean))];
     let qrToDriver = {};
     if (qrCodes.length > 0) {
@@ -781,6 +826,17 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
       const canonicalDriver = (e.qrCode && qrToDriver[String(e.qrCode).trim()]) ? qrToDriver[String(e.qrCode).trim()] : e.driver;
       const isoDate = toISODate(e.date);
       if (!isoDate) throw new Error(`Invalid date format for entry ${e.id || e.date}`);
+      const driverKey = normalizeDriver(canonicalDriver);
+      const key = `${driverKey}|${isoDate}`;
+      const incomingId = e.id || null;
+      const existingIdForKey = keyToId.get(key);
+      if (existingIdForKey && existingIdForKey !== incomingId) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: `Duplicate entry detected in upload for ${canonicalDriver} on ${isoDate}.` });
+      }
+
+      keyToId.set(key, incomingId);
+
       const q = `
         INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, payout, notes)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
@@ -790,11 +846,31 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
       `;
       await client.query(q, [e.id, isoDate, e.day, e.vehicle, canonicalDriver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, e.notes]);
     }
+
+    const keyList = Array.from(keyToId.keys());
+    if (keyList.length > 0) {
+      const conflictCheck = await client.query(
+        `SELECT id, LOWER(driver) AS driver_key, to_char(date, 'YYYY-MM-DD') as date FROM daily_entries WHERE LOWER(driver)||'|'||to_char(date, 'YYYY-MM-DD') = ANY($1::text[])`,
+        [keyList]
+      );
+      const blocking = conflictCheck.rows.find(row => {
+        const key = `${row.driver_key}|${row.date}`;
+        return (keyToId.get(key) || null) !== row.id;
+      });
+      if (blocking) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: `Driver ${blocking.driver_key} already has an entry on ${blocking.date}. Please remove or edit the existing record before importing.` });
+      }
+    }
+
     await client.query('COMMIT');
     await syncDriverBillings();
     res.json({ success: true });
   } catch (err) {
     await client.query('ROLLBACK');
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'Duplicate daily entry detected. Each driver can only have one entry per day.' });
+    }
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
