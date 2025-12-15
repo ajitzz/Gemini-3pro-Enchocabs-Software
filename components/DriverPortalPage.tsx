@@ -255,7 +255,7 @@ const DriverPortalPage: React.FC = () => {
       const stats = storageService.calculateDriverStats(viewingAsDriver.name, rawDaily, rawWeekly, rentalSlabs);
       return {
           netPayout: stats.netPayout,
-          netRange: stats.netPayoutSource === 'latest-week' ? stats.netPayoutRange : undefined,
+          netRange: stats.netPayoutSource === 'latest-wallet' ? stats.netPayoutRange : undefined,
           totalCollection: stats.totalCollection,
           totalRawRent: stats.totalRent,
           totalFuel: stats.totalFuel,

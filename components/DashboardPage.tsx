@@ -137,6 +137,7 @@ const DashboardPage: React.FC = () => {
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Fuel</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Payout</th>
+                  <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Balance</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -156,18 +157,27 @@ const DashboardPage: React.FC = () => {
                         }`}>
                           {formatCurrency(driver.netPayout)}
                         </span>
-                        {driver.netPayoutSource === 'latest-week' && driver.netPayoutRange && (
+                        {driver.netPayoutSource === 'latest-wallet' && driver.netPayoutRange && (
                           <span className="text-[10px] leading-none text-slate-400 font-semibold uppercase tracking-[0.08em]">
                             {driver.netPayoutRange}
                           </span>
                         )}
                       </div>
                     </td>
+                    <td className="px-6 py-4 text-right">
+                      <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-bold border ${
+                        driver.finalTotal < 0
+                          ? 'bg-rose-50 text-rose-700 border-rose-100'
+                          : 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                      }`}>
+                        {formatCurrency(driver.finalTotal)}
+                      </span>
+                    </td>
                   </tr>
                 ))}
                 {filteredSummaries.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-6 py-20 text-center text-slate-400">
+                    <td colSpan={7} className="px-6 py-20 text-center text-slate-400">
                       <div className="flex flex-col items-center gap-2">
                         <Users size={32} className="opacity-20" />
                         <p>No drivers found matching "{filterDriver}"</p>

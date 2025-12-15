@@ -109,9 +109,9 @@ export interface DriverSummary {
   totalDue: number;
   totalPayout: number;
   totalWalletWeek: number;
-  finalTotal: number;
-  netPayout: number;
-  netPayoutSource: 'overall' | 'latest-week';
+  finalTotal: number; // Represents overall net balance from start to end
+  netPayout: number; // Represents the closest payout amount (overall vs latest wallet window)
+  netPayoutSource: 'overall' | 'latest-wallet';
   netPayoutRange?: string;
 }
 
