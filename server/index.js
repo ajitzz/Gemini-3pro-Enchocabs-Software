@@ -13,10 +13,37 @@ const PORT = process.env.PORT || 3000;
 const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'enchoenterprises@gmail.com').toLowerCase();
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || '';
 const oauthClient = new OAuth2Client(GOOGLE_CLIENT_ID);
+const KEEP_ALIVE_URL = process.env.KEEP_ALIVE_URL || '';
 // --- HEALTH CHECK ---
 app.get('/health', (_req, res) => {
   res.status(200).json({ status: 'ok' });
 });
+
+// --- KEEP ALIVE PING (Render free dynos can sleep without traffic) ---
+const startKeepAlive = () => {
+  if (!KEEP_ALIVE_URL) {
+    console.log('Keep-alive ping disabled: set KEEP_ALIVE_URL to enable.');
+    return;
+  }
+
+  const intervalMinutes = Number(process.env.KEEP_ALIVE_INTERVAL_MINUTES || 14);
+  const intervalMs = Math.max(intervalMinutes, 1) * 60 * 1000;
+
+  const ping = async () => {
+    try {
+      const response = await fetch(KEEP_ALIVE_URL, {
+        method: 'GET',
+        headers: { 'Cache-Control': 'no-cache' },
+      });
+      console.log(`Keep-alive ping -> ${response.status} @ ${new Date().toISOString()}`);
+    } catch (err) {
+      console.error('Keep-alive ping failed:', err.message);
+    }
+  };
+
+  ping();
+  setInterval(ping, intervalMs);
+};
 
 // --- DATE HELPERS ---
 const normalizeDriver = (name = '') => name.toLowerCase().trim();
@@ -1136,6 +1163,8 @@ initDb()
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
     });
+
+    startKeepAlive();
   })
   .catch((err) => {
     console.error('Initialization failed:', err);
