@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
 import { LayoutDashboard, Calendar, Wallet, Menu, X, Users, Coffee, Upload, Settings, Briefcase, FileText, Calculator, UserCircle, LogOut, Shield } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -18,10 +18,25 @@ import AdminAccessPage from './components/AdminAccessPage';
 
 // --- PROTECTED ROUTE WRAPPER ---
 const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode, allowedRoles: string[] }) => {
-  const { user, loading } = useAuth();
+  const { user, loading, refreshSession } = useAuth();
   const location = useLocation();
+  const [validatingAccess, setValidatingAccess] = useState(false);
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div></div>;
+  useEffect(() => {
+    let isMounted = true;
+
+    const verifyAccess = async () => {
+      if (user?.role !== 'admin') return;
+      setValidatingAccess(true);
+      await refreshSession();
+      if (isMounted) setValidatingAccess(false);
+    };
+
+    verifyAccess();
+    return () => { isMounted = false; };
+  }, [refreshSession, user, location.pathname]);
+
+  if (loading || validatingAccess) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div></div>;
 
   if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;

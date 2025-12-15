@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { AuthUser, UserRole } from '../types';
 import { storageService } from '../services/storageService';
 
@@ -9,6 +9,7 @@ interface AuthContextType {
   loginWithGoogleToken: (token: string) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
+  refreshSession: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -57,6 +58,7 @@ const authApi = {
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const normalizeEmail = (email?: string) => (email || '').trim().toLowerCase();
 
   // Load session from local storage on mount
   useEffect(() => {
@@ -90,13 +92,56 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setUser(null);
     localStorage.removeItem('driver_app_session');
-  };
+  }, []);
+
+  const refreshSession = useCallback(async (): Promise<boolean> => {
+    if (!user) return false;
+    if (user.role === 'super_admin') return true;
+
+    try {
+      if (user.role === 'admin') {
+        const admins = await storageService.getAuthorizedAdmins();
+        const isAuthorized = admins.some(a => normalizeEmail(a.email) === normalizeEmail(user.email));
+
+        if (!isAuthorized) {
+          logout();
+          return false;
+        }
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Failed to validate session:', error);
+      return true; // Do not block access on transient errors
+    }
+  }, [logout, user]);
+
+  useEffect(() => {
+    if (!user || user.role === 'super_admin') return;
+
+    let isMounted = true;
+
+    const validate = async () => {
+      const stillValid = await refreshSession();
+      if (!stillValid && isMounted) {
+        setLoading(false);
+      }
+    };
+
+    validate();
+    const interval = setInterval(validate, 15000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [refreshSession, user]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, loginWithGoogleToken, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, loading, loginWithGoogleToken, logout, isAuthenticated: !!user, refreshSession }}>
       {children}
     </AuthContext.Provider>
   );
