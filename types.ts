@@ -110,6 +110,9 @@ export interface DriverSummary {
   totalPayout: number;
   totalWalletWeek: number;
   finalTotal: number;
+  netPayout: number;
+  netPayoutSource: 'overall' | 'latest-week';
+  netPayoutRange?: string;
 }
 
 export interface GlobalSummary {

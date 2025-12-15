@@ -64,6 +64,19 @@ const api = {
 };
 
 // --- CENTRALIZED CALCULATION HELPER ---
+const formatWeekRange = (startDate: string, endDate: string) => {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    const startFmt = start.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+    const endFmt = end.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+    const yearSuffix = start.getFullYear() !== end.getFullYear()
+        ? ` '${String(end.getFullYear()).slice(-2)}`
+        : '';
+
+    return `${startFmt} - ${endFmt}${yearSuffix}`;
+};
+
 const calculateDriverStats = (
     driverName: string,
     allDaily: DailyEntry[],
@@ -72,33 +85,38 @@ const calculateDriverStats = (
 ): DriverSummary => {
     const driverWallets = allWallets.filter(w => w.driver === driverName);
     const driverDaily = allDaily.filter(d => d.driver === driverName);
-    
+
     let totalCollection = 0;
     let totalRent = 0;
     let totalFuel = 0;
     let totalDue = 0;
     let totalPayout = 0;
     let totalWalletWeek = 0;
-    
+
     const processedDailyIds = new Set<string>();
+    let latestWeekNet: number | null = null;
+    let latestWeekRange: string | undefined;
+
+    const sortedWallets = [...driverWallets].sort((a, b) => b.weekEndDate.localeCompare(a.weekEndDate));
+    const latestWalletId = sortedWallets[0]?.id;
 
     // 1. Process Billing History (Weekly Wallets) - STRICT PRIORITY
-    driverWallets.forEach(wallet => {
+    sortedWallets.forEach(wallet => {
         const startDate = wallet.weekStartDate;
         const endDate = wallet.weekEndDate;
-        
+
         const weekDaily = driverDaily.filter(d => {
             if (processedDailyIds.has(d.id)) return false;
             const date = d.date;
             return date >= startDate && date <= endDate;
         });
-        
+
         weekDaily.forEach(d => processedDailyIds.add(d.id));
 
         // Rent Calculation: Prioritize Wallet Override
         const trips = wallet.trips;
         const slab = sortedSlabs.find(s => trips >= s.minTrips && (s.maxTrips === null || trips <= s.maxTrips));
-        
+
         let rentRateUsed = 0;
         if (wallet.rentOverride !== undefined && wallet.rentOverride !== null) {
             rentRateUsed = wallet.rentOverride;
@@ -113,12 +131,13 @@ const calculateDriverStats = (
             : weekDaily.length;
 
         const weeklyRentTotal = rentRateUsed * daysWorked;
-        
+
         // Sum Daily Values
         const weeklyCollection = weekDaily.reduce((sum, d) => sum + d.collection, 0);
         const weeklyFuel = weekDaily.reduce((sum, d) => sum + d.fuel, 0);
         const weeklyDue = weekDaily.reduce((sum, d) => sum + d.due, 0);
         const weeklyPayout = weekDaily.reduce((sum, d) => sum + (d.payout || 0), 0);
+        const weeklyWalletTotal = wallet.walletWeek + (wallet.adjustments || 0);
 
         // Accumulate
         totalCollection += weeklyCollection;
@@ -126,7 +145,13 @@ const calculateDriverStats = (
         totalFuel += weeklyFuel;
         totalDue += weeklyDue;
         totalPayout += weeklyPayout;
-        totalWalletWeek += (wallet.walletWeek + (wallet.adjustments || 0));
+        totalWalletWeek += weeklyWalletTotal;
+
+        if (wallet.id === latestWalletId) {
+            const weekNet = weeklyCollection - weeklyRentTotal - weeklyFuel + weeklyDue + weeklyWalletTotal - weeklyPayout;
+            latestWeekNet = weekNet;
+            latestWeekRange = formatWeekRange(startDate, endDate);
+        }
     });
 
     // 2. Process Remaining Daily Entries (No Bill Generated Yet)
@@ -142,6 +167,18 @@ const calculateDriverStats = (
 
     const finalTotal = totalCollection - totalRent - totalFuel + totalDue + totalWalletWeek - totalPayout;
 
+    let netPayout = finalTotal;
+    let netPayoutSource: 'overall' | 'latest-week' = 'overall';
+    let netPayoutRange: string | undefined;
+
+    if (latestWeekNet !== null) {
+        if (Math.abs(latestWeekNet) < Math.abs(finalTotal)) {
+            netPayout = latestWeekNet;
+            netPayoutSource = 'latest-week';
+            netPayoutRange = latestWeekRange;
+        }
+    }
+
     return {
         driver: driverName,
         totalCollection,
@@ -150,7 +187,10 @@ const calculateDriverStats = (
         totalDue,
         totalPayout,
         totalWalletWeek,
-        finalTotal
+        finalTotal,
+        netPayout,
+        netPayoutSource,
+        netPayoutRange
     };
 };
 
