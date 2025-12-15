@@ -592,7 +592,7 @@ const DriverPortalPage: React.FC = () => {
                     <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Hi, {viewingAsDriver.name.split(' ')[0]}</h2>
                     <p className="text-slate-500 text-xs font-medium flex items-center gap-2 mt-1 flex-wrap">
                         <span className="flex items-center gap-1.5">
-                            <span className={`w-2 h-2 mr-5 rounded-full ${viewingAsDriver.status === 'Active' ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
+                            <span className={`w-2 h-2  rounded-full ${viewingAsDriver.status && cashMode !== 'blocked' === 'Active' ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
                             {viewingAsDriver.vehicle || 'No Vehicle Assigned'}
                         </span>
                        
