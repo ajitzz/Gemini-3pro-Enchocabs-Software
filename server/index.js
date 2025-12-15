@@ -204,6 +204,14 @@ const initDb = async () => {
         PRIMARY KEY (type, value)
       );
     `);
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS system_flags (
+        flag_key TEXT PRIMARY KEY,
+        flag_value TEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
     // 2. Migrations / Updates
     await db.query(`
       DO $$
@@ -837,6 +845,35 @@ app.post('/api/assets', async (req, res) => {
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
+  }
+});
+
+// --- SYSTEM FLAGS ---
+app.get('/api/system-flags/:key', async (req, res) => {
+  try {
+    const result = await db.query('SELECT flag_value FROM system_flags WHERE flag_key = $1', [req.params.key]);
+    if (result.rows.length === 0) {
+      return res.json({ key: req.params.key, value: null });
+    }
+    res.json({ key: req.params.key, value: result.rows[0].flag_value });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/system-flags/:key', async (req, res) => {
+  const { value } = req.body;
+  try {
+    await db.query(
+      `INSERT INTO system_flags (flag_key, flag_value, updated_at)
+       VALUES ($1, $2, CURRENT_TIMESTAMP)
+       ON CONFLICT (flag_key) DO UPDATE
+       SET flag_value = EXCLUDED.flag_value, updated_at = CURRENT_TIMESTAMP`,
+      [req.params.key, value]
+    );
+    res.json({ key: req.params.key, value });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
