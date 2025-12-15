@@ -37,6 +37,7 @@ const DriverPortalPage: React.FC = () => {
   const [selectedBill, setSelectedBill] = useState<any | null>(null);
   const [cashMode, setCashMode] = useState<CashMode>('trips');
   const [updatingCashMode, setUpdatingCashMode] = useState(false);
+  const [copiedDriverId, setCopiedDriverId] = useState<string | null>(null);
 
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
@@ -145,6 +146,18 @@ const DriverPortalPage: React.FC = () => {
 
   const returnToDashboard = async () => {
       navigate('/');
+  };
+
+  const copyTeamMemberContact = async (member: Driver) => {
+      const details = `${member.name} | ${member.mobile}${member.email ? ` | ${member.email}` : ''}`;
+      try {
+          await navigator.clipboard.writeText(details);
+          setCopiedDriverId(member.id);
+          setTimeout(() => setCopiedDriverId(null), 2000);
+      } catch (err) {
+          console.error('Failed to copy team member contact', err);
+          alert('Could not copy contact details. Please try again.');
+      }
   };
   
   const viewTeamMember = async (member: Driver) => {
@@ -761,25 +774,38 @@ const DriverPortalPage: React.FC = () => {
                                    {myTeam.map(member => {
                                        const bal = teamBalances[member.id] || 0;
                                        return (
-                                           <div 
-                                              key={member.id} 
+                                           <div
+                                              key={member.id}
                                               onClick={() => viewTeamMember(member)}
                                               className="group flex items-center justify-between p-4 bg-[#5fa5f9]/10 rounded-2xl border border-white/5 hover:bg-[#5fa5f9]/20 transition-all cursor-pointer backdrop-blur-sm"
                                            >
-                                               <div className="flex items-center gap-4">
-                                                   <div className="w-10 h-10 rounded-full bg-[#6366f1] flex items-center justify-center font-bold text-sm text-white shadow-inner border border-white/10">
-                                                       {member.name.charAt(0)}
-                                                   </div>
-                                                   <div>
-                                                       <p className="text-sm font-bold text-white group-hover:text-indigo-100 transition-colors">{member.name}</p>
-                                                       <p className="text-[11px] text-indigo-200 font-medium">
-                                                           Balance: <span className={bal < 0 ? "text-rose-300 font-bold" : "text-emerald-300 font-bold"}>{formatCurrency(bal)}</span>
-                                                       </p>
-                                                   </div>
-                                               </div>
-                                               <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-white/10 transition-colors">
-                                                   <ChevronRight size={16} className="text-indigo-200" />
-                                               </div>
+                                              <div className="flex items-center gap-4">
+                                                  <div className="w-10 h-10 rounded-full bg-[#6366f1] flex items-center justify-center font-bold text-sm text-white shadow-inner border border-white/10">
+                                                      {member.name.charAt(0)}
+                                                  </div>
+                                                  <div className="space-y-1">
+                                                      <div className="flex items-center gap-2">
+                                                          <p className="text-sm font-bold text-white group-hover:text-indigo-100 transition-colors">{member.name}</p>
+                                                          <button
+                                                             onClick={(e) => { e.stopPropagation(); copyTeamMemberContact(member); }}
+                                                             className="px-2 py-1 text-[10px] font-bold text-indigo-50 bg-white/10 border border-white/10 rounded-lg flex items-center gap-1 hover:bg-white/20 transition-colors"
+                                                          >
+                                                              <Copy size={12} />
+                                                              {copiedDriverId === member.id ? 'Copied' : 'Copy'}
+                                                          </button>
+                                                      </div>
+                                                      <p className="text-[11px] text-indigo-200 font-medium">
+                                                          Balance: <span className={bal < 0 ? "text-rose-300 font-bold" : "text-emerald-300 font-bold"}>{formatCurrency(bal)}</span>
+                                                      </p>
+                                                      <div className="flex flex-col text-[11px] text-indigo-100 font-medium">
+                                                          <span className="truncate">📞 {member.mobile}</span>
+                                                          {member.email && <span className="truncate">✉️ {member.email}</span>}
+                                                      </div>
+                                                  </div>
+                                              </div>
+                                              <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-white/10 transition-colors">
+                                                  <ChevronRight size={16} className="text-indigo-200" />
+                                              </div>
                                            </div>
                                        );
                                    })}
