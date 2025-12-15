@@ -111,7 +111,7 @@ const DriverPortalPage: React.FC = () => {
                       const balances: Record<string, number> = {};
                       teamMembers.forEach(member => {
                           const stats = storageService.calculateDriverStats(member.name, allDaily, allWeekly, sortedSlabs);
-                          balances[member.id] = stats.finalTotal;
+                          balances[member.id] = stats.netPayout;
                       });
                       setTeamBalances(balances);
                   }
@@ -251,14 +251,15 @@ const DriverPortalPage: React.FC = () => {
 
   // --- 2. BALANCE CALCULATION ---
   const balanceSummary = useMemo(() => {
-      if (!viewingAsDriver) return { netBalance: 0, totalCollection: 0, totalRawRent: 0, totalFuel: 0, totalWallet: 0 };
+      if (!viewingAsDriver) return { netPayout: 0, totalCollection: 0, totalRawRent: 0, totalFuel: 0, totalWallet: 0, netRange: undefined as string | undefined };
       const stats = storageService.calculateDriverStats(viewingAsDriver.name, rawDaily, rawWeekly, rentalSlabs);
-      return { 
-          netBalance: stats.finalTotal, 
-          totalCollection: stats.totalCollection, 
-          totalRawRent: stats.totalRent, 
-          totalFuel: stats.totalFuel, 
-          totalWallet: stats.totalWalletWeek 
+      return {
+          netPayout: stats.netPayout,
+          netRange: stats.netPayoutSource === 'latest-week' ? stats.netPayoutRange : undefined,
+          totalCollection: stats.totalCollection,
+          totalRawRent: stats.totalRent,
+          totalFuel: stats.totalFuel,
+          totalWallet: stats.totalWalletWeek
       };
   }, [rawDaily, rawWeekly, rentalSlabs, viewingAsDriver]);
 
@@ -326,13 +327,14 @@ const DriverPortalPage: React.FC = () => {
 
   // --- 4. DYNAMIC CARD DATA ---
   const topCards = useMemo(() => {
-      // OVERVIEW: Net Balance & Latest Week Earnings
+      // OVERVIEW: Net Payout & Latest Week Earnings
       if (activeTab === 'home') {
           return {
               left: {
-                  label: 'Net Balance',
-                  value: balanceSummary.netBalance,
-                  subtext: balanceSummary.netBalance < 0 ? 'Payable Amount' : 'Receivable Amount',
+                  label: 'Net Payout',
+                  value: balanceSummary.netPayout,
+                  subtext: balanceSummary.netRange || (balanceSummary.netPayout < 0 ? 'Payable Amount' : 'Receivable Amount'),
+                  range: balanceSummary.netRange,
                   isCurrency: true,
                   colorClass: 'bg-[#1e1b4b]',
                   colSpan: 1
@@ -359,13 +361,14 @@ const DriverPortalPage: React.FC = () => {
               }
           };
       } 
-      // BILLING: Net Balance & This Month Total Earnings
+      // BILLING: Net Payout & This Month Total Earnings
       else {
           return {
               left: {
-                  label: 'Net Balance',
-                  value: balanceSummary.netBalance,
-                  subtext: balanceSummary.netBalance < 0 ? 'Payable Amount' : 'Receivable Amount',
+                  label: 'Net Payout',
+                  value: balanceSummary.netPayout,
+                  subtext: balanceSummary.netRange || (balanceSummary.netPayout < 0 ? 'Payable Amount' : 'Receivable Amount'),
+                  range: balanceSummary.netRange,
                   isCurrency: true,
                   colorClass: 'bg-[#1e1b4b]',
                   colSpan: 1
@@ -659,9 +662,14 @@ const DriverPortalPage: React.FC = () => {
                                {/* @ts-ignore */}
                                {topCards.left.isCurrency && typeof topCards.left.value === 'number' ? formatCurrencyInt(topCards.left.value) : topCards.left.value}
                            </h3>
-                           <p className="text-[10px] text-indigo-300/80">
+                           <p className="text-[10px] text-indigo-200/80 flex items-center gap-1">
                                {/* @ts-ignore */}
-                               {topCards.left.subtext}
+                               {topCards.left?.range ? (
+                                   <span className="px-2 py-1 rounded-full bg-white/10 border border-white/10 tracking-[0.14em] uppercase text-[9px] leading-none">{topCards.left.range}</span>
+                               ) : (
+                                   // @ts-ignore
+                                   topCards.left?.subtext
+                               )}
                            </p>
                        </div>
 

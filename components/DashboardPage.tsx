@@ -136,7 +136,7 @@ const DashboardPage: React.FC = () => {
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Rent</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Fuel</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet</th>
-                  <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Balance</th>
+                  <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Payout</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -148,13 +148,20 @@ const DashboardPage: React.FC = () => {
                     <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalFuel)}</td>
                     <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalWalletWeek)}</td>
                     <td className="px-6 py-4 text-right">
-                      <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-bold border ${
-                        driver.finalTotal < 0 
-                          ? 'bg-rose-50 text-rose-700 border-rose-100' 
-                          : 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                      }`}>
-                        {formatCurrency(driver.finalTotal)}
-                      </span>
+                      <div className="flex flex-col items-end gap-1">
+                        <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-bold border ${
+                          driver.netPayout < 0
+                            ? 'bg-rose-50 text-rose-700 border-rose-100'
+                            : 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                        }`}>
+                          {formatCurrency(driver.netPayout)}
+                        </span>
+                        {driver.netPayoutSource === 'latest-week' && driver.netPayoutRange && (
+                          <span className="text-[10px] leading-none text-slate-400 font-semibold uppercase tracking-[0.08em]">
+                            {driver.netPayoutRange}
+                          </span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -178,7 +185,7 @@ const DashboardPage: React.FC = () => {
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
              <h3 className="font-bold text-lg text-slate-800 mb-6 flex items-center gap-2">
                <TrendingUp size={20} className="text-indigo-500" />
-               Visual Balance
+               Net Payouts
              </h3>
              <div className="h-80 w-full min-w-0">
                {/* Added min-w-0 and w-full to prevent flexbox overflow issues causing width(-1) errors in Recharts */}
@@ -201,9 +208,9 @@ const DashboardPage: React.FC = () => {
                       contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', background: 'rgba(255,255,255,0.95)'}}
                     />
                     <ReferenceLine x={0} stroke="#cbd5e1" strokeWidth={2} />
-                    <Bar dataKey="finalTotal" radius={[4, 4, 4, 4]} barSize={12}>
+                    <Bar dataKey="netPayout" radius={[4, 4, 4, 4]} barSize={12}>
                       {filteredSummaries.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.finalTotal < 0 ? '#f43f5e' : '#10b981'} />
+                        <Cell key={`cell-${index}`} fill={entry.netPayout < 0 ? '#f43f5e' : '#10b981'} />
                       ))}
                     </Bar>
                   </BarChart>
