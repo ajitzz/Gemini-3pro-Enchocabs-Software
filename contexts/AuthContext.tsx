@@ -115,7 +115,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return true;
     } catch (error) {
       console.error('Failed to validate session:', error);
-      return true; // Do not block access on transient errors
+
+      // Fail closed so revoked admins cannot continue if the check fails on Vercel
+      logout();
+      return false;
     }
   }, [logout, user]);
 
