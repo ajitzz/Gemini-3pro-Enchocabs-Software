@@ -525,14 +525,15 @@ const DriverBillingsPage: React.FC = () => {
                         <th className="px-6 py-4 font-semibold text-right tracking-wider">Rent</th>
                         <th className="px-6 py-4 font-semibold text-right tracking-wider">Fuel</th>
                         <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet</th>
+                        <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Payout</th>
                         <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Balance</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {loading ? (
-                         <tr><td colSpan={6} className="p-8 text-center text-slate-400">Loading balances...</td></tr>
+                         <tr><td colSpan={7} className="p-8 text-center text-slate-400">Loading balances...</td></tr>
                       ) : filteredSummaries.length === 0 ? (
-                         <tr><td colSpan={6} className="p-8 text-center text-slate-400">No drivers found.</td></tr>
+                         <tr><td colSpan={7} className="p-8 text-center text-slate-400">No drivers found.</td></tr>
                       ) : (
                         filteredSummaries.map((driver) => (
                           <tr key={driver.driver} className="hover:bg-slate-50 transition-colors group">
@@ -542,8 +543,24 @@ const DriverBillingsPage: React.FC = () => {
                             <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalFuel)}</td>
                             <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalWalletWeek)}</td>
                             <td className="px-6 py-4 text-right">
+                              <div className="flex flex-col items-end gap-1">
+                                <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-bold border ${
+                                  driver.netPayout < 0
+                                    ? 'bg-rose-50 text-rose-700 border-rose-100'
+                                    : 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                                }`}>
+                                  {formatCurrency(driver.netPayout)}
+                                </span>
+                                {driver.netPayoutSource === 'latest-wallet' && driver.netPayoutRange && (
+                                  <span className="text-[10px] leading-none text-slate-400 font-semibold uppercase tracking-[0.08em]">
+                                    Till {driver.netPayoutRange}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-right">
                               <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-bold border ${
-                                driver.finalTotal < 0 
+                                driver.finalTotal < 0
                                   ? 'bg-rose-50 text-rose-700 border-rose-100' 
                                   : 'bg-emerald-50 text-emerald-700 border-emerald-100'
                               }`}>

@@ -94,10 +94,19 @@ const calculateDriverStats = (
     let totalWalletWeek = 0;
 
     const processedDailyIds = new Set<string>();
-    let latestWeekNet: number | null = null;
     let latestWeekRange: string | undefined;
 
+    // Track balances only up to the latest wallet cutoff (ignoring newer daily entries)
+    let cutoffCollection = 0;
+    let cutoffRent = 0;
+    let cutoffFuel = 0;
+    let cutoffDue = 0;
+    let cutoffPayout = 0;
+    let cutoffWalletWeek = 0;
+
     const sortedWallets = [...driverWallets].sort((a, b) => b.weekEndDate.localeCompare(a.weekEndDate));
+    const latestWallet = sortedWallets[0];
+    const latestWalletEndDate = latestWallet?.weekEndDate;
     const latestWalletId = sortedWallets[0]?.id;
 
     // 1. Process Billing History (Weekly Wallets) - STRICT PRIORITY
@@ -148,9 +157,16 @@ const calculateDriverStats = (
         totalWalletWeek += weeklyWalletTotal;
 
         if (wallet.id === latestWalletId) {
-            const weekNet = weeklyCollection - weeklyRentTotal - weeklyFuel + weeklyDue + weeklyWalletTotal - weeklyPayout;
-            latestWeekNet = weekNet;
             latestWeekRange = formatWeekRange(startDate, endDate);
+        }
+
+        if (latestWalletEndDate && wallet.weekEndDate <= latestWalletEndDate) {
+            cutoffCollection += weeklyCollection;
+            cutoffRent += weeklyRentTotal;
+            cutoffFuel += weeklyFuel;
+            cutoffDue += weeklyDue;
+            cutoffPayout += weeklyPayout;
+            cutoffWalletWeek += weeklyWalletTotal;
         }
     });
 
@@ -162,20 +178,35 @@ const calculateDriverStats = (
             totalFuel += d.fuel;
             totalDue += d.due;
             totalPayout += (d.payout || 0);
+
+            if (latestWalletEndDate && d.date <= latestWalletEndDate) {
+                cutoffCollection += d.collection;
+                cutoffRent += d.rent;
+                cutoffFuel += d.fuel;
+                cutoffDue += d.due;
+                cutoffPayout += (d.payout || 0);
+            }
         }
     });
 
     const finalTotal = totalCollection - totalRent - totalFuel + totalDue + totalWalletWeek - totalPayout;
 
+    const cutoffTotal = latestWalletEndDate
+        ? (cutoffCollection - cutoffRent - cutoffFuel + cutoffDue + cutoffWalletWeek - cutoffPayout)
+        : finalTotal;
+
     let netPayout = finalTotal;
-    let netPayoutSource: 'overall' | 'latest-week' = 'overall';
+    let netPayoutSource: 'overall' | 'latest-wallet' = 'overall';
     let netPayoutRange: string | undefined;
 
-    if (latestWeekNet !== null) {
-        if (Math.abs(latestWeekNet) < Math.abs(finalTotal)) {
-            netPayout = latestWeekNet;
-            netPayoutSource = 'latest-week';
-            netPayoutRange = latestWeekRange;
+    if (latestWalletEndDate) {
+        // Compare overall balance vs balance up to the latest wallet window; pick the closest to zero
+        const candidate = Math.abs(cutoffTotal) < Math.abs(finalTotal) ? cutoffTotal : finalTotal;
+        netPayout = candidate;
+
+        if (Math.abs(candidate) === Math.abs(cutoffTotal)) {
+            netPayoutSource = 'latest-wallet';
+            netPayoutRange = latestWeekRange ?? (latestWallet ? formatWeekRange(latestWallet.weekStartDate, latestWallet.weekEndDate) : undefined);
         }
     }
 
