@@ -396,14 +396,19 @@ const DailyEntryPage: React.FC = () => {
           return;
         }
 
-        await storageService.saveDailyEntry(newEntry);
-        
-        if (editingId) {
-          resetForm(); 
-        } else {
-          resetFormAfterSave(formData.date);
+        try {
+          await storageService.saveDailyEntry(newEntry);
+
+          if (editingId) {
+            resetForm();
+          } else {
+            resetFormAfterSave(formData.date);
+          }
+          loadData();
+        } catch (error: any) {
+          console.error('Save daily entry failed:', error);
+          alert(error?.message || 'Failed to save daily entry. Ensure the driver has only one entry per day.');
         }
-        loadData();
     }
   };
 
@@ -424,7 +429,13 @@ const DailyEntryPage: React.FC = () => {
        await storageService.deleteDailyEntry(editingId);
     }
 
-    await storageService.saveDailyEntry(entryToSave);
+    try {
+      await storageService.saveDailyEntry(entryToSave);
+    } catch (error: any) {
+      console.error('Duplicate override failed:', error);
+      alert(error?.message || 'Unable to override the existing entry.');
+      return;
+    }
     setDuplicateWarning(null);
     
     if (editingId) {
@@ -465,8 +476,13 @@ const DailyEntryPage: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this entry?')) {
-      await storageService.deleteDailyEntry(id);
-      loadData();
+      try {
+        await storageService.deleteDailyEntry(id);
+        loadData();
+      } catch (error: any) {
+        console.error('Delete daily entry failed:', error);
+        alert(error?.message || 'Failed to delete the entry. Please try again.');
+      }
     }
   };
 

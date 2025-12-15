@@ -36,6 +36,9 @@ CREATE TABLE IF NOT EXISTS daily_entries (
   notes TEXT
 );
 
+-- Strict: only one entry per driver per date (case-insensitive on driver name)
+CREATE UNIQUE INDEX IF NOT EXISTS daily_entries_driver_date_key ON daily_entries (LOWER(driver), date);
+
 -- 4. Weekly Wallets Table (Calculations & Manual Overrides)
 CREATE TABLE IF NOT EXISTS weekly_wallets (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
