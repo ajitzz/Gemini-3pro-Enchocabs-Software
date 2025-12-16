@@ -1074,11 +1074,11 @@ const DriverPortalPage: React.FC = () => {
                                                       </div>
                                                   </div>
                                               </div>
-                                              <div className="flex items-center">
+                                              <div className="flex items-center gap-3">
                                                   <button
                                                       onClick={(e) => { e.stopPropagation(); toggleTeamMemberCashMode(member.id); }}
                                                       disabled={!!teamCashModeUpdating[member.id]}
-                                                      className={`relative flex items-center gap-3 px-3 py-2 rounded-full border border-white/15 shadow-lg backdrop-blur-sm text-white transition-all duration-200 ${
+                                                      className={`hidden md:flex relative items-center gap-3 px-3 py-2 rounded-full border border-white/15 shadow-lg backdrop-blur-sm text-white transition-all duration-200 ${
                                                           (teamCashModes[member.id] || 'trips') === 'blocked'
                                                               ? 'bg-gradient-to-r from-rose-500/90 via-amber-400/90 to-orange-400/90 hover:from-rose-500 hover:to-orange-500'
                                                               : 'bg-gradient-to-r from-emerald-500/90 via-teal-400/90 to-cyan-400/90 hover:from-emerald-500 hover:to-cyan-500'
@@ -1098,6 +1098,7 @@ const DriverPortalPage: React.FC = () => {
                                                           {(teamCashModes[member.id] || 'trips') === 'blocked' ? <Lock size={14} /> : <DollarSign size={14} />}
                                                       </span>
                                                   </button>
+                                                  <ChevronRight className="text-white/70 md:hidden" size={18} />
                                               </div>
                                           </div>
                                       );
