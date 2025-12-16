@@ -83,7 +83,8 @@ const DriverPortalPage: React.FC = () => {
           if (!skipTeamSync && myTeam.length > 0) {
               const teamModes: Record<string, CashMode> = {};
               await Promise.all(myTeam.map(async member => {
-                  teamModes[member.id] = await storageService.getDriverCashMode(member.id);
+                  const memberMode = await storageService.getDriverCashMode(member.id);
+                  teamModes[member.id] = memberMode || systemMode;
               }));
               setTeamCashModes(prev => {
                   const changed = Object.keys(teamModes).some(id => prev[id] !== teamModes[id]);
@@ -96,13 +97,17 @@ const DriverPortalPage: React.FC = () => {
   };
 
   const toggleCashMode = async () => {
-      if (!isAdmin) return;
-      const nextMode: CashMode = globalCashMode === 'blocked' ? 'trips' : 'blocked';
+      if (!isAdmin || !viewingAsDriver) return;
+      const nextMode: CashMode = cashMode === 'blocked' ? 'trips' : 'blocked';
       setUpdatingCashMode(true);
       try {
-          await storageService.setCashMode(nextMode);
+          await Promise.all([
+              storageService.setCashMode(nextMode),
+              storageService.setDriverCashMode(viewingAsDriver.id, nextMode)
+          ]);
           setGlobalCashMode(nextMode);
           setCashMode(nextMode);
+          setTeamCashModes(prev => ({ ...prev, [viewingAsDriver.id]: nextMode }));
       } catch (err) {
           console.error('Failed to update cash mode', err);
           alert('Could not update cash mode. Please try again.');
@@ -226,7 +231,7 @@ const DriverPortalPage: React.FC = () => {
     const toggleTeamMemberCashMode = async (memberId: string) => {
         if (!viewingAsDriver?.isManager) return;
 
-      const currentMode = teamCashModes[memberId] || 'trips';
+      const currentMode = teamCashModes[memberId] || globalCashMode || 'trips';
       const nextMode: CashMode = currentMode === 'blocked' ? 'trips' : 'blocked';
 
       setTeamCashModeUpdating(prev => ({ ...prev, [memberId]: true }));
@@ -1049,6 +1054,7 @@ const DriverPortalPage: React.FC = () => {
                                <div className="space-y-3">
                                    {myTeam.map(member => {
                                        const bal = teamBalances[member.id] || 0;
+                                       const memberCashMode = teamCashModes[member.id] || globalCashMode || 'trips';
                                        return (
                                            <div
                                               key={member.id}
@@ -1073,6 +1079,11 @@ const DriverPortalPage: React.FC = () => {
                                                       <p className="text-[11px] text-indigo-200 font-medium">
                                                           Balance: <span className={bal < 0 ? "text-rose-300 font-bold" : "text-emerald-300 font-bold"}>{formatCurrency(bal)}</span>
                                                       </p>
+                                                      <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.14em]">
+                                                          <span className="px-2 py-0.5 rounded-full bg-white/10 border border-white/10 text-indigo-50">
+                                                              {memberCashMode === 'blocked' ? 'Blocked' : 'Trips'}
+                                                          </span>
+                                                      </div>
                                                       <div className="flex flex-col text-[11px] text-indigo-100 font-medium">
                                                           <span className="truncate">📞 {member.mobile}</span>
                                                           {member.email && <span className="truncate">✉️ {member.email}</span>}
@@ -1084,23 +1095,23 @@ const DriverPortalPage: React.FC = () => {
                                                       onClick={(e) => { e.stopPropagation(); toggleTeamMemberCashMode(member.id); }}
                                                       disabled={!!teamCashModeUpdating[member.id]}
                                                       className={`hidden md:flex relative items-center gap-3 px-3 py-2 rounded-full border border-white/15 shadow-lg backdrop-blur-sm text-white transition-all duration-200 ${
-                                                          (teamCashModes[member.id] || 'trips') === 'blocked'
+                                                          memberCashMode === 'blocked'
                                                               ? 'bg-gradient-to-r from-rose-500/90 via-amber-400/90 to-orange-400/90 hover:from-rose-500 hover:to-orange-500'
                                                               : 'bg-gradient-to-r from-emerald-500/90 via-teal-400/90 to-cyan-400/90 hover:from-emerald-500 hover:to-cyan-500'
                                                       } ${teamCashModeUpdating[member.id] ? 'opacity-60 cursor-wait' : 'hover:-translate-y-0.5 hover:shadow-xl'}`}
                                                       title="Toggle cash mode for this driver"
                                                   >
                                                       <span className={`h-6 w-11 rounded-full bg-white/20 flex items-center p-1 transition-all duration-200 ${
-                                                          (teamCashModes[member.id] || 'trips') === 'blocked' ? 'justify-end' : 'justify-start'
+                                                          memberCashMode === 'blocked' ? 'justify-end' : 'justify-start'
                                                       }`}>
                                                           <span className="h-4 w-4 rounded-full bg-white shadow-md shadow-black/20" />
                                                       </span>
                                                       <div className="flex flex-col leading-tight text-left">
                                                           <span className="text-[9px] uppercase tracking-[0.14em] font-semibold text-white/80">Cash Mode</span>
-                                                          <span className="text-[11px] font-extrabold">{(teamCashModes[member.id] || 'trips') === 'blocked' ? 'Blocked' : 'Trips On'}</span>
+                                                          <span className="text-[11px] font-extrabold">{memberCashMode === 'blocked' ? 'Blocked' : 'Trips On'}</span>
                                                       </div>
                                                       <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/15 backdrop-blur text-white shadow-inner">
-                                                          {(teamCashModes[member.id] || 'trips') === 'blocked' ? <Lock size={14} /> : <DollarSign size={14} />}
+                                                          {memberCashMode === 'blocked' ? <Lock size={14} /> : <DollarSign size={14} />}
                                                       </span>
                                                   </button>
                                                   <ChevronRight className="text-white/70 md:hidden" size={18} />
