@@ -847,17 +847,13 @@ const DriverPortalPage: React.FC = () => {
                                                       <button
                                                           onClick={(e) => { e.stopPropagation(); toggleTeamMemberCashMode(member.id); }}
                                                           disabled={!!teamCashModeUpdating[member.id]}
-                                                          aria-pressed={(teamCashModes[member.id] || 'trips') === 'blocked'}
-                                                          className={`relative inline-flex items-center gap-1.5 pl-2.5 pr-3 py-1 text-[10px] font-bold rounded-full border transition-all duration-200 shadow-sm ${
+                                                          className={`flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-lg border transition-colors ${
                                                               (teamCashModes[member.id] || 'trips') === 'blocked'
-                                                                  ? 'bg-gradient-to-r from-rose-500 to-amber-400 text-white border-white/20'
-                                                                  : 'bg-gradient-to-r from-emerald-500 to-cyan-500 text-white border-white/20'
-                                                          } ${teamCashModeUpdating[member.id] ? 'opacity-60 cursor-wait' : 'hover:translate-y-[-1px]'}`}
+                                                                  ? 'bg-rose-50/80 border-rose-200 text-rose-100'
+                                                                  : 'bg-emerald-50/80 border-emerald-200 text-emerald-100'
+                                                          } ${teamCashModeUpdating[member.id] ? 'opacity-60 cursor-wait' : 'hover:shadow-sm'}`}
                                                           title="Toggle cash mode for this driver (desktop only)"
                                                       >
-                                                          <span className={`flex h-4 w-4 items-center justify-center rounded-full bg-white/20 ${teamCashModeUpdating[member.id] ? 'animate-pulse' : ''}`}>
-                                                              {(teamCashModes[member.id] || 'trips') === 'blocked' ? <Lock size={10} /> : <DollarSign size={10} />}
-                                                          </span>
                                                           {(teamCashModes[member.id] || 'trips') === 'blocked' ? 'Cash Blocked' : 'Cash Trips'}
                                                       </button>
                                                   )}
