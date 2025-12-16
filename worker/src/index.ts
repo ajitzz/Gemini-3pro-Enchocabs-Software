@@ -1,5 +1,4 @@
 import { Hono } from 'hono';
-import type { Context, Next } from 'hono';
 import { cors } from 'hono/cors';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { Client } from 'pg';
@@ -11,13 +10,10 @@ const GOOGLE_ISSUERS = ['accounts.google.com', 'https://accounts.google.com'];
 
 const app = new Hono<{ Bindings: Env }>();
 
-app.use('*', (c: Context<{ Bindings: Env }>, next: Next) => {
-  const allowlist = (c.env.ALLOWED_ORIGINS || '')
-    .split(',')
-    .map((o) => o.trim())
-    .filter(Boolean);
+app.use('*', (c, next) => {
+  const allowlist = (c.env.ALLOWED_ORIGINS || '').split(',').map((o) => o.trim()).filter(Boolean);
   return cors({
-    origin: (origin: string | null) => {
+    origin: (origin) => {
       if (!origin) return '*';
       if (allowlist.length === 0) return '*';
       return allowlist.includes(origin) ? origin : '';
@@ -30,45 +26,6 @@ app.use('*', (c: Context<{ Bindings: Env }>, next: Next) => {
 
 app.get('/health', (c) => c.json({ status: 'ok' }));
 
-type GoogleAuthRequest = { token: string; clientId?: string };
-type DriverBillingRow = {
-  id: string;
-  driverId: string;
-  driverName: string;
-  qrCode: string;
-  weekStartDate: string;
-  weekEndDate: string;
-  daysWorked: number;
-  trips: number;
-  rentPerDay: number;
-  rentTotal: number;
-  collection: number;
-  due: number;
-  fuel: number;
-  wallet: number;
-  walletOverdue: number;
-  adjustments: number;
-  payout: number;
-  status: string;
-  generatedAt: string | null;
-};
-
-type DailyEntryInput = {
-  id?: string;
-  date: string | Date;
-  day?: string;
-  vehicle?: string;
-  driver?: string;
-  shift?: string;
-  qrCode?: string;
-  rent?: number;
-  collection?: number;
-  fuel?: number;
-  due?: number;
-  payout?: number;
-  notes?: string;
-};
-
 const verifyGoogleToken = async (token: string, audience?: string) => {
   const { payload } = await jwtVerify(token, GOOGLE_JWKS, {
     issuer: GOOGLE_ISSUERS,
@@ -77,16 +34,8 @@ const verifyGoogleToken = async (token: string, audience?: string) => {
   return payload;
 };
 
-const formatError = (err: unknown): string => {
-  if (err && typeof err === 'object' && 'message' in err) {
-    const msg = (err as { message?: string }).message;
-    if (typeof msg === 'string') return msg;
-  }
-  return typeof err === 'string' ? err : JSON.stringify(err);
-};
-
 app.post('/api/auth/google', async (c) => {
-  const body = await c.req.json<GoogleAuthRequest>();
+  const body = await c.req.json();
   const { token, clientId } = body || {};
   if (!token) {
     return c.json({ error: 'Missing Google token' }, 400);
@@ -117,15 +66,15 @@ app.post('/api/auth/google', async (c) => {
     }
 
     return c.json({ email, name, role, photoURL, driverId });
-  } catch (err: unknown) {
-    console.error('Google authentication failed:', formatError(err));
+  } catch (err: any) {
+    console.error('Google authentication failed:', err?.message || err);
     return c.json({ error: 'Invalid Google token' }, 401);
   }
 });
 
 app.get('/api/driver-billings', async (c) => {
   try {
-    const result = await query<DriverBillingRow>(c.env, `
+    const result = await query(c.env, `
       SELECT
         id, driver_id as "driverId", driver_name as "driverName", qr_code as "qrCode",
         to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate",
@@ -137,7 +86,7 @@ app.get('/api/driver-billings', async (c) => {
       FROM driver_billings
       ORDER BY week_start_date DESC, driver_name ASC
     `);
-    const safeRows = result.rows.map((r) => ({
+    const safeRows = result.rows.map((r: any) => ({
       ...r,
       daysWorked: Number(r.daysWorked),
       trips: Number(r.trips),
@@ -152,25 +101,22 @@ app.get('/api/driver-billings', async (c) => {
       payout: Number(r.payout),
     }));
     return c.json(safeRows);
-  } catch (err: unknown) {
-    console.error('Error fetching billings:', formatError(err));
-    return c.json({ error: formatError(err) || 'Failed to fetch billings' }, 500);
+  } catch (err: any) {
+    console.error('Error fetching billings:', err);
+    return c.json({ error: err.message || 'Failed to fetch billings' }, 500);
   }
 });
 
 app.post('/api/daily-entries/bulk', async (c) => {
-  const entries = await c.req.json<DailyEntryInput[]>();
+  const entries = await c.req.json();
   try {
     await withTransaction(c.env, async (client: Client) => {
       const keyToId = new Map<string, string | null>();
-      const qrCodes = Array.from(new Set(entries.map((e) => (e.qrCode ?? '').trim()).filter(Boolean)));
+      const qrCodes = Array.from(new Set(entries.map((e: any) => (e.qrCode || '').trim()).filter(Boolean)));
       const qrToDriver: Record<string, string> = {};
       if (qrCodes.length > 0) {
-        const qrRes = await client.query<{ qr_code: string; name: string }>(
-          `SELECT qr_code, name FROM drivers WHERE qr_code = ANY($1::text[])`,
-          [qrCodes],
-        );
-        qrRes.rows.forEach((r) => {
+        const qrRes = await client.query(`SELECT qr_code, name FROM drivers WHERE qr_code = ANY($1::text[])`, [qrCodes]);
+        qrRes.rows.forEach((r: any) => {
           qrToDriver[String(r.qr_code || '').trim()] = r.name;
         });
       }
@@ -200,11 +146,14 @@ app.post('/api/daily-entries/bulk', async (c) => {
 
       const keyList = Array.from(keyToId.keys());
       if (keyList.length > 0) {
-        const conflictCheck = await client.query<{ id: string; driver_key: string; date: string }>(
+        const conflictCheck = await client.query(
           `SELECT id, LOWER(driver) AS driver_key, to_char(date, 'YYYY-MM-DD') as date FROM daily_entries WHERE LOWER(driver)||'|'||to_char(date, 'YYYY-MM-DD') = ANY($1::text[])`,
           [keyList],
         );
-        const blocking = conflictCheck.rows.find((row) => (keyToId.get(`${row.driver_key}|${row.date}`) || null) !== row.id);
+        const blocking = conflictCheck.rows.find((row: any) => {
+          const key = `${row.driver_key}|${row.date}`;
+          return (keyToId.get(key) || null) !== row.id;
+        });
         if (blocking) {
           throw new Error(`Driver ${blocking.driver_key} already has an entry on ${blocking.date}. Please remove or edit existing record before importing.`);
         }
@@ -212,16 +161,16 @@ app.post('/api/daily-entries/bulk', async (c) => {
     });
 
     return c.json({ success: true });
-  } catch (err: unknown) {
-    console.error('Bulk daily entry upload failed:', formatError(err));
-    return c.json({ error: formatError(err) || 'Bulk upload failed' }, 400);
+  } catch (err: any) {
+    console.error('Bulk daily entry upload failed:', err);
+    return c.json({ error: err.message || 'Bulk upload failed' }, 400);
   }
 });
 
-const normalizeDriver = (name = ''): string => name.toLowerCase().trim();
-const toISODate = (rawVal: string | Date | number | null | undefined): string => {
+const normalizeDriver = (name = '') => name.toLowerCase().trim();
+const toISODate = (rawVal: any) => {
   if (!rawVal) return '';
-  if (rawVal instanceof Date && !Number.isNaN(rawVal.getTime())) {
+  if (rawVal instanceof Date && !isNaN(rawVal as any)) {
     return rawVal.toISOString().slice(0, 10);
   }
   const str = String(rawVal).trim();
@@ -245,7 +194,7 @@ const toISODate = (rawVal: string | Date | number | null | undefined): string =>
     }
   }
   const native = new Date(str);
-  if (!Number.isNaN(native.getTime())) return native.toISOString().slice(0, 10);
+  if (!isNaN(native as any)) return native.toISOString().slice(0, 10);
   return '';
 };
 
@@ -256,7 +205,7 @@ const syncDriverBillings = async (env: Env) => {
   try {
     await query(env, 'SELECT refresh_driver_billings()');
   } catch (err) {
-    console.error('Driver billing sync failed:', formatError(err));
+    console.error('Driver billing sync failed:', (err as any)?.message || err);
   }
 };
 
@@ -280,25 +229,8 @@ placeholderPaths.forEach((path) => {
   if (path === '/api/driver-billings') return; // already implemented
   if (path === '/api/daily-entries') {
     app.get(path, async (c) => {
-      const result = await query<{
-        id: string;
-        date: string;
-        day: string;
-        vehicle: string;
-        driver: string;
-        shift: string;
-        qrCode: string;
-        rent: number;
-        collection: number;
-        fuel: number;
-        due: number;
-        payout: number;
-        notes: string | null;
-      }>(
-        c.env,
-        `SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, notes FROM daily_entries ORDER BY date DESC`,
-      );
-      const safeRows = result.rows.map((r) => ({
+      const result = await query(c.env, `SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, notes FROM daily_entries ORDER BY date DESC`);
+      const safeRows = result.rows.map((r: any) => ({
         ...r,
         rent: Number(r.rent),
         collection: Number(r.collection),
@@ -309,15 +241,11 @@ placeholderPaths.forEach((path) => {
       return c.json(safeRows);
     });
     app.post(path, async (c) => {
-      const e = await c.req.json<DailyEntryInput>();
+      const e = await c.req.json();
       const isoDate = toISODate(e.date);
       if (!isoDate) return c.json({ error: 'Invalid date format' }, 400);
       const normalizedDriver = normalizeDriver(e.driver);
-      const duplicateCheck = await query<{ id: string }>(
-        c.env,
-        `SELECT id FROM daily_entries WHERE date = $1 AND LOWER(driver) = $2 AND ($3::uuid IS NULL OR id <> $3)`,
-        [isoDate, normalizedDriver, e.id || null],
-      );
+      const duplicateCheck = await query(c.env, `SELECT id FROM daily_entries WHERE date = $1 AND LOWER(driver) = $2 AND ($3::uuid IS NULL OR id <> $3)`, [isoDate, normalizedDriver, e.id || null]);
       if (duplicateCheck.rowCount && duplicateCheck.rowCount > 0) {
         return c.json({ error: 'Driver already has an entry for this date. Please edit or delete the existing record.' }, 409);
       }
