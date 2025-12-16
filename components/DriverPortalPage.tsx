@@ -41,7 +41,6 @@ const DriverPortalPage: React.FC = () => {
   const [copiedDriverId, setCopiedDriverId] = useState<string | null>(null);
   const [teamCashModes, setTeamCashModes] = useState<Record<string, CashMode>>({});
   const [teamCashModeUpdating, setTeamCashModeUpdating] = useState<Record<string, boolean>>({});
-  const [isDesktopView, setIsDesktopView] = useState(false);
 
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
@@ -58,17 +57,6 @@ const DriverPortalPage: React.FC = () => {
         setCashMode(mode);
     };
     loadCashMode();
-  }, []);
-
-  useEffect(() => {
-    const detectViewport = () => {
-      setIsDesktopView(window.innerWidth >= 1024);
-    };
-
-    detectViewport();
-    window.addEventListener('resize', detectViewport);
-
-    return () => window.removeEventListener('resize', detectViewport);
   }, []);
 
   const toggleCashMode = async () => {
@@ -196,8 +184,8 @@ const DriverPortalPage: React.FC = () => {
       }
   };
 
-  const toggleTeamMemberCashMode = async (memberId: string) => {
-      if (!viewingAsDriver?.isManager || !isDesktopView) return;
+    const toggleTeamMemberCashMode = async (memberId: string) => {
+        if (!viewingAsDriver?.isManager) return;
 
       const currentMode = teamCashModes[memberId] || 'trips';
       const nextMode: CashMode = currentMode === 'blocked' ? 'trips' : 'blocked';
@@ -857,35 +845,34 @@ const DriverPortalPage: React.FC = () => {
                                                       </div>
                                                   </div>
                                               </div>
-                                              <div className="flex items-center gap-2">
-                                                  {isDesktopView && (
-                                                      <button
-                                                          onClick={(e) => { e.stopPropagation(); toggleTeamMemberCashMode(member.id); }}
-                                                          disabled={!!teamCashModeUpdating[member.id]}
-                                                          className={`relative flex items-center gap-2 min-w-[150px] px-3 py-1.5 rounded-full border border-white/15 shadow-sm backdrop-blur-sm text-white transition-all duration-200 ${
-                                                              (teamCashModes[member.id] || 'trips') === 'blocked'
-                                                                  ? 'bg-gradient-to-r from-rose-500/90 to-rose-400/90 hover:from-rose-500 hover:to-rose-500'
-                                                                  : 'bg-gradient-to-r from-emerald-500/90 to-emerald-400/90 hover:from-emerald-500 hover:to-emerald-500'
-                                                          } ${teamCashModeUpdating[member.id] ? 'opacity-60 cursor-wait' : 'hover:-translate-y-0.5 hover:shadow-lg'}`}
-                                                          title="Toggle cash mode for this driver (desktop only)"
-                                                      >
-                                                          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/15 backdrop-blur text-white shadow-inner">
-                                                              {(teamCashModes[member.id] || 'trips') === 'blocked' ? <Lock size={14} /> : <DollarSign size={14} />}
-                                                          </span>
-                                                          <div className="flex flex-col leading-tight text-left">
-                                                              <span className="text-[9px] uppercase tracking-[0.14em] font-semibold text-white/80">Cash Mode</span>
-                                                              <span className="text-xs font-extrabold">{(teamCashModes[member.id] || 'trips') === 'blocked' ? 'Blocked' : 'Trips Enabled'}</span>
-                                                          </div>
-                                                          <span className="absolute inset-0 rounded-full ring-1 ring-white/15" aria-hidden />
-                                                      </button>
-                                                  )}
-                                                  <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-white/10 transition-colors">
-                                                      <ChevronRight size={16} className="text-indigo-200" />
-                                                  </div>
+                                              <div className="flex items-center">
+                                                  <button
+                                                      onClick={(e) => { e.stopPropagation(); toggleTeamMemberCashMode(member.id); }}
+                                                      disabled={!!teamCashModeUpdating[member.id]}
+                                                      className={`relative flex items-center gap-3 px-3 py-2 rounded-full border border-white/15 shadow-lg backdrop-blur-sm text-white transition-all duration-200 ${
+                                                          (teamCashModes[member.id] || 'trips') === 'blocked'
+                                                              ? 'bg-gradient-to-r from-rose-500/90 via-amber-400/90 to-orange-400/90 hover:from-rose-500 hover:to-orange-500'
+                                                              : 'bg-gradient-to-r from-emerald-500/90 via-teal-400/90 to-cyan-400/90 hover:from-emerald-500 hover:to-cyan-500'
+                                                      } ${teamCashModeUpdating[member.id] ? 'opacity-60 cursor-wait' : 'hover:-translate-y-0.5 hover:shadow-xl'}`}
+                                                      title="Toggle cash mode for this driver"
+                                                  >
+                                                      <span className={`h-6 w-11 rounded-full bg-white/20 flex items-center p-1 transition-all duration-200 ${
+                                                          (teamCashModes[member.id] || 'trips') === 'blocked' ? 'justify-end' : 'justify-start'
+                                                      }`}>
+                                                          <span className="h-4 w-4 rounded-full bg-white shadow-md shadow-black/20" />
+                                                      </span>
+                                                      <div className="flex flex-col leading-tight text-left">
+                                                          <span className="text-[9px] uppercase tracking-[0.14em] font-semibold text-white/80">Cash Mode</span>
+                                                          <span className="text-[11px] font-extrabold">{(teamCashModes[member.id] || 'trips') === 'blocked' ? 'Blocked' : 'Trips On'}</span>
+                                                      </div>
+                                                      <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/15 backdrop-blur text-white shadow-inner">
+                                                          {(teamCashModes[member.id] || 'trips') === 'blocked' ? <Lock size={14} /> : <DollarSign size={14} />}
+                                                      </span>
+                                                  </button>
                                               </div>
-                                           </div>
-                                       );
-                                   })}
+                                          </div>
+                                      );
+                                  })}
                                </div>
                            </div>
                       </div>
