@@ -22,6 +22,7 @@ const DriverPortalPage: React.FC = () => {
   // Manager Context
   const [myTeam, setMyTeam] = useState<Driver[]>([]);
   const [teamBalances, setTeamBalances] = useState<Record<string, number>>({});
+  const [primaryDriver, setPrimaryDriver] = useState<Driver | null>(null);
   
   // View Context (Self vs Managed)
   const [viewingAsDriver, setViewingAsDriver] = useState<Driver | null>(null);
@@ -97,10 +98,11 @@ const DriverPortalPage: React.FC = () => {
           const sortedSlabs = slabs.sort((a, b) => a.minTrips - b.minTrips);
           setRentalSlabs(sortedSlabs);
 
+          setGlobalDaily(allDaily);
+          setGlobalWeekly(allWeekly);
+
           if (user?.role === 'admin' || user?.role === 'super_admin') {
               setDriversList(allDrivers.sort((a, b) => a.name.localeCompare(b.name)));
-              setGlobalDaily(allDaily);
-              setGlobalWeekly(allWeekly);
           }
 
           let targetDriver: Driver | undefined;
@@ -115,6 +117,7 @@ const DriverPortalPage: React.FC = () => {
           }
 
           if (targetDriver) {
+              setPrimaryDriver(targetDriver);
               if (targetDriver.isManager) {
                   const accessList = await storageService.getManagerAccess();
                   const myAccess = accessList.find(a => a.managerId === targetDriver!.id);
@@ -167,6 +170,18 @@ const DriverPortalPage: React.FC = () => {
 
   const returnToDashboard = async () => {
       navigate('/');
+  };
+
+  const exitView = async () => {
+      if (user?.role === 'driver') {
+          if (user.driverId && viewingAsDriver && primaryDriver && viewingAsDriver.id !== user.driverId) {
+              switchToDriverView(primaryDriver, globalDaily, globalWeekly);
+              return;
+          }
+          logout();
+          return;
+      }
+      returnToDashboard();
   };
 
   const copyTeamMemberContact = async (member: Driver) => {
@@ -625,7 +640,7 @@ const DriverPortalPage: React.FC = () => {
                        </button>
                    )}
                    {user?.role === 'driver' && (
-                       <button onClick={logout} className="p-2 bg-slate-800 rounded-lg hover:bg-slate-700 text-rose-400" title="Sign Out">
+                       <button onClick={exitView} className="p-2 bg-slate-800 rounded-lg hover:bg-slate-700 text-rose-400" title="Sign Out">
                            <LogOut size={20} />
                        </button>
                    )}
