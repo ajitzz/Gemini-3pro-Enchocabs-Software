@@ -768,63 +768,65 @@ const DriverPortalPage: React.FC = () => {
                className="fixed inset-0 z-50 flex items-center justify-center px-4"
                onClick={() => setShowNetPayoutPopup(false)}
            >
-               <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" />
+               <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" />
                <div
-                   className="relative bg-white max-w-md w-full rounded-2xl shadow-2xl border border-slate-100 overflow-hidden"
+                   className="relative w-full max-w-[480px] sm:max-w-[520px] h-[min(82vh,700px)] max-h-[calc(100vh-2rem)] rounded-[28px] shadow-2xl border border-slate-100 bg-gradient-to-b from-white via-slate-50 to-white overflow-hidden flex flex-col"
                    onClick={(e) => e.stopPropagation()}
                >
-                   <div className="flex items-start justify-between px-6 py-4 border-b border-slate-100 bg-slate-50">
-                       <div>
-                           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">Net Payout Summary</p>
-                           <p className="text-base font-bold text-slate-800 mt-0.5">{netPayoutDetails.rangeLabel}</p>
+                   <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-indigo-500 via-violet-500 to-fuchsia-500" />
+                   <div className="flex items-start justify-between px-6 py-4 border-b border-slate-100 bg-white/90 backdrop-blur">
+                       <div className="space-y-0.5">
+                           <p className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-slate-500">Net Payout Summary</p>
+                           <p className="text-base font-black text-slate-900">{netPayoutDetails.rangeLabel}</p>
                            <p className="text-[11px] text-slate-400 font-semibold">{netPayoutDetails.source === 'latest-wallet' ? 'Using latest wallet window (closest to zero)' : 'Across all available records'}</p>
                        </div>
                        <button
-                           className="p-2 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                           className="p-2 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
                            onClick={() => setShowNetPayoutPopup(false)}
+                           aria-label="Close net payout summary"
                        >
                            <X size={16} />
                        </button>
                    </div>
-                   <div className="p-6 space-y-4">
-                       <div className="space-y-3">
-                           {netPayoutDetails.monthly.map(section => (
-                               <div key={section.label} className="border border-slate-100 rounded-xl p-4 bg-slate-50/60">
-                                   <div className="flex items-start justify-between gap-2">
-                                       <div>
-                                           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-indigo-500">{section.label}</p>
-                                           <p className="text-[11px] text-slate-500 font-semibold">{section.range}</p>
-                                       </div>
-                                       <div className="text-right">
-                                           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Net Payout</p>
-                                           <p className="text-xl font-black text-slate-800">{formatCurrencyInt(section.net)}</p>
-                                           <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${section.net >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-                                               {section.net >= 0 ? 'Receivable' : 'Payable'}
-                                           </span>
-                                       </div>
-                                   </div>
-                                   <div className="grid grid-cols-2 gap-2 mt-3">
-                                       {section.breakdown.map(item => (
-                                           <div key={item.label} className="bg-white rounded-lg p-3 border border-slate-100">
-                                               <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">{item.label}</p>
-                                               <p className={`text-sm font-extrabold ${item.tone === 'positive' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                   {formatCurrencyInt(item.value)}
-                                               </p>
+                   <div className="flex-1 overflow-y-auto px-6 pb-6 pt-4 space-y-4 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
+                           <div className="space-y-3">
+                               {netPayoutDetails.monthly.map(section => (
+                                   <div key={section.label} className="border border-slate-100 rounded-2xl p-4 bg-white shadow-sm">
+                                       <div className="flex items-start justify-between gap-2">
+                                           <div>
+                                               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-indigo-500">{section.label}</p>
+                                               <p className="text-[11px] text-slate-500 font-semibold">{section.range}</p>
                                            </div>
-                                       ))}
+                                           <div className="text-right">
+                                               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Net Payout</p>
+                                               <p className="text-xl font-black text-slate-800">{formatCurrencyInt(section.net)}</p>
+                                               <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${section.net >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                                                   {section.net >= 0 ? 'Receivable' : 'Payable'}
+                                               </span>
+                                           </div>
+                                       </div>
+                                       <div className="grid grid-cols-2 gap-2 mt-3">
+                                           {section.breakdown.map(item => (
+                                               <div key={item.label} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                                                   <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">{item.label}</p>
+                                                   <p className={`text-sm font-extrabold ${item.tone === 'positive' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                       {formatCurrencyInt(item.value)}
+                                                   </p>
+                                               </div>
+                                           ))}
+                                       </div>
                                    </div>
-                               </div>
-                           ))}
-                       </div>
-                       <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 flex items-center justify-between">
-                           <div>
-                               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-indigo-500">Overall Net Payout</p>
-                               <p className="text-2xl font-black text-indigo-900">{formatCurrencyInt(netPayoutDetails.net)}</p>
+                               ))}
                            </div>
-                           <span className={`px-3 py-1 rounded-full text-[11px] font-bold ${netPayoutDetails.net >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-                               {netPayoutDetails.net >= 0 ? 'Receivable' : 'Payable'}
-                           </span>
-                       </div>
+                           <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 flex items-center justify-between shadow-sm">
+                               <div>
+                                   <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-indigo-500">Overall Net Payout</p>
+                                   <p className="text-2xl font-black text-indigo-900">{formatCurrencyInt(netPayoutDetails.net)}</p>
+                               </div>
+                               <span className={`px-3 py-1 rounded-full text-[11px] font-bold ${netPayoutDetails.net >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                                   {netPayoutDetails.net >= 0 ? 'Receivable' : 'Payable'}
+                               </span>
+                           </div>
                        <p className="text-[11px] text-slate-500 leading-snug">
                            Net payout is calculated as collections minus rent and fuel, plus dues and wallet adjustments, minus any direct payouts already recorded.
                        </p>
