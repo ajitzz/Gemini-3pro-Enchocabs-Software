@@ -770,7 +770,7 @@ const DriverPortalPage: React.FC = () => {
            >
                <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" />
                <div
-                   className="relative w-full max-w-[480px] sm:max-w-[520px] h-[min(82vh,700px)] max-h-[calc(100vh-2rem)] rounded-[28px] shadow-2xl border border-slate-100 bg-gradient-to-b from-white via-slate-50 to-white overflow-hidden flex flex-col"
+                   className="relative w-full max-w-md sm:max-w-lg h-[70vh] max-h-[90vh] rounded-3xl shadow-2xl border border-slate-100 bg-gradient-to-b from-white via-slate-50 to-white overflow-hidden"
                    onClick={(e) => e.stopPropagation()}
                >
                    <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-indigo-500 via-violet-500 to-fuchsia-500" />
@@ -788,7 +788,8 @@ const DriverPortalPage: React.FC = () => {
                            <X size={16} />
                        </button>
                    </div>
-                   <div className="flex-1 overflow-y-auto px-6 pb-6 pt-4 space-y-4 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
+                   <div className="absolute inset-0 top-[64px] bottom-0 flex flex-col">
+                       <div className="flex-1 overflow-y-auto px-6 pb-6 pt-4 space-y-4 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
                            <div className="space-y-3">
                                {netPayoutDetails.monthly.map(section => (
                                    <div key={section.label} className="border border-slate-100 rounded-2xl p-4 bg-white shadow-sm">
@@ -827,9 +828,10 @@ const DriverPortalPage: React.FC = () => {
                                    {netPayoutDetails.net >= 0 ? 'Receivable' : 'Payable'}
                                </span>
                            </div>
-                       <p className="text-[11px] text-slate-500 leading-snug">
-                           Net payout is calculated as collections minus rent and fuel, plus dues and wallet adjustments, minus any direct payouts already recorded.
-                       </p>
+                           <p className="text-[11px] text-slate-500 leading-snug">
+                               Net payout is calculated as collections minus rent and fuel, plus dues and wallet adjustments, minus any direct payouts already recorded.
+                           </p>
+                       </div>
                    </div>
                </div>
            </div>
@@ -1076,11 +1078,11 @@ const DriverPortalPage: React.FC = () => {
                                                       </div>
                                                   </div>
                                               </div>
-                                              <div className="flex items-center">
+                                              <div className="flex items-center gap-3">
                                                   <button
                                                       onClick={(e) => { e.stopPropagation(); toggleTeamMemberCashMode(member.id); }}
                                                       disabled={!!teamCashModeUpdating[member.id]}
-                                                      className={`relative flex items-center gap-3 px-3 py-2 rounded-full border border-white/15 shadow-lg backdrop-blur-sm text-white transition-all duration-200 ${
+                                                      className={`hidden md:flex relative items-center gap-3 px-3 py-2 rounded-full border border-white/15 shadow-lg backdrop-blur-sm text-white transition-all duration-200 ${
                                                           (teamCashModes[member.id] || 'trips') === 'blocked'
                                                               ? 'bg-gradient-to-r from-rose-500/90 via-amber-400/90 to-orange-400/90 hover:from-rose-500 hover:to-orange-500'
                                                               : 'bg-gradient-to-r from-emerald-500/90 via-teal-400/90 to-cyan-400/90 hover:from-emerald-500 hover:to-cyan-500'
@@ -1100,6 +1102,7 @@ const DriverPortalPage: React.FC = () => {
                                                           {(teamCashModes[member.id] || 'trips') === 'blocked' ? <Lock size={14} /> : <DollarSign size={14} />}
                                                       </span>
                                                   </button>
+                                                  <ChevronRight className="text-white/70 md:hidden" size={18} />
                                               </div>
                                           </div>
                                       );
