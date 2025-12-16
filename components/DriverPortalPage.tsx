@@ -37,6 +37,7 @@ const DriverPortalPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'home' | 'daily' | 'billing'>('home');
   const [selectedBill, setSelectedBill] = useState<any | null>(null);
   const [cashMode, setCashMode] = useState<CashMode>('trips');
+  const [globalCashMode, setGlobalCashMode] = useState<CashMode>('trips');
   const [updatingCashMode, setUpdatingCashMode] = useState(false);
   const [copiedDriverId, setCopiedDriverId] = useState<string | null>(null);
   const [teamCashModes, setTeamCashModes] = useState<Record<string, CashMode>>({});
@@ -52,19 +53,54 @@ const DriverPortalPage: React.FC = () => {
   }, [user]);
 
   useEffect(() => {
+    let isMounted = true;
+
     const loadCashMode = async () => {
         const mode = await storageService.getCashMode();
+        if (!isMounted) return;
         setCashMode(mode);
+        setGlobalCashMode(mode);
     };
+
     loadCashMode();
+
+    return () => {
+        isMounted = false;
+    };
   }, []);
+
+  const refreshCashMode = async (driverId?: string, skipTeamSync?: boolean) => {
+      try {
+          const [systemMode, driverMode] = await Promise.all([
+              storageService.getCashMode(),
+              driverId ? storageService.getDriverCashMode(driverId) : Promise.resolve<'trips' | 'blocked'>('trips')
+          ]);
+
+          setGlobalCashMode(systemMode);
+          setCashMode(driverMode || systemMode);
+
+          if (!skipTeamSync && myTeam.length > 0) {
+              const teamModes: Record<string, CashMode> = {};
+              await Promise.all(myTeam.map(async member => {
+                  teamModes[member.id] = await storageService.getDriverCashMode(member.id);
+              }));
+              setTeamCashModes(prev => {
+                  const changed = Object.keys(teamModes).some(id => prev[id] !== teamModes[id]);
+                  return changed ? teamModes : prev;
+              });
+          }
+      } catch (err) {
+          console.error('Failed to refresh cash mode state', err);
+      }
+  };
 
   const toggleCashMode = async () => {
       if (!isAdmin) return;
-      const nextMode: CashMode = cashMode === 'blocked' ? 'trips' : 'blocked';
+      const nextMode: CashMode = globalCashMode === 'blocked' ? 'trips' : 'blocked';
       setUpdatingCashMode(true);
       try {
           await storageService.setCashMode(nextMode);
+          setGlobalCashMode(nextMode);
           setCashMode(nextMode);
       } catch (err) {
           console.error('Failed to update cash mode', err);
@@ -130,6 +166,7 @@ const DriverPortalPage: React.FC = () => {
                   }
               }
               switchToDriverView(targetDriver, allDaily, allWeekly);
+              refreshCashMode(targetDriver.id, true);
           } else {
               setInitError("No driver profile found linked to this account.");
           }
@@ -147,6 +184,7 @@ const DriverPortalPage: React.FC = () => {
       setRawWeekly(myWeekly);
       setActiveTab('home');
       window.scrollTo(0, 0);
+      refreshCashMode(targetDriver.id, true);
   };
 
   const handleAdminDriverSwitch = (driverId: string) => {
@@ -194,6 +232,9 @@ const DriverPortalPage: React.FC = () => {
       try {
           await storageService.setDriverCashMode(memberId, nextMode);
           setTeamCashModes(prev => ({ ...prev, [memberId]: nextMode }));
+          if (viewingAsDriver?.id === memberId) {
+              setCashMode(nextMode);
+          }
       } catch (err) {
           console.error('Failed to update team member cash mode', err);
           alert('Could not update cash mode. Please try again.');
@@ -201,6 +242,27 @@ const DriverPortalPage: React.FC = () => {
           setTeamCashModeUpdating(prev => ({ ...prev, [memberId]: false }));
       }
   };
+
+  // Continuously sync cash mode across admin/manager/driver views
+  useEffect(() => {
+      if (!viewingAsDriver) return;
+
+      let isMounted = true;
+      const driverId = viewingAsDriver.id;
+
+      const sync = async () => {
+          if (!isMounted) return;
+          await refreshCashMode(driverId);
+      };
+
+      sync();
+      const interval = setInterval(sync, 5000);
+
+      return () => {
+          isMounted = false;
+          clearInterval(interval);
+      };
+  }, [viewingAsDriver?.id, myTeam.length]);
   
   const viewTeamMember = async (member: Driver) => {
       try {
