@@ -52,12 +52,36 @@ const DriverPortalPage: React.FC = () => {
   }, [user]);
 
   useEffect(() => {
-    const loadCashMode = async () => {
-        const mode = await storageService.getCashMode();
-        setCashMode(mode);
+    let isMounted = true;
+    let intervalId: ReturnType<typeof setInterval>;
+
+    const refreshCashMode = async () => {
+        try {
+            const [systemMode, driverMode] = await Promise.all([
+                storageService.getCashMode(),
+                viewingAsDriver?.id ? storageService.getDriverCashMode(viewingAsDriver.id) : Promise.resolve('trips' as CashMode)
+            ]);
+
+            if (!isMounted) return;
+
+            const effectiveMode: CashMode = systemMode === 'blocked' || driverMode === 'blocked'
+                ? 'blocked'
+                : 'trips';
+
+            setCashMode(prev => (prev === effectiveMode ? prev : effectiveMode));
+        } catch (error) {
+            console.error('Failed to refresh cash mode status', error);
+        }
     };
-    loadCashMode();
-  }, []);
+
+    refreshCashMode();
+    intervalId = setInterval(refreshCashMode, 10000);
+
+    return () => {
+        isMounted = false;
+        clearInterval(intervalId);
+    };
+  }, [viewingAsDriver?.id]);
 
   const toggleCashMode = async () => {
       if (!isAdmin) return;
