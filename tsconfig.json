@@ -19,5 +19,5 @@
     "types": ["node"]
   },
   "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules", "server", "dist"]
+  "exclude": ["node_modules", "server", "dist", "worker"]
 }
