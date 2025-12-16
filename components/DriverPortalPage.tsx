@@ -38,6 +38,9 @@ const DriverPortalPage: React.FC = () => {
   const [cashMode, setCashMode] = useState<CashMode>('trips');
   const [updatingCashMode, setUpdatingCashMode] = useState(false);
   const [copiedDriverId, setCopiedDriverId] = useState<string | null>(null);
+  const [teamCashModes, setTeamCashModes] = useState<Record<string, CashMode>>({});
+  const [teamCashModeUpdating, setTeamCashModeUpdating] = useState<Record<string, boolean>>({});
+  const [isDesktopView, setIsDesktopView] = useState(false);
 
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
@@ -54,6 +57,17 @@ const DriverPortalPage: React.FC = () => {
         setCashMode(mode);
     };
     loadCashMode();
+  }, []);
+
+  useEffect(() => {
+    const detectViewport = () => {
+      setIsDesktopView(window.innerWidth >= 1024);
+    };
+
+    detectViewport();
+    window.addEventListener('resize', detectViewport);
+
+    return () => window.removeEventListener('resize', detectViewport);
   }, []);
 
   const toggleCashMode = async () => {
@@ -107,7 +121,7 @@ const DriverPortalPage: React.FC = () => {
                   if (myAccess && myAccess.childDriverIds.length > 0) {
                       const teamMembers = allDrivers.filter(d => myAccess.childDriverIds.includes(d.id));
                       setMyTeam(teamMembers);
-                      
+
                       // USE CENTRALIZED LOGIC FOR TEAM BALANCES
                       const balances: Record<string, number> = {};
                       teamMembers.forEach(member => {
@@ -115,6 +129,13 @@ const DriverPortalPage: React.FC = () => {
                           balances[member.id] = stats.netPayout;
                       });
                       setTeamBalances(balances);
+
+                      const cashModes: Record<string, CashMode> = {};
+                      await Promise.all(teamMembers.map(async member => {
+                          const mode = await storageService.getDriverCashMode(member.id);
+                          cashModes[member.id] = mode;
+                      }));
+                      setTeamCashModes(cashModes);
                   }
               }
               switchToDriverView(targetDriver, allDaily, allWeekly);
@@ -157,6 +178,24 @@ const DriverPortalPage: React.FC = () => {
       } catch (err) {
           console.error('Failed to copy team member contact', err);
           alert('Could not copy contact details. Please try again.');
+      }
+  };
+
+  const toggleTeamMemberCashMode = async (memberId: string) => {
+      if (!viewingAsDriver?.isManager || !isDesktopView) return;
+
+      const currentMode = teamCashModes[memberId] || 'trips';
+      const nextMode: CashMode = currentMode === 'blocked' ? 'trips' : 'blocked';
+
+      setTeamCashModeUpdating(prev => ({ ...prev, [memberId]: true }));
+      try {
+          await storageService.setDriverCashMode(memberId, nextMode);
+          setTeamCashModes(prev => ({ ...prev, [memberId]: nextMode }));
+      } catch (err) {
+          console.error('Failed to update team member cash mode', err);
+          alert('Could not update cash mode. Please try again.');
+      } finally {
+          setTeamCashModeUpdating(prev => ({ ...prev, [memberId]: false }));
       }
   };
   
@@ -803,8 +842,24 @@ const DriverPortalPage: React.FC = () => {
                                                       </div>
                                                   </div>
                                               </div>
-                                              <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-white/10 transition-colors">
-                                                  <ChevronRight size={16} className="text-indigo-200" />
+                                              <div className="flex items-center gap-2">
+                                                  {isDesktopView && (
+                                                      <button
+                                                          onClick={(e) => { e.stopPropagation(); toggleTeamMemberCashMode(member.id); }}
+                                                          disabled={!!teamCashModeUpdating[member.id]}
+                                                          className={`flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-lg border transition-colors ${
+                                                              (teamCashModes[member.id] || 'trips') === 'blocked'
+                                                                  ? 'bg-rose-50/80 border-rose-200 text-rose-100'
+                                                                  : 'bg-emerald-50/80 border-emerald-200 text-emerald-100'
+                                                          } ${teamCashModeUpdating[member.id] ? 'opacity-60 cursor-wait' : 'hover:shadow-sm'}`}
+                                                          title="Toggle cash mode for this driver (desktop only)"
+                                                      >
+                                                          {(teamCashModes[member.id] || 'trips') === 'blocked' ? 'Cash Blocked' : 'Cash Trips'}
+                                                      </button>
+                                                  )}
+                                                  <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-white/10 transition-colors">
+                                                      <ChevronRight size={16} className="text-indigo-200" />
+                                                  </div>
                                               </div>
                                            </div>
                                        );
