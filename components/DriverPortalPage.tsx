@@ -3,7 +3,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { storageService } from '../services/storageService';
 import { CashMode, DailyEntry, WeeklyWallet, Driver, RentalSlab } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import { 
+import {
   Download, Calendar, Wallet, FileText, ChevronRight, LogOut, 
   UserCircle, TrendingUp, TrendingDown, DollarSign, MapPin, 
   CheckCircle, AlertCircle, Eye, X, ShieldCheck, Users, ArrowLeft, Lock, ArrowRight, Gauge, BarChart3, ChevronDown, Copy, AlertTriangle, ArrowUpRight, Clock
@@ -42,6 +42,7 @@ const DriverPortalPage: React.FC = () => {
   const [copiedDriverId, setCopiedDriverId] = useState<string | null>(null);
   const [teamCashModes, setTeamCashModes] = useState<Record<string, CashMode>>({});
   const [teamCashModeUpdating, setTeamCashModeUpdating] = useState<Record<string, boolean>>({});
+  const [showNetPayoutPopup, setShowNetPayoutPopup] = useState(false);
 
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
@@ -367,18 +368,47 @@ const DriverPortalPage: React.FC = () => {
   }, [rawWeekly, rawDaily, rentalSlabs, viewingAsDriver]);
 
   // --- 2. BALANCE CALCULATION ---
+  const driverStats = useMemo(() => {
+      if (!viewingAsDriver) return null;
+      return storageService.calculateDriverStats(viewingAsDriver.name, rawDaily, rawWeekly, rentalSlabs);
+  }, [viewingAsDriver, rawDaily, rawWeekly, rentalSlabs]);
+
   const balanceSummary = useMemo(() => {
-      if (!viewingAsDriver) return { netPayout: 0, totalCollection: 0, totalRawRent: 0, totalFuel: 0, totalWallet: 0, netRange: undefined as string | undefined };
-      const stats = storageService.calculateDriverStats(viewingAsDriver.name, rawDaily, rawWeekly, rentalSlabs);
+      if (!driverStats) return { netPayout: 0, totalCollection: 0, totalRawRent: 0, totalFuel: 0, totalWallet: 0, netRange: undefined as string | undefined };
       return {
-          netPayout: stats.netPayout,
-          netRange: stats.netPayoutSource === 'latest-wallet' ? stats.netPayoutRange : undefined,
-          totalCollection: stats.totalCollection,
-          totalRawRent: stats.totalRent,
-          totalFuel: stats.totalFuel,
-          totalWallet: stats.totalWalletWeek
+          netPayout: driverStats.netPayout,
+          netRange: driverStats.netPayoutSource === 'latest-wallet' ? driverStats.netPayoutRange : undefined,
+          totalCollection: driverStats.totalCollection,
+          totalRawRent: driverStats.totalRent,
+          totalFuel: driverStats.totalFuel,
+          totalWallet: driverStats.totalWalletWeek
       };
-  }, [rawDaily, rawWeekly, rentalSlabs, viewingAsDriver]);
+  }, [driverStats]);
+
+  const netPayoutDetails = useMemo(() => {
+      if (!driverStats) return null;
+
+      const earliestDate = rawDaily.length > 0
+          ? rawDaily.reduce((min, entry) => entry.date < min ? entry.date : min, rawDaily[0].date)
+          : undefined;
+      const latestDate = rawDaily.length > 0
+          ? rawDaily.reduce((max, entry) => entry.date > max ? entry.date : max, rawDaily[0].date)
+          : undefined;
+
+      return {
+          rangeLabel: driverStats.netPayoutRange || (earliestDate && latestDate ? `${formatDate(earliestDate)} - ${formatDate(latestDate)}` : 'No activity found'),
+          source: driverStats.netPayoutSource,
+          breakdown: [
+              { label: 'Total Collection', value: driverStats.totalCollection, tone: 'positive' as const },
+              { label: 'Vehicle Rent', value: -driverStats.totalRent, tone: 'negative' as const },
+              { label: 'Fuel', value: -driverStats.totalFuel, tone: 'negative' as const },
+              { label: 'Dues & Adjustments', value: driverStats.totalDue, tone: driverStats.totalDue >= 0 ? 'positive' as const : 'negative' as const },
+              { label: 'Weekly Wallet & Adjustments', value: driverStats.totalWalletWeek, tone: driverStats.totalWalletWeek >= 0 ? 'positive' as const : 'negative' as const },
+              { label: 'Direct Payouts Recorded', value: -driverStats.totalPayout, tone: 'negative' as const }
+          ],
+          net: driverStats.netPayout
+      };
+  }, [driverStats, rawDaily]);
 
   // --- 3. AGGREGATED STATS (Month/Prev Month/Year) ---
   const aggregatedStats = useMemo(() => {
@@ -669,6 +699,56 @@ const DriverPortalPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] font-sans pb-24">
+       {showNetPayoutPopup && netPayoutDetails && (
+           <div
+               className="fixed inset-0 z-50 flex items-center justify-center px-4"
+               onClick={() => setShowNetPayoutPopup(false)}
+           >
+               <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" />
+               <div
+                   className="relative bg-white max-w-md w-full rounded-2xl shadow-2xl border border-slate-100 overflow-hidden"
+                   onClick={(e) => e.stopPropagation()}
+               >
+                   <div className="flex items-start justify-between px-6 py-4 border-b border-slate-100 bg-slate-50">
+                       <div>
+                           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">Net Payout Summary</p>
+                           <p className="text-base font-bold text-slate-800 mt-0.5">{netPayoutDetails.rangeLabel}</p>
+                           <p className="text-[11px] text-slate-400 font-semibold">{netPayoutDetails.source === 'latest-wallet' ? 'Using latest wallet window (closest to zero)' : 'Across all available records'}</p>
+                       </div>
+                       <button
+                           className="p-2 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                           onClick={() => setShowNetPayoutPopup(false)}
+                       >
+                           <X size={16} />
+                       </button>
+                   </div>
+                   <div className="p-6 space-y-4">
+                       <div className="grid grid-cols-2 gap-2">
+                           {netPayoutDetails.breakdown.map(item => (
+                               <div key={item.label} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                                   <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">{item.label}</p>
+                                   <p className={`text-sm font-extrabold ${item.tone === 'positive' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                       {formatCurrencyInt(item.value)}
+                                   </p>
+                               </div>
+                           ))}
+                       </div>
+                       <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 flex items-center justify-between">
+                           <div>
+                               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-indigo-500">Net Payout</p>
+                               <p className="text-2xl font-black text-indigo-900">{formatCurrencyInt(netPayoutDetails.net)}</p>
+                           </div>
+                           <span className={`px-3 py-1 rounded-full text-[11px] font-bold ${netPayoutDetails.net >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                               {netPayoutDetails.net >= 0 ? 'Receivable' : 'Payable'}
+                           </span>
+                       </div>
+                       <p className="text-[11px] text-slate-500 leading-snug">
+                           Net payout is calculated as collections minus rent and fuel, plus dues and wallet adjustments, minus any direct payouts already recorded.
+                       </p>
+                   </div>
+               </div>
+           </div>
+       )}
        {/* 1. Header & Nav */}
        <header className="bg-[#1e293b] text-white sticky top-0 z-30 shadow-xl">
            <div className="max-w-md mx-auto px-6 py-4 flex items-center justify-between">
@@ -794,7 +874,11 @@ const DriverPortalPage: React.FC = () => {
                    <>
                        {/* Left Card */}
                        {/* @ts-ignore */}
-                       <div className={`${topCards.left.colorClass} p-6 rounded-[24px] text-white relative overflow-hidden shadow-xl flex flex-col justify-center ${topCards.left.colSpan ? `col-span-${topCards.left.colSpan}` : ''}`}>
+                       {/* @ts-ignore */}
+                       <div
+                           onClick={activeTab === 'home' ? () => setShowNetPayoutPopup(true) : undefined}
+                           className={`${topCards.left?.colorClass ?? ''} p-6 rounded-[24px] text-white relative overflow-hidden shadow-xl flex flex-col justify-center ${topCards.left?.colSpan ? `col-span-${topCards.left.colSpan}` : ''} ${activeTab === 'home' ? 'cursor-pointer transition transform hover:-translate-y-0.5' : ''}`}
+                       >
                            {/* @ts-ignore */}
                            <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-200 mb-1">{topCards.left.label}</p>
                            {/* @ts-ignore */}
