@@ -15,9 +15,12 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE
 const oauthClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 const KEEP_ALIVE_URL = process.env.KEEP_ALIVE_URL || '';
 // --- HEALTH CHECK ---
-app.get('/health', (_req, res) => {
+const healthHandler = (_req, res) => {
+  res.set('Cache-Control', 'no-store');
   res.status(200).json({ status: 'ok' });
-});
+};
+app.get('/health', healthHandler);
+app.head('/health', healthHandler);
 
 // --- KEEP ALIVE PING (Render free dynos can sleep without traffic) ---
 const startKeepAlive = () => {

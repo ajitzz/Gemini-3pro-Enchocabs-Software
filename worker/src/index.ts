@@ -24,7 +24,13 @@ app.use('*', (c, next) => {
   })(c, next);
 });
 
-app.get('/health', (c) => c.json({ status: 'ok' }));
+const healthHandler = (c: any) => {
+  c.header('Cache-Control', 'no-store');
+  return c.json({ status: 'ok' });
+};
+
+app.get('/health', healthHandler);
+app.head('/health', healthHandler);
 
 const verifyGoogleToken = async (token: string, audience?: string) => {
   const { payload } = await jwtVerify(token, GOOGLE_JWKS, {
