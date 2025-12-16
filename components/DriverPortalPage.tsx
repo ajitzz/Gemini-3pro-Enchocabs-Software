@@ -38,11 +38,6 @@ const DriverPortalPage: React.FC = () => {
   const [cashMode, setCashMode] = useState<CashMode>('trips');
   const [updatingCashMode, setUpdatingCashMode] = useState(false);
   const [copiedDriverId, setCopiedDriverId] = useState<string | null>(null);
-  const [isDesktop, setIsDesktop] = useState(false);
-
-  const canManagerToggleCash = useMemo(() => {
-    return (user?.role === 'admin' || user?.role === 'super_admin') || (viewingAsDriver?.isManager && isDesktop);
-  }, [user?.role, viewingAsDriver?.isManager, isDesktop]);
 
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
@@ -61,19 +56,8 @@ const DriverPortalPage: React.FC = () => {
     loadCashMode();
   }, []);
 
-  useEffect(() => {
-      const handleResize = () => {
-          setIsDesktop(window.innerWidth >= 1024);
-      };
-
-      handleResize();
-      window.addEventListener('resize', handleResize);
-
-      return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
   const toggleCashMode = async () => {
-      if (!canManagerToggleCash) return;
+      if (!isAdmin) return;
       const nextMode: CashMode = cashMode === 'blocked' ? 'trips' : 'blocked';
       setUpdatingCashMode(true);
       try {
@@ -640,11 +624,13 @@ const DriverPortalPage: React.FC = () => {
                         </span>
                        
                        <button
-                            onClick={canManagerToggleCash ? toggleCashMode : undefined}
-                            disabled={!canManagerToggleCash || updatingCashMode}
-                            title={canManagerToggleCash ? 'Toggle cash handling mode for drivers' : 'Cash mode is view only on this device'}
-                            className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-bold transition-all ${cashMode === 'blocked' ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-emerald-50 border-emerald-200 text-emerald-600'} ${canManagerToggleCash ? 'hover:shadow-sm' : 'cursor-default'} ${updatingCashMode ? 'opacity-70' : ''}`}
+                            onClick={isAdmin ? toggleCashMode : undefined}
+                            disabled={!isAdmin || updatingCashMode}
+                            title={isAdmin ? 'Toggle cash handling mode for all drivers' : 'Visible to everyone; only admins can toggle'}
+                            className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-bold transition-all ${cashMode === 'blocked' ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-emerald-50 border-emerald-200 text-emerald-600'} ${isAdmin ? 'hover:shadow-sm' : 'cursor-default'} ${updatingCashMode ? 'opacity-70' : ''}`}
                         >
+                         
+                            
                             {cashMode === 'blocked' ? 'Cash Blocked' : 'Cash Trips'}
                         </button>
                     </p>
@@ -779,21 +765,8 @@ const DriverPortalPage: React.FC = () => {
                                        <h3 className="font-bold text-xl text-white tracking-tight">My Team</h3>
                                        <p className="text-indigo-200 text-xs font-medium mt-1">Managing {myTeam.length} Drivers</p>
                                    </div>
-                                   <div className="flex items-center gap-2">
-                                       {canManagerToggleCash && viewingAsDriver.isManager && (
-                                           <button
-                                               onClick={(e) => { e.stopPropagation(); toggleCashMode(); }}
-                                               disabled={updatingCashMode}
-                                               title={isDesktop ? 'Desktop-only: toggle cash handling for your drivers' : 'Switch to desktop to manage cash mode'}
-                                               className={`hidden lg:flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-bold transition-all ${cashMode === 'blocked' ? 'bg-rose-50 border-rose-200 text-rose-100' : 'bg-emerald-50 border-emerald-200 text-emerald-100'} ${updatingCashMode ? 'opacity-70 cursor-not-allowed' : 'hover:shadow-sm'} shadow-sm shadow-indigo-900/30`}
-                                           >
-                                               <Wallet size={14} />
-                                               {cashMode === 'blocked' ? 'Cash Blocked' : 'Cash Trips'}
-                                           </button>
-                                       )}
-                                       <div className="bg-white/10 p-2.5 rounded-xl backdrop-blur-md border border-white/10">
-                                           <ShieldCheck size={20} className="text-white" />
-                                       </div>
+                                   <div className="bg-white/10 p-2.5 rounded-xl backdrop-blur-md border border-white/10">
+                                       <ShieldCheck size={20} className="text-white" />
                                    </div>
                                </div>
 
