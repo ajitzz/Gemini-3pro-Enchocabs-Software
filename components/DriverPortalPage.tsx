@@ -763,18 +763,19 @@ const DriverPortalPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] font-sans pb-24">
-       {showNetPayoutPopup && netPayoutDetails && (
-           <div
-               className="fixed inset-0 z-50 flex items-center justify-center px-4"
-               onClick={() => setShowNetPayoutPopup(false)}
-           >
-               <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" />
-               <div
-                   className="relative w-full max-w-md sm:max-w-lg h-[70vh] max-h-[90vh] rounded-3xl shadow-2xl border border-slate-100 bg-gradient-to-b from-white via-slate-50 to-white overflow-hidden"
-                   onClick={(e) => e.stopPropagation()}
-               >
-                   <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-indigo-500 via-violet-500 to-fuchsia-500" />
-                   <div className="flex items-start justify-between px-6 py-4 border-b border-slate-100 bg-white/90 backdrop-blur">
+      {showNetPayoutPopup && netPayoutDetails && (
+          <div
+              className="fixed inset-0 z-50 flex items-center justify-center px-4 sm:px-6"
+              onClick={() => setShowNetPayoutPopup(false)}
+          >
+              <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" />
+              <div
+                  className="relative w-full max-w-[430px] sm:max-w-[520px] h-[82vh] max-h-[90vh] rounded-3xl shadow-2xl border border-slate-100 bg-gradient-to-b from-white via-slate-50 to-white overflow-hidden flex flex-col"
+                  onClick={(e) => e.stopPropagation()}
+              >
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(99,102,241,0.08),transparent_35%),radial-gradient(circle_at_80%_0%,rgba(236,72,153,0.08),transparent_30%)] pointer-events-none" />
+                  <div className="flex-shrink-0 flex items-start justify-between px-6 py-4 border-b border-slate-100 bg-white/90 backdrop-blur relative">
+                      <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-indigo-500 via-violet-500 to-fuchsia-500" />
                        <div className="space-y-0.5">
                            <p className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-slate-500">Net Payout Summary</p>
                            <p className="text-base font-black text-slate-900">{netPayoutDetails.rangeLabel}</p>
@@ -788,8 +789,8 @@ const DriverPortalPage: React.FC = () => {
                            <X size={16} />
                        </button>
                    </div>
-                   <div className="absolute inset-0 top-[64px] bottom-0 flex flex-col">
-                       <div className="flex-1 overflow-y-auto px-6 pb-6 pt-4 space-y-4 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
+                  <div className="relative flex-1 overflow-hidden">
+                      <div className="absolute inset-0 overflow-y-auto px-6 pb-6 pt-4 space-y-4 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent overscroll-contain">
                            <div className="space-y-3">
                                {netPayoutDetails.monthly.map(section => (
                                    <div key={section.label} className="border border-slate-100 rounded-2xl p-4 bg-white shadow-sm">
