@@ -308,7 +308,7 @@ const DriverPortalPage: React.FC = () => {
           return entryDate >= startDate && entryDate <= endDate;
        });
 
-       const totalTrips = wallet.trips || 0; 
+       const totalTrips = Number(wallet.trips ?? 0);
        
        const slab = rentalSlabs.find(s => 
            totalTrips >= s.minTrips && (s.maxTrips === null || totalTrips <= s.maxTrips)
@@ -449,7 +449,7 @@ const DriverPortalPage: React.FC = () => {
           if (!w.weekEndDate) return;
           const endD = new Date(w.weekEndDate);
           if (endD.getFullYear() === currentYear && endD.getMonth() === currentMonth) {
-              monthTrips += (w.trips || 0);
+              monthTrips += Number(w.trips ?? 0);
           }
       });
 
@@ -465,7 +465,7 @@ const DriverPortalPage: React.FC = () => {
 
       // Latest Week Details
       const latestWeekly = rawWeekly.length > 0 ? rawWeekly[0] : null;
-      const latestWeekTrips = latestWeekly ? latestWeekly.trips : 0;
+      const latestWeekTrips = latestWeekly ? Number(latestWeekly.trips ?? 0) : 0;
       const latestWeekEarnings = latestWeekly ? latestWeekly.earnings : 0;
 
       return { 
