@@ -269,6 +269,19 @@ export const storageService = {
     await api.post('/system-flags/cash-mode', { value: mode });
   },
 
+  getDriverCashMode: async (driverId: string): Promise<CashMode> => {
+    try {
+      const res = await api.get(`/system-flags/cash-mode-${driverId}`);
+      return res.value === 'blocked' ? 'blocked' : 'trips';
+    } catch (error) {
+      console.error(`Failed to load cash mode for driver ${driverId}:`, error);
+      return 'trips';
+    }
+  },
+  setDriverCashMode: async (driverId: string, mode: CashMode): Promise<void> => {
+    await api.post(`/system-flags/cash-mode-${driverId}`, { value: mode });
+  },
+
   // --- Shifts & Leaves ---
   getDriverShifts: async (): Promise<DriverShiftRecord[]> => api.get('/shifts'),
   saveDriverShift: async (shift: DriverShiftRecord): Promise<DriverShiftRecord> => api.post('/shifts', shift),
