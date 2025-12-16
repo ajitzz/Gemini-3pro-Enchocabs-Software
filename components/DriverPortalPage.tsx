@@ -385,11 +385,11 @@ const DriverPortalPage: React.FC = () => {
               }
           };
       }
-      // BILLING: Net Payout & This Month Total Earnings
+      // BILLING: Week Payout & This Month Total Earnings
       else {
           return {
               left: {
-                  label: 'Net Payout',
+                  label: 'Week Payout',
                   value: balanceSummary.netPayout,
                   subtext: balanceSummary.netRange || (balanceSummary.netPayout < 0 ? 'Payable Amount' : 'Receivable Amount'),
                   range: balanceSummary.netRange,
@@ -488,7 +488,7 @@ const DriverPortalPage: React.FC = () => {
                <div class="st-row"><span class="st-label">Adjustments</span><span class="st-val">${formatCurrency(bill.adjustments)}</span></div>
             </div>
             <div class="net-box">
-               <span class="net-label">NET PAYOUT</span>
+               <span class="net-label">WEEK PAYOUT</span>
                <span class="net-val">${formatCurrency(bill.payout)}</span>
             </div>
             <div class="section-title" style="margin-top: 40px; text-align: left;">Daily Activity Log</div>
@@ -830,7 +830,7 @@ const DriverPortalPage: React.FC = () => {
                           </div>
                           <div className="flex justify-between items-end bg-slate-50 p-3 rounded-xl">
                               <div>
-                                  <p className="text-[10px] text-slate-400 font-bold uppercase">Net Payout</p>
+                                  <p className="text-[10px] text-slate-400 font-bold uppercase">Week Payout</p>
                                   <p className={`text-xl font-bold ${latestBill.payout < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
                                       {formatCurrency(latestBill.payout)}
                                   </p>
@@ -983,7 +983,7 @@ const DriverPortalPage: React.FC = () => {
                                   </div>
 
                                   <div className="flex items-center justify-between pt-4 border-t border-slate-50">
-                                      <p className="text-xs font-bold text-slate-500 uppercase">Net Payout</p>
+                                      <p className="text-xs font-bold text-slate-500 uppercase">Week Payout</p>
                                       <p className={`text-xl font-bold ${bill.payout < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
                                           {formatCurrency(bill.payout)}
                                       </p>
@@ -1046,7 +1046,7 @@ const DriverPortalPage: React.FC = () => {
                                 <div className="flex justify-between"><span className="text-slate-600 font-medium">Adjustments</span><span className="font-bold text-slate-800">{formatCurrency(selectedBill.adjustments)}</span></div>
                             </div>
                             <div className="mt-6 bg-slate-100 p-4 rounded-xl flex justify-between items-center border-l-4 border-slate-800">
-                                <span className="text-sm font-bold text-slate-700 uppercase">Net Payout</span>
+                                <span className="text-sm font-bold text-slate-700 uppercase">Week Payout</span>
                                 <span className="text-2xl font-black text-slate-900">{formatCurrency(selectedBill.payout)}</span>
                             </div>
                         </div>
