@@ -386,7 +386,7 @@ const DriverPortalPage: React.FC = () => {
   }, [driverStats]);
 
   const netPayoutDetails = useMemo(() => {
-      if (!driverStats) return null;
+      if (!driverStats || !viewingAsDriver) return null;
 
       const earliestDate = rawDaily.length > 0
           ? rawDaily.reduce((min, entry) => entry.date < min ? entry.date : min, rawDaily[0].date)
@@ -395,20 +395,84 @@ const DriverPortalPage: React.FC = () => {
           ? rawDaily.reduce((max, entry) => entry.date > max ? entry.date : max, rawDaily[0].date)
           : undefined;
 
+      const now = new Date();
+      const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      const currentMonthEnd = new Date(nextMonthStart.getTime() - 1);
+
+      const isWithinRange = (dateString: string, start: Date, end: Date) => {
+          const date = new Date(dateString);
+          return date >= start && date < end;
+      };
+
+      const thisMonthDaily = rawDaily.filter(d => isWithinRange(d.date, currentMonthStart, nextMonthStart));
+      const previousDaily = rawDaily.filter(d => new Date(d.date) < currentMonthStart);
+
+      const thisMonthWeekly = rawWeekly.filter(w => isWithinRange(w.weekEndDate, currentMonthStart, nextMonthStart));
+      const previousWeekly = rawWeekly.filter(w => new Date(w.weekEndDate) < currentMonthStart);
+
+      const buildBreakdown = (stats: typeof driverStats) => ([
+          { label: 'Total Collection', value: stats.totalCollection, tone: 'positive' as const },
+          { label: 'Vehicle Rent', value: -stats.totalRent, tone: 'negative' as const },
+          { label: 'Fuel', value: -stats.totalFuel, tone: 'negative' as const },
+          { label: 'Dues & Adjustments', value: stats.totalDue, tone: stats.totalDue >= 0 ? 'positive' as const : 'negative' as const },
+          { label: 'Weekly Wallet & Adjustments', value: stats.totalWalletWeek, tone: stats.totalWalletWeek >= 0 ? 'positive' as const : 'negative' as const },
+          { label: 'Direct Payouts Recorded', value: -stats.totalPayout, tone: 'negative' as const }
+      ]);
+
+      const thisMonthStats = storageService.calculateDriverStats(
+          viewingAsDriver.name,
+          thisMonthDaily,
+          thisMonthWeekly,
+          rentalSlabs
+      );
+
+      const previousMonthStats = storageService.calculateDriverStats(
+          viewingAsDriver.name,
+          previousDaily,
+          previousWeekly,
+          rentalSlabs
+      );
+
+      const monthLabel = currentMonthStart.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+      const previousLabel = previousDaily.length === 0 && previousWeekly.length === 0
+          ? 'Previous Months'
+          : `Before ${monthLabel}`;
+
+      const previousEarliest = previousDaily.length > 0
+          ? previousDaily.reduce((min, entry) => entry.date < min ? entry.date : min, previousDaily[0].date)
+          : (previousWeekly.length > 0
+              ? previousWeekly.reduce((min, entry) => entry.weekStartDate < min ? entry.weekStartDate : min, previousWeekly[0].weekStartDate)
+              : undefined);
+
+      const previousLatest = previousDaily.length > 0
+          ? previousDaily.reduce((max, entry) => entry.date > max ? entry.date : max, previousDaily[0].date)
+          : (previousWeekly.length > 0
+              ? previousWeekly.reduce((max, entry) => entry.weekEndDate > max ? entry.weekEndDate : max, previousWeekly[0].weekEndDate)
+              : undefined);
+
       return {
           rangeLabel: driverStats.netPayoutRange || (earliestDate && latestDate ? `${formatDate(earliestDate)} - ${formatDate(latestDate)}` : 'No activity found'),
           source: driverStats.netPayoutSource,
-          breakdown: [
-              { label: 'Total Collection', value: driverStats.totalCollection, tone: 'positive' as const },
-              { label: 'Vehicle Rent', value: -driverStats.totalRent, tone: 'negative' as const },
-              { label: 'Fuel', value: -driverStats.totalFuel, tone: 'negative' as const },
-              { label: 'Dues & Adjustments', value: driverStats.totalDue, tone: driverStats.totalDue >= 0 ? 'positive' as const : 'negative' as const },
-              { label: 'Weekly Wallet & Adjustments', value: driverStats.totalWalletWeek, tone: driverStats.totalWalletWeek >= 0 ? 'positive' as const : 'negative' as const },
-              { label: 'Direct Payouts Recorded', value: -driverStats.totalPayout, tone: 'negative' as const }
+          monthly: [
+              {
+                  label: `${monthLabel} (This Month)`,
+                  range: `${currentMonthStart.toLocaleDateString('en-GB')} - ${currentMonthEnd.toLocaleDateString('en-GB')}`,
+                  breakdown: buildBreakdown(thisMonthStats),
+                  net: thisMonthStats.netPayout
+              },
+              {
+                  label: previousLabel,
+                  range: previousEarliest || previousLatest
+                      ? `${previousEarliest ? formatDate(previousEarliest) : '-'} - ${previousLatest ? formatDate(previousLatest) : '-'}`
+                      : 'No earlier records',
+                  breakdown: buildBreakdown(previousMonthStats),
+                  net: previousMonthStats.netPayout
+              }
           ],
           net: driverStats.netPayout
       };
-  }, [driverStats, rawDaily]);
+  }, [driverStats, rawDaily, rawWeekly, rentalSlabs, viewingAsDriver]);
 
   // --- 3. AGGREGATED STATS (Month/Prev Month/Year) ---
   const aggregatedStats = useMemo(() => {
@@ -723,19 +787,38 @@ const DriverPortalPage: React.FC = () => {
                        </button>
                    </div>
                    <div className="p-6 space-y-4">
-                       <div className="grid grid-cols-2 gap-2">
-                           {netPayoutDetails.breakdown.map(item => (
-                               <div key={item.label} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
-                                   <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">{item.label}</p>
-                                   <p className={`text-sm font-extrabold ${item.tone === 'positive' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                       {formatCurrencyInt(item.value)}
-                                   </p>
+                       <div className="space-y-3">
+                           {netPayoutDetails.monthly.map(section => (
+                               <div key={section.label} className="border border-slate-100 rounded-xl p-4 bg-slate-50/60">
+                                   <div className="flex items-start justify-between gap-2">
+                                       <div>
+                                           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-indigo-500">{section.label}</p>
+                                           <p className="text-[11px] text-slate-500 font-semibold">{section.range}</p>
+                                       </div>
+                                       <div className="text-right">
+                                           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Net Payout</p>
+                                           <p className="text-xl font-black text-slate-800">{formatCurrencyInt(section.net)}</p>
+                                           <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${section.net >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                                               {section.net >= 0 ? 'Receivable' : 'Payable'}
+                                           </span>
+                                       </div>
+                                   </div>
+                                   <div className="grid grid-cols-2 gap-2 mt-3">
+                                       {section.breakdown.map(item => (
+                                           <div key={item.label} className="bg-white rounded-lg p-3 border border-slate-100">
+                                               <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">{item.label}</p>
+                                               <p className={`text-sm font-extrabold ${item.tone === 'positive' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                   {formatCurrencyInt(item.value)}
+                                               </p>
+                                           </div>
+                                       ))}
+                                   </div>
                                </div>
                            ))}
                        </div>
                        <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 flex items-center justify-between">
                            <div>
-                               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-indigo-500">Net Payout</p>
+                               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-indigo-500">Overall Net Payout</p>
                                <p className="text-2xl font-black text-indigo-900">{formatCurrencyInt(netPayoutDetails.net)}</p>
                            </div>
                            <span className={`px-3 py-1 rounded-full text-[11px] font-bold ${netPayoutDetails.net >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
