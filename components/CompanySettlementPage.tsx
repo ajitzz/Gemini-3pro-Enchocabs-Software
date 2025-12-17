@@ -280,16 +280,17 @@ const CompanySettlementPage: React.FC = () => {
           const initialRows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
           let headerRowIndex = -1;
           const colIndices: Record<string, number> = {};
+          const normalizeHeader = (val: string) => val.trim().toLowerCase().replace(/\s+/g, ' ');
 
           // Filter only required fields to check for existence
           const requiredFields = headerMappings.filter(m => m.required);
           
           // Smart Header Detection
           for (let i = 0; i < Math.min(initialRows.length, 20); i++) {
-              const row = initialRows[i].map(cell => String(cell).trim().toLowerCase());
+              const row = initialRows[i].map(cell => normalizeHeader(String(cell)));
               // Check if this row contains most of our configured headers
               const matchCount = requiredFields.reduce((count, mapping) => {
-                  return row.includes(mapping.excelHeader.toLowerCase()) ? count + 1 : count;
+                  return row.includes(normalizeHeader(mapping.excelHeader)) ? count + 1 : count;
               }, 0);
 
               // Threshold: if 50% of required columns match, assume it's the header
@@ -298,7 +299,7 @@ const CompanySettlementPage: React.FC = () => {
                   
                   // Build Map: InternalKey -> Column Index
                   headerMappings.forEach(mapping => {
-                      const idx = row.indexOf(mapping.excelHeader.toLowerCase());
+                      const idx = row.indexOf(normalizeHeader(mapping.excelHeader));
                       colIndices[mapping.internalKey] = idx;
                   });
                   break;
@@ -353,6 +354,9 @@ const CompanySettlementPage: React.FC = () => {
                 // Check if row is empty/invalid
                 const vehicleKey = headerMappings.find(m => m.internalKey === 'vehicleNumber')?.excelHeader || '';
                 if (!r[vehicleKey]) return null;
+
+                const normalizedRow = new Map<string, any>();
+                Object.keys(r).forEach(key => normalizedRow.set(normalizeHeader(key), r[key]));
 
                 const newRow: any = {};
                 headerMappings.forEach(mapping => {
