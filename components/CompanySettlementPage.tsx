@@ -325,7 +325,7 @@ const CompanySettlementPage: React.FC = () => {
           const headerLookup = new Map<string, string>();
           const rawHeaderRow = initialRows[headerRowIndex] || [];
           rawHeaderRow.forEach((cell: any) => {
-              const normalized = normalizeHeader(String(cell));
+              const normalized = String(cell).trim().toLowerCase();
               if (normalized) {
                   headerLookup.set(normalized, String(cell));
               }
@@ -360,11 +360,8 @@ const CompanySettlementPage: React.FC = () => {
 
                 const newRow: any = {};
                 headerMappings.forEach(mapping => {
-                    const normalizedHeader = normalizeHeader(mapping.excelHeader);
-                    const actualHeader = headerLookup.get(normalizedHeader);
-                    const rawVal = (actualHeader && Object.prototype.hasOwnProperty.call(r, actualHeader))
-                        ? r[actualHeader]
-                        : normalizedRow.get(normalizedHeader);
+                    const actualHeader = headerLookup.get(mapping.excelHeader.trim().toLowerCase()) ?? mapping.excelHeader;
+                    const rawVal = r[actualHeader];
                     if (mapping.internalKey === 'vehicleNumber') {
                          newRow[mapping.internalKey] = String(rawVal || '');
                     } else {
