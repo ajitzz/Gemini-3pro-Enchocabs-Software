@@ -320,6 +320,16 @@ const CompanySettlementPage: React.FC = () => {
               return;
           }
 
+          // Build a lookup of normalized header -> actual header to tolerate case/spacing changes
+          const headerLookup = new Map<string, string>();
+          const rawHeaderRow = initialRows[headerRowIndex] || [];
+          rawHeaderRow.forEach((cell: any) => {
+              const normalized = String(cell).trim().toLowerCase();
+              if (normalized) {
+                  headerLookup.set(normalized, String(cell));
+              }
+          });
+
           // --- VALIDATION 1: REQUIRED COLUMNS ---
           const missingCols = requiredFields.filter(m => colIndices[m.internalKey] === undefined || colIndices[m.internalKey] === -1);
           if (missingCols.length > 0) {
@@ -346,7 +356,8 @@ const CompanySettlementPage: React.FC = () => {
 
                 const newRow: any = {};
                 headerMappings.forEach(mapping => {
-                    const rawVal = r[mapping.excelHeader];
+                    const actualHeader = headerLookup.get(mapping.excelHeader.trim().toLowerCase()) ?? mapping.excelHeader;
+                    const rawVal = r[actualHeader];
                     if (mapping.internalKey === 'vehicleNumber') {
                          newRow[mapping.internalKey] = String(rawVal || '');
                     } else {
