@@ -779,7 +779,7 @@ const DriverPortalPage: React.FC = () => {
                        <div className="space-y-0.5">
                            <p className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-slate-500">Net Payout Summary</p>
                            <p className="text-base font-black text-slate-900">{netPayoutDetails.rangeLabel}</p>
-                           <p className="text-[11px] text-slate-400 font-semibold">{netPayoutDetails.source === 'latest-wallet' ? 'Using latest wallet window (closest to zero)' : 'Across all available records'}</p>
+                          <p className="text-[11px] text-slate-400 font-semibold">{netPayoutDetails.source === 'latest-wallet' ? 'Using latest wallet window (lowest balance)' : 'Across all available records'}</p>
                        </div>
                        <button
                            className="p-2 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
