@@ -110,7 +110,7 @@ export interface DriverSummary {
   totalPayout: number;
   totalWalletWeek: number;
   finalTotal: number; // Represents overall net balance from start to end
-  netPayout: number; // Represents the closest payout amount (overall vs latest wallet window)
+  netPayout: number; // Represents the lowest payout amount (overall vs latest wallet window)
   netPayoutSource: 'overall' | 'latest-wallet';
   netPayoutRange?: string;
 }

@@ -200,11 +200,11 @@ const calculateDriverStats = (
     let netPayoutRange: string | undefined;
 
     if (latestWalletEndDate) {
-        // Compare overall balance vs balance up to the latest wallet window; pick the closest to zero
-        const candidate = Math.abs(cutoffTotal) < Math.abs(finalTotal) ? cutoffTotal : finalTotal;
+        // Compare overall balance vs balance up to the latest wallet window; pick the lowest value
+        const candidate = Math.min(cutoffTotal, finalTotal);
         netPayout = candidate;
 
-        if (Math.abs(candidate) === Math.abs(cutoffTotal)) {
+        if (candidate === cutoffTotal) {
             netPayoutSource = 'latest-wallet';
             netPayoutRange = latestWeekRange ?? (latestWallet ? formatWeekRange(latestWallet.weekStartDate, latestWallet.weekEndDate) : undefined);
         }
