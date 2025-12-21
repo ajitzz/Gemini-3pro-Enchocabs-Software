@@ -532,29 +532,6 @@ const DriverPortalPage: React.FC = () => {
       const latestWeekTrips = latestWeekly ? Number(latestWeekly.trips ?? 0) : 0;
       const latestWeekEarnings = latestWeekly ? latestWeekly.earnings : 0;
 
-      const latestWeekRange = latestWeekly
-          ? `${formatDate(latestWeekly.weekStartDate)} - ${formatDate(latestWeekly.weekEndDate)}`
-          : undefined;
-
-      const latestWeekDaysWorked = (() => {
-          if (!latestWeekly) return 0;
-          if (latestWeekly.daysWorkedOverride !== undefined && latestWeekly.daysWorkedOverride !== null) {
-              return latestWeekly.daysWorkedOverride;
-          }
-
-          const start = latestWeekly.weekStartDate;
-          const end = latestWeekly.weekEndDate;
-          const worked = new Set(
-              rawDaily
-                  .filter(d => d.date >= start && d.date <= end)
-                  .map(d => d.date)
-          );
-
-          return worked.size;
-      })();
-
-      const tripsPerDay = latestWeekDaysWorked > 0 ? latestWeekTrips / latestWeekDaysWorked : 0;
-
       return { 
           monthCollection,
           monthRent,
@@ -562,8 +539,6 @@ const DriverPortalPage: React.FC = () => {
           yearCollection,
           latestWeekTrips,
           latestWeekEarnings,
-          latestWeekRange,
-          tripsPerDay,
           monthTrips,
           monthEarningsTotal,
           monthEarningRanges
@@ -573,17 +548,38 @@ const DriverPortalPage: React.FC = () => {
   // --- 4. DYNAMIC CARD DATA ---
   const topCards = useMemo(() => {
       // OVERVIEW: Net Payout & Latest Week Earnings
-      if (activeTab === 'home' || activeTab === 'daily') {
+      if (activeTab === 'home') {
           return {
-              // Use the consolidated card style for Overview & Daily
+              left: {
+                  label: 'Net Payout',
+                  value: balanceSummary.netPayout,
+                  subtext: balanceSummary.netRange || (balanceSummary.netPayout < 0 ? 'Payable Amount' : 'Receivable Amount'),
+                  range: balanceSummary.netRange,
+                  isCurrency: true,
+                  colorClass: 'bg-[#1e1b4b]',
+                  colSpan: 1
+              },
+              right: {
+                  label: 'Total Earnings', // Requested Label
+                  value: aggregatedStats.latestWeekEarnings, // Value: Latest Week Earnings
+                  subtext: `${formatInt(aggregatedStats.latestWeekTrips)} Trips (Latest Week)`,
+                  isCurrency: true,
+                  colorClass: 'bg-white',
+                  colSpan: 1
+              }
+          };
+      } 
+      // DAILY LOG: Single Card with 3 Details
+      else if (activeTab === 'daily') {
+          return {
+              // We'll use a special flag or structure for this consolidated card
               isConsolidated: true,
               data: {
-                  weeklyEarnings: aggregatedStats.latestWeekEarnings,
-                  weeklyRange: aggregatedStats.latestWeekRange,
-                  weeklyTrips: aggregatedStats.latestWeekTrips,
-                  netPayout: balanceSummary.netPayout,
-                  netBalance: balanceSummary.totalWallet,
-                  tripsPerDay: aggregatedStats.tripsPerDay
+                  monthRent: aggregatedStats.monthRent,
+                  monthCollection: aggregatedStats.monthCollection,
+                  totalDues: aggregatedStats.totalDues,
+                  monthEarningsTotal: aggregatedStats.monthEarningsTotal,
+                  monthEarningRanges: aggregatedStats.monthEarningRanges
               }
           };
       }
@@ -922,46 +918,42 @@ const DriverPortalPage: React.FC = () => {
                {/* @ts-ignore */}
                {topCards.isConsolidated ? (
                    <div className="col-span-2 bg-white p-5 rounded-[24px] border border-slate-100 shadow-sm flex flex-col justify-center">
-                       <div className="flex justify-between items-start mb-3 pb-3 border-b border-slate-50 gap-3">
-                           <div>
-                               <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">Weekly Earnings</p>
-                               <p className="text-2xl font-black text-slate-800 leading-tight">
-                                   {/* @ts-ignore */}
-                                   {formatCurrencyInt(topCards.data.weeklyEarnings || 0)}
-                               </p>
-                               <p className="text-[10px] text-slate-400 font-semibold mt-1 leading-tight">
-                                   {/* @ts-ignore */}
-                                   {topCards.data.weeklyRange || 'No weekly data'}
-                               </p>
-                           </div>
+                       <div className="flex justify-between items-center mb-3 pb-3 border-b border-slate-50">
+                           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Month Total Earnings</h3>
                            <div className="text-right">
-                               <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">Trips This Week</p>
-                               <p className="text-base font-bold text-slate-800">
+                               <p className="text-sm font-extrabold text-slate-800 leading-none">
                                    {/* @ts-ignore */}
-                                   {formatInt(topCards.data.weeklyTrips || 0)}
+                                   {formatCurrencyInt(topCards.data.monthEarningsTotal || 0)}
+                               </p>
+                               <p className="text-[9px] text-slate-400 font-semibold mt-1 leading-tight">
+                                   {/* @ts-ignore */}
+                                   {topCards.data.monthEarningRanges?.length
+                                       ? // @ts-ignore
+                                         topCards.data.monthEarningRanges.join(' • ')
+                                       : 'No weekly data'}
                                </p>
                            </div>
                        </div>
                        <div className="grid grid-cols-3 gap-2 text-center divide-x divide-slate-100">
                            <div>
-                               <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">Net Payout</p>
+                               <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">Month Rent</p>
                                <p className="text-base font-bold text-slate-800">
                                    {/* @ts-ignore */}
-                                   {formatCurrencyInt(topCards.data.netPayout)}
+                                   {formatCurrencyInt(topCards.data.monthRent)}
                                </p>
                            </div>
                            <div>
-                               <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">Net Balance</p>
-                               <p className={`text-base font-bold ${/* @ts-ignore */ topCards.data.netBalance >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                               <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">Month Collection</p>
+                               <p className="text-base font-bold text-emerald-600">
                                    {/* @ts-ignore */}
-                                   {formatCurrencyInt(topCards.data.netBalance)}
+                                   {formatCurrencyInt(topCards.data.monthCollection)}
                                </p>
                            </div>
                            <div>
-                               <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">Trips / Day</p>
-                               <p className="text-base font-bold text-indigo-600">
+                               <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">Dues</p>
+                               <p className="text-base font-bold text-rose-500">
                                    {/* @ts-ignore */}
-                                   {topCards.data.tripsPerDay ? topCards.data.tripsPerDay.toFixed(1) : '0.0'}
+                                   {formatCurrencyInt(topCards.data.totalDues)}
                                </p>
                            </div>
                        </div>
