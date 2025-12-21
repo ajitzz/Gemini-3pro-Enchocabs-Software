@@ -5,6 +5,14 @@ import { CompanyWeeklySummary, DailyEntry, WeeklyWallet, RentalSlab, DriverBilli
 import { Calculator, AlertTriangle, CheckCircle, TrendingUp, TrendingDown, DollarSign, Wallet, ShieldCheck, ShieldAlert, Calendar, RefreshCcw, ArrowRight, Filter, ChevronRight, History, Layers, ChevronDown } from 'lucide-react';
 
 // --- Types for Internal Calculations ---
+interface DriverPendingEntry {
+  driver: string;
+  qrCode: string;
+  pending: number;
+  status: DriverBillingRecord['status'];
+  weekLabel: string;
+}
+
 interface ProcessedWeek {
   id: string;
   startDate: string;
@@ -22,6 +30,8 @@ interface ProcessedWeek {
   driversWalletAdjusted: number;
   totalCharges: number;
   totalRent: number;
+  driverPendingTotal: number;
+  driverPendingBreakdown: DriverPendingEntry[];
   
   // Results
   profitLoss: number;
@@ -41,6 +51,7 @@ const RevenuePage: React.FC = () => {
   const [weeklyWallets, setWeeklyWallets] = useState<WeeklyWallet[]>([]);
   const [rentalSlabs, setRentalSlabs] = useState<RentalSlab[]>([]);
   const [driverBillings, setDriverBillings] = useState<DriverBillingRecord[]>([]);
+  const [pendingFilter, setPendingFilter] = useState('');
 
   // Selection State
   const [selectionMode, setSelectionMode] = useState<'SINGLE' | 'RANGE'>('SINGLE');
@@ -140,6 +151,8 @@ const RevenuePage: React.FC = () => {
       let driversPayments = 0; // Total Rent Collected (Revenue)
       let driversWalletRaw = 0; // Total Wallet Payouts + Adjustments (Expense)
       let driversPaymentsFromStats = 0;
+      let driverPendingTotal = 0;
+      let driverPendingBreakdown: DriverPendingEntry[] = [];
 
       // Use centralized service logic to ensure consistency with Billing History overrides
       // If a wallet exists in 'relevantWallets', calculateDriverStats will use it (Overrides/Adjustments).
@@ -159,6 +172,16 @@ const RevenuePage: React.FC = () => {
       // Override revenue with billing history when available to match Driver Billings totals
       if (relevantBillings.length > 0) {
           driversPayments = relevantBillings.reduce((sum, bill) => sum + (bill.rentTotal || 0), 0);
+          driverPendingBreakdown = relevantBillings
+            .filter(b => (b.payout || 0) < 0)
+            .map(b => ({
+              driver: b.driverName,
+              qrCode: b.qrCode,
+              pending: Math.abs(b.payout || 0),
+              status: b.status,
+              weekLabel: `${formatDate(b.weekStartDate)} - ${formatDate(b.weekEndDate)}`
+            }));
+          driverPendingTotal = driverPendingBreakdown.reduce((sum, p) => sum + p.pending, 0);
       } else {
           driversPayments = driversPaymentsFromStats;
       }
@@ -195,6 +218,8 @@ const RevenuePage: React.FC = () => {
         driversWalletAdjusted,
         totalCharges,
         totalRent,
+        driverPendingTotal,
+        driverPendingBreakdown,
         profitLoss,
         hasSettlementIssue,
         isWalletSafe,
@@ -236,7 +261,8 @@ const RevenuePage: React.FC = () => {
         driversWalletAdjusted: acc.driversWalletAdjusted + week.driversWalletAdjusted,
         totalRent: acc.totalRent + week.totalRent,
         fraudCheckDiff: acc.fraudCheckDiff + week.fraudCheckDiff,
-        profitLoss: acc.profitLoss + week.profitLoss
+        profitLoss: acc.profitLoss + week.profitLoss,
+        driverPendingTotal: acc.driverPendingTotal + week.driverPendingTotal
     }), {
         vehicleRent: 0,
         companyWallet: 0,
@@ -247,12 +273,13 @@ const RevenuePage: React.FC = () => {
         driversWalletAdjusted: 0,
         totalRent: 0,
         fraudCheckDiff: 0,
-        profitLoss: 0
+        profitLoss: 0,
+        driverPendingTotal: 0
     });
     
     const weeksCount = activeWeeks.length;
     const totalRoomRent = ROOM_RENT_PER_WEEK * weeksCount;
-    
+
     const strictProfit = base.driversPayments - base.driversWalletRaw - base.currentOs - totalRoomRent;
 
     return {
@@ -263,6 +290,29 @@ const RevenuePage: React.FC = () => {
         isWalletSafe: Math.abs(base.fraudCheckDiff) < (100 * weeksCount)
     };
   }, [activeWeeks]);
+
+  const pendingEntries = useMemo(() => {
+    return activeWeeks.flatMap(week =>
+      week.driverPendingBreakdown.map(entry => ({
+        ...entry,
+        weekId: week.id
+      }))
+    );
+  }, [activeWeeks]);
+
+  const filteredPendingEntries = useMemo(() => {
+    if (!pendingFilter.trim()) return pendingEntries;
+    const search = pendingFilter.toLowerCase();
+    return pendingEntries.filter(entry =>
+      entry.driver.toLowerCase().includes(search) ||
+      entry.qrCode.toLowerCase().includes(search) ||
+      entry.weekLabel.toLowerCase().includes(search)
+    );
+  }, [pendingEntries, pendingFilter]);
+
+  const totalFilteredPending = useMemo(() => {
+    return filteredPendingEntries.reduce((sum, entry) => sum + entry.pending, 0);
+  }, [filteredPendingEntries]);
 
   // --- HANDLERS ---
   const handleReset = () => {
@@ -362,7 +412,7 @@ const RevenuePage: React.FC = () => {
               
               {/* 1. AGGREGATED HERO CARDS */}
               {consolidatedStats && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden group">
                         <div className="absolute right-0 top-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
                            <DollarSign size={80} />
@@ -370,7 +420,18 @@ const RevenuePage: React.FC = () => {
                         <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Total Revenue</p>
                         <h3 className="text-2xl font-bold text-slate-800 mt-1">{formatCurrency(consolidatedStats.driversPayments)}</h3>
                         <p className="text-xs text-emerald-600 font-medium mt-2 flex items-center gap-1">
-                           <TrendingUp size={12} /> Driver Collections
+                           <TrendingUp size={12} /> Rent total from Driver Billings
+                        </p>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden group">
+                        <div className="absolute right-0 top-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                           <AlertTriangle size={80} />
+                        </div>
+                        <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Drivers Pending</p>
+                        <h3 className="text-2xl font-bold text-slate-800 mt-1">{formatCurrency(consolidatedStats.driverPendingTotal)}</h3>
+                        <p className="text-xs text-amber-600 font-medium mt-2 flex items-center gap-1">
+                           <TrendingDown size={12} /> Amount drivers need to pay this selection
                         </p>
                     </div>
 
@@ -411,8 +472,8 @@ const RevenuePage: React.FC = () => {
                  </div>
 
                  {/* Consolidated / Active Card */}
-                 {consolidatedStats ? (
-                   <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                {consolidatedStats ? (
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                       {/* Card Header */}
                       <div className="bg-slate-50/50 px-6 py-5 border-b border-slate-100 flex justify-between items-center">
                          <div className="flex items-center gap-3">
@@ -536,10 +597,68 @@ const RevenuePage: React.FC = () => {
                             </div>
                          </div>
                       </div>
+                  </div>
+                ) : (
+                   <div className="text-center py-12 bg-white rounded-xl border border-slate-200 border-dashed text-slate-400">
+                      No data selected.
                    </div>
-                 ) : (
-                    <div className="text-center py-12 bg-white rounded-xl border border-slate-200 border-dashed text-slate-400">
-                       No data selected.
+                )}
+
+                 {/* Drivers Pending Panel */}
+                 {consolidatedStats && (
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                       <div className="px-6 py-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                          <div>
+                             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Driver Pending (This Selection)</p>
+                             <h4 className="text-xl font-bold text-slate-800">{formatCurrency(consolidatedStats.driverPendingTotal)}</h4>
+                             <p className="text-xs text-slate-500 mt-1">Total amount drivers need to settle for the selected week(s).</p>
+                          </div>
+                          <div className="flex items-center gap-3 w-full md:w-auto">
+                             <div className="relative flex-1 md:flex-none">
+                                <input
+                                   value={pendingFilter}
+                                   onChange={e => setPendingFilter(e.target.value)}
+                                   placeholder="Filter by driver, QR or week"
+                                   className="w-full md:w-64 px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-sm"
+                                />
+                                <Filter size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300" />
+                             </div>
+                             <div className="px-3 py-2 rounded-lg bg-amber-50 text-amber-700 text-xs font-semibold border border-amber-100">
+                                {filteredPendingEntries.length} pending driver{filteredPendingEntries.length !== 1 ? 's' : ''}
+                             </div>
+                          </div>
+                       </div>
+
+                       <div className="divide-y divide-slate-100">
+                          {filteredPendingEntries.length === 0 && (
+                             <div className="p-6 text-slate-400 text-sm text-center">No pending driver payments for the selected filters.</div>
+                          )}
+
+                          {filteredPendingEntries.length > 0 && (
+                             <>
+                                {filteredPendingEntries.map(entry => (
+                                   <div key={`${entry.weekId}-${entry.qrCode}`} className="px-6 py-4 flex items-center justify-between gap-4">
+                                      <div className="flex items-center gap-4">
+                                         <div className="p-2 rounded-lg bg-slate-100 text-slate-500 font-mono text-xs">{entry.qrCode}</div>
+                                         <div>
+                                            <p className="text-sm font-bold text-slate-800">{entry.driver}</p>
+                                            <p className="text-[11px] uppercase tracking-wider text-slate-400">{entry.weekLabel}</p>
+                                         </div>
+                                      </div>
+                                      <div className="text-right">
+                                         <div className="text-base font-bold text-amber-700">{formatCurrency(entry.pending)}</div>
+                                         <div className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">{entry.status}</div>
+                                      </div>
+                                   </div>
+                                ))}
+
+                                <div className="bg-slate-50 px-6 py-4 flex items-center justify-between text-sm font-bold text-slate-700">
+                                   <span>Total pending (filtered)</span>
+                                   <span>{formatCurrency(totalFilteredPending)}</span>
+                                </div>
+                             </>
+                          )}
+                       </div>
                     </div>
                  )}
 
@@ -552,9 +671,9 @@ const RevenuePage: React.FC = () => {
                              <div key={week.id} className="bg-white px-6 py-4 rounded-xl border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
                                 <div className="flex items-center gap-4">
                                    <div className="bg-slate-100 p-2 rounded-lg text-slate-500"><Calendar size={16}/></div>
-                                   <div>
+                                      <div>
                                       <p className="text-sm font-bold text-slate-800">{week.label}</p>
-                                      <p className="text-xs text-slate-400">Rev: {formatCurrency(week.driversPayments)} • Exp: {formatCurrency(week.currentOs + week.driversWalletRaw + ROOM_RENT_PER_WEEK)}</p>
+                                      <p className="text-xs text-slate-400">Rev: {formatCurrency(week.driversPayments)} • Exp: {formatCurrency(week.currentOs + week.driversWalletRaw + ROOM_RENT_PER_WEEK)} • Pending: {formatCurrency(week.driverPendingTotal)}</p>
                                    </div>
                                 </div>
                                 <div className={`text-sm font-bold px-3 py-1 rounded-lg ${week.profitLoss >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
