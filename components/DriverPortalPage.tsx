@@ -475,137 +475,183 @@ const DriverPortalPage: React.FC = () => {
   }, [driverStats, rawDaily, rawWeekly, rentalSlabs, viewingAsDriver]);
 
   // --- 3. AGGREGATED STATS (Month/Prev Month/Year) ---
-  const aggregatedStats = useMemo(() => {
-      const now = new Date();
-      const currentMonth = now.getMonth();
-      const currentYear = now.getFullYear();
+    const aggregatedStats = useMemo(() => {
+        if (rawDaily.length === 0 && rawWeekly.length === 0) {
+            return {
+                monthCollection: 0,
+                monthRent: 0,
+                totalDues: 0,
+                yearCollection: 0,
+                latestWeekTrips: 0,
+                latestWeekEarnings: 0,
+                monthTrips: 0,
+                monthEarningsTotal: 0,
+                monthEarningRanges: [] as string[],
+                latestWeekRange: undefined as string | undefined,
+            };
+        }
 
-      const monthStart = new Date(currentYear, currentMonth, 1);
-      const monthEnd = new Date(currentYear, currentMonth + 1, 0);
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
 
-      let monthCollection = 0;
-      let monthRent = 0;
-      let totalDues = 0;
-      let yearCollection = 0;
-      let monthTrips = 0;
+        const monthStart = new Date(currentYear, currentMonth, 1);
+        const monthEnd = new Date(currentYear, currentMonth + 1, 0);
 
-      rawDaily.forEach(entry => {
-          const d = new Date(entry.date);
-          const eYear = d.getFullYear();
-          const eMonth = d.getMonth();
+        let monthCollection = 0;
+        let monthRent = 0;
+        let totalDues = 0;
+        let yearCollection = 0;
+        let monthTrips = 0;
 
-          totalDues += entry.due;
+        rawDaily.forEach(entry => {
+            const d = new Date(entry.date);
+            const eYear = d.getFullYear();
+            const eMonth = d.getMonth();
 
-          // Current Year
-          if (eYear === currentYear) {
-              yearCollection += entry.collection;
-              // Current Month
-              if (eMonth === currentMonth) {
-                  monthCollection += entry.collection;
-                  monthRent += entry.rent;
-              }
-          }
-          
-      });
+            totalDues += entry.due;
 
-      // Calculate Month Trips from Weekly Data (as Daily doesn't store trips explicitly)
-      rawWeekly.forEach(w => {
-          if (!w.weekEndDate) return;
-          const endD = new Date(w.weekEndDate);
-          if (endD.getFullYear() === currentYear && endD.getMonth() === currentMonth) {
-              monthTrips += Number(w.trips ?? 0);
-          }
-      });
+            // Current Year
+            if (eYear === currentYear) {
+                yearCollection += entry.collection;
+                // Current Month
+                if (eMonth === currentMonth) {
+                    monthCollection += entry.collection;
+                    monthRent += entry.rent;
+                }
+            }
 
-      const currentMonthWeeks = rawWeekly.filter(w => {
-          const startD = new Date(w.weekStartDate);
-          const endD = new Date(w.weekEndDate);
+        });
 
-          return startD <= monthEnd && endD >= monthStart;
-      });
+        // Calculate Month Trips from Weekly Data (as Daily doesn't store trips explicitly)
+        rawWeekly.forEach(w => {
+            if (!w.weekEndDate) return;
+            const endD = new Date(w.weekEndDate);
+            if (endD.getFullYear() === currentYear && endD.getMonth() === currentMonth) {
+                monthTrips += Number(w.trips ?? 0);
+            }
+        });
 
-      const monthEarningsTotal = currentMonthWeeks.reduce((sum, w) => sum + (w.earnings || 0), 0);
-      const monthEarningRanges = currentMonthWeeks.map(w => `${formatDate(w.weekStartDate)} - ${formatDate(w.weekEndDate)}`);
+        const currentMonthWeeks = rawWeekly.filter(w => {
+            const startD = new Date(w.weekStartDate);
+            const endD = new Date(w.weekEndDate);
 
-      // Latest Week Details
-      const latestWeekly = rawWeekly.length > 0 ? rawWeekly[0] : null;
-      const latestWeekTrips = latestWeekly ? Number(latestWeekly.trips ?? 0) : 0;
-      const latestWeekEarnings = latestWeekly ? latestWeekly.earnings : 0;
+            return startD <= monthEnd && endD >= monthStart;
+        });
 
-      return { 
-          monthCollection,
-          monthRent,
-          totalDues,
-          yearCollection,
-          latestWeekTrips,
-          latestWeekEarnings,
-          monthTrips,
-          monthEarningsTotal,
-          monthEarningRanges
-      };
-  }, [rawDaily, rawWeekly]);
+        const monthEarningsTotal = currentMonthWeeks.reduce((sum, w) => sum + (w.earnings || 0), 0);
+        const monthEarningRanges = currentMonthWeeks.map(w => `${formatDate(w.weekStartDate)} - ${formatDate(w.weekEndDate)}`);
+
+        // Latest Week Details
+        const latestWeekly = rawWeekly.length > 0 ? rawWeekly[0] : null;
+        const latestWeekTrips = latestWeekly ? Number(latestWeekly.trips ?? 0) : 0;
+        const latestWeekEarnings = latestWeekly ? latestWeekly.earnings : 0;
+        const latestWeekRange = latestWeekly
+            ? `${formatDate(latestWeekly.weekStartDate)} - ${formatDate(latestWeekly.weekEndDate)}`
+            : undefined;
+
+        return {
+            monthCollection,
+            monthRent,
+            totalDues,
+            yearCollection,
+            latestWeekTrips,
+            latestWeekEarnings,
+            monthTrips,
+            monthEarningsTotal,
+            monthEarningRanges,
+            latestWeekRange
+        };
+    }, [rawDaily, rawWeekly]);
 
   // --- 4. DYNAMIC CARD DATA ---
-  const topCards = useMemo(() => {
-      // OVERVIEW: Net Payout & Latest Week Earnings
-      if (activeTab === 'home') {
-          return {
-              left: {
-                  label: 'Net Payout',
-                  value: balanceSummary.netPayout,
-                  subtext: balanceSummary.netRange || (balanceSummary.netPayout < 0 ? 'Payable Amount' : 'Receivable Amount'),
-                  range: balanceSummary.netRange,
-                  isCurrency: true,
-                  colorClass: 'bg-[#1e1b4b]',
-                  colSpan: 1
-              },
-              right: {
-                  label: 'Total Earnings', // Requested Label
-                  value: aggregatedStats.latestWeekEarnings, // Value: Latest Week Earnings
-                  subtext: `${formatInt(aggregatedStats.latestWeekTrips)} Trips (Latest Week)`,
-                  isCurrency: true,
-                  colorClass: 'bg-white',
-                  colSpan: 1
-              }
-          };
-      } 
-      // DAILY LOG: Single Card with 3 Details
-      else if (activeTab === 'daily') {
-          return {
-              // We'll use a special flag or structure for this consolidated card
-              isConsolidated: true,
-              data: {
-                  monthRent: aggregatedStats.monthRent,
-                  monthCollection: aggregatedStats.monthCollection,
-                  totalDues: aggregatedStats.totalDues,
-                  monthEarningsTotal: aggregatedStats.monthEarningsTotal,
-                  monthEarningRanges: aggregatedStats.monthEarningRanges
-              }
-          };
-      }
-      // BILLING: Week Payout & This Month Total Earnings
-      else {
-          return {
-              left: {
-                  label: 'Week Payout',
-                  value: balanceSummary.netPayout,
-                  subtext: balanceSummary.netRange || (balanceSummary.netPayout < 0 ? 'Payable Amount' : 'Receivable Amount'),
-                  range: balanceSummary.netRange,
-                  isCurrency: true,
-                  colorClass: 'bg-[#1e1b4b]',
-                  colSpan: 1
-              },
-              right: {
-                  label: "This Month's Earnings",
-                  value: aggregatedStats.monthEarningsTotal, // Value: This Month Collection (weekly rollup)
-                  subtext: `${formatInt(aggregatedStats.monthTrips)} Trips (This Month)`,
-                  isCurrency: true,
-                  colorClass: 'bg-white',
-                  colSpan: 1
-              }
-          };
-      }
-  }, [activeTab, balanceSummary, aggregatedStats]);
+    const topCards = useMemo(() => {
+        const latestBill = billingData[0];
+        const netBalance = driverStats?.finalTotal ?? 0;
+
+        // OVERVIEW: Weekly snapshot with consolidated style
+        if (activeTab === 'home') {
+            return {
+                isConsolidated: true,
+                data: {
+                    headerLabel: 'Weekly Earnings',
+                    headerValue: aggregatedStats.latestWeekEarnings,
+                    headerSubtext: aggregatedStats.latestWeekRange || 'No weekly data',
+                    headerBadge: aggregatedStats.latestWeekTrips ? `${formatInt(aggregatedStats.latestWeekTrips)} Trips` : undefined,
+                    stats: [
+                        {
+                            label: 'Net Payout',
+                            value: balanceSummary.netPayout,
+                            colorClass: 'text-slate-800'
+                        },
+                        {
+                            label: 'Net Balance',
+                            value: netBalance,
+                            colorClass: netBalance >= 0 ? 'text-emerald-600' : 'text-rose-500'
+                        },
+                        {
+                            label: 'Trip/Day Rent',
+                            value: latestBill?.rentPerDay || 0,
+                            colorClass: 'text-amber-600'
+                        }
+                    ]
+                }
+            };
+        }
+        // DAILY LOG: Single Card with 3 Details
+        else if (activeTab === 'daily') {
+            return {
+                // We'll use a special flag or structure for this consolidated card
+                isConsolidated: true,
+                data: {
+                    headerLabel: 'Month Total Earnings',
+                    headerValue: aggregatedStats.monthEarningsTotal,
+                    headerSubtext: aggregatedStats.monthEarningRanges?.length
+                        ? aggregatedStats.monthEarningRanges.join(' • ')
+                        : 'No weekly data',
+                    stats: [
+                        {
+                            label: 'Month Rent',
+                            value: aggregatedStats.monthRent,
+                            colorClass: 'text-slate-800'
+                        },
+                        {
+                            label: 'Month Collection',
+                            value: aggregatedStats.monthCollection,
+                            colorClass: 'text-emerald-600'
+                        },
+                        {
+                            label: 'Dues',
+                            value: aggregatedStats.totalDues,
+                            colorClass: 'text-rose-500'
+                        }
+                    ]
+                }
+            };
+        }
+        // BILLING: Week Payout & This Month Total Earnings
+        else {
+            return {
+                left: {
+                    label: 'Week Payout',
+                    value: balanceSummary.netPayout,
+                    subtext: balanceSummary.netRange || (balanceSummary.netPayout < 0 ? 'Payable Amount' : 'Receivable Amount'),
+                    range: balanceSummary.netRange,
+                    isCurrency: true,
+                    colorClass: 'bg-[#1e1b4b]',
+                    colSpan: 1
+                },
+                right: {
+                    label: "This Month's Earnings",
+                    value: aggregatedStats.monthEarningsTotal, // Value: This Month Collection (weekly rollup)
+                    subtext: `${formatInt(aggregatedStats.monthTrips)} Trips (This Month)`,
+                    isCurrency: true,
+                    colorClass: 'bg-white',
+                    colSpan: 1
+                }
+            };
+        }
+    }, [activeTab, aggregatedStats, balanceSummary, billingData, driverStats]);
 
 
   // --- BILL HTML GENERATOR (unchanged) ---
@@ -919,43 +965,37 @@ const DriverPortalPage: React.FC = () => {
                {topCards.isConsolidated ? (
                    <div className="col-span-2 bg-white p-5 rounded-[24px] border border-slate-100 shadow-sm flex flex-col justify-center">
                        <div className="flex justify-between items-center mb-3 pb-3 border-b border-slate-50">
-                           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Month Total Earnings</h3>
+                           <div>
+                               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                                   {/* @ts-ignore */}
+                                   {topCards.data.headerLabel}
+                               </h3>
+                           </div>
                            <div className="text-right">
                                <p className="text-sm font-extrabold text-slate-800 leading-none">
                                    {/* @ts-ignore */}
-                                   {formatCurrencyInt(topCards.data.monthEarningsTotal || 0)}
+                                   {formatCurrencyInt(topCards.data.headerValue || 0)}
                                </p>
                                <p className="text-[9px] text-slate-400 font-semibold mt-1 leading-tight">
                                    {/* @ts-ignore */}
-                                   {topCards.data.monthEarningRanges?.length
-                                       ? // @ts-ignore
-                                         topCards.data.monthEarningRanges.join(' • ')
-                                       : 'No weekly data'}
+                                   {topCards.data.headerSubtext || 'No data available'}
                                </p>
+                               {/* @ts-ignore */}
+                               {topCards.data.headerBadge && (
+                                   <p className="text-[9px] text-indigo-600 font-bold mt-1 leading-tight">{topCards.data.headerBadge}</p>
+                               )}
                            </div>
                        </div>
                        <div className="grid grid-cols-3 gap-2 text-center divide-x divide-slate-100">
-                           <div>
-                               <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">Month Rent</p>
-                               <p className="text-base font-bold text-slate-800">
-                                   {/* @ts-ignore */}
-                                   {formatCurrencyInt(topCards.data.monthRent)}
-                               </p>
-                           </div>
-                           <div>
-                               <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">Month Collection</p>
-                               <p className="text-base font-bold text-emerald-600">
-                                   {/* @ts-ignore */}
-                                   {formatCurrencyInt(topCards.data.monthCollection)}
-                               </p>
-                           </div>
-                           <div>
-                               <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">Dues</p>
-                               <p className="text-base font-bold text-rose-500">
-                                   {/* @ts-ignore */}
-                                   {formatCurrencyInt(topCards.data.totalDues)}
-                               </p>
-                           </div>
+                           {/* @ts-ignore */}
+                           {topCards.data.stats?.map((stat: any) => (
+                               <div key={stat.label}>
+                                   <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">{stat.label}</p>
+                                   <p className={`text-base font-bold ${stat.colorClass || 'text-slate-800'}`}>
+                                       {typeof stat.value === 'number' ? formatCurrencyInt(stat.value) : stat.value}
+                                   </p>
+                               </div>
+                           ))}
                        </div>
                    </div>
                ) : (
