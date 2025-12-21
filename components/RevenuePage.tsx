@@ -52,6 +52,7 @@ const RevenuePage: React.FC = () => {
   const [rentalSlabs, setRentalSlabs] = useState<RentalSlab[]>([]);
   const [driverBillings, setDriverBillings] = useState<DriverBillingRecord[]>([]);
   const [pendingFilter, setPendingFilter] = useState('');
+  const [openCardKey, setOpenCardKey] = useState<string | null>(null);
 
   // Selection State
   const [selectionMode, setSelectionMode] = useState<'SINGLE' | 'RANGE'>('SINGLE');
@@ -322,6 +323,10 @@ const RevenuePage: React.FC = () => {
     }
   };
 
+  const toggleCardDetails = (key: string) => {
+    setOpenCardKey(prev => (prev === key ? null : key));
+  };
+
   const handleApplyRange = () => {
     setSelectionMode('RANGE');
   };
@@ -413,7 +418,13 @@ const RevenuePage: React.FC = () => {
               {/* 1. AGGREGATED HERO CARDS */}
               {consolidatedStats && (
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden group">
+                    <div
+                      className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden group cursor-pointer"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => toggleCardDetails('revenue')}
+                      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && toggleCardDetails('revenue')}
+                    >
                         <div className="absolute right-0 top-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
                            <DollarSign size={80} />
                         </div>
@@ -422,9 +433,20 @@ const RevenuePage: React.FC = () => {
                         <p className="text-xs text-emerald-600 font-medium mt-2 flex items-center gap-1">
                            <TrendingUp size={12} /> Rent total from Driver Billings
                         </p>
+                        {openCardKey === 'revenue' && (
+                          <div className="mt-3 p-3 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-700 text-xs leading-relaxed">
+                            Revenue = Sum of rent totals from driver billings for the selected period.
+                          </div>
+                        )}
                     </div>
 
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden group">
+                    <div
+                      className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden group cursor-pointer"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => toggleCardDetails('pending')}
+                      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && toggleCardDetails('pending')}
+                    >
                         <div className="absolute right-0 top-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
                            <AlertTriangle size={80} />
                         </div>
@@ -433,9 +455,20 @@ const RevenuePage: React.FC = () => {
                         <p className="text-xs text-amber-600 font-medium mt-2 flex items-center gap-1">
                            <TrendingDown size={12} /> Amount drivers need to pay this selection
                         </p>
+                        {openCardKey === 'pending' && (
+                          <div className="mt-3 p-3 rounded-xl bg-amber-50 border border-amber-100 text-amber-700 text-xs leading-relaxed">
+                            Drivers Pending = Sum of negative payouts from the billing history for this range.
+                          </div>
+                        )}
                     </div>
 
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden group">
+                    <div
+                      className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden group cursor-pointer"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => toggleCardDetails('expenses')}
+                      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && toggleCardDetails('expenses')}
+                    >
                         <div className="absolute right-0 top-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
                            <Wallet size={80} />
                         </div>
@@ -446,9 +479,20 @@ const RevenuePage: React.FC = () => {
                         <p className="text-xs text-rose-500 font-medium mt-2 flex items-center gap-1">
                            <TrendingDown size={12} /> Outflows + O/S + Rent
                         </p>
+                        {openCardKey === 'expenses' && (
+                          <div className="mt-3 p-3 rounded-xl bg-rose-50 border border-rose-100 text-rose-700 text-xs leading-relaxed">
+                            Total Expenses = Current O/S + Driver Wallet (with adjustments) + Room Rent for all selected weeks.
+                          </div>
+                        )}
                     </div>
 
-                    <div className={`p-6 rounded-2xl shadow-sm border relative overflow-hidden group text-white ${consolidatedStats.strictProfit >= 0 ? 'bg-slate-900 border-slate-800' : 'bg-rose-600 border-rose-700'}`}>
+                    <div
+                      className={`p-6 rounded-2xl shadow-sm border relative overflow-hidden group text-white cursor-pointer ${consolidatedStats.strictProfit >= 0 ? 'bg-slate-900 border-slate-800' : 'bg-rose-600 border-rose-700'}`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => toggleCardDetails('profit')}
+                      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && toggleCardDetails('profit')}
+                    >
                         <div className="absolute right-0 top-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
                            {consolidatedStats.strictProfit >= 0 ? <TrendingUp size={80} /> : <TrendingDown size={80} />}
                         </div>
@@ -457,6 +501,11 @@ const RevenuePage: React.FC = () => {
                         <p className="text-xs text-white/80 font-medium mt-2">
                            {consolidatedStats.weeksCount} Week{consolidatedStats.weeksCount > 1 ? 's' : ''} Selected
                         </p>
+                        {openCardKey === 'profit' && (
+                          <div className="mt-3 p-3 rounded-xl bg-white/10 border border-white/20 text-white text-xs leading-relaxed">
+                            Net Profit / Loss = Revenue - Driver Wallet - Current O/S - Room Rent across the selected weeks.
+                          </div>
+                        )}
                     </div>
                 </div>
               )}

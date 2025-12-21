@@ -259,7 +259,7 @@ const DriverBillingsPage: React.FC = () => {
   ));
 
   const billingTotals = useMemo(() => {
-      return displayedBills.reduce((acc, bill) => {
+      const totals = displayedBills.reduce((acc, bill) => {
           acc.daysWorked += bill.daysWorked || 0;
           acc.trips += bill.trips || 0;
           acc.rentTotal += bill.rentTotal || 0;
@@ -283,6 +283,19 @@ const DriverBillingsPage: React.FC = () => {
           adjustments: 0,
           payout: 0
       });
+
+      return {
+          daysWorked: Math.round(totals.daysWorked),
+          trips: Math.round(totals.trips),
+          rentTotal: Math.round(totals.rentTotal),
+          collection: Math.round(totals.collection),
+          due: Math.round(totals.due),
+          fuel: Math.round(totals.fuel),
+          wallet: Math.round(totals.wallet),
+          walletOverdue: Math.round(totals.walletOverdue),
+          adjustments: Math.round(totals.adjustments),
+          payout: Math.round(totals.payout)
+      };
   }, [displayedBills]);
 
   const goToPreviousWeek = () => { if (currentWeekIndex !== -1 && currentWeekIndex < availableWeeks.length - 1) setCurrentWeekIndex(prev => prev + 1); };
