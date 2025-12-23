@@ -476,7 +476,7 @@ const DriverPortalPage: React.FC = () => {
 
   // --- 3. AGGREGATED STATS (Month/Prev Month/Year) ---
     const aggregatedStats = useMemo(() => {
-        if (rawDaily.length === 0 && rawWeekly.length === 0) {
+        if (!viewingAsDriver || (rawDaily.length === 0 && rawWeekly.length === 0)) {
             return {
                 monthCollection: 0,
                 monthRent: 0,
@@ -488,6 +488,7 @@ const DriverPortalPage: React.FC = () => {
                 monthEarningsTotal: 0,
                 monthEarningRanges: [] as string[],
                 latestWeekRange: undefined as string | undefined,
+                monthNetPayout: 0,
             };
         }
 
@@ -542,6 +543,24 @@ const DriverPortalPage: React.FC = () => {
         const monthEarningsTotal = currentMonthWeeks.reduce((sum, w) => sum + (w.earnings || 0), 0);
         const monthEarningRanges = currentMonthWeeks.map(w => `${formatDate(w.weekStartDate)} - ${formatDate(w.weekEndDate)}`);
 
+        const monthDaily = rawDaily.filter(entry => {
+            const d = new Date(entry.date);
+            return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
+        });
+
+        const monthWeekly = rawWeekly.filter(w => {
+            const startD = new Date(w.weekStartDate);
+            const endD = new Date(w.weekEndDate);
+            return startD <= monthEnd && endD >= monthStart;
+        });
+
+        const monthStats = storageService.calculateDriverStats(
+            viewingAsDriver.name,
+            monthDaily,
+            monthWeekly,
+            rentalSlabs
+        );
+
         // Latest Week Details
         const latestWeekly = rawWeekly.length > 0 ? rawWeekly[0] : null;
         const latestWeekTrips = latestWeekly ? Number(latestWeekly.trips ?? 0) : 0;
@@ -560,9 +579,10 @@ const DriverPortalPage: React.FC = () => {
             monthTrips,
             monthEarningsTotal,
             monthEarningRanges,
-            latestWeekRange
+            latestWeekRange,
+            monthNetPayout: monthStats.netPayout,
         };
-    }, [rawDaily, rawWeekly]);
+    }, [rawDaily, rawWeekly, rentalSlabs, viewingAsDriver]);
 
   // --- 4. DYNAMIC CARD DATA ---
     const topCards = useMemo(() => {
@@ -963,35 +983,38 @@ const DriverPortalPage: React.FC = () => {
                {/* Check if consolidated card (Daily Log Tab Special) */}
                {/* @ts-ignore */}
                {topCards.isConsolidated ? (
-                   <div className="col-span-2 bg-white p-5 rounded-[24px] border border-slate-100 shadow-sm flex flex-col justify-center">
-                       <div className="flex justify-between items-center mb-3 pb-3 border-b border-slate-50">
-                           <div>
-                               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                                   {/* @ts-ignore */}
-                                   {topCards.data.headerLabel}
-                               </h3>
-                           </div>
-                           <div className="text-right">
-                               <p className="text-sm font-extrabold text-slate-800 leading-none">
-                                   {/* @ts-ignore */}
-                                   {formatCurrencyInt(topCards.data.headerValue || 0)}
-                               </p>
-                               <p className="text-[9px] text-slate-400 font-semibold mt-1 leading-tight">
-                                   {/* @ts-ignore */}
-                                   {topCards.data.headerSubtext || 'No data available'}
-                               </p>
+                   <div className="col-span-2 bg-white p-6 rounded-[28px] border border-slate-100 shadow-sm flex flex-col justify-center space-y-4">
+                       <div className="flex items-start justify-between gap-4">
+                           <div className="flex-1 space-y-1">
+                               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.18em]">{/* @ts-ignore */}{topCards.data.headerLabel}</p>
+                               <p className="text-2xl font-extrabold text-slate-900">{/* @ts-ignore */}{formatCurrencyInt(topCards.data.headerValue || 0)}</p>
+                               <p className="text-[10px] text-slate-500 font-semibold leading-tight">{/* @ts-ignore */}{topCards.data.headerSubtext || 'No data available'}</p>
                                {/* @ts-ignore */}
                                {topCards.data.headerBadge && (
-                                   <p className="text-[9px] text-indigo-600 font-bold mt-1 leading-tight">{topCards.data.headerBadge}</p>
+                                   <span className="inline-flex items-center mt-1 px-2 py-1 rounded-full bg-indigo-50 text-[10px] font-semibold text-indigo-700 border border-indigo-100 tracking-[0.12em]">
+                                       {topCards.data.headerBadge}
+                                   </span>
                                )}
                            </div>
+                           {/* @ts-ignore */}
+                           {typeof topCards.data.payout === 'number' && (
+                               <div className="bg-indigo-50 border border-indigo-100 rounded-2xl px-4 py-3 text-right shadow-inner min-w-[160px]">
+                                   <p className="text-[10px] uppercase font-bold text-indigo-500 tracking-[0.16em]">Monthly Payout</p>
+                                   {/* @ts-ignore */}
+                                   <p className={`text-lg font-extrabold ${topCards.data.payout < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
+                                       {/* @ts-ignore */}
+                                       {formatCurrencyInt(topCards.data.payout)}
+                                   </p>
+                                   <p className="text-[10px] text-indigo-400 font-semibold">Cleared / Payable</p>
+                               </div>
+                           )}
                        </div>
-                       <div className="grid grid-cols-3 gap-2 text-center divide-x divide-slate-100">
+                       <div className="grid grid-cols-3 gap-3">
                            {/* @ts-ignore */}
                            {topCards.data.stats?.map((stat: any) => (
-                               <div key={stat.label}>
-                                   <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">{stat.label}</p>
-                                   <p className={`text-base font-bold ${stat.colorClass || 'text-slate-800'}`}>
+                               <div key={stat.label} className="bg-slate-50 border border-slate-100 rounded-2xl px-3 py-2 text-center shadow-sm">
+                                   <p className="text-[10px] text-slate-400 font-bold uppercase mb-1 tracking-[0.12em]">{stat.label}</p>
+                                   <p className={`text-base font-extrabold ${stat.colorClass || 'text-slate-800'}`}>
                                        {typeof stat.value === 'number' ? formatCurrencyInt(stat.value) : stat.value}
                                    </p>
                                </div>
