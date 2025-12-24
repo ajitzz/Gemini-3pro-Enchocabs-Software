@@ -39,6 +39,7 @@ const CompanySettlementPage: React.FC = () => {
   const [popupMessage, setPopupMessage] = useState('');
   const [pendingData, setPendingData] = useState<CompanySummaryRow[] | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
+  const [canBypassErrors, setCanBypassErrors] = useState(false);
 
   // Viewer/Editor State
   const [selectedSummary, setSelectedSummary] = useState<CompanyWeeklySummary | null>(null);
@@ -268,6 +269,7 @@ const CompanySettlementPage: React.FC = () => {
   const executeFileProcessing = () => {
       setProcessingSummary(true);
       setErrors([]);
+      setCanBypassErrors(false);
 
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -375,6 +377,7 @@ const CompanySettlementPage: React.FC = () => {
           if (rows.length === 0) {
               setErrors(["No valid vehicle data found."]);
               setProcessingSummary(false);
+              setPendingData(null);
               return;
           }
 
@@ -454,7 +457,8 @@ const CompanySettlementPage: React.FC = () => {
       if (newErrors.length > 0) {
           setErrors(newErrors);
           setProcessingSummary(false);
-          setPendingData(null);
+          setPendingData(rows);
+          setCanBypassErrors(true);
           return;
       }
 
@@ -495,9 +499,30 @@ const CompanySettlementPage: React.FC = () => {
       if (newErrors.length > 0) {
           setErrors(newErrors);
           setProcessingSummary(false);
-          setPendingData(null);
+          setPendingData(rows);
+          setCanBypassErrors(true);
       } else {
           finalizeSummarySave(rows);
+      }
+  };
+
+  const handleErrorResolution = (action: 'skip' | 'terminate') => {
+      if (action === 'skip' && pendingData) {
+          setProcessingSummary(true);
+          setErrors([]);
+          setCanBypassErrors(false);
+          finalizeSummarySave(pendingData);
+          return;
+      }
+
+      // Terminate import flow and reset relevant state
+      setErrors([]);
+      setProcessingSummary(false);
+      setPendingData(null);
+      setCanBypassErrors(false);
+      setCurrentWeekFile(null);
+      if (fileInputRef.current) {
+          fileInputRef.current.value = '';
       }
   };
 
@@ -516,7 +541,8 @@ const CompanySettlementPage: React.FC = () => {
       await storageService.saveCompanySummary(newSummary);
       setProcessingSummary(false);
       setPendingData(null);
-      
+      setCanBypassErrors(false);
+
       // RESET FORM STATE COMPLETELY
       setCurrentWeekFile(null);
       setCurrentWeekNote('');
@@ -793,6 +819,22 @@ const CompanySettlementPage: React.FC = () => {
                       <ul className="list-disc list-inside text-sm text-rose-600 space-y-1">
                           {errors.map((err, i) => <li key={i}>{err}</li>)}
                       </ul>
+                      {canBypassErrors && (
+                          <div className="mt-4 flex flex-col sm:flex-row gap-2">
+                              <button
+                                  onClick={() => handleErrorResolution('skip')}
+                                  className="flex-1 px-4 py-2 bg-amber-600 text-white font-bold rounded-lg hover:bg-amber-700 transition-colors"
+                              >
+                                  Skip Errors & Continue Import
+                              </button>
+                              <button
+                                  onClick={() => handleErrorResolution('terminate')}
+                                  className="flex-1 px-4 py-2 bg-white border border-rose-200 text-rose-600 font-bold rounded-lg hover:bg-rose-50 transition-colors"
+                              >
+                                  Terminate Import
+                              </button>
+                          </div>
+                      )}
                   </div>
               )}
           </div>
