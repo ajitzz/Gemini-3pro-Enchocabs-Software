@@ -299,6 +299,7 @@ const DailyEntryPage: React.FC = () => {
     fuel: 0,
     due: 0,
     payout: 0, // New field
+    payoutDate: '',
     qrCode: '',
     notes: ''
   };
@@ -353,10 +354,16 @@ const DailyEntryPage: React.FC = () => {
         e.preventDefault();
         
         if (!formData.date || !formData.driver) return;
-        
+
         // Explicit Validation for Mandatory Numbers
         if (formData.collection === undefined || formData.rent === undefined) {
             alert("Collection and Rent are mandatory fields.");
+            return;
+        }
+
+        const payoutEntered = formData.payout !== undefined && formData.payout !== null && formData.payout !== 0;
+        if (payoutEntered && !formData.payoutDate) {
+            alert('Payout Date is required when a payout amount is entered.');
             return;
         }
 
@@ -382,7 +389,8 @@ const DailyEntryPage: React.FC = () => {
           collection: Number(formData.collection),
           fuel: Number(formData.fuel || 0),
           due: Number(formData.due || 0),
-          payout: Number(formData.payout || 0), 
+          payout: Number(formData.payout || 0),
+          payoutDate: formData.payoutDate || undefined,
           qrCode: formData.qrCode,
           notes: formData.notes
         };
@@ -458,13 +466,13 @@ const DailyEntryPage: React.FC = () => {
   const handleEdit = (entry: DailyEntry) => {
     setFormData(entry);
     setEditingId(entry.id);
-    if ((entry.fuel && entry.fuel !== 0) || (entry.due && entry.due !== 0) || (entry.payout && entry.payout !== 0)) {
+    if ((entry.fuel && entry.fuel !== 0) || (entry.due && entry.due !== 0) || (entry.payout && entry.payout !== 0) || entry.payoutDate) {
         setShowOptionalFields(true);
     } else {
         setShowOptionalFields(false);
     }
-    setIsFormOpen(true); 
-    window.scrollTo({ top: 0, behavior: 'smooth' }); 
+    setIsFormOpen(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const resetForm = () => {
@@ -537,7 +545,7 @@ const DailyEntryPage: React.FC = () => {
       return;
     }
 
-    const headers = ['Date', 'Driver', 'Vehicle', 'Shift', 'Collection', 'Rent', 'Fuel', 'Due', 'Payout', 'Notes'];
+    const headers = ['Date', 'Driver', 'Vehicle', 'Shift', 'Collection', 'Rent', 'Fuel', 'Due', 'Payout', 'Payout Date', 'Notes'];
     const rows = filteredEntries.map(entry => [
       formatDate(entry.date),
       entry.driver,
@@ -548,6 +556,7 @@ const DailyEntryPage: React.FC = () => {
       entry.fuel,
       entry.due,
       entry.payout,
+      entry.payoutDate ? formatDate(entry.payoutDate) : '',
       entry.notes || ''
     ]);
 
@@ -821,7 +830,7 @@ const DailyEntryPage: React.FC = () => {
 
           {/* Optional Fields (Fuel / Due / Payout) */}
           {showOptionalFields && (
-            <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 bg-slate-50 p-6 rounded-2xl border border-slate-100 animate-fade-in">
+            <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 bg-slate-50 p-6 rounded-2xl border border-slate-100 animate-fade-in">
               <InputField label="Fuel Given (₹)" name="fuel" type="number" value={formData.fuel === 0 ? '' : formData.fuel} onChange={handleInputChange} className="border-amber-200 focus:ring-amber-500 text-amber-700" placeholder="0" />
               <div className="lg:col-span-1">
                  <InputField label="Due (+/-)" name="due" type="number" value={formData.due === 0 ? '' : formData.due} onChange={handleInputChange} placeholder="0" />
@@ -829,6 +838,10 @@ const DailyEntryPage: React.FC = () => {
               </div>
               <div className="lg:col-span-1">
                  <InputField label="Payout (Paid to Driver)" name="payout" type="number" value={formData.payout === 0 ? '' : formData.payout} onChange={handleInputChange} className="border-emerald-200 focus:ring-emerald-500 text-emerald-700" placeholder="0" />
+              </div>
+              <div className="lg:col-span-1">
+                 <InputField label="Payout Date" name="payoutDate" type="date" value={formData.payoutDate} onChange={handleInputChange} required={!!(formData.payout && formData.payout !== 0)} />
+                 <p className="text-[10px] text-emerald-600 mt-1 ml-1 font-semibold">Required when payout entered</p>
               </div>
               <div className="lg:col-span-1 flex items-center">
                  <p className="text-xs text-slate-400 leading-relaxed">Use these fields for specific adjustments or payments made directly.</p>
@@ -1018,7 +1031,16 @@ const DailyEntryPage: React.FC = () => {
                         {entry.due > 0 ? '+' : ''}{entry.due}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-right text-indigo-600 font-medium">{entry.payout ? `₹${entry.payout}` : '-'}</td>
+                    <td className="px-6 py-4 text-right text-indigo-600 font-medium">
+                      {entry.payout ? (
+                        <div className="flex flex-col items-end gap-0.5">
+                          <span>₹{entry.payout}</span>
+                          {entry.payoutDate && (
+                            <span className="text-[10px] text-slate-400 font-semibold tracking-wide">Payout Date: {formatDate(entry.payoutDate)}</span>
+                          )}
+                        </div>
+                      ) : '-'}
+                    </td>
                     <td className="px-6 py-4 text-slate-400 text-xs max-w-[150px] truncate" title={entry.notes}>
                       {entry.notes || '-'}
                     </td>

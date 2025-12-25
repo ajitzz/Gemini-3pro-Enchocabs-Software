@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS daily_entries (
   fuel NUMERIC DEFAULT 0,
   due NUMERIC DEFAULT 0,
   payout NUMERIC DEFAULT 0,
+  payout_date DATE,
   notes TEXT
 );
 
