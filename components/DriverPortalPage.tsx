@@ -44,6 +44,25 @@ const DriverPortalPage: React.FC = () => {
   const [teamCashModeUpdating, setTeamCashModeUpdating] = useState<Record<string, boolean>>({});
   const [showNetPayoutPopup, setShowNetPayoutPopup] = useState(false);
 
+  const latestPayout = useMemo(() => {
+      if (!rawDaily.length) return null;
+      const withPayout = rawDaily
+          .filter(entry => (entry.payout && entry.payout !== 0) || entry.payoutDate)
+          .sort((a, b) => {
+              const aDate = new Date(a.payoutDate || a.date).getTime();
+              const bDate = new Date(b.payoutDate || b.date).getTime();
+              return bDate - aDate;
+          });
+
+      if (withPayout.length === 0) return null;
+
+      const latest = withPayout[0];
+      return {
+          amount: latest.payout || 0,
+          date: latest.payoutDate || latest.date
+      };
+  }, [rawDaily]);
+
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
   useEffect(() => {
@@ -1060,9 +1079,22 @@ const DriverPortalPage: React.FC = () => {
                             {/* @ts-ignore */}
                             <p className="text-[10px] text-slate-400">{topCards.right.subtext}</p>
                        </div>
-                   </>
-               )}
-           </div>
+                    </>
+                )}
+
+                {/* Latest Payout Highlight */}
+                <div className="col-span-2 bg-white p-5 rounded-[22px] border border-slate-100 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.18em]">Latest Payout</p>
+                        <p className="text-2xl font-extrabold text-slate-900 mt-1">{latestPayout ? formatCurrency(latestPayout.amount) : formatCurrency(0)}</p>
+                        <p className="text-[10px] text-slate-500 font-semibold mt-1">Payout date</p>
+                        <p className="text-[11px] text-slate-400">{latestPayout ? formatDate(latestPayout.date) : 'No payout recorded yet'}</p>
+                    </div>
+                    <div className="h-12 w-12 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100">
+                        <Wallet size={20} />
+                    </div>
+                </div>
+            </div>
 
            {/* Tab Switcher */}
            <div className="flex p-1 bg-white rounded-xl border border-slate-100 shadow-sm">
