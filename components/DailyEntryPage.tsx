@@ -1036,7 +1036,7 @@ const DailyEntryPage: React.FC = () => {
                         <div className="flex flex-col items-end gap-0.5">
                           <span>₹{entry.payout}</span>
                           {entry.payoutDate && (
-                            <span className="text-[10px] text-slate-400 font-semibold tracking-wide">Payout Date: {formatDate(entry.payoutDate)}</span>
+                            <span className="text-[10px] text-slate-400 font-semibold tracking-wide"> {formatDate(entry.payoutDate)}</span>
                           )}
                         </div>
                       ) : '-'}
