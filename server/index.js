@@ -155,9 +155,12 @@ const initDb = async () => {
         fuel NUMERIC DEFAULT 0,
         due NUMERIC DEFAULT 0,
         payout NUMERIC DEFAULT 0,
+        payout_date DATE,
         notes TEXT
       );
     `);
+
+    await db.query(`ALTER TABLE daily_entries ADD COLUMN IF NOT EXISTS payout_date DATE;`);
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS weekly_wallets (
@@ -770,7 +773,7 @@ app.delete('/api/drivers/:id', async (req, res) => {
 // --- DAILY ENTRIES ---
 app.get('/api/daily-entries', async (req, res) => {
   try {
-    const result = await db.query(`SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, notes FROM daily_entries ORDER BY date DESC`);
+    const result = await db.query(`SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes FROM daily_entries ORDER BY date DESC`);
     const safeRows = result.rows.map(r => ({
       ...r,
       rent: Number(r.rent), collection: Number(r.collection), fuel: Number(r.fuel), due: Number(r.due), payout: Number(r.payout)
@@ -785,6 +788,9 @@ app.post('/api/daily-entries', async (req, res) => {
     const isoDate = toISODate(e.date);
     if (!isoDate) return res.status(400).json({ error: 'Invalid date format' });
 
+    const payoutDateISO = e.payoutDate ? toISODate(e.payoutDate) : null;
+    if (e.payoutDate && !payoutDateISO) return res.status(400).json({ error: 'Invalid payout date format' });
+
     const normalizedDriver = normalizeDriver(e.driver);
     const duplicateCheck = await db.query(
       `SELECT id FROM daily_entries WHERE date = $1 AND LOWER(driver) = $2 AND ($3::uuid IS NULL OR id <> $3)`
@@ -795,13 +801,13 @@ app.post('/api/daily-entries', async (req, res) => {
     }
 
     const q = `
-      INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, payout, notes)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, payout, payout_date, notes)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       ON CONFLICT (id) DO UPDATE SET
-        date=$2, day=$3, vehicle=$4, driver=$5, shift=$6, qr_code=$7, rent=$8, collection=$9, fuel=$10, due=$11, payout=$12, notes=$13
+        date=$2, day=$3, vehicle=$4, driver=$5, shift=$6, qr_code=$7, rent=$8, collection=$9, fuel=$10, due=$11, payout=$12, payout_date=$13, notes=$14
       RETURNING *;
     `;
-    const result = await db.query(q, [e.id, isoDate, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, e.notes]);
+    const result = await db.query(q, [e.id, isoDate, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, payoutDateISO, e.notes]);
     await syncDriverBillings();
     res.json(result.rows[0]);
   } catch (err) {
@@ -840,14 +846,16 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
 
       keyToId.set(key, incomingId);
 
+      const payoutDateISO = e.payoutDate ? toISODate(e.payoutDate) : null;
+
       const q = `
-        INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, payout, notes)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, payout, payout_date, notes)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
         ON CONFLICT (id) DO UPDATE SET
           date=$2, day=$3, vehicle=$4, driver=$5, shift=$6, qr_code=$7,
-          rent=$8, collection=$9, fuel=$10, due=$11, payout=$12, notes=$13;
+          rent=$8, collection=$9, fuel=$10, due=$11, payout=$12, payout_date=$13, notes=$14;
       `;
-      await client.query(q, [e.id, isoDate, e.day, e.vehicle, canonicalDriver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, e.notes]);
+      await client.query(q, [e.id, isoDate, e.day, e.vehicle, canonicalDriver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, payoutDateISO, e.notes]);
     }
 
     const keyList = Array.from(keyToId.keys());
