@@ -32,8 +32,10 @@ const DriverPortalPage: React.FC = () => {
   const [rawDaily, setRawDaily] = useState<DailyEntry[]>([]);
   const [rawWeekly, setRawWeekly] = useState<WeeklyWallet[]>([]);
   const [rentalSlabs, setRentalSlabs] = useState<RentalSlab[]>([]);
-  
+
   // UI State
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [activeTab, setActiveTab] = useState<'home' | 'daily' | 'billing'>('home');
   const [selectedBill, setSelectedBill] = useState<any | null>(null);
   const [cashMode, setCashMode] = useState<CashMode>('trips');
@@ -62,6 +64,18 @@ const DriverPortalPage: React.FC = () => {
           date: latest.payoutDate || latest.date
       };
   }, [rawDaily]);
+
+  const filteredDaily = useMemo(() => {
+      const start = fromDate ? new Date(`${fromDate}T00:00:00`).getTime() : null;
+      const end = toDate ? new Date(`${toDate}T23:59:59`).getTime() : null;
+
+      return rawDaily.filter(entry => {
+          const entryTime = new Date(entry.date).getTime();
+          if (start !== null && entryTime < start) return false;
+          if (end !== null && entryTime > end) return false;
+          return true;
+      });
+  }, [rawDaily, fromDate, toDate]);
 
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
@@ -1297,16 +1311,46 @@ const DriverPortalPage: React.FC = () => {
 
            {/* DAILY TAB */}
            {activeTab === 'daily' && (
-              <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden animate-fade-in">
-                  <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+          <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden animate-fade-in">
+              <div className="p-4 border-b border-slate-100 bg-slate-50/50 space-y-3">
+                  <div className="flex justify-between items-center">
                       <h3 className="font-bold text-slate-800 text-sm">Recent Activity</h3>
-                      <span className="text-[10px] bg-white border border-slate-200 px-2 py-1 rounded-full text-slate-500 font-bold">{rawDaily.length} Entries</span>
+                      <span className="text-[10px] bg-white border border-slate-200 px-2 py-1 rounded-full text-slate-500 font-bold">{filteredDaily.length} Entries</span>
                   </div>
+                  <div className="flex flex-wrap gap-3 items-center text-[11px] font-bold text-slate-600">
+                      <div className="flex items-center gap-2">
+                          <span className="text-[10px] uppercase tracking-[0.12em] text-slate-400">From</span>
+                          <input
+                              type="date"
+                              value={fromDate}
+                              onChange={(e) => setFromDate(e.target.value)}
+                              className="text-xs font-semibold border border-slate-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                          />
+                      </div>
+                      <div className="flex items-center gap-2">
+                          <span className="text-[10px] uppercase tracking-[0.12em] text-slate-400">To</span>
+                          <input
+                              type="date"
+                              value={toDate}
+                              onChange={(e) => setToDate(e.target.value)}
+                              className="text-xs font-semibold border border-slate-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                          />
+                      </div>
+                      {(fromDate || toDate) && (
+                          <button
+                              onClick={() => { setFromDate(''); setToDate(''); }}
+                              className="text-[10px] font-extrabold text-indigo-600 px-3 py-1 bg-indigo-50 border border-indigo-100 rounded-full hover:bg-indigo-100 transition-colors"
+                          >
+                              Clear Filter
+                          </button>
+                      )}
+                  </div>
+              </div>
                   <div className="divide-y divide-slate-50">
-                      {rawDaily.length === 0 ? (
-                          <div className="p-8 text-center text-slate-400 text-sm">No daily records found.</div>
+                      {filteredDaily.length === 0 ? (
+                          <div className="p-8 text-center text-slate-400 text-sm">No daily records found for the selected dates.</div>
                       ) : (
-                          rawDaily.map(entry => (
+                          filteredDaily.map(entry => (
                               <div key={entry.id} className="p-4 hover:bg-slate-50 transition-colors">
                                   <div className="flex justify-between items-start mb-2">
                                       <div className="flex items-center gap-2">
