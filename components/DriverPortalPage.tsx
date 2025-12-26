@@ -638,6 +638,18 @@ const DriverPortalPage: React.FC = () => {
         );
 
         const rangeDaily = filteredDaily;
+        const filterStart = fromDate ? new Date(`${fromDate}T00:00:00`).getTime() : null;
+        const filterEnd = toDate ? new Date(`${toDate}T23:59:59`).getTime() : null;
+
+        const rangeWeekly = rawWeekly.filter(w => {
+            const weekStart = new Date(w.weekStartDate).getTime();
+            const weekEnd = new Date(w.weekEndDate).getTime();
+
+            if (filterStart !== null && weekEnd < filterStart) return false;
+            if (filterEnd !== null && weekStart > filterEnd) return false;
+
+            return true;
+        });
 
         let rangeCollection = 0;
         let rangeRent = 0;
@@ -648,31 +660,34 @@ const DriverPortalPage: React.FC = () => {
         let rangeLabel: string | undefined;
         let rangeSummary: string | undefined;
 
-        if (isDateFilterActive && rangeDaily.length > 0) {
-            const rangeStartDate = fromDate
-                ? new Date(fromDate)
-                : rangeDaily.reduce((min, entry) => {
-                    const entryDate = new Date(entry.date);
-                    return entryDate < min ? entryDate : min;
-                }, new Date(rangeDaily[0].date));
+        if (isDateFilterActive && (rangeDaily.length > 0 || rangeWeekly.length > 0)) {
+            const rangeStartDate = filterStart !== null
+                ? new Date(filterStart)
+                : [
+                    ...rangeDaily.map(entry => new Date(entry.date)),
+                    ...rangeWeekly.map(entry => new Date(entry.weekStartDate)),
+                ].reduce((min, date) => (date < min ? date : min), new Date());
 
-            const rangeEndDate = toDate
-                ? new Date(toDate)
-                : rangeDaily.reduce((max, entry) => {
-                    const entryDate = new Date(entry.date);
-                    return entryDate > max ? entryDate : max;
-                }, new Date(rangeDaily[0].date));
+            const rangeEndDate = filterEnd !== null
+                ? new Date(filterEnd)
+                : [
+                    ...rangeDaily.map(entry => new Date(entry.date)),
+                    ...rangeWeekly.map(entry => new Date(entry.weekEndDate)),
+                ].reduce((max, date) => (date > max ? date : max), new Date(0));
 
             rangeLabel = formatShortRange(rangeStartDate, rangeEndDate);
-            rangeSummary = `${formatInt(rangeDaily.length)} Entr${rangeDaily.length === 1 ? 'y' : 'ies'}`;
+            rangeSummary = rangeWeekly.length > 0
+                ? `${formatInt(rangeWeekly.length)} Week${rangeWeekly.length === 1 ? '' : 's'}`
+                : `${formatInt(rangeDaily.length)} Entr${rangeDaily.length === 1 ? 'y' : 'ies'}`;
 
             rangeDaily.forEach(entry => {
                 rangeCollection += entry.collection;
                 rangeRent += entry.rent;
                 rangeDues += entry.due;
                 rangePayout += (entry.payout || 0);
-                rangeEarnings += entry.collection - entry.rent - entry.fuel + entry.due - (entry.payout || 0);
             });
+
+            rangeEarnings = rangeWeekly.reduce((sum, week) => sum + (week.earnings || 0), 0);
         }
 
         // Latest Week Details
