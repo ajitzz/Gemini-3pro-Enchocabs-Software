@@ -553,9 +553,6 @@ const DriverPortalPage: React.FC = () => {
                 latestWeekEarnings: 0,
                 monthTrips: 0,
                 monthEarningsTotal: 0,
-                monthWalletFuelTotal: 0,
-                monthFuelTotal: 0,
-                monthWalletTotal: 0,
                 monthEarningRanges: [] as string[],
                 latestWeekRange: undefined as string | undefined,
                 monthNetPayout: 0,
@@ -564,9 +561,6 @@ const DriverPortalPage: React.FC = () => {
                 rangeDues: 0,
                 rangePayout: 0,
                 rangeEarnings: 0,
-                rangeWalletFuelTotal: 0,
-                rangeFuelTotal: 0,
-                rangeWalletTotal: 0,
                 rangeTrips: 0,
                 rangeLabel: undefined,
                 rangeSummary: undefined,
@@ -586,7 +580,6 @@ const DriverPortalPage: React.FC = () => {
         let totalDues = 0;
         let yearCollection = 0;
         let monthTrips = 0;
-        let monthFuelTotal = 0;
 
         rawDaily.forEach(entry => {
             const d = new Date(entry.date);
@@ -603,7 +596,6 @@ const DriverPortalPage: React.FC = () => {
                     monthCollection += entry.collection;
                     monthRent += entry.rent;
                     monthPayout += (entry.payout || 0);
-                    monthFuelTotal += entry.fuel;
                 }
             }
 
@@ -626,8 +618,6 @@ const DriverPortalPage: React.FC = () => {
         });
 
         const monthEarningsTotal = currentMonthWeeks.reduce((sum, w) => sum + (w.earnings || 0), 0);
-        const monthWalletTotal = currentMonthWeeks.reduce((sum, w) => sum + (w.walletWeek || 0), 0);
-        const monthWalletFuelTotal = monthWalletTotal + monthFuelTotal;
         const monthEarningRanges = currentMonthWeeks.map(w => `${formatDate(w.weekStartDate)} - ${formatDate(w.weekEndDate)}`);
 
         const monthDaily = rawDaily.filter(entry => {
@@ -667,8 +657,6 @@ const DriverPortalPage: React.FC = () => {
         let rangeDues = 0;
         let rangePayout = 0;
         let rangeEarnings = 0;
-        let rangeFuelTotal = 0;
-        let rangeWalletTotal = 0;
         let rangeTrips = 0;
 
         let rangeLabel: string | undefined;
@@ -700,14 +688,10 @@ const DriverPortalPage: React.FC = () => {
                 rangeRent += entry.rent;
                 rangeDues += entry.due;
                 rangePayout += (entry.payout || 0);
-                rangeFuelTotal += entry.fuel;
             });
 
             rangeEarnings = rangeWeekly.reduce((sum, week) => sum + (week.earnings || 0), 0);
-            rangeWalletTotal = rangeWeekly.reduce((sum, week) => sum + (week.walletWeek || 0), 0);
         }
-
-        const rangeWalletFuelTotal = rangeWalletTotal + rangeFuelTotal;
 
         // Latest Week Details
         const latestWeekly = rawWeekly.length > 0 ? rawWeekly[0] : null;
@@ -727,9 +711,6 @@ const DriverPortalPage: React.FC = () => {
             latestWeekEarnings,
             monthTrips,
             monthEarningsTotal,
-            monthWalletFuelTotal,
-            monthFuelTotal,
-            monthWalletTotal,
             monthEarningRanges,
             latestWeekRange,
             monthNetPayout: monthStats.netPayout,
@@ -738,9 +719,6 @@ const DriverPortalPage: React.FC = () => {
             rangeDues,
             rangePayout,
             rangeEarnings,
-            rangeWalletFuelTotal,
-            rangeFuelTotal,
-            rangeWalletTotal,
             rangeTrips,
             rangeLabel,
             rangeSummary,
@@ -789,7 +767,7 @@ const DriverPortalPage: React.FC = () => {
                 isConsolidated: true,
                 data: {
                     headerLabel: useRangeStats ? aggregatedStats.rangeLabel : 'Month Total Earnings',
-                    headerValue: useRangeStats ? aggregatedStats.rangeWalletFuelTotal : aggregatedStats.monthWalletFuelTotal,
+                    headerValue: useRangeStats ? aggregatedStats.rangeEarnings : aggregatedStats.monthEarningsTotal,
                     headerSubtext: useRangeStats
                         ? (aggregatedStats.rangeSummary || 'Filtered range')
                         : aggregatedStats.monthEarningRanges?.length
