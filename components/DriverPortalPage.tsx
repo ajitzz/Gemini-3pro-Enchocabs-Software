@@ -1298,18 +1298,20 @@ const DriverPortalPage: React.FC = () => {
                     </>
                 )}
 
-                {/* Latest Payout Highlight */}
-                <div className="col-span-2 bg-white p-5 rounded-[22px] border border-slate-100 shadow-sm flex items-center justify-between">
-                    <div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.18em]">Latest Payout</p>
-                        <p className="text-2xl font-extrabold text-slate-900 mt-1">{latestPayout ? formatCurrency(latestPayout.amount) : formatCurrency(0)}</p>
-                        <p className="text-[10px] text-slate-500 font-semibold mt-1">Payout date</p>
-                        <p className="text-[11px] text-slate-400">{latestPayout ? formatDate(latestPayout.date) : 'No payout recorded yet'}</p>
+                {/* Latest Payout Highlight (hidden on Daily Log) */}
+                {activeTab !== 'daily' && (
+                    <div className="col-span-2 bg-white p-5 rounded-[22px] border border-slate-100 shadow-sm flex items-center justify-between">
+                        <div>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.18em]">Latest Payout</p>
+                            <p className="text-2xl font-extrabold text-slate-900 mt-1">{latestPayout ? formatCurrency(latestPayout.amount) : formatCurrency(0)}</p>
+                            <p className="text-[10px] text-slate-500 font-semibold mt-1">Payout date</p>
+                            <p className="text-[11px] text-slate-400">{latestPayout ? formatDate(latestPayout.date) : 'No payout recorded yet'}</p>
+                        </div>
+                        <div className="h-12 w-12 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100">
+                            <Wallet size={20} />
+                        </div>
                     </div>
-                    <div className="h-12 w-12 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100">
-                        <Wallet size={20} />
-                    </div>
-                </div>
+                )}
             </div>
 
            {/* Tab Switcher */}
