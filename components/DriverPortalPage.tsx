@@ -547,6 +547,8 @@ const DriverPortalPage: React.FC = () => {
                 monthCollection: 0,
                 monthRent: 0,
                 monthPayout: 0,
+                monthWallet: 0,
+                monthFuel: 0,
                 totalDues: 0,
                 yearCollection: 0,
                 latestWeekTrips: 0,
@@ -556,6 +558,8 @@ const DriverPortalPage: React.FC = () => {
                 monthEarningRanges: [] as string[],
                 latestWeekRange: undefined as string | undefined,
                 monthNetPayout: 0,
+                rangeWallet: 0,
+                rangeFuel: 0,
                 rangeCollection: 0,
                 rangeRent: 0,
                 rangeDues: 0,
@@ -563,6 +567,7 @@ const DriverPortalPage: React.FC = () => {
                 rangeEarnings: 0,
                 rangeTrips: 0,
                 rangeLabel: undefined,
+                rangeWalletWeeksLabel: undefined as string | undefined,
                 rangeSummary: undefined,
             };
         }
@@ -577,6 +582,8 @@ const DriverPortalPage: React.FC = () => {
         let monthCollection = 0;
         let monthRent = 0;
         let monthPayout = 0;
+        let monthWallet = 0;
+        let monthFuel = 0;
         let totalDues = 0;
         let yearCollection = 0;
         let monthTrips = 0;
@@ -595,6 +602,7 @@ const DriverPortalPage: React.FC = () => {
                 if (eMonth === currentMonth) {
                     monthCollection += entry.collection;
                     monthRent += entry.rent;
+                    monthFuel += entry.fuel;
                     monthPayout += (entry.payout || 0);
                 }
             }
@@ -619,6 +627,7 @@ const DriverPortalPage: React.FC = () => {
 
         const monthEarningsTotal = currentMonthWeeks.reduce((sum, w) => sum + (w.earnings || 0), 0);
         const monthEarningRanges = currentMonthWeeks.map(w => `${formatDate(w.weekStartDate)} - ${formatDate(w.weekEndDate)}`);
+        monthWallet = currentMonthWeeks.reduce((sum, w) => sum + (w.walletWeek || 0), 0);
 
         const monthDaily = rawDaily.filter(entry => {
             const d = new Date(entry.date);
@@ -658,9 +667,12 @@ const DriverPortalPage: React.FC = () => {
         let rangePayout = 0;
         let rangeEarnings = 0;
         let rangeTrips = 0;
+        let rangeWallet = 0;
+        let rangeFuel = 0;
 
         let rangeLabel: string | undefined;
         let rangeSummary: string | undefined;
+        let rangeWalletWeeksLabel: string | undefined;
 
         if (isDateFilterActive && (rangeDaily.length > 0 || rangeWeekly.length > 0)) {
             const rangeStartDate = filterStart !== null
@@ -682,14 +694,22 @@ const DriverPortalPage: React.FC = () => {
             rangeSummary = rangeWeekly.length > 0
                 ? `${formatInt(rangeTrips)} Trip${rangeTrips === 1 ? '' : 's'} - ${formatInt(rangeWeekly.length)} Week${rangeWeekly.length === 1 ? '' : 's'}`
                 : `${formatInt(rangeDaily.length)} Entr${rangeDaily.length === 1 ? 'y' : 'ies'}`;
+            rangeWalletWeeksLabel = rangeWeekly.length > 0
+                ? rangeWeekly
+                    .map(week => formatShortRange(new Date(week.weekStartDate), new Date(week.weekEndDate)))
+                    .filter(Boolean)
+                    .join(' • ')
+                : undefined;
 
             rangeDaily.forEach(entry => {
                 rangeCollection += entry.collection;
                 rangeRent += entry.rent;
                 rangeDues += entry.due;
+                rangeFuel += entry.fuel;
                 rangePayout += (entry.payout || 0);
             });
 
+            rangeWallet = rangeWeekly.reduce((sum, week) => sum + (week.walletWeek || 0), 0);
             rangeEarnings = rangeWeekly.reduce((sum, week) => sum + (week.earnings || 0), 0);
         }
 
@@ -705,6 +725,8 @@ const DriverPortalPage: React.FC = () => {
             monthCollection,
             monthRent,
             monthPayout,
+            monthWallet,
+            monthFuel,
             totalDues,
             yearCollection,
             latestWeekTrips,
@@ -714,6 +736,8 @@ const DriverPortalPage: React.FC = () => {
             monthEarningRanges,
             latestWeekRange,
             monthNetPayout: monthStats.netPayout,
+            rangeWallet,
+            rangeFuel,
             rangeCollection,
             rangeRent,
             rangeDues,
@@ -721,6 +745,7 @@ const DriverPortalPage: React.FC = () => {
             rangeEarnings,
             rangeTrips,
             rangeLabel,
+            rangeWalletWeeksLabel,
             rangeSummary,
         };
     }, [filteredDaily, fromDate, isDateFilterActive, rawDaily, rawWeekly, rentalSlabs, toDate, viewingAsDriver]);
@@ -791,6 +816,17 @@ const DriverPortalPage: React.FC = () => {
                                 colorClass: 'text-emerald-600'
                             },
                             {
+                                label: 'Wallet',
+                                value: aggregatedStats.rangeWallet,
+                                subtext: aggregatedStats.rangeWalletWeeksLabel,
+                                colorClass: 'text-indigo-500'
+                            },
+                            {
+                                label: 'Fuel',
+                                value: aggregatedStats.rangeFuel,
+                                colorClass: 'text-amber-600'
+                            },
+                            {
                                 label: 'Dues',
                                 value: aggregatedStats.rangeDues,
                                 colorClass: 'text-rose-500'
@@ -811,6 +847,16 @@ const DriverPortalPage: React.FC = () => {
                                 label: 'Month Collection',
                                 value: aggregatedStats.monthCollection,
                                 colorClass: 'text-emerald-600'
+                            },
+                            {
+                                label: 'Month Wallet',
+                                value: aggregatedStats.monthWallet,
+                                colorClass: 'text-indigo-500'
+                            },
+                            {
+                                label: 'Month Fuel',
+                                value: aggregatedStats.monthFuel,
+                                colorClass: 'text-amber-600'
                             },
                             {
                                 label: 'Dues',
@@ -1189,6 +1235,9 @@ const DriverPortalPage: React.FC = () => {
                                    <p className={`text-base font-extrabold ${stat.colorClass || 'text-slate-800'}`}>
                                        {typeof stat.value === 'number' ? formatCurrencyInt(stat.value) : stat.value}
                                    </p>
+                                   {stat.subtext && (
+                                       <p className="text-[9px] text-slate-400 font-semibold leading-tight">{stat.subtext}</p>
+                                   )}
                                </div>
                            ))}
                        </div>
