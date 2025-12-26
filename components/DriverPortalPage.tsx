@@ -648,45 +648,31 @@ const DriverPortalPage: React.FC = () => {
         let rangeLabel: string | undefined;
         let rangeSummary: string | undefined;
 
-        if (isDateFilterActive) {
+        if (isDateFilterActive && rangeDaily.length > 0) {
             const rangeStartDate = fromDate
                 ? new Date(fromDate)
-                : (rangeDaily[0] ? new Date(rangeDaily[0].date) : undefined);
+                : rangeDaily.reduce((min, entry) => {
+                    const entryDate = new Date(entry.date);
+                    return entryDate < min ? entryDate : min;
+                }, new Date(rangeDaily[0].date));
 
             const rangeEndDate = toDate
                 ? new Date(toDate)
-                : (rangeDaily[rangeDaily.length - 1] ? new Date(rangeDaily[rangeDaily.length - 1].date) : rangeStartDate);
+                : rangeDaily.reduce((max, entry) => {
+                    const entryDate = new Date(entry.date);
+                    return entryDate > max ? entryDate : max;
+                }, new Date(rangeDaily[0].date));
 
-            if (rangeStartDate && rangeEndDate) {
-                rangeLabel = formatShortRange(rangeStartDate, rangeEndDate);
+            rangeLabel = formatShortRange(rangeStartDate, rangeEndDate);
+            rangeSummary = `${formatInt(rangeDaily.length)} Entr${rangeDaily.length === 1 ? 'y' : 'ies'}`;
 
-                rangeDaily.forEach(entry => {
-                    rangeCollection += entry.collection;
-                    rangeRent += entry.rent;
-                    rangeDues += entry.due;
-                    rangePayout += (entry.payout || 0);
-                });
-
-                const rangeStartTime = rangeStartDate.getTime();
-                const rangeEndTime = rangeEndDate.getTime();
-
-                const weeklyInRange = rawWeekly.filter(week => {
-                    const weekStart = new Date(week.weekStartDate).getTime();
-                    const weekEnd = new Date(week.weekEndDate).getTime();
-                    return weekStart >= rangeStartTime && weekEnd <= rangeEndTime;
-                });
-
-                rangeEarnings = weeklyInRange.reduce(
-                    (sum, week) => sum + ((week.walletWeek || 0) + (week.adjustments || 0)),
-                    0
-                );
-
-                if (rangeDaily.length > 0) {
-                    rangeSummary = `${formatInt(rangeDaily.length)} Entr${rangeDaily.length === 1 ? 'y' : 'ies'}`;
-                } else if (weeklyInRange.length > 0) {
-                    rangeSummary = `${formatInt(weeklyInRange.length)} Week${weeklyInRange.length === 1 ? '' : 's'}`;
-                }
-            }
+            rangeDaily.forEach(entry => {
+                rangeCollection += entry.collection;
+                rangeRent += entry.rent;
+                rangeDues += entry.due;
+                rangePayout += (entry.payout || 0);
+                rangeEarnings += entry.collection - entry.rent - entry.fuel + entry.due - (entry.payout || 0);
+            });
         }
 
         // Latest Week Details
