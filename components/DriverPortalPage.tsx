@@ -556,6 +556,7 @@ const DriverPortalPage: React.FC = () => {
                 monthTrips: 0,
                 monthEarningsTotal: 0,
                 monthEarningRanges: [] as string[],
+                monthEarningRangeLabel: undefined as string | undefined,
                 latestWeekRange: undefined as string | undefined,
                 monthNetPayout: 0,
                 rangeWallet: 0,
@@ -624,6 +625,21 @@ const DriverPortalPage: React.FC = () => {
 
             return startD <= monthEnd && endD >= monthStart;
         });
+
+        let monthEarningRangeLabel: string | undefined = undefined;
+        if (currentMonthWeeks.length > 0) {
+            const earliestStart = currentMonthWeeks.reduce((min, week) =>
+                week.weekStartDate < min ? week.weekStartDate : min,
+                currentMonthWeeks[0].weekStartDate
+            );
+
+            const latestEnd = currentMonthWeeks.reduce((max, week) =>
+                week.weekEndDate > max ? week.weekEndDate : max,
+                currentMonthWeeks[0].weekEndDate
+            );
+
+            monthEarningRangeLabel = `${formatDate(earliestStart)} - ${formatDate(latestEnd)}`;
+        }
 
         const monthEarningsTotal = currentMonthWeeks.reduce((sum, w) => sum + (w.earnings || 0), 0);
         const monthEarningRanges = currentMonthWeeks.map(w => `${formatDate(w.weekStartDate)} - ${formatDate(w.weekEndDate)}`);
@@ -734,6 +750,7 @@ const DriverPortalPage: React.FC = () => {
             monthTrips,
             monthEarningsTotal,
             monthEarningRanges,
+            monthEarningRangeLabel,
             latestWeekRange,
             monthNetPayout: monthStats.netPayout,
             rangeWallet,
@@ -795,9 +812,7 @@ const DriverPortalPage: React.FC = () => {
                     headerValue: useRangeStats ? aggregatedStats.rangeEarnings : aggregatedStats.monthEarningsTotal,
                     headerSubtext: useRangeStats
                         ? (aggregatedStats.rangeSummary || 'Filtered range')
-                        : aggregatedStats.monthEarningRanges?.length
-                            ? aggregatedStats.monthEarningRanges.join(' • ')
-                            : 'No weekly data',
+                        : aggregatedStats.monthEarningRangeLabel || 'No weekly data',
                     stats: useRangeStats
                         ? [
                             {
@@ -818,7 +833,6 @@ const DriverPortalPage: React.FC = () => {
                             {
                                 label: 'Wallet',
                                 value: aggregatedStats.rangeWallet,
-                                subtext: aggregatedStats.rangeWalletWeeksLabel,
                                 colorClass: 'text-indigo-500'
                             },
                             {
