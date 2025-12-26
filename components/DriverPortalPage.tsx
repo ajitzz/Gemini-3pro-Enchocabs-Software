@@ -561,6 +561,7 @@ const DriverPortalPage: React.FC = () => {
                 rangeDues: 0,
                 rangePayout: 0,
                 rangeEarnings: 0,
+                rangeTrips: 0,
                 rangeLabel: undefined,
                 rangeSummary: undefined,
             };
@@ -656,6 +657,7 @@ const DriverPortalPage: React.FC = () => {
         let rangeDues = 0;
         let rangePayout = 0;
         let rangeEarnings = 0;
+        let rangeTrips = 0;
 
         let rangeLabel: string | undefined;
         let rangeSummary: string | undefined;
@@ -716,6 +718,7 @@ const DriverPortalPage: React.FC = () => {
             rangeDues,
             rangePayout,
             rangeEarnings,
+            rangeTrips,
             rangeLabel,
             rangeSummary,
         };
