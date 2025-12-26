@@ -46,6 +46,39 @@ const DriverPortalPage: React.FC = () => {
   const [teamCashModeUpdating, setTeamCashModeUpdating] = useState<Record<string, boolean>>({});
   const [showNetPayoutPopup, setShowNetPayoutPopup] = useState(false);
 
+  const isDateFilterActive = useMemo(() => {
+      if (fromDate && toDate) {
+          const start = new Date(fromDate);
+          const end = new Date(toDate);
+          return start.getTime() !== end.getTime();
+      }
+
+      return Boolean(fromDate || toDate);
+  }, [fromDate, toDate]);
+
+  const formatShortRange = (startDate?: Date, endDate?: Date) => {
+      if (!startDate || !endDate) return undefined;
+
+      const startDay = String(startDate.getDate()).padStart(2, '0');
+      const endDay = String(endDate.getDate()).padStart(2, '0');
+
+      const startMonth = startDate.toLocaleDateString('en-GB', { month: 'short' });
+      const endMonth = endDate.toLocaleDateString('en-GB', { month: 'short' });
+
+      const startYear = startDate.getFullYear();
+      const endYear = endDate.getFullYear();
+
+      if (startYear !== endYear) {
+          return `${startDay} ${startMonth} ${startYear}–${endDay} ${endMonth} ${endYear}`;
+      }
+
+      if (startMonth === endMonth) {
+          return `${startDay}–${endDay} ${startMonth}`;
+      }
+
+      return `${startDay} ${startMonth}–${endDay} ${endMonth}`;
+  };
+
   const latestPayout = useMemo(() => {
       if (!rawDaily.length) return null;
       const withPayout = rawDaily
@@ -513,6 +546,7 @@ const DriverPortalPage: React.FC = () => {
             return {
                 monthCollection: 0,
                 monthRent: 0,
+                monthPayout: 0,
                 totalDues: 0,
                 yearCollection: 0,
                 latestWeekTrips: 0,
@@ -522,6 +556,13 @@ const DriverPortalPage: React.FC = () => {
                 monthEarningRanges: [] as string[],
                 latestWeekRange: undefined as string | undefined,
                 monthNetPayout: 0,
+                rangeCollection: 0,
+                rangeRent: 0,
+                rangeDues: 0,
+                rangePayout: 0,
+                rangeEarnings: 0,
+                rangeLabel: undefined,
+                rangeSummary: undefined,
             };
         }
 
@@ -534,6 +575,7 @@ const DriverPortalPage: React.FC = () => {
 
         let monthCollection = 0;
         let monthRent = 0;
+        let monthPayout = 0;
         let totalDues = 0;
         let yearCollection = 0;
         let monthTrips = 0;
@@ -552,6 +594,7 @@ const DriverPortalPage: React.FC = () => {
                 if (eMonth === currentMonth) {
                     monthCollection += entry.collection;
                     monthRent += entry.rent;
+                    monthPayout += (entry.payout || 0);
                 }
             }
 
@@ -594,6 +637,58 @@ const DriverPortalPage: React.FC = () => {
             rentalSlabs
         );
 
+        const rangeDaily = filteredDaily;
+
+        let rangeCollection = 0;
+        let rangeRent = 0;
+        let rangeDues = 0;
+        let rangePayout = 0;
+        let rangeEarnings = 0;
+
+        let rangeLabel: string | undefined;
+        let rangeSummary: string | undefined;
+
+        if (isDateFilterActive) {
+            const rangeStartDate = fromDate
+                ? new Date(fromDate)
+                : (rangeDaily[0] ? new Date(rangeDaily[0].date) : undefined);
+
+            const rangeEndDate = toDate
+                ? new Date(toDate)
+                : (rangeDaily[rangeDaily.length - 1] ? new Date(rangeDaily[rangeDaily.length - 1].date) : rangeStartDate);
+
+            if (rangeStartDate && rangeEndDate) {
+                rangeLabel = formatShortRange(rangeStartDate, rangeEndDate);
+
+                rangeDaily.forEach(entry => {
+                    rangeCollection += entry.collection;
+                    rangeRent += entry.rent;
+                    rangeDues += entry.due;
+                    rangePayout += (entry.payout || 0);
+                });
+
+                const rangeStartTime = rangeStartDate.getTime();
+                const rangeEndTime = rangeEndDate.getTime();
+
+                const weeklyInRange = rawWeekly.filter(week => {
+                    const weekStart = new Date(week.weekStartDate).getTime();
+                    const weekEnd = new Date(week.weekEndDate).getTime();
+                    return weekStart >= rangeStartTime && weekEnd <= rangeEndTime;
+                });
+
+                rangeEarnings = weeklyInRange.reduce(
+                    (sum, week) => sum + ((week.walletWeek || 0) + (week.adjustments || 0)),
+                    0
+                );
+
+                if (rangeDaily.length > 0) {
+                    rangeSummary = `${formatInt(rangeDaily.length)} Entr${rangeDaily.length === 1 ? 'y' : 'ies'}`;
+                } else if (weeklyInRange.length > 0) {
+                    rangeSummary = `${formatInt(weeklyInRange.length)} Week${weeklyInRange.length === 1 ? '' : 's'}`;
+                }
+            }
+        }
+
         // Latest Week Details
         const latestWeekly = rawWeekly.length > 0 ? rawWeekly[0] : null;
         const latestWeekTrips = latestWeekly ? Number(latestWeekly.trips ?? 0) : 0;
@@ -605,6 +700,7 @@ const DriverPortalPage: React.FC = () => {
         return {
             monthCollection,
             monthRent,
+            monthPayout,
             totalDues,
             yearCollection,
             latestWeekTrips,
@@ -614,8 +710,15 @@ const DriverPortalPage: React.FC = () => {
             monthEarningRanges,
             latestWeekRange,
             monthNetPayout: monthStats.netPayout,
+            rangeCollection,
+            rangeRent,
+            rangeDues,
+            rangePayout,
+            rangeEarnings,
+            rangeLabel,
+            rangeSummary,
         };
-    }, [rawDaily, rawWeekly, rentalSlabs, viewingAsDriver]);
+    }, [filteredDaily, fromDate, isDateFilterActive, rawDaily, rawWeekly, rentalSlabs, toDate, viewingAsDriver]);
 
   // --- 4. DYNAMIC CARD DATA ---
     const topCards = useMemo(() => {
@@ -653,32 +756,63 @@ const DriverPortalPage: React.FC = () => {
         }
         // DAILY LOG: Single Card with 3 Details
         else if (activeTab === 'daily') {
+            const useRangeStats = isDateFilterActive && aggregatedStats.rangeLabel;
             return {
                 // We'll use a special flag or structure for this consolidated card
                 isConsolidated: true,
                 data: {
-                    headerLabel: 'Month Total Earnings',
-                    headerValue: aggregatedStats.monthEarningsTotal,
-                    headerSubtext: aggregatedStats.monthEarningRanges?.length
-                        ? aggregatedStats.monthEarningRanges.join(' • ')
-                        : 'No weekly data',
-                    stats: [
-                        {
-                            label: 'Month Rent',
-                            value: aggregatedStats.monthRent,
-                            colorClass: 'text-slate-800'
-                        },
-                        {
-                            label: 'Month Collection',
-                            value: aggregatedStats.monthCollection,
-                            colorClass: 'text-emerald-600'
-                        },
-                        {
-                            label: 'Dues',
-                            value: aggregatedStats.totalDues,
-                            colorClass: 'text-rose-500'
-                        }
-                    ]
+                    headerLabel: useRangeStats ? aggregatedStats.rangeLabel : 'Month Total Earnings',
+                    headerValue: useRangeStats ? aggregatedStats.rangeEarnings : aggregatedStats.monthEarningsTotal,
+                    headerSubtext: useRangeStats
+                        ? (aggregatedStats.rangeSummary || 'Filtered range')
+                        : aggregatedStats.monthEarningRanges?.length
+                            ? aggregatedStats.monthEarningRanges.join(' • ')
+                            : 'No weekly data',
+                    stats: useRangeStats
+                        ? [
+                            {
+                                label: 'Payout',
+                                value: aggregatedStats.rangePayout,
+                                colorClass: 'text-indigo-600'
+                            },
+                            {
+                                label: 'Rent',
+                                value: aggregatedStats.rangeRent,
+                                colorClass: 'text-slate-800'
+                            },
+                            {
+                                label: 'Collection',
+                                value: aggregatedStats.rangeCollection,
+                                colorClass: 'text-emerald-600'
+                            },
+                            {
+                                label: 'Dues',
+                                value: aggregatedStats.rangeDues,
+                                colorClass: 'text-rose-500'
+                            }
+                        ]
+                        : [
+                            {
+                                label: 'Month Payout',
+                                value: aggregatedStats.monthPayout,
+                                colorClass: 'text-indigo-600'
+                            },
+                            {
+                                label: 'Month Rent',
+                                value: aggregatedStats.monthRent,
+                                colorClass: 'text-slate-800'
+                            },
+                            {
+                                label: 'Month Collection',
+                                value: aggregatedStats.monthCollection,
+                                colorClass: 'text-emerald-600'
+                            },
+                            {
+                                label: 'Dues',
+                                value: aggregatedStats.totalDues,
+                                colorClass: 'text-rose-500'
+                            }
+                        ]
                 }
             };
         }
@@ -1042,7 +1176,7 @@ const DriverPortalPage: React.FC = () => {
                                </div>
                            )}
                        </div>
-                       <div className="grid grid-cols-3 gap-3">
+                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                            {/* @ts-ignore */}
                            {topCards.data.stats?.map((stat: any) => (
                                <div key={stat.label} className="bg-slate-50 border border-slate-100 rounded-2xl px-3 py-2 text-center shadow-sm">
