@@ -679,11 +679,7 @@ const DriverPortalPage: React.FC = () => {
 
             rangeLabel = formatShortRange(rangeStartDate, rangeEndDate);
             rangeSummary = rangeWeekly.length > 0
-                ? (() => {
-                    rangeTrips = rangeWeekly.reduce((sum, week) => sum + Number(week.trips ?? 0), 0);
-                    const weekLabel = `${formatInt(rangeWeekly.length)} Week${rangeWeekly.length === 1 ? '' : 's'}`;
-                    return `${formatInt(rangeTrips)} Trips - ${weekLabel}`;
-                })()
+                ? `${formatInt(rangeWeekly.length)} Week${rangeWeekly.length === 1 ? '' : 's'}`
                 : `${formatInt(rangeDaily.length)} Entr${rangeDaily.length === 1 ? 'y' : 'ies'}`;
 
             rangeDaily.forEach(entry => {
