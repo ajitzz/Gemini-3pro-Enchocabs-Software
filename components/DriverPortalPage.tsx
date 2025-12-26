@@ -46,25 +46,6 @@ const DriverPortalPage: React.FC = () => {
   const [teamCashModeUpdating, setTeamCashModeUpdating] = useState<Record<string, boolean>>({});
   const [showNetPayoutPopup, setShowNetPayoutPopup] = useState(false);
 
-  const latestPayout = useMemo(() => {
-      if (!rawDaily.length) return null;
-      const withPayout = rawDaily
-          .filter(entry => (entry.payout && entry.payout !== 0) || entry.payoutDate)
-          .sort((a, b) => {
-              const aDate = new Date(a.payoutDate || a.date).getTime();
-              const bDate = new Date(b.payoutDate || b.date).getTime();
-              return bDate - aDate;
-          });
-
-      if (withPayout.length === 0) return null;
-
-      const latest = withPayout[0];
-      return {
-          amount: latest.payout || 0,
-          date: latest.payoutDate || latest.date
-      };
-  }, [rawDaily]);
-
   const filteredDaily = useMemo(() => {
       const start = fromDate ? new Date(`${fromDate}T00:00:00`).getTime() : null;
       const end = toDate ? new Date(`${toDate}T23:59:59`).getTime() : null;
@@ -76,6 +57,71 @@ const DriverPortalPage: React.FC = () => {
           return true;
       });
   }, [rawDaily, fromDate, toDate]);
+
+  const dailyRangeSummary = useMemo(() => {
+      const now = new Date();
+      const defaultStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const defaultEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+      const isFilterActive = Boolean(fromDate || toDate);
+      const startDate = fromDate ? new Date(`${fromDate}T00:00:00`) : defaultStart;
+      const endDate = toDate
+          ? new Date(`${toDate}T23:59:59`)
+          : (isFilterActive
+              ? new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
+              : new Date(defaultEnd.getFullYear(), defaultEnd.getMonth(), defaultEnd.getDate(), 23, 59, 59, 999));
+
+      const weekOverlapsRange = (weekStart: string, weekEnd: string) => {
+          const start = new Date(weekStart);
+          const end = new Date(weekEnd);
+          return start <= endDate && end >= startDate;
+      };
+
+      const rangeDaily = isFilterActive
+          ? filteredDaily
+          : rawDaily.filter(entry => {
+              const entryDate = new Date(entry.date);
+              return entryDate >= defaultStart && entryDate <= endDate;
+          });
+
+      const rangeWeekly = rawWeekly.filter(w => weekOverlapsRange(w.weekStartDate, w.weekEndDate));
+
+      const earningsTotal = rangeWeekly.reduce((sum, w) => sum + (w.earnings || 0), 0);
+      const earningRanges = rangeWeekly.map(w => `${formatDate(w.weekStartDate)} - ${formatDate(w.weekEndDate)}`);
+
+      const totalRent = rangeDaily.reduce((sum, entry) => sum + entry.rent, 0);
+      const totalCollection = rangeDaily.reduce((sum, entry) => sum + entry.collection, 0);
+      const totalDues = rangeDaily.reduce((sum, entry) => sum + entry.due, 0);
+      const totalPayout = rangeDaily.reduce((sum, entry) => sum + (entry.payout || 0), 0);
+
+      const lastPayoutDate = rangeDaily
+          .filter(entry => (entry.payout && entry.payout !== 0) || entry.payoutDate)
+          .map(entry => entry.payoutDate || entry.date)
+          .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
+
+      const rangeLabel = isFilterActive
+          ? `${fromDate ? formatDate(fromDate) : 'Start'} - ${toDate ? formatDate(toDate) : 'Now'}`
+          : 'Month Total Earnings';
+
+      const payoutSubtext = isFilterActive ? 'Payouts in selected dates' : 'Payouts this month';
+
+      return {
+          isFilterActive,
+          rangeLabel,
+          earningsTotal,
+          earningRanges,
+          totalRent,
+          totalCollection,
+          totalDues,
+          totalPayout,
+          payoutSubtext,
+          payoutDateText: lastPayoutDate
+              ? `Last recorded: ${formatDate(lastPayoutDate)}`
+              : isFilterActive
+                  ? 'No payouts found in this range'
+                  : 'No payouts recorded this month'
+      };
+  }, [filteredDaily, fromDate, rawDaily, rawWeekly, toDate]);
 
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
@@ -657,25 +703,25 @@ const DriverPortalPage: React.FC = () => {
                 // We'll use a special flag or structure for this consolidated card
                 isConsolidated: true,
                 data: {
-                    headerLabel: 'Month Total Earnings',
-                    headerValue: aggregatedStats.monthEarningsTotal,
-                    headerSubtext: aggregatedStats.monthEarningRanges?.length
-                        ? aggregatedStats.monthEarningRanges.join(' • ')
+                    headerLabel: dailyRangeSummary.rangeLabel,
+                    headerValue: dailyRangeSummary.earningsTotal,
+                    headerSubtext: dailyRangeSummary.earningRanges?.length
+                        ? dailyRangeSummary.earningRanges.join(' • ')
                         : 'No weekly data',
                     stats: [
                         {
-                            label: 'Month Rent',
-                            value: aggregatedStats.monthRent,
+                            label: dailyRangeSummary.isFilterActive ? 'Rent' : 'Month Rent',
+                            value: dailyRangeSummary.totalRent,
                             colorClass: 'text-slate-800'
                         },
                         {
-                            label: 'Month Collection',
-                            value: aggregatedStats.monthCollection,
+                            label: dailyRangeSummary.isFilterActive ? 'Collection' : 'Month Collection',
+                            value: dailyRangeSummary.totalCollection,
                             colorClass: 'text-emerald-600'
                         },
                         {
                             label: 'Dues',
-                            value: aggregatedStats.totalDues,
+                            value: dailyRangeSummary.totalDues,
                             colorClass: 'text-rose-500'
                         }
                     ]
@@ -704,7 +750,7 @@ const DriverPortalPage: React.FC = () => {
                 }
             };
         }
-    }, [activeTab, aggregatedStats, balanceSummary, billingData, driverStats]);
+    }, [activeTab, aggregatedStats, balanceSummary, billingData, dailyRangeSummary, driverStats]);
 
 
   // --- BILL HTML GENERATOR (unchanged) ---
@@ -1099,10 +1145,10 @@ const DriverPortalPage: React.FC = () => {
                 {/* Latest Payout Highlight */}
                 <div className="col-span-2 bg-white p-5 rounded-[22px] border border-slate-100 shadow-sm flex items-center justify-between">
                     <div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.18em]">Latest Payout</p>
-                        <p className="text-2xl font-extrabold text-slate-900 mt-1">{latestPayout ? formatCurrency(latestPayout.amount) : formatCurrency(0)}</p>
-                        <p className="text-[10px] text-slate-500 font-semibold mt-1">Payout date</p>
-                        <p className="text-[11px] text-slate-400">{latestPayout ? formatDate(latestPayout.date) : 'No payout recorded yet'}</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.18em]">Payout</p>
+                        <p className="text-2xl font-extrabold text-slate-900 mt-1">{formatCurrency(dailyRangeSummary.totalPayout)}</p>
+                        <p className="text-[10px] text-slate-500 font-semibold mt-1">{dailyRangeSummary.payoutSubtext}</p>
+                        <p className="text-[11px] text-slate-400">{dailyRangeSummary.payoutDateText}</p>
                     </div>
                     <div className="h-12 w-12 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100">
                         <Wallet size={20} />
