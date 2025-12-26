@@ -1,5 +1,6 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
+import type { LucideIcon } from 'lucide-react';
 import { storageService } from '../services/storageService';
 import { CashMode, DailyEntry, WeeklyWallet, Driver, RentalSlab } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -45,6 +46,19 @@ const DriverPortalPage: React.FC = () => {
   const [teamCashModes, setTeamCashModes] = useState<Record<string, CashMode>>({});
   const [teamCashModeUpdating, setTeamCashModeUpdating] = useState<Record<string, boolean>>({});
   const [showNetPayoutPopup, setShowNetPayoutPopup] = useState(false);
+
+  const tabOptions: {
+      key: 'home' | 'daily' | 'billing';
+      label: string;
+      icon: LucideIcon;
+  }[] = [
+      { key: 'home', label: 'Overview', icon: Gauge },
+      { key: 'daily', label: 'Daily Log', icon: Calendar },
+      { key: 'billing', label: 'Billings', icon: FileText }
+  ];
+
+  const activeTabMeta = tabOptions.find(tab => tab.key === activeTab) || tabOptions[0];
+  const ActiveTabIcon = activeTabMeta.icon;
 
   const isDateFilterActive = useMemo(() => {
       if (fromDate && toDate) {
@@ -1314,27 +1328,48 @@ const DriverPortalPage: React.FC = () => {
                 )}
             </div>
 
-           {/* Tab Switcher */}
-           <div className="flex p-1 bg-white rounded-xl border border-slate-100 shadow-sm">
-               <button 
-                  onClick={() => setActiveTab('home')}
-                  className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'home' ? 'bg-[#4f46e5] text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
-               >
-                  Overview
-               </button>
-               <button 
-                  onClick={() => setActiveTab('daily')}
-                  className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'daily' ? 'bg-[#4f46e5] text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
-               >
-                  Daily Log
-               </button>
-               <button 
-                  onClick={() => setActiveTab('billing')}
-                  className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'billing' ? 'bg-[#4f46e5] text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
-               >
-                  Billings
-               </button>
-           </div>
+            {/* Tab Switcher */}
+            <div className="sticky top-3 z-30">
+                <div className="relative">
+                    <div className="absolute inset-0 bg-gradient-to-r from-indigo-50 via-white to-violet-50 blur-xl opacity-80 pointer-events-none"></div>
+                    <div className="relative rounded-2xl bg-white/90 backdrop-blur-xl border border-slate-100 shadow-xl shadow-indigo-100 p-3 space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                                <div className="h-10 w-10 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center shadow-inner">
+                                    <ActiveTabIcon size={18} />
+                                </div>
+                                <div>
+                                    <p className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-indigo-400">Activity Views</p>
+                                    <p className="text-sm font-bold text-slate-900 leading-tight">Stay pinned while you browse</p>
+                                </div>
+                            </div>
+                            <span className="text-[10px] font-semibold text-slate-400 px-2 py-1 rounded-full bg-slate-50 border border-slate-100">Fixed</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                            {tabOptions.map(tab => {
+                                const Icon = tab.icon;
+                                const isActive = activeTab === tab.key;
+                                return (
+                                    <button
+                                        key={tab.key}
+                                        onClick={() => setActiveTab(tab.key)}
+                                        className={`group flex items-center justify-between gap-2 px-3 py-2 rounded-xl border text-xs font-bold transition-all ${isActive
+                                            ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white border-transparent shadow-lg shadow-indigo-200'
+                                            : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-white hover:border-indigo-200'}`}
+                                        aria-pressed={isActive}
+                                    >
+                                        <span className="flex items-center gap-2">
+                                            <Icon size={16} className={isActive ? 'text-white' : 'text-indigo-500'} />
+                                            {tab.label}
+                                        </span>
+                                        <ChevronRight size={16} className={isActive ? 'opacity-100' : 'opacity-40 group-hover:opacity-70 transition'} />
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            </div>
 
            {/* --- TAB CONTENT --- */}
            
