@@ -671,18 +671,8 @@ const DriverPortalPage: React.FC = () => {
                 rangeRent += entry.rent;
                 rangeDues += entry.due;
                 rangePayout += (entry.payout || 0);
+                rangeEarnings += entry.collection - entry.rent - entry.fuel + entry.due - (entry.payout || 0);
             });
-
-            const rangeStartTime = rangeStartDate.getTime();
-            const rangeEndTime = rangeEndDate.getTime();
-
-            const weeklyInRange = rawWeekly.filter(week => {
-                const weekStart = new Date(week.weekStartDate).getTime();
-                const weekEnd = new Date(week.weekEndDate).getTime();
-                return weekEnd >= rangeStartTime && weekStart <= rangeEndTime;
-            });
-
-            rangeEarnings = weeklyInRange.reduce((sum, week) => sum + (week.earnings || 0), 0);
         }
 
         // Latest Week Details
