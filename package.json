@@ -15,7 +15,6 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.18.2",
-    "framer-motion": "^11.3.31",
     "google-auth-library": "^9.6.3",
     "iconv-lite": "^0.6.3",
     "jwt-decode": "^4.0.0",
@@ -24,10 +23,8 @@
     "papaparse": "^5.4.1",
     "pg": "^8.11.3",
     "react": "^18.2.0",
-    "react-beautiful-dnd": "^13.1.1",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.22.3",
-    "react-window": "^1.8.10",
     "recharts": "^2.12.2",
     "uuid": "^9.0.1",
     "xlsx": "^0.18.5"

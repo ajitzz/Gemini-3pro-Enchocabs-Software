@@ -1,10 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { leadService } from '../services/leadsService';
 import { LeadList, LeadRecord, LeadImportResult } from '../types';
 import { Plus, Upload, Download, LayoutTemplate, Kanban, Search, Filter, Loader2, Phone, Calendar, MapPin } from 'lucide-react';
-import { FixedSizeList as VirtualList } from 'react-window';
-import { motion } from 'framer-motion';
-import { DragDropContext, Droppable, Draggable, DropResult } from 'react-beautiful-dnd';
 
 interface LeadAdminPageProps {
   role: string;
@@ -49,8 +46,12 @@ const LeadRow: React.FC<{ lead: LeadRecord; onEdit: (lead: LeadRecord, patch: Pa
   );
 };
 
-const KanbanCard: React.FC<{ lead: LeadRecord; onEdit: (lead: LeadRecord, patch: Partial<LeadRecord>) => void; }> = ({ lead, onEdit }) => (
-  <motion.div layout className="bg-white rounded-lg shadow-sm border border-slate-100 p-3 space-y-2">
+const KanbanCard: React.FC<{ lead: LeadRecord; onEdit: (lead: LeadRecord, patch: Partial<LeadRecord>) => void; onDragStart?: () => void; }> = ({ lead, onEdit, onDragStart }) => (
+  <div
+    className="bg-white rounded-lg shadow-sm border border-slate-100 p-3 space-y-2"
+    draggable
+    onDragStart={onDragStart}
+  >
     <div className="flex items-center justify-between">
       <div className="font-semibold text-slate-800">{lead.name}</div>
       <span className="text-xs text-indigo-600 bg-indigo-50 px-2 rounded-full">{lead.platform}</span>
@@ -69,7 +70,7 @@ const KanbanCard: React.FC<{ lead: LeadRecord; onEdit: (lead: LeadRecord, patch:
       value={lead.notes || ''}
       onChange={(e) => onEdit(lead, { notes: e.target.value })}
     />
-  </motion.div>
+  </div>
 );
 
 const ImportWizard: React.FC<{ onImport: (file: File, dedupe: string) => Promise<LeadImportResult> }> = ({ onImport }) => {
@@ -125,12 +126,43 @@ const ImportWizard: React.FC<{ onImport: (file: File, dedupe: string) => Promise
 };
 
 const LeadsTable: React.FC<{ leads: LeadRecord[]; onEdit: (lead: LeadRecord, patch: Partial<LeadRecord>) => void; height: number; }> = ({ leads, onEdit, height }) => {
-  const Row = ({ index, style }: { index: number; style: React.CSSProperties }) => (
-    <div style={style} className="px-1">
-      <LeadRow lead={leads[index]} onEdit={onEdit} />
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const itemHeight = 96;
+  const overscan = 3;
+
+  const onScroll = () => {
+    if (!containerRef.current) return;
+    setScrollTop(containerRef.current.scrollTop);
+  };
+
+  const startIndex = Math.max(0, Math.floor(scrollTop / itemHeight) - overscan);
+  const visibleCount = Math.ceil(height / itemHeight) + overscan * 2;
+  const endIndex = Math.min(leads.length, startIndex + visibleCount);
+
+  return (
+    <div
+      ref={containerRef}
+      onScroll={onScroll}
+      style={{ height, overflowY: 'auto', position: 'relative' }}
+      className="rounded-xl border border-slate-100 bg-slate-50"
+    >
+      <div style={{ height: leads.length * itemHeight, position: 'relative' }}>
+        {leads.slice(startIndex, endIndex).map((lead, idx) => {
+          const absoluteIndex = startIndex + idx;
+          return (
+            <div
+              key={lead.id}
+              style={{ position: 'absolute', top: absoluteIndex * itemHeight, left: 0, right: 0 }}
+              className="px-1"
+            >
+              <LeadRow lead={lead} onEdit={onEdit} />
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
-  return <VirtualList height={height} itemCount={leads.length} itemSize={96} width="100%" className="rounded-xl border border-slate-100 bg-slate-50"> <Row /> </VirtualList>;
 };
 
 const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
@@ -141,7 +173,7 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [cursor, setCursor] = useState<string | null>(null);
-  const [statusBuckets, setStatusBuckets] = useState<Record<string, LeadRecord[]>>({});
+  const [draggingLead, setDraggingLead] = useState<LeadRecord | null>(null);
 
   useEffect(() => {
     leadService.listLeadLists(role).then((lists) => {
@@ -187,13 +219,10 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
     return groups;
   }, [leads]);
 
-  const onDragEnd = (result: DropResult) => {
-    if (!result.destination) return;
-    const leadId = result.draggableId;
-    const statusId = result.destination.droppableId;
-    const lead = leads.find((l) => l.id === leadId);
-    if (!lead) return;
-    handleEdit(lead, { status_id: statusId });
+  const handleDrop = (statusId: string) => {
+    if (!draggingLead) return;
+    handleEdit(draggingLead, { status_id: statusId });
+    setDraggingLead(null);
   };
 
   return (
@@ -270,28 +299,23 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
 
           {view === 'kanban' && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <DragDropContext onDragEnd={onDragEnd}>
-                {Object.entries(groupedStatuses).map(([statusId, bucket]) => (
-                  <Droppable droppableId={statusId} key={statusId}>
-                    {(provided) => (
-                      <div ref={provided.innerRef} {...provided.droppableProps} className="bg-slate-50 rounded-xl border border-slate-200 p-3 space-y-2 min-h-[200px]">
-                        <ColumnHeader label={statusId === 'backlog' ? 'Unassigned' : statusId} />
-                        {bucket.slice(0, 20).map((lead, idx) => (
-                          <Draggable draggableId={lead.id} index={idx} key={lead.id}>
-                            {(dragProvided) => (
-                              <div ref={dragProvided.innerRef} {...dragProvided.draggableProps} {...dragProvided.dragHandleProps}>
-                                <KanbanCard lead={lead} onEdit={handleEdit} />
-                              </div>
-                            )}
-                          </Draggable>
-                        ))}
-                        {provided.placeholder}
-                        {bucket.length > 20 && <div className="text-xs text-slate-500">Load more from server per column</div>}
-                      </div>
-                    )}
-                  </Droppable>
-                ))}
-              </DragDropContext>
+              {Object.entries(groupedStatuses).map(([statusId, bucket]) => (
+                <div
+                  key={statusId}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    handleDrop(statusId);
+                  }}
+                  className="bg-slate-50 rounded-xl border border-slate-200 p-3 space-y-2 min-h-[200px]"
+                >
+                  <ColumnHeader label={statusId === 'backlog' ? 'Unassigned' : statusId} />
+                  {bucket.slice(0, 20).map((lead) => (
+                    <KanbanCard key={lead.id} lead={lead} onEdit={handleEdit} onDragStart={() => setDraggingLead(lead)} />
+                  ))}
+                  {bucket.length > 20 && <div className="text-xs text-slate-500">Load more from server per column</div>}
+                </div>
+              ))}
             </div>
           )}
         </div>
