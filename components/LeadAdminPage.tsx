@@ -1,613 +1,556 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { leadService } from '../services/leadsService';
-import { LeadList, LeadRecord, LeadImportResult } from '../types';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Plus,
+  Loader2,
+  PlusCircle,
   Upload,
   Download,
-  LayoutTemplate,
-  Kanban,
-  Search,
-  Filter,
-  Loader2,
+  NotebookTabs,
+  Pencil,
+  Trash,
   Phone,
-  Calendar,
-  MapPin,
-  Clock3,
-  UserPlus,
-  ChevronRight,
-  BadgeCheck,
+  StickyNote,
+  ListChecks,
+  Lightbulb,
+  RefreshCcw,
 } from 'lucide-react';
+import { leadService } from '../services/leadsService';
+import { LeadList, LeadRecord, LeadImportResult } from '../types';
 
 interface LeadAdminPageProps {
   role: string;
 }
 
-interface NextActionTemplate {
+interface OptionItem {
   id: string;
   label: string;
-  days: number;
-  hint?: string;
 }
 
-const defaultNextActions: NextActionTemplate[] = [
-  { id: 'coming-2-days', label: 'Coming in 2 days', days: 2, hint: 'Sets follow-up to +2 days' },
-  { id: 'call-tomorrow', label: 'Call tomorrow', days: 1 },
-  { id: 'needs-docs', label: 'Needs documents', days: 3 },
-  { id: 'follow-next-week', label: 'Follow up next week', days: 7 },
-  { id: 'priority-today', label: 'Call today', days: 0 },
+const uid = () => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
+
+const defaultStatusOptions: OptionItem[] = [
+  { id: uid(), label: 'Interested' },
+  { id: uid(), label: 'Shortlisted' },
+  { id: uid(), label: 'Not Interested' },
+  { id: uid(), label: 'Follow-up' },
 ];
 
-const ColumnHeader: React.FC<{ label: string; sub?: string }> = ({ label, sub }) => (
-  <div className="flex flex-col gap-0.5">
-    <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">{label}</div>
-    {sub && <div className="text-[11px] text-slate-400">{sub}</div>}
-  </div>
-);
+const defaultUpdateOptions: OptionItem[] = [
+  { id: uid(), label: 'Coming in 2 days' },
+  { id: uid(), label: 'Call today' },
+  { id: uid(), label: 'Documents pending' },
+];
 
-const InlineBadge: React.FC<{ label: string; tone?: 'neutral' | 'primary' }>
-  = ({ label, tone = 'neutral' }) => (
-    <span
-      className={`px-2 py-0.5 text-[11px] rounded-full border ${
-        tone === 'primary'
-          ? 'bg-indigo-50 text-indigo-700 border-indigo-100'
-          : 'bg-white text-slate-600 border-slate-200'
-      }`}
-    >
-      {label}
-    </span>
-  );
+const storageKey = (listId: string, key: 'statuses' | 'updates') => `lead-${key}-${listId}`;
 
-const LeadRow: React.FC<{
-  lead: LeadRecord;
-  onEdit: (lead: LeadRecord, patch: Partial<LeadRecord>) => void;
-  statusOptions: { id: string | null; label: string }[];
-  nextActions: NextActionTemplate[];
-}>
-= ({ lead, onEdit, statusOptions, nextActions }) => {
-  const handleNextAction = (templateId: string) => {
-    const template = nextActions.find((t) => t.id === templateId);
-    if (!template) return;
-    const followDate = new Date();
-    followDate.setDate(followDate.getDate() + template.days);
-    const existingFields = lead.custom_fields || {};
-    onEdit(lead, {
-      follow_up_at: followDate.toISOString(),
-      custom_fields: { ...existingFields, next_action_label: template.label },
-    });
-  };
-
-  return (
-    <div className="grid grid-cols-[1.4fr,1fr,0.9fr,0.9fr,1fr,1fr,1.1fr,1fr,0.8fr] gap-3 px-3 py-3 bg-white/80 rounded-xl shadow-sm border border-slate-100">
-      <div className="space-y-1">
-        <div className="flex items-center gap-2">
-          <div className="text-sm font-semibold text-slate-900">{lead.name}</div>
-          <InlineBadge label={lead.platform} tone="primary" />
-        </div>
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          <Calendar size={14} className="text-slate-400" />
-          {new Date(lead.lead_capture_at).toLocaleString()}
-        </div>
-      </div>
-
-      <div className="flex items-center gap-2 text-sm text-slate-700">
-        <Phone size={14} className="text-slate-400" />
-        <button className="text-indigo-600 hover:underline" onClick={() => window.open(`tel:${lead.phone_normalized}`)}>
-          {lead.phone_normalized}
-        </button>
-      </div>
-
-      <div className="flex items-center gap-2 text-sm text-slate-700">
-        <MapPin size={14} className="text-slate-400" />
-        {lead.city || '—'}
-      </div>
-
-      <input
-        className="text-sm border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-        value={lead.source || ''}
-        placeholder="Source"
-        onChange={(e) => onEdit(lead, { source: e.target.value })}
-      />
-
-      <select
-        className="text-sm border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-        value={lead.status_id || ''}
-        onChange={(e) => onEdit(lead, { status_id: e.target.value || null })}
-      >
-        {statusOptions.map((option) => (
-          <option key={option.id || 'none'} value={option.id || ''}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-
-      <select
-        className="text-sm border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-        value={lead.custom_fields?.next_action_label || ''}
-        onChange={(e) => handleNextAction(e.target.value)}
-      >
-        <option value="">Next action</option>
-        {nextActions.map((option) => (
-          <option key={option.id} value={option.id}>{option.label}</option>
-        ))}
-      </select>
-
-      <input
-        type="datetime-local"
-        className="text-sm border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-        value={lead.follow_up_at ? new Date(lead.follow_up_at).toISOString().slice(0, 16) : ''}
-        onChange={(e) => onEdit(lead, { follow_up_at: e.target.value ? new Date(e.target.value).toISOString() : null })}
-      />
-
-      <input
-        className="text-sm border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-        value={lead.assigned_to || ''}
-        placeholder="Assign (email)"
-        onChange={(e) => onEdit(lead, { assigned_to: e.target.value })}
-      />
-
-      <div className="space-y-2">
-        <textarea
-          className="w-full text-sm border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-          placeholder="Notes"
-          value={lead.notes || ''}
-          onChange={(e) => onEdit(lead, { notes: e.target.value })}
-        />
-        <div className="text-[11px] text-slate-500 flex items-center gap-1">
-          <Clock3 size={13} className="text-slate-400" />
-          Updated {lead.updated_at ? new Date(lead.updated_at).toLocaleString() : 'recently'}
-        </div>
-      </div>
-    </div>
-  );
+const loadOptions = (listId: string, key: 'statuses' | 'updates', fallback: OptionItem[]) => {
+  if (!listId) return fallback;
+  const saved = localStorage.getItem(storageKey(listId, key));
+  return saved ? (JSON.parse(saved) as OptionItem[]) : fallback;
 };
 
-const KanbanCard: React.FC<{ lead: LeadRecord; onEdit: (lead: LeadRecord, patch: Partial<LeadRecord>) => void; onDragStart?: () => void; }>
-= ({ lead, onEdit, onDragStart }) => (
-  <div
-    className="bg-white rounded-lg shadow-sm border border-slate-100 p-3 space-y-2"
-    draggable
-    onDragStart={onDragStart}
-  >
-    <div className="flex items-center justify-between">
-      <div className="font-semibold text-slate-800">{lead.name}</div>
-      <InlineBadge label={lead.platform} tone="primary" />
-    </div>
-    <div className="text-sm text-slate-600 flex items-center gap-1">
-      <Phone size={14} className="text-slate-400" />
-      <button className="text-indigo-600" onClick={() => window.open(`tel:${lead.phone_normalized}`)}>{lead.phone_normalized}</button>
-    </div>
-    <div className="text-xs text-slate-500 flex items-center gap-1">
-      <Calendar size={14} className="text-slate-400" />
-      {new Date(lead.lead_capture_at).toLocaleDateString()}
-    </div>
-    <textarea
-      className="w-full text-xs border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-      placeholder="Notes"
-      value={lead.notes || ''}
-      onChange={(e) => onEdit(lead, { notes: e.target.value })}
-    />
-  </div>
-);
-
-const ImportWizard: React.FC<{ onImport: (file: File, dedupe: string) => Promise<LeadImportResult> }> = ({ onImport }) => {
-  const [file, setFile] = useState<File | null>(null);
-  const [dedupeMode, setDedupeMode] = useState('skip');
-  const [summary, setSummary] = useState<LeadImportResult | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async () => {
-    if (!file) return;
-    setLoading(true);
-    const result = await onImport(file, dedupeMode);
-    setSummary(result);
-    setLoading(false);
-  };
-
-  return (
-    <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
-      <div className="flex items-center gap-2">
-        <Upload size={18} className="text-indigo-600" />
-        <div>
-          <p className="text-sm font-semibold text-slate-800">Import leads</p>
-          <p className="text-xs text-slate-500">Upload CSV/Excel, map fields, and choose dedupe strategy.</p>
-        </div>
-      </div>
-      <input type="file" accept=".csv,.xlsx,.xls" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-      <div className="flex items-center gap-3 text-sm flex-wrap">
-        <label className="font-semibold text-slate-700">Dedupe</label>
-        {['skip', 'update', 'keep_both'].map((mode) => (
-          <label key={mode} className="inline-flex items-center gap-1 text-xs text-slate-600">
-            <input type="radio" name="dedupe" value={mode} checked={dedupeMode === mode} onChange={() => setDedupeMode(mode)} />
-            {mode}
-          </label>
-        ))}
-      </div>
-      <button disabled={!file || loading} onClick={handleSubmit} className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm flex items-center gap-2 disabled:opacity-50">
-        {loading && <Loader2 size={14} className="animate-spin" />} Start import
-      </button>
-      {summary && (
-        <div className="text-xs text-slate-600 bg-slate-50 rounded-lg p-3">
-          Imported {summary.importedCount}, updated {summary.updatedCount}, skipped {summary.skippedCount}
-          {summary.errors.length > 0 && (
-            <ul className="list-disc ml-4 mt-2 text-rose-500">
-              {summary.errors.slice(0, 3).map((e) => (
-                <li key={e.row}>Row {e.row}: {e.message}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
-
-const LeadsTable: React.FC<{
-  leads: LeadRecord[];
-  onEdit: (lead: LeadRecord, patch: Partial<LeadRecord>) => void;
-  height: number;
-  statusOptions: { id: string | null; label: string }[];
-  nextActions: NextActionTemplate[];
-}> = ({ leads, onEdit, height, statusOptions, nextActions }) => {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [scrollTop, setScrollTop] = useState(0);
-  const itemHeight = 142;
-  const overscan = 3;
-
-  const onScroll = () => {
-    if (!containerRef.current) return;
-    setScrollTop(containerRef.current.scrollTop);
-  };
-
-  const startIndex = Math.max(0, Math.floor(scrollTop / itemHeight) - overscan);
-  const visibleCount = Math.ceil(height / itemHeight) + overscan * 2;
-  const endIndex = Math.min(leads.length, startIndex + visibleCount);
-
-  return (
-    <div className="rounded-2xl border border-slate-100 bg-gradient-to-b from-white to-slate-50">
-      <div className="grid grid-cols-[1.4fr,1fr,0.9fr,0.9fr,1fr,1fr,1.1fr,1fr,0.8fr] gap-3 px-3 py-2 sticky top-0 bg-white z-10 border-b border-slate-100">
-        <ColumnHeader label="Lead" sub="Name, platform, capture" />
-        <ColumnHeader label="Phone" />
-        <ColumnHeader label="City / Area" />
-        <ColumnHeader label="Source" />
-        <ColumnHeader label="Status" sub="Per list" />
-        <ColumnHeader label="Next action" sub="Template + follow-up" />
-        <ColumnHeader label="Follow-up" />
-        <ColumnHeader label="Assigned" />
-        <ColumnHeader label="Notes" />
-      </div>
-      <div
-        ref={containerRef}
-        onScroll={onScroll}
-        style={{ height, overflowY: 'auto', position: 'relative' }}
-      >
-        <div style={{ height: leads.length * itemHeight, position: 'relative' }}>
-          {leads.slice(startIndex, endIndex).map((lead, idx) => {
-            const absoluteIndex = startIndex + idx;
-            return (
-              <div
-                key={lead.id}
-                style={{ position: 'absolute', top: absoluteIndex * itemHeight, left: 0, right: 0 }}
-                className="px-2"
-              >
-                <LeadRow lead={lead} onEdit={onEdit} statusOptions={statusOptions} nextActions={nextActions} />
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
+const saveOptions = (listId: string, key: 'statuses' | 'updates', items: OptionItem[]) => {
+  if (!listId) return;
+  localStorage.setItem(storageKey(listId, key), JSON.stringify(items));
 };
 
 const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
   const [leadLists, setLeadLists] = useState<LeadList[]>([]);
-  const [activeList, setActiveList] = useState<string>('');
+  const [activeListId, setActiveListId] = useState('');
   const [leads, setLeads] = useState<LeadRecord[]>([]);
-  const [view, setView] = useState<'table' | 'kanban'>('table');
-  const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
-  const [cursor, setCursor] = useState<string | null>(null);
-  const [draggingLead, setDraggingLead] = useState<LeadRecord | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string>('');
-  const [assigneeFilter, setAssigneeFilter] = useState<string>('');
-  const [quickFilter, setQuickFilter] = useState<string>('');
+  const [importing, setImporting] = useState(false);
+  const [importSummary, setImportSummary] = useState<LeadImportResult | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [dedupeMode, setDedupeMode] = useState('skip');
+  const [newListName, setNewListName] = useState('');
   const [newLead, setNewLead] = useState<Partial<LeadRecord>>({ platform: 'Walk-in', source: 'Walk-in' });
-  const [creating, setCreating] = useState(false);
+  const [creatingLead, setCreatingLead] = useState(false);
+  const [statusOptions, setStatusOptions] = useState<OptionItem[]>(defaultStatusOptions);
+  const [updateOptions, setUpdateOptions] = useState<OptionItem[]>(defaultUpdateOptions);
 
   useEffect(() => {
     leadService.listLeadLists(role).then((lists) => {
       setLeadLists(lists);
-      if (lists.length > 0) setActiveList(lists[0].id);
+      if (lists[0]) setActiveListId(lists[0].id);
     });
   }, [role]);
 
   useEffect(() => {
-    if (!activeList) return;
+    if (!activeListId) return;
     setLoading(true);
-    leadService.fetchLeads({ listId: activeList, role, q: query, limit: 300, statusId: statusFilter || undefined, assignedTo: assigneeFilter || undefined, quick: quickFilter || undefined }).then((data) => {
-      setLeads(data.items);
-      setCursor(data.nextCursor || null);
-      setLoading(false);
-    });
-  }, [activeList, query, role, statusFilter, assigneeFilter, quickFilter]);
+    setStatusOptions(loadOptions(activeListId, 'statuses', defaultStatusOptions));
+    setUpdateOptions(loadOptions(activeListId, 'updates', defaultUpdateOptions));
+    leadService
+      .fetchLeads({ listId: activeListId, role, limit: 200 })
+      .then((res) => setLeads(res.items))
+      .finally(() => setLoading(false));
+  }, [activeListId, role]);
 
-  const handleEdit = async (lead: LeadRecord, patch: Partial<LeadRecord>) => {
-    const optimistic = leads.map((l) => l.id === lead.id ? { ...l, ...patch } : l);
-    setLeads(optimistic);
-    try {
-      const updated = await leadService.updateLead(lead.id, patch, role);
-      setLeads((prev) => prev.map((l) => l.id === lead.id ? updated : l));
-    } catch (err) {
-      setLeads(leads);
-      console.error(err);
+  const handleLeadUpdate = async (lead: LeadRecord, patch: Partial<LeadRecord>) => {
+    const mergedPatch = { ...patch } as Partial<LeadRecord>;
+    if (patch.custom_fields) {
+      mergedPatch.custom_fields = { ...lead.custom_fields, ...patch.custom_fields };
     }
+    const updated = await leadService.updateLead(lead.id, mergedPatch, role);
+    setLeads((prev) => prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)));
   };
-
-  const handleImport = async (file: File, dedupeMode: string) => {
-    if (!activeList) throw new Error('Select a list');
-    return leadService.importLeads(activeList, file, { dedupeMode, role });
-  };
-
-  const groupedStatuses = useMemo(() => {
-    const groups: Record<string, LeadRecord[]> = {};
-    leads.forEach((lead) => {
-      const key = lead.status_id || 'backlog';
-      groups[key] = groups[key] || [];
-      groups[key].push(lead);
-    });
-    return groups;
-  }, [leads]);
-
-  const handleDrop = (statusId: string) => {
-    if (!draggingLead) return;
-    handleEdit(draggingLead, { status_id: statusId });
-    setDraggingLead(null);
-  };
-
-  const statusOptions = useMemo(() => {
-    const unique = new Map<string | null, string>();
-    unique.set('', 'Unassigned');
-    leads.forEach((lead) => {
-      if (lead.status_id) unique.set(lead.status_id, lead.status_id);
-    });
-    return Array.from(unique.entries()).map(([id, label]) => ({ id, label }));
-  }, [leads]);
 
   const handleCreateLead = async () => {
-    if (!activeList) return;
-    setCreating(true);
+    if (!activeListId || !newLead.name || !newLead.phone) return;
+    setCreatingLead(true);
     try {
-      const payload = {
-        ...newLead,
-        list_id: activeList,
-        lead_capture_at: newLead.lead_capture_at || new Date().toISOString(),
-        source: newLead.source || newLead.platform,
-      } as Partial<LeadRecord>;
-      const created = await leadService.createLead(activeList, payload, role);
+      const created = await leadService.createLead(activeListId, newLead, role);
       setLeads((prev) => [created, ...prev]);
       setNewLead({ platform: 'Walk-in', source: 'Walk-in' });
     } finally {
-      setCreating(false);
+      setCreatingLead(false);
     }
   };
 
-  const loadMore = async () => {
-    if (!cursor || !activeList) return;
-    const next = await leadService.fetchLeads({ listId: activeList, role, cursor, limit: 200, q: query, statusId: statusFilter || undefined, assignedTo: assigneeFilter || undefined, quick: quickFilter || undefined });
-    setLeads((prev) => [...prev, ...next.items]);
-    setCursor(next.nextCursor || null);
+  const handleImport = async () => {
+    if (!activeListId || !file) return;
+    setImporting(true);
+    try {
+      const summary = await leadService.importLeads(activeListId, file, { dedupeMode, role });
+      setImportSummary(summary);
+      const refreshed = await leadService.fetchLeads({ listId: activeListId, role, limit: 200 });
+      setLeads(refreshed.items);
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleExport = async () => {
+    if (!activeListId) return;
+    const blob = await leadService.exportLeads(activeListId, role);
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'driver-leads.csv';
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const statusOptionsWithEmpty = useMemo(() => [{ id: '', label: 'No status' }, ...statusOptions], [statusOptions]);
+
+  const promptText = `You are building a driver lead manager. Always ask which sheet to open first. Inside a sheet you can:\n- import/export leads\n- add manual leads with name, phone, platform, city\n- update status options (Interested, Shortlisted, Not Interested, Follow-up)\n- update recent update tags (Coming in 2 days, Call today, Documents pending)\n- edit each lead inline: status, recent update tag, notes, follow-up timing.\nFocus on keeping records tidy for recruiters.`;
+
+  const addOption = (type: 'statuses' | 'updates', label: string) => {
+    if (!label.trim() || !activeListId) return;
+    const option: OptionItem = { id: uid(), label: label.trim() };
+    if (type === 'statuses') {
+      const items = [...statusOptions, option];
+      setStatusOptions(items);
+      saveOptions(activeListId, 'statuses', items);
+    } else {
+      const items = [...updateOptions, option];
+      setUpdateOptions(items);
+      saveOptions(activeListId, 'updates', items);
+    }
+  };
+
+  const editOption = (type: 'statuses' | 'updates', option: OptionItem) => {
+    const label = prompt('Update name', option.label);
+    if (!label || !activeListId) return;
+    if (type === 'statuses') {
+      const items = statusOptions.map((o) => (o.id === option.id ? { ...o, label } : o));
+      setStatusOptions(items);
+      saveOptions(activeListId, 'statuses', items);
+    } else {
+      const items = updateOptions.map((o) => (o.id === option.id ? { ...o, label } : o));
+      setUpdateOptions(items);
+      saveOptions(activeListId, 'updates', items);
+    }
+  };
+
+  const removeOption = (type: 'statuses' | 'updates', optionId: string) => {
+    if (!activeListId) return;
+    if (type === 'statuses') {
+      const items = statusOptions.filter((o) => o.id !== optionId);
+      setStatusOptions(items);
+      saveOptions(activeListId, 'statuses', items);
+    } else {
+      const items = updateOptions.filter((o) => o.id !== optionId);
+      setUpdateOptions(items);
+      saveOptions(activeListId, 'updates', items);
+    }
   };
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+    <div className="space-y-6">
+      <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Driver Leads HQ</h1>
-          <p className="text-sm text-slate-500">Inline editing, import/export, and follow-up automation built for 10,000+ leads.</p>
+          <p className="text-xs uppercase text-slate-500 font-semibold tracking-widest">Driver pipeline</p>
+          <h1 className="text-3xl font-black text-slate-900">Lead workbook</h1>
+          <p className="text-sm text-slate-600">Create named sheets, import/export data, and keep live notes on every driver prospect.</p>
         </div>
         <div className="flex items-center gap-2">
-          <button className={`px-3 py-2 bg-white border border-slate-200 rounded-lg flex items-center gap-2 ${view === 'table' ? 'shadow-sm text-indigo-700 border-indigo-200' : ''}`} onClick={() => setView('table')}>
-            <LayoutTemplate size={16} /> Table
+          <button
+            className="px-3 py-2 bg-slate-900 text-white rounded-lg text-sm flex items-center gap-2"
+            onClick={handleExport}
+            disabled={!activeListId}
+          >
+            <Download size={16} /> Export
           </button>
-          <button className={`px-3 py-2 bg-white border border-slate-200 rounded-lg flex items-center gap-2 ${view === 'kanban' ? 'shadow-sm text-indigo-700 border-indigo-200' : ''}`} onClick={() => setView('kanban')}>
-            <Kanban size={16} /> Kanban
+          <label className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm flex items-center gap-2 cursor-pointer">
+            <Upload size={16} />
+            <span>{importing ? 'Importing...' : 'Import'}</span>
+            <input type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+          </label>
+          <select
+            className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+            value={dedupeMode}
+            onChange={(e) => setDedupeMode(e.target.value)}
+          >
+            <option value="skip">Skip duplicates</option>
+            <option value="update">Update matches</option>
+            <option value="keep_both">Keep both</option>
+          </select>
+          <button
+            className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm flex items-center gap-2 disabled:opacity-50"
+            disabled={!file || importing}
+            onClick={handleImport}
+          >
+            {importing && <Loader2 size={16} className="animate-spin" />} Start import
           </button>
         </div>
-      </div>
+      </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        <div className="bg-gradient-to-b from-white to-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4 shadow-sm">
-          <div className="flex items-center justify-between">
+        <section className="bg-white border border-slate-200 rounded-2xl p-4 space-y-4 shadow-sm">
+          <div className="flex items-center gap-2">
+            <NotebookTabs size={18} className="text-indigo-600" />
             <div>
-              <p className="text-sm font-semibold text-slate-700">Lead lists</p>
-              <p className="text-[11px] text-slate-500">Switch regions, imports, or campaigns.</p>
+              <p className="font-semibold text-slate-800">Sheets</p>
+              <p className="text-xs text-slate-500">Keep cities, campaigns, or recruiters in separate sheets.</p>
             </div>
+          </div>
+
+          <div className="flex gap-2">
+            <input
+              className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm"
+              placeholder="New sheet name"
+              value={newListName}
+              onChange={(e) => setNewListName(e.target.value)}
+            />
             <button
-              className="text-xs text-indigo-600 flex items-center gap-1"
+              className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm"
               onClick={async () => {
-                const name = prompt('List name');
-                if (!name) return;
-                const created = await leadService.createLeadList(name, role);
+                if (!newListName.trim()) return;
+                const created = await leadService.createLeadList(newListName.trim(), role);
                 setLeadLists((prev) => [created, ...prev]);
-                setActiveList(created.id);
+                setActiveListId(created.id);
+                setNewListName('');
               }}
             >
-              <Plus size={14} /> New
+              <PlusCircle size={16} />
             </button>
           </div>
-          <div className="space-y-2">
+
+          <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
             {leadLists.map((list) => (
-              <div key={list.id} className={`flex items-center justify-between w-full text-left px-3 py-2 rounded-lg border transition ${activeList === list.id ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-700 hover:border-indigo-100'}`}>
-                <button className="flex-1 text-left" onClick={() => setActiveList(list.id)}>
-                  {list.name}
-                </button>
+              <div
+                key={list.id}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition ${
+                  activeListId === list.id ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-700'
+                }`}
+              >
+                <button className="flex-1 text-left" onClick={() => setActiveListId(list.id)}>{list.name}</button>
                 <button
-                  className="text-[11px] text-slate-500 hover:text-indigo-600"
+                  className="text-xs text-slate-500 hover:text-indigo-600"
                   onClick={async () => {
-                    const name = prompt('Rename list', list.name);
+                    const name = prompt('Rename sheet', list.name);
                     if (!name) return;
                     const renamed = await leadService.renameLeadList(list.id, name, role);
-                    setLeadLists((prev) => prev.map((l) => l.id === list.id ? renamed : l));
+                    setLeadLists((prev) => prev.map((l) => (l.id === list.id ? renamed : l)));
                   }}
                 >
-                  rename
+                  <Pencil size={14} />
                 </button>
               </div>
             ))}
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
-            <div className="flex items-start gap-2">
-              <BadgeCheck size={16} className="text-emerald-500" />
-              <div className="text-xs text-slate-600">
-                Auto-save inline edits, quick follow-up templates, and per-list exports keep huge lead lists tidy.
-              </div>
+          <div className="grid grid-cols-2 gap-2 text-center text-xs">
+            <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
+              <div className="text-lg font-bold text-slate-900">{leadLists.length}</div>
+              <div className="text-slate-500">Sheets</div>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-center">
-              <div className="bg-emerald-50 text-emerald-700 rounded-lg py-2">
-                <div className="text-xl font-bold">{leads.length}</div>
-                <div className="text-[11px] uppercase tracking-wide">Leads loaded</div>
-              </div>
-              <div className="bg-indigo-50 text-indigo-700 rounded-lg py-2">
-                <div className="text-xl font-bold">{leadLists.length}</div>
-                <div className="text-[11px] uppercase tracking-wide">Lists</div>
-              </div>
+            <div className="rounded-lg bg-indigo-50 border border-indigo-100 p-3">
+              <div className="text-lg font-bold text-indigo-800">{leads.length}</div>
+              <div className="text-indigo-700">Leads in sheet</div>
             </div>
           </div>
 
-          <ImportWizard onImport={handleImport} />
-          <button
-            onClick={async () => {
-              if (!activeList) return;
-              const blob = await leadService.exportLeads(activeList, role);
-              const url = window.URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = 'leads.csv';
-              a.click();
-            }}
-            className="w-full flex items-center gap-2 justify-center px-3 py-2 text-sm bg-slate-900 text-white rounded-lg"
-          >
-            <Download size={16} /> Export CSV
-          </button>
-        </div>
+          {importSummary && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700 space-y-1">
+              <div className="font-semibold text-slate-800">Last import</div>
+              <div>Imported: {importSummary.importedCount}</div>
+              <div>Updated: {importSummary.updatedCount}</div>
+              <div>Skipped: {importSummary.skippedCount}</div>
+              {importSummary.errors?.length > 0 && (
+                <div className="text-rose-600">Errors: {importSummary.errors.slice(0, 2).map((e) => `Row ${e.row}` ).join(', ')}</div>
+              )}
+              <div className="text-[11px] text-slate-500">Dedupe: {dedupeMode}</div>
+            </div>
+          )}
+        </section>
 
-        <div className="lg:col-span-3 space-y-4">
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col gap-3 shadow-sm">
-            <div className="flex flex-col lg:flex-row gap-2 lg:items-center">
-              <div className="flex-1 flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                <Search size={16} className="text-slate-400" />
-                <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search leads" className="flex-1 bg-transparent focus:outline-none text-sm" />
-              </div>
-              <div className="flex items-center gap-2 text-xs text-slate-600 flex-wrap">
-                <select className="border border-slate-200 rounded-lg px-3 py-2 text-sm" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-                  <option value="">All statuses</option>
-                  {statusOptions.filter((s) => s.id).map((s) => (
-                    <option key={s.id!} value={s.id!}>{s.label}</option>
-                  ))}
-                </select>
-                <select className="border border-slate-200 rounded-lg px-3 py-2 text-sm" value={quickFilter} onChange={(e) => setQuickFilter(e.target.value)}>
-                  <option value="">Any follow-up</option>
-                  <option value="today">Due today</option>
-                  <option value="overdue">Overdue</option>
-                </select>
-                <input
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                  placeholder="Assignee"
-                  value={assigneeFilter}
-                  onChange={(e) => setAssigneeFilter(e.target.value)}
-                />
-                <button className="px-3 py-2 text-sm border border-slate-200 rounded-lg flex items-center gap-1">
-                  <Filter size={14} /> Advanced filters
-                </button>
+        <section className="lg:col-span-3 space-y-4">
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
+            <div className="flex items-center gap-2 text-slate-700">
+              <ListChecks size={18} className="text-indigo-600" />
+              <div>
+                <p className="font-semibold">Quick add lead</p>
+                <p className="text-xs text-slate-500">Capture phone calls and walk-ins instantly.</p>
               </div>
             </div>
+            <div className="flex flex-wrap gap-2">
+              <input
+                className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                placeholder="Name"
+                value={newLead.name || ''}
+                onChange={(e) => setNewLead((prev) => ({ ...prev, name: e.target.value }))}
+              />
+              <input
+                className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                placeholder="Phone"
+                value={newLead.phone || ''}
+                onChange={(e) => setNewLead((prev) => ({ ...prev, phone: e.target.value }))}
+              />
+              <input
+                className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                placeholder="City / Area"
+                value={newLead.city || ''}
+                onChange={(e) => setNewLead((prev) => ({ ...prev, city: e.target.value }))}
+              />
+              <input
+                className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                placeholder="Platform"
+                value={newLead.platform || ''}
+                onChange={(e) => setNewLead((prev) => ({ ...prev, platform: e.target.value }))}
+              />
+              <input
+                className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                placeholder="Source"
+                value={newLead.source || ''}
+                onChange={(e) => setNewLead((prev) => ({ ...prev, source: e.target.value }))}
+              />
+              <button
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm flex items-center gap-2 disabled:opacity-50"
+                onClick={handleCreateLead}
+                disabled={creatingLead || !activeListId}
+              >
+                {creatingLead && <Loader2 size={16} className="animate-spin" />} Create lead
+              </button>
+            </div>
+          </div>
 
-            <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-3 flex items-center gap-3">
-              <UserPlus size={18} className="text-indigo-600" />
-              <div className="flex-1">
-                <div className="text-sm font-semibold text-slate-800">Add lead to this list</div>
-                <div className="text-xs text-slate-500">Inline form for walk-ins and phone leads. Auto-dedupe still applies on import.</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-slate-700">
+                  <StickyNote size={18} className="text-indigo-600" />
+                  <div>
+                    <p className="font-semibold">Status options</p>
+                    <p className="text-xs text-slate-500">Create, edit, or delete lead status labels.</p>
+                  </div>
+                </div>
+                <button className="text-xs text-indigo-600" onClick={() => addOption('statuses', 'New status')}>+ Quick add</button>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="space-y-2">
+                {statusOptions.map((option) => (
+                  <div key={option.id} className="flex items-center gap-2 border border-slate-200 rounded-lg px-3 py-2">
+                    <span className="flex-1 text-sm text-slate-800">{option.label}</span>
+                    <button className="text-slate-500 hover:text-indigo-600" onClick={() => editOption('statuses', option)}>
+                      <Pencil size={14} />
+                    </button>
+                    <button className="text-slate-400 hover:text-rose-600" onClick={() => removeOption('statuses', option.id)}>
+                      <Trash size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
                 <input
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                  placeholder="Name"
-                  value={newLead.name || ''}
-                  onChange={(e) => setNewLead((prev) => ({ ...prev, name: e.target.value }))}
-                />
-                <input
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                  placeholder="Phone"
-                  value={newLead.phone || ''}
-                  onChange={(e) => setNewLead((prev) => ({ ...prev, phone: e.target.value }))}
-                />
-                <input
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                  placeholder="City/Area"
-                  value={newLead.city || ''}
-                  onChange={(e) => setNewLead((prev) => ({ ...prev, city: e.target.value }))}
-                />
-                <input
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                  placeholder="Platform (Instagram, Walk-in)"
-                  value={newLead.platform || ''}
-                  onChange={(e) => setNewLead((prev) => ({ ...prev, platform: e.target.value }))}
-                />
-                <input
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                  placeholder="Source tag"
-                  value={newLead.source || ''}
-                  onChange={(e) => setNewLead((prev) => ({ ...prev, source: e.target.value }))}
+                  className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                  placeholder="Add status label"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      addOption('statuses', (e.target as HTMLInputElement).value);
+                      (e.target as HTMLInputElement).value = '';
+                    }
+                  }}
                 />
                 <button
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm flex items-center gap-2 disabled:opacity-60"
-                  disabled={creating}
-                  onClick={handleCreateLead}
+                  className="px-3 py-2 bg-slate-900 text-white rounded-lg text-sm"
+                  onClick={() => {
+                    const input = document.querySelector<HTMLInputElement>('input[placeholder="Add status label"]');
+                    if (input) {
+                      addOption('statuses', input.value);
+                      input.value = '';
+                    }
+                  }}
                 >
-                  {creating && <Loader2 size={14} className="animate-spin" />} Create
+                  Add
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-slate-700">
+                  <Phone size={18} className="text-indigo-600" />
+                  <div>
+                    <p className="font-semibold">Recent updates</p>
+                    <p className="text-xs text-slate-500">Reusable follow-up notes like "Coming in 2 days".</p>
+                  </div>
+                </div>
+                <button className="text-xs text-indigo-600" onClick={() => addOption('updates', 'New update')}>+ Quick add</button>
+              </div>
+              <div className="space-y-2">
+                {updateOptions.map((option) => (
+                  <div key={option.id} className="flex items-center gap-2 border border-slate-200 rounded-lg px-3 py-2">
+                    <span className="flex-1 text-sm text-slate-800">{option.label}</span>
+                    <button className="text-slate-500 hover:text-indigo-600" onClick={() => editOption('updates', option)}>
+                      <Pencil size={14} />
+                    </button>
+                    <button className="text-slate-400 hover:text-rose-600" onClick={() => removeOption('updates', option.id)}>
+                      <Trash size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                  placeholder="Add update tag"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      addOption('updates', (e.target as HTMLInputElement).value);
+                      (e.target as HTMLInputElement).value = '';
+                    }
+                  }}
+                />
+                <button
+                  className="px-3 py-2 bg-slate-900 text-white rounded-lg text-sm"
+                  onClick={() => {
+                    const input = document.querySelector<HTMLInputElement>('input[placeholder="Add update tag"]');
+                    if (input) {
+                      addOption('updates', input.value);
+                      input.value = '';
+                    }
+                  }}
+                >
+                  Add
                 </button>
               </div>
             </div>
           </div>
 
-          {loading && (
-            <div className="flex items-center gap-2 text-sm text-slate-600"><Loader2 size={16} className="animate-spin" /> Loading leads...</div>
-          )}
-
-          {view === 'table' && !loading && (
-            <LeadsTable leads={leads} onEdit={handleEdit} height={560} statusOptions={statusOptions} nextActions={defaultNextActions} />
-          )}
-
-          {view === 'kanban' && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {Object.entries(groupedStatuses).map(([statusId, bucket]) => (
-                <div
-                  key={statusId}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    handleDrop(statusId);
-                  }}
-                  className="bg-slate-50 rounded-xl border border-slate-200 p-3 space-y-2 min-h-[200px]"
-                >
-                  <ColumnHeader label={statusId === 'backlog' ? 'Unassigned' : statusId} />
-                  {bucket.slice(0, 20).map((lead) => (
-                    <KanbanCard key={lead.id} lead={lead} onEdit={handleEdit} onDragStart={() => setDraggingLead(lead)} />
-                  ))}
-                  {bucket.length > 20 && <div className="text-xs text-slate-500">Load more from server per column</div>}
-                </div>
-              ))}
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-200 flex items-center gap-2 text-slate-700">
+              <RefreshCcw size={18} className={loading ? 'animate-spin text-indigo-600' : 'text-indigo-600'} />
+              <div>
+                <p className="font-semibold">Live board</p>
+                <p className="text-xs text-slate-500">Update status, recent update tag, and notes inline. Everything auto-saves.</p>
+              </div>
             </div>
-          )}
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50 text-slate-600">
+                  <tr>
+                    <th className="text-left px-4 py-3">Lead</th>
+                    <th className="text-left px-4 py-3">Phone</th>
+                    <th className="text-left px-4 py-3">Status</th>
+                    <th className="text-left px-4 py-3">Recent update</th>
+                    <th className="text-left px-4 py-3">Notes</th>
+                    <th className="text-left px-4 py-3">Captured</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {leads.map((lead) => (
+                    <tr key={lead.id} className="border-t border-slate-100 hover:bg-slate-50/70">
+                      <td className="px-4 py-3">
+                        <div className="font-semibold text-slate-900">{lead.name}</div>
+                        <div className="text-xs text-slate-500">{lead.city || '—'} · {lead.platform}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <button className="text-indigo-600 hover:underline" onClick={() => window.open(`tel:${lead.phone_normalized}`)}>
+                          {lead.phone_normalized}
+                        </button>
+                      </td>
+                      <td className="px-4 py-3">
+                        <select
+                          className="border border-slate-200 rounded-lg px-2 py-1 text-sm"
+                          value={lead.status_id || ''}
+                          onChange={(e) => handleLeadUpdate(lead, { status_id: e.target.value || null })}
+                        >
+                          {statusOptionsWithEmpty.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-4 py-3">
+                        <select
+                          className="border border-slate-200 rounded-lg px-2 py-1 text-sm"
+                          value={lead.custom_fields?.recent_update || ''}
+                          onChange={(e) => handleLeadUpdate(lead, { custom_fields: { recent_update: e.target.value } })}
+                        >
+                          <option value="">Select update</option>
+                          {updateOptions.map((option) => (
+                            <option key={option.id} value={option.label}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-4 py-3">
+                        <textarea
+                          className="w-full border border-slate-200 rounded-lg px-2 py-1 text-sm"
+                          rows={2}
+                          value={lead.notes || ''}
+                          onChange={(e) => handleLeadUpdate(lead, { notes: e.target.value })}
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-xs text-slate-500">
+                        {new Date(lead.lead_capture_at).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))}
+                  {leads.length === 0 && !loading && (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                        No leads in this sheet yet. Import a file or add a lead to get started.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
 
-          {cursor && (
-            <button onClick={loadMore} className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm flex items-center justify-center gap-2">
-              <ChevronRight size={16} /> Load more
-            </button>
-          )}
-        </div>
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex items-start gap-3">
+              <Lightbulb size={20} className="text-amber-500" />
+              <div className="space-y-1 text-sm text-slate-700">
+                <div className="font-semibold text-slate-900">Suggested layout</div>
+                <ul className="list-disc ml-4 space-y-1 text-slate-600">
+                  <li>Use one sheet per city or recruiter to keep ownership clear.</li>
+                  <li>Statuses show pipeline position; update tags log the latest promise or ETA.</li>
+                  <li>Notes capture context from calls; keep them short and time-stamped.</li>
+                  <li>Export weekly to share progress and re-import after bulk edits.</li>
+                </ul>
+              </div>
+            </div>
+            <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-3 text-sm text-slate-700">
+              <div className="font-semibold text-slate-900 mb-2">Prompt to brief an AI assistant</div>
+              <pre className="whitespace-pre-wrap text-xs bg-white border border-slate-200 rounded-lg p-3 text-slate-800">{promptText}</pre>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   );
