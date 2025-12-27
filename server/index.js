@@ -4,10 +4,13 @@ const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
 const { OAuth2Client } = require('google-auth-library');
 const db = require('./db');
+const leadRoutes = require('./leadsRoutes');
 const app = express();
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); // Support large Excel imports
+// Lead management router (uses header-based role validation; wire into auth middleware if available)
+app.use('/api', leadRoutes(db));
 
 const PORT = process.env.PORT || 3000;
 const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'enchoenterprises@gmail.com').toLowerCase();
