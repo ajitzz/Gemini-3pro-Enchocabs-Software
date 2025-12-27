@@ -1,52 +1,169 @@
-import React, { useEffect, useMemo, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { leadService } from '../services/leadsService';
 import { LeadList, LeadRecord, LeadImportResult } from '../types';
-import { Plus, Upload, Download, LayoutTemplate, Kanban, Search, Filter, Loader2, Phone, Calendar, MapPin } from 'lucide-react';
+import {
+  Plus,
+  Upload,
+  Download,
+  LayoutTemplate,
+  Kanban,
+  Search,
+  Filter,
+  Loader2,
+  Phone,
+  Calendar,
+  MapPin,
+  Clock3,
+  UserPlus,
+  ChevronRight,
+  BadgeCheck,
+} from 'lucide-react';
 
 interface LeadAdminPageProps {
   role: string;
 }
 
-const ColumnHeader: React.FC<{ label: string } > = ({ label }) => (
-  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">{label}</div>
+interface NextActionTemplate {
+  id: string;
+  label: string;
+  days: number;
+  hint?: string;
+}
+
+const defaultNextActions: NextActionTemplate[] = [
+  { id: 'coming-2-days', label: 'Coming in 2 days', days: 2, hint: 'Sets follow-up to +2 days' },
+  { id: 'call-tomorrow', label: 'Call tomorrow', days: 1 },
+  { id: 'needs-docs', label: 'Needs documents', days: 3 },
+  { id: 'follow-next-week', label: 'Follow up next week', days: 7 },
+  { id: 'priority-today', label: 'Call today', days: 0 },
+];
+
+const ColumnHeader: React.FC<{ label: string; sub?: string }> = ({ label, sub }) => (
+  <div className="flex flex-col gap-0.5">
+    <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">{label}</div>
+    {sub && <div className="text-[11px] text-slate-400">{sub}</div>}
+  </div>
 );
 
-const LeadRow: React.FC<{ lead: LeadRecord; onEdit: (lead: LeadRecord, patch: Partial<LeadRecord>) => void; } > = ({ lead, onEdit }) => {
+const InlineBadge: React.FC<{ label: string; tone?: 'neutral' | 'primary' }>
+  = ({ label, tone = 'neutral' }) => (
+    <span
+      className={`px-2 py-0.5 text-[11px] rounded-full border ${
+        tone === 'primary'
+          ? 'bg-indigo-50 text-indigo-700 border-indigo-100'
+          : 'bg-white text-slate-600 border-slate-200'
+      }`}
+    >
+      {label}
+    </span>
+  );
+
+const LeadRow: React.FC<{
+  lead: LeadRecord;
+  onEdit: (lead: LeadRecord, patch: Partial<LeadRecord>) => void;
+  statusOptions: { id: string | null; label: string }[];
+  nextActions: NextActionTemplate[];
+}>
+= ({ lead, onEdit, statusOptions, nextActions }) => {
+  const handleNextAction = (templateId: string) => {
+    const template = nextActions.find((t) => t.id === templateId);
+    if (!template) return;
+    const followDate = new Date();
+    followDate.setDate(followDate.getDate() + template.days);
+    const existingFields = lead.custom_fields || {};
+    onEdit(lead, {
+      follow_up_at: followDate.toISOString(),
+      custom_fields: { ...existingFields, next_action_label: template.label },
+    });
+  };
+
   return (
-    <div className="grid grid-cols-6 gap-3 px-3 py-2 bg-white/70 rounded-lg shadow-sm border border-slate-100">
-      <div className="flex items-center gap-2">
-        <div className="text-sm font-semibold text-slate-800">{lead.name}</div>
-        <span className="text-xs text-indigo-600 bg-indigo-50 px-2 rounded-full">{lead.platform}</span>
+    <div className="grid grid-cols-[1.4fr,1fr,0.9fr,0.9fr,1fr,1fr,1.1fr,1fr,0.8fr] gap-3 px-3 py-3 bg-white/80 rounded-xl shadow-sm border border-slate-100">
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          <div className="text-sm font-semibold text-slate-900">{lead.name}</div>
+          <InlineBadge label={lead.platform} tone="primary" />
+        </div>
+        <div className="flex items-center gap-2 text-xs text-slate-500">
+          <Calendar size={14} className="text-slate-400" />
+          {new Date(lead.lead_capture_at).toLocaleString()}
+        </div>
       </div>
+
       <div className="flex items-center gap-2 text-sm text-slate-700">
         <Phone size={14} className="text-slate-400" />
-        <button className="text-indigo-600 hover:underline" onClick={() => window.open(`tel:${lead.phone_normalized}`)}>{lead.phone_normalized}</button>
+        <button className="text-indigo-600 hover:underline" onClick={() => window.open(`tel:${lead.phone_normalized}`)}>
+          {lead.phone_normalized}
+        </button>
       </div>
+
       <div className="flex items-center gap-2 text-sm text-slate-700">
         <MapPin size={14} className="text-slate-400" />
-        {lead.city}
+        {lead.city || '—'}
       </div>
-      <div className="flex items-center gap-2 text-sm text-slate-700">
-        <Calendar size={14} className="text-slate-400" />
-        {new Date(lead.lead_capture_at).toLocaleDateString()}
-      </div>
+
       <input
         className="text-sm border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-        value={lead.notes || ''}
-        placeholder="Notes"
-        onChange={(e) => onEdit(lead, { notes: e.target.value })}
+        value={lead.source || ''}
+        placeholder="Source"
+        onChange={(e) => onEdit(lead, { source: e.target.value })}
       />
+
+      <select
+        className="text-sm border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+        value={lead.status_id || ''}
+        onChange={(e) => onEdit(lead, { status_id: e.target.value || null })}
+      >
+        {statusOptions.map((option) => (
+          <option key={option.id || 'none'} value={option.id || ''}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+
+      <select
+        className="text-sm border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+        value={lead.custom_fields?.next_action_label || ''}
+        onChange={(e) => handleNextAction(e.target.value)}
+      >
+        <option value="">Next action</option>
+        {nextActions.map((option) => (
+          <option key={option.id} value={option.id}>{option.label}</option>
+        ))}
+      </select>
+
+      <input
+        type="datetime-local"
+        className="text-sm border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+        value={lead.follow_up_at ? new Date(lead.follow_up_at).toISOString().slice(0, 16) : ''}
+        onChange={(e) => onEdit(lead, { follow_up_at: e.target.value ? new Date(e.target.value).toISOString() : null })}
+      />
+
       <input
         className="text-sm border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-200"
         value={lead.assigned_to || ''}
-        placeholder="Assign email"
+        placeholder="Assign (email)"
         onChange={(e) => onEdit(lead, { assigned_to: e.target.value })}
       />
+
+      <div className="space-y-2">
+        <textarea
+          className="w-full text-sm border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+          placeholder="Notes"
+          value={lead.notes || ''}
+          onChange={(e) => onEdit(lead, { notes: e.target.value })}
+        />
+        <div className="text-[11px] text-slate-500 flex items-center gap-1">
+          <Clock3 size={13} className="text-slate-400" />
+          Updated {lead.updated_at ? new Date(lead.updated_at).toLocaleString() : 'recently'}
+        </div>
+      </div>
     </div>
   );
 };
 
-const KanbanCard: React.FC<{ lead: LeadRecord; onEdit: (lead: LeadRecord, patch: Partial<LeadRecord>) => void; onDragStart?: () => void; }> = ({ lead, onEdit, onDragStart }) => (
+const KanbanCard: React.FC<{ lead: LeadRecord; onEdit: (lead: LeadRecord, patch: Partial<LeadRecord>) => void; onDragStart?: () => void; }>
+= ({ lead, onEdit, onDragStart }) => (
   <div
     className="bg-white rounded-lg shadow-sm border border-slate-100 p-3 space-y-2"
     draggable
@@ -54,7 +171,7 @@ const KanbanCard: React.FC<{ lead: LeadRecord; onEdit: (lead: LeadRecord, patch:
   >
     <div className="flex items-center justify-between">
       <div className="font-semibold text-slate-800">{lead.name}</div>
-      <span className="text-xs text-indigo-600 bg-indigo-50 px-2 rounded-full">{lead.platform}</span>
+      <InlineBadge label={lead.platform} tone="primary" />
     </div>
     <div className="text-sm text-slate-600 flex items-center gap-1">
       <Phone size={14} className="text-slate-400" />
@@ -97,7 +214,7 @@ const ImportWizard: React.FC<{ onImport: (file: File, dedupe: string) => Promise
         </div>
       </div>
       <input type="file" accept=".csv,.xlsx,.xls" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-      <div className="flex items-center gap-3 text-sm">
+      <div className="flex items-center gap-3 text-sm flex-wrap">
         <label className="font-semibold text-slate-700">Dedupe</label>
         {['skip', 'update', 'keep_both'].map((mode) => (
           <label key={mode} className="inline-flex items-center gap-1 text-xs text-slate-600">
@@ -125,10 +242,16 @@ const ImportWizard: React.FC<{ onImport: (file: File, dedupe: string) => Promise
   );
 };
 
-const LeadsTable: React.FC<{ leads: LeadRecord[]; onEdit: (lead: LeadRecord, patch: Partial<LeadRecord>) => void; height: number; }> = ({ leads, onEdit, height }) => {
+const LeadsTable: React.FC<{
+  leads: LeadRecord[];
+  onEdit: (lead: LeadRecord, patch: Partial<LeadRecord>) => void;
+  height: number;
+  statusOptions: { id: string | null; label: string }[];
+  nextActions: NextActionTemplate[];
+}> = ({ leads, onEdit, height, statusOptions, nextActions }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
-  const itemHeight = 96;
+  const itemHeight = 142;
   const overscan = 3;
 
   const onScroll = () => {
@@ -141,25 +264,37 @@ const LeadsTable: React.FC<{ leads: LeadRecord[]; onEdit: (lead: LeadRecord, pat
   const endIndex = Math.min(leads.length, startIndex + visibleCount);
 
   return (
-    <div
-      ref={containerRef}
-      onScroll={onScroll}
-      style={{ height, overflowY: 'auto', position: 'relative' }}
-      className="rounded-xl border border-slate-100 bg-slate-50"
-    >
-      <div style={{ height: leads.length * itemHeight, position: 'relative' }}>
-        {leads.slice(startIndex, endIndex).map((lead, idx) => {
-          const absoluteIndex = startIndex + idx;
-          return (
-            <div
-              key={lead.id}
-              style={{ position: 'absolute', top: absoluteIndex * itemHeight, left: 0, right: 0 }}
-              className="px-1"
-            >
-              <LeadRow lead={lead} onEdit={onEdit} />
-            </div>
-          );
-        })}
+    <div className="rounded-2xl border border-slate-100 bg-gradient-to-b from-white to-slate-50">
+      <div className="grid grid-cols-[1.4fr,1fr,0.9fr,0.9fr,1fr,1fr,1.1fr,1fr,0.8fr] gap-3 px-3 py-2 sticky top-0 bg-white z-10 border-b border-slate-100">
+        <ColumnHeader label="Lead" sub="Name, platform, capture" />
+        <ColumnHeader label="Phone" />
+        <ColumnHeader label="City / Area" />
+        <ColumnHeader label="Source" />
+        <ColumnHeader label="Status" sub="Per list" />
+        <ColumnHeader label="Next action" sub="Template + follow-up" />
+        <ColumnHeader label="Follow-up" />
+        <ColumnHeader label="Assigned" />
+        <ColumnHeader label="Notes" />
+      </div>
+      <div
+        ref={containerRef}
+        onScroll={onScroll}
+        style={{ height, overflowY: 'auto', position: 'relative' }}
+      >
+        <div style={{ height: leads.length * itemHeight, position: 'relative' }}>
+          {leads.slice(startIndex, endIndex).map((lead, idx) => {
+            const absoluteIndex = startIndex + idx;
+            return (
+              <div
+                key={lead.id}
+                style={{ position: 'absolute', top: absoluteIndex * itemHeight, left: 0, right: 0 }}
+                className="px-2"
+              >
+                <LeadRow lead={lead} onEdit={onEdit} statusOptions={statusOptions} nextActions={nextActions} />
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -174,6 +309,11 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
   const [loading, setLoading] = useState(false);
   const [cursor, setCursor] = useState<string | null>(null);
   const [draggingLead, setDraggingLead] = useState<LeadRecord | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [assigneeFilter, setAssigneeFilter] = useState<string>('');
+  const [quickFilter, setQuickFilter] = useState<string>('');
+  const [newLead, setNewLead] = useState<Partial<LeadRecord>>({ platform: 'Walk-in', source: 'Walk-in' });
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     leadService.listLeadLists(role).then((lists) => {
@@ -185,12 +325,12 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
   useEffect(() => {
     if (!activeList) return;
     setLoading(true);
-    leadService.fetchLeads({ listId: activeList, role, q: query, limit: 200 }).then((data) => {
+    leadService.fetchLeads({ listId: activeList, role, q: query, limit: 300, statusId: statusFilter || undefined, assignedTo: assigneeFilter || undefined, quick: quickFilter || undefined }).then((data) => {
       setLeads(data.items);
       setCursor(data.nextCursor || null);
       setLoading(false);
     });
-  }, [activeList, query, role]);
+  }, [activeList, query, role, statusFilter, assigneeFilter, quickFilter]);
 
   const handleEdit = async (lead: LeadRecord, patch: Partial<LeadRecord>) => {
     const optimistic = leads.map((l) => l.id === lead.id ? { ...l, ...patch } : l);
@@ -225,42 +365,117 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
     setDraggingLead(null);
   };
 
+  const statusOptions = useMemo(() => {
+    const unique = new Map<string | null, string>();
+    unique.set('', 'Unassigned');
+    leads.forEach((lead) => {
+      if (lead.status_id) unique.set(lead.status_id, lead.status_id);
+    });
+    return Array.from(unique.entries()).map(([id, label]) => ({ id, label }));
+  }, [leads]);
+
+  const handleCreateLead = async () => {
+    if (!activeList) return;
+    setCreating(true);
+    try {
+      const payload = {
+        ...newLead,
+        list_id: activeList,
+        lead_capture_at: newLead.lead_capture_at || new Date().toISOString(),
+        source: newLead.source || newLead.platform,
+      } as Partial<LeadRecord>;
+      const created = await leadService.createLead(activeList, payload, role);
+      setLeads((prev) => [created, ...prev]);
+      setNewLead({ platform: 'Walk-in', source: 'Walk-in' });
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const loadMore = async () => {
+    if (!cursor || !activeList) return;
+    const next = await leadService.fetchLeads({ listId: activeList, role, cursor, limit: 200, q: query, statusId: statusFilter || undefined, assignedTo: assigneeFilter || undefined, quick: quickFilter || undefined });
+    setLeads((prev) => [...prev, ...next.items]);
+    setCursor(next.nextCursor || null);
+  };
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="space-y-5">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Driver Leads Management</h1>
-          <p className="text-sm text-slate-500">Import, dedupe, and organize driver leads efficiently.</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Driver Leads HQ</h1>
+          <p className="text-sm text-slate-500">Inline editing, import/export, and follow-up automation built for 10,000+ leads.</p>
         </div>
         <div className="flex items-center gap-2">
-          <button className="px-3 py-2 bg-white border border-slate-200 rounded-lg flex items-center gap-2" onClick={() => setView('table')}>
+          <button className={`px-3 py-2 bg-white border border-slate-200 rounded-lg flex items-center gap-2 ${view === 'table' ? 'shadow-sm text-indigo-700 border-indigo-200' : ''}`} onClick={() => setView('table')}>
             <LayoutTemplate size={16} /> Table
           </button>
-          <button className="px-3 py-2 bg-white border border-slate-200 rounded-lg flex items-center gap-2" onClick={() => setView('kanban')}>
+          <button className={`px-3 py-2 bg-white border border-slate-200 rounded-lg flex items-center gap-2 ${view === 'kanban' ? 'shadow-sm text-indigo-700 border-indigo-200' : ''}`} onClick={() => setView('kanban')}>
             <Kanban size={16} /> Kanban
           </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-3">
+        <div className="bg-gradient-to-b from-white to-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4 shadow-sm">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-700">Lead lists</p>
-            <button className="text-xs text-indigo-600 flex items-center gap-1" onClick={async () => {
-              const name = prompt('List name');
-              if (!name) return;
-              const created = await leadService.createLeadList(name, role);
-              setLeadLists((prev) => [created, ...prev]);
-              setActiveList(created.id);
-            }}><Plus size={14} /> New</button>
+            <div>
+              <p className="text-sm font-semibold text-slate-700">Lead lists</p>
+              <p className="text-[11px] text-slate-500">Switch regions, imports, or campaigns.</p>
+            </div>
+            <button
+              className="text-xs text-indigo-600 flex items-center gap-1"
+              onClick={async () => {
+                const name = prompt('List name');
+                if (!name) return;
+                const created = await leadService.createLeadList(name, role);
+                setLeadLists((prev) => [created, ...prev]);
+                setActiveList(created.id);
+              }}
+            >
+              <Plus size={14} /> New
+            </button>
           </div>
           <div className="space-y-2">
             {leadLists.map((list) => (
-              <button key={list.id} onClick={() => setActiveList(list.id)} className={`w-full text-left px-3 py-2 rounded-lg border ${activeList === list.id ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-700'}`}>
-                {list.name}
-              </button>
+              <div key={list.id} className={`flex items-center justify-between w-full text-left px-3 py-2 rounded-lg border transition ${activeList === list.id ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-700 hover:border-indigo-100'}`}>
+                <button className="flex-1 text-left" onClick={() => setActiveList(list.id)}>
+                  {list.name}
+                </button>
+                <button
+                  className="text-[11px] text-slate-500 hover:text-indigo-600"
+                  onClick={async () => {
+                    const name = prompt('Rename list', list.name);
+                    if (!name) return;
+                    const renamed = await leadService.renameLeadList(list.id, name, role);
+                    setLeadLists((prev) => prev.map((l) => l.id === list.id ? renamed : l));
+                  }}
+                >
+                  rename
+                </button>
+              </div>
             ))}
           </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
+            <div className="flex items-start gap-2">
+              <BadgeCheck size={16} className="text-emerald-500" />
+              <div className="text-xs text-slate-600">
+                Auto-save inline edits, quick follow-up templates, and per-list exports keep huge lead lists tidy.
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-center">
+              <div className="bg-emerald-50 text-emerald-700 rounded-lg py-2">
+                <div className="text-xl font-bold">{leads.length}</div>
+                <div className="text-[11px] uppercase tracking-wide">Leads loaded</div>
+              </div>
+              <div className="bg-indigo-50 text-indigo-700 rounded-lg py-2">
+                <div className="text-xl font-bold">{leadLists.length}</div>
+                <div className="text-[11px] uppercase tracking-wide">Lists</div>
+              </div>
+            </div>
+          </div>
+
           <ImportWizard onImport={handleImport} />
           <button
             onClick={async () => {
@@ -278,14 +493,82 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
           </button>
         </div>
 
-        <div className="lg:col-span-3 space-y-3">
-          <div className="bg-white border border-slate-200 rounded-xl p-3 flex flex-col gap-2">
-            <div className="flex items-center gap-2">
+        <div className="lg:col-span-3 space-y-4">
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col gap-3 shadow-sm">
+            <div className="flex flex-col lg:flex-row gap-2 lg:items-center">
               <div className="flex-1 flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                 <Search size={16} className="text-slate-400" />
                 <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search leads" className="flex-1 bg-transparent focus:outline-none text-sm" />
               </div>
-              <button className="px-3 py-2 text-sm border border-slate-200 rounded-lg flex items-center gap-1"><Filter size={14} /> Filters</button>
+              <div className="flex items-center gap-2 text-xs text-slate-600 flex-wrap">
+                <select className="border border-slate-200 rounded-lg px-3 py-2 text-sm" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                  <option value="">All statuses</option>
+                  {statusOptions.filter((s) => s.id).map((s) => (
+                    <option key={s.id!} value={s.id!}>{s.label}</option>
+                  ))}
+                </select>
+                <select className="border border-slate-200 rounded-lg px-3 py-2 text-sm" value={quickFilter} onChange={(e) => setQuickFilter(e.target.value)}>
+                  <option value="">Any follow-up</option>
+                  <option value="today">Due today</option>
+                  <option value="overdue">Overdue</option>
+                </select>
+                <input
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                  placeholder="Assignee"
+                  value={assigneeFilter}
+                  onChange={(e) => setAssigneeFilter(e.target.value)}
+                />
+                <button className="px-3 py-2 text-sm border border-slate-200 rounded-lg flex items-center gap-1">
+                  <Filter size={14} /> Advanced filters
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-3 flex items-center gap-3">
+              <UserPlus size={18} className="text-indigo-600" />
+              <div className="flex-1">
+                <div className="text-sm font-semibold text-slate-800">Add lead to this list</div>
+                <div className="text-xs text-slate-500">Inline form for walk-ins and phone leads. Auto-dedupe still applies on import.</div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <input
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                  placeholder="Name"
+                  value={newLead.name || ''}
+                  onChange={(e) => setNewLead((prev) => ({ ...prev, name: e.target.value }))}
+                />
+                <input
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                  placeholder="Phone"
+                  value={newLead.phone || ''}
+                  onChange={(e) => setNewLead((prev) => ({ ...prev, phone: e.target.value }))}
+                />
+                <input
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                  placeholder="City/Area"
+                  value={newLead.city || ''}
+                  onChange={(e) => setNewLead((prev) => ({ ...prev, city: e.target.value }))}
+                />
+                <input
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                  placeholder="Platform (Instagram, Walk-in)"
+                  value={newLead.platform || ''}
+                  onChange={(e) => setNewLead((prev) => ({ ...prev, platform: e.target.value }))}
+                />
+                <input
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                  placeholder="Source tag"
+                  value={newLead.source || ''}
+                  onChange={(e) => setNewLead((prev) => ({ ...prev, source: e.target.value }))}
+                />
+                <button
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm flex items-center gap-2 disabled:opacity-60"
+                  disabled={creating}
+                  onClick={handleCreateLead}
+                >
+                  {creating && <Loader2 size={14} className="animate-spin" />} Create
+                </button>
+              </div>
             </div>
           </div>
 
@@ -294,7 +577,7 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
           )}
 
           {view === 'table' && !loading && (
-            <LeadsTable leads={leads} onEdit={handleEdit} height={520} />
+            <LeadsTable leads={leads} onEdit={handleEdit} height={560} statusOptions={statusOptions} nextActions={defaultNextActions} />
           )}
 
           {view === 'kanban' && (
@@ -317,6 +600,12 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
                 </div>
               ))}
             </div>
+          )}
+
+          {cursor && (
+            <button onClick={loadMore} className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm flex items-center justify-center gap-2">
+              <ChevronRight size={16} /> Load more
+            </button>
           )}
         </div>
       </div>
