@@ -52,6 +52,14 @@ export const leadService = {
     });
     return parseJson(res);
   },
+  async createLead(listId: string, payload: Partial<LeadRecord>, role: string): Promise<LeadRecord> {
+    const res = await fetch(`${API_BASE}/lead-lists/${listId}/leads`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-user-role': role },
+      body: JSON.stringify(payload),
+    });
+    return parseJson(res);
+  },
   async importLeads(listId: string, file: File, options: { dedupeMode: string; columnMap?: any; defaultCountry?: string; role: string; }): Promise<LeadImportResult> {
     const formData = new FormData();
     formData.append('file', file);

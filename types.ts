@@ -181,6 +181,7 @@ export interface LeadRecord {
   lead_capture_at: string;
   name: string;
   platform: string;
+  source?: string;
   phone: string;
   phone_normalized: string;
   city: string;

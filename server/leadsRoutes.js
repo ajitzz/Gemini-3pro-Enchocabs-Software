@@ -39,6 +39,53 @@ const leadRoutes = (db) => {
     res.json(result.rows[0]);
   });
 
+  router.post('/lead-lists/:id/leads', async (req, res) => {
+    const {
+      name,
+      platform,
+      source,
+      phone,
+      city,
+      status_id,
+      follow_up_at,
+      assigned_to,
+      notes,
+      custom_fields,
+      lead_capture_at,
+    } = req.body || {};
+
+    if (!name || !platform) return res.status(400).json({ error: 'Name and platform are required' });
+    const phone_normalized = stripPhone(phone);
+    if (!phone_normalized) return res.status(400).json({ error: 'Phone is required' });
+
+    const id = uuidv4();
+    const statusQuery = await db.query('SELECT id FROM lead_statuses WHERE list_id = $1 ORDER BY sort_order LIMIT 1', [req.params.id]);
+    const statusId = status_id || (statusQuery.rows[0] ? statusQuery.rows[0].id : null);
+
+    const insert = await db.query(
+      'INSERT INTO leads (id, list_id, lead_capture_at, name, platform, source, phone, phone_normalized, city, status_id, follow_up_at, assigned_to, notes, custom_fields) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',
+      [
+        id,
+        req.params.id,
+        lead_capture_at || new Date().toISOString(),
+        name,
+        platform,
+        source || platform,
+        phone,
+        phone_normalized,
+        city,
+        statusId,
+        follow_up_at || null,
+        assigned_to || null,
+        notes || null,
+        custom_fields || {},
+      ],
+    );
+
+    await db.query('INSERT INTO lead_events (id, lead_id, actor_email, event_type, before, after) VALUES ($1, $2, $3, $4, $5, $6)', [uuidv4(), id, req.headers['x-user-email'] || 'system', 'created', null, insert.rows[0]]);
+    res.json(insert.rows[0]);
+  });
+
   router.delete('/lead-lists/:id', async (req, res) => {
     await db.query('DELETE FROM lead_lists WHERE id = $1', [req.params.id]);
     res.json({ success: true });
@@ -122,7 +169,7 @@ const leadRoutes = (db) => {
     const existing = await db.query('SELECT * FROM leads WHERE id = $1', [req.params.id]);
     if (existing.rows.length === 0) return res.status(404).json({ error: 'Not found' });
     const before = existing.rows[0];
-    const fields = ['name', 'platform', 'phone', 'city', 'status_id', 'action_template_id', 'follow_up_at', 'assigned_to', 'notes', 'custom_fields', 'lead_capture_at'];
+    const fields = ['name', 'platform', 'source', 'phone', 'city', 'status_id', 'action_template_id', 'follow_up_at', 'assigned_to', 'notes', 'custom_fields', 'lead_capture_at'];
     const updates = [];
     const paramsUpdate = [];
     fields.forEach((f) => {
@@ -192,7 +239,7 @@ const leadRoutes = (db) => {
             continue;
           }
           if (dedupeMode === 'update') {
-            const updated = await client.query('UPDATE leads SET name = $1, platform = $2, phone = $3, city = $4, custom_fields = $5, lead_capture_at = $6, updated_at = NOW() WHERE id = $7 RETURNING *', [row.name, row.platform, row.phone, row.city, row.custom_fields, row.lead_capture_at, existing.rows[0].id]);
+          const updated = await client.query('UPDATE leads SET name = $1, platform = $2, source = $3, phone = $4, city = $5, custom_fields = $6, lead_capture_at = $7, updated_at = NOW() WHERE id = $8 RETURNING *', [row.name, row.platform, row.platform, row.phone, row.city, row.custom_fields, row.lead_capture_at, existing.rows[0].id]);
             updatedCount += 1;
             await client.query('INSERT INTO lead_events (id, lead_id, actor_email, event_type, before, after) VALUES ($1, $2, $3, $4, $5, $6)', [uuidv4(), existing.rows[0].id, req.headers['x-user-email'] || 'system', 'import_updated', existing.rows[0], updated.rows[0]]);
             continue;
@@ -202,7 +249,7 @@ const leadRoutes = (db) => {
         const leadId = uuidv4();
         const statusRes = await client.query('SELECT id FROM lead_statuses WHERE list_id = $1 ORDER BY sort_order LIMIT 1', [req.params.id]);
         const statusId = statusRes.rows[0]?.id || null;
-        const insert = await client.query('INSERT INTO leads (id, list_id, lead_capture_at, name, platform, phone, phone_normalized, city, status_id, custom_fields) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *', [leadId, req.params.id, row.lead_capture_at, row.name, row.platform, row.phone, row.phone_normalized, row.city, statusId, row.custom_fields]);
+        const insert = await client.query('INSERT INTO leads (id, list_id, lead_capture_at, name, platform, source, phone, phone_normalized, city, status_id, custom_fields) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *', [leadId, req.params.id, row.lead_capture_at, row.name, row.platform, row.platform, row.phone, row.phone_normalized, row.city, statusId, row.custom_fields]);
         await client.query('INSERT INTO lead_events (id, lead_id, actor_email, event_type, before, after) VALUES ($1, $2, $3, $4, $5, $6)', [uuidv4(), leadId, req.headers['x-user-email'] || 'system', 'imported', null, insert.rows[0]]);
         importedCount += 1;
       }
@@ -220,10 +267,10 @@ const leadRoutes = (db) => {
   // Export
   router.get('/lead-lists/:id/export', async (req, res) => {
     const { rows } = await db.query(`
-      SELECT lead_capture_at, name, platform, phone, city, status_id, action_template_id, follow_up_at, assigned_to, notes
+      SELECT lead_capture_at, name, platform, source, phone, city, status_id, action_template_id, follow_up_at, assigned_to, notes
       FROM leads WHERE list_id = $1 ORDER BY lead_capture_at DESC
     `, [req.params.id]);
-    const header = ['lead_capture_at', 'name', 'platform', 'phone', 'city', 'status_id', 'action_template_id', 'follow_up_at', 'assigned_to', 'notes'];
+    const header = ['lead_capture_at', 'name', 'platform', 'source', 'phone', 'city', 'status_id', 'action_template_id', 'follow_up_at', 'assigned_to', 'notes'];
     const csv = [header.join(',')].concat(rows.map((r) => header.map((h) => r[h] || '').join(','))).join('\n');
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="leads.csv"');
