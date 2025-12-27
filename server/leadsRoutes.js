@@ -83,32 +83,6 @@ const leadRoutes = (db) => {
     res.json({ items: rows, nextCursor, totalApprox: null });
   });
 
-  router.post('/lead-lists/:id/leads', async (req, res) => {
-    const { name, platform, phone, city, notes, assigned_to, follow_up_at, lead_capture_at } = req.body || {};
-    if (!name || !platform || !phone || !city) {
-      return res.status(400).json({ error: 'name, platform, phone, and city are required' });
-    }
-
-    const normalized = stripPhone(phone, req.body?.defaultCountry || '+91');
-    const { rows: existing } = await db.query('SELECT id FROM leads WHERE list_id = $1 AND phone_normalized = $2 LIMIT 1', [req.params.id, normalized]);
-    if (existing.length > 0) {
-      return res.status(409).json({ error: 'Lead with this phone already exists in the list' });
-    }
-
-    const statusRes = await db.query('SELECT id FROM lead_statuses WHERE list_id = $1 ORDER BY sort_order LIMIT 1', [req.params.id]);
-    const statusId = statusRes.rows[0]?.id || null;
-    const leadId = uuidv4();
-    const now = new Date();
-    const captureAt = lead_capture_at || now;
-
-    const insert = await db.query(
-      'INSERT INTO leads (id, list_id, lead_capture_at, name, platform, phone, phone_normalized, city, status_id, notes, assigned_to, follow_up_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',
-      [leadId, req.params.id, captureAt, name, platform, phone, normalized, city, statusId, notes || null, assigned_to || null, follow_up_at || null]
-    );
-    await db.query('INSERT INTO lead_events (id, lead_id, actor_email, event_type, before, after) VALUES ($1, $2, $3, $4, $5, $6)', [uuidv4(), leadId, req.headers['x-user-email'] || 'system', 'created', null, insert.rows[0]]);
-    res.json(insert.rows[0]);
-  });
-
   // Kanban incremental load
   router.get('/lead-lists/:id/kanban', async (req, res) => {
     const { statusId, cursor, limit = 20, q, assignedTo, quick } = req.query;

@@ -65,14 +65,6 @@ export const leadService = {
     });
     return parseJson(res);
   },
-  async createLead(listId: string, payload: Partial<LeadRecord>, role: string): Promise<LeadRecord> {
-    const res = await fetch(`${API_BASE}/lead-lists/${listId}/leads`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-user-role': role },
-      body: JSON.stringify(payload),
-    });
-    return parseJson(res);
-  },
   async exportLeads(listId: string, role: string): Promise<Blob> {
     const res = await fetch(`${API_BASE}/lead-lists/${listId}/export`, {
       headers: { 'x-user-role': role },
