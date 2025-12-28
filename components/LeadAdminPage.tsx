@@ -410,13 +410,13 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
             </div>
           </section>
 
-          <section className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm space-y-3">
-            <div className="flex flex-col gap-1 text-slate-700 sm:flex-row sm:items-center sm:justify-between">
+          <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-2">
+            <div className="flex items-center justify-between gap-2 text-slate-700">
               <div className="flex items-center gap-2">
                 <ListChecks size={18} className="text-indigo-600" />
                 <div className="leading-tight">
                   <p className="font-semibold">Import / export</p>
-                  <p className="text-[11px] text-slate-500">{hasActiveList ? `Sheet: ${leadLists.find((l) => l.id === activeListId)?.name || 'Select a sheet'}` : 'Pick a sheet above'}</p>
+                  <p className="text-[11px] text-slate-500">{hasActiveList ? `Sheet: ${leadLists.find((l) => l.id === activeListId)?.name || 'Select a sheet'}` : 'Choose a sheet to enable'}</p>
                 </div>
               </div>
               <button
@@ -430,7 +430,7 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
             <div className="flex flex-col gap-2 text-sm text-slate-600">
               <label className="px-3 py-2 bg-slate-50 border border-dashed border-slate-200 rounded-lg text-sm flex items-center gap-2 cursor-pointer">
                 <Upload size={16} className="text-indigo-600" />
-                <span className="text-slate-700">{file ? file.name : 'Upload Excel/CSV'}</span>
+                <span className="text-slate-700">{file ? file.name : 'Choose Excel/CSV'}</span>
                 <input
                   type="file"
                   accept=".csv,.xlsx,.xls"
@@ -479,7 +479,7 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
                   <StickyNote size={18} className="text-indigo-600" />
                   <div>
                     <p className="font-semibold">Status designer</p>
-                    <p className="text-xs text-slate-500">Tap a status button, then edit or remove it.</p>
+                    <p className="text-xs text-slate-500">Select an option to edit or remove it.</p>
                   </div>
                 </div>
                 <button className="text-xs text-indigo-600" onClick={() => addStatusOption('New status')} disabled={!hasActiveList}>
@@ -490,10 +490,10 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
                 {statusOptions.map((option) => (
                   <button
                     key={option.id}
-                    className={`px-3 py-1 rounded-md border text-sm transition shadow-none ${
+                    className={`px-3 py-1 rounded-full border text-sm transition ${
                       selectedStatusId === option.id
-                        ? 'border-indigo-200 bg-indigo-50 text-slate-800'
-                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                        ? 'border-indigo-300 bg-indigo-50 text-slate-800'
+                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
                     }`}
                     onClick={() => hasActiveList && setSelectedStatusId(option.id)}
                     disabled={!hasActiveList}
@@ -502,7 +502,7 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
                   </button>
                 ))}
               </div>
-              <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+              <div className="flex items-center gap-2 text-xs justify-between">
                 <input
                   className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm"
                   placeholder="Add status label"
@@ -515,7 +515,7 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
                   }}
                   disabled={!hasActiveList}
                 />
-                <div className="flex flex-wrap gap-2">
+                <div className="flex items-center gap-2">
                   <button
                     className="px-3 py-2 bg-slate-900 text-white rounded-lg text-sm disabled:opacity-50"
                     onClick={() => addStatusOption(newStatusLabel)}
@@ -524,18 +524,18 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
                     Add
                   </button>
                   <button
-                    className="px-3 py-2 border border-slate-200 text-slate-700 rounded-lg text-sm disabled:opacity-50"
+                    className="px-3 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm disabled:opacity-50"
                     disabled={!selectedStatus || !hasActiveList}
                     onClick={() => selectedStatus && editStatusOption(selectedStatus)}
                   >
-                    Edit selected
+                    Edit
                   </button>
                   <button
                     className="px-3 py-2 border border-slate-200 text-rose-600 rounded-lg text-sm disabled:opacity-50"
                     disabled={!selectedStatus || !hasActiveList}
                     onClick={() => selectedStatus && removeStatusOption(selectedStatus.id)}
                   >
-                    Remove selected
+                    Remove
                   </button>
                 </div>
               </div>
