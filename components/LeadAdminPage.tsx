@@ -414,7 +414,7 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
             <div className="flex items-center justify-between gap-2 text-slate-700">
               <div className="flex items-center gap-2">
                 <ListChecks size={18} className="text-indigo-600" />
-                <div>
+                <div className="leading-tight">
                   <p className="font-semibold">Import / export</p>
                   <p className="text-[11px] text-slate-500">{hasActiveList ? `Sheet: ${leadLists.find((l) => l.id === activeListId)?.name || 'Select a sheet'}` : 'Choose a sheet to enable'}</p>
                 </div>
@@ -439,7 +439,7 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
                   onChange={(e) => setFile(e.target.files?.[0] || null)}
                 />
               </label>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <select
                   className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm"
                   value={dedupeMode}
