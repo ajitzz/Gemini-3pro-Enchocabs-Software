@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Calendar, Wallet, Menu, X, Users, Coffee, Upload, Settings, Briefcase, FileText, Calculator, UserCircle, LogOut, Shield } from 'lucide-react';
+import { LayoutDashboard, Calendar, Wallet, Menu, X, Users, Coffee, Upload, Settings, Briefcase, FileText, Calculator, UserCircle, LogOut, Shield, ClipboardList } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import DailyEntryPage from './components/DailyEntryPage';
 import WeeklyWalletPage from './components/WeeklyWalletPage';
@@ -15,6 +15,7 @@ import RevenuePage from './components/RevenuePage';
 import DriverPortalPage from './components/DriverPortalPage';
 import LoginPage from './components/LoginPage';
 import AdminAccessPage from './components/AdminAccessPage';
+import DriverLeadsPage from './components/DriverLeadsPage';
 
 // --- PROTECTED ROUTE WRAPPER ---
 const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode, allowedRoles: string[] }) => {
@@ -118,6 +119,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               <NavItem to="/settlement" icon={Briefcase} label="Company Settlement" />
               <NavItem to="/billings" icon={FileText} label="Driver Billings" />
               <NavItem to="/revenue" icon={Calculator} label="Revenue Calculation" />
+              <NavItem to="/driver-leads" icon={ClipboardList} label="Driver Leads" />
               <NavItem to="/import" icon={Upload} label="Import Data" />
             </nav>
           </div>
@@ -206,6 +208,7 @@ const App: React.FC = () => {
                             <Route path="/settlement" element={<CompanySettlementPage />} />
                             <Route path="/billings" element={<DriverBillingsPage />} />
                             <Route path="/revenue" element={<RevenuePage />} />
+                            <Route path="/driver-leads" element={<DriverLeadsPage />} />
                             <Route path="/import" element={<ImportPage />} />
                             <Route path="/admin-access" element={<AdminAccessPage />} />
                         </Routes>

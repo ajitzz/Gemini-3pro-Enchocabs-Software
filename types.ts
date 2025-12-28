@@ -182,6 +182,44 @@ export interface AdminAccess {
   addedAt: string;
 }
 
+// --- Lead Management ---
+export interface LeadStatus {
+  id: string;
+  label: string;
+  color?: string;
+}
+
+export interface LeadUpdate {
+  id: string;
+  text: string;
+  date: string;
+  author?: string;
+}
+
+export interface LeadRecord {
+  id: string;
+  sheetId: string;
+  createdTime: string;
+  platform: string;
+  fullName: string;
+  phone: string;
+  city: string;
+  statusId: string;
+  admin: string;
+  note?: string;
+  updates: LeadUpdate[];
+}
+
+export interface LeadSheet {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt: string;
+  createdBy?: string;
+  statuses: LeadStatus[];
+  leads: LeadRecord[];
+}
+
 export type UserRole = 'super_admin' | 'admin' | 'driver';
 
 export type CashMode = 'blocked' | 'trips';
