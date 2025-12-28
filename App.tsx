@@ -54,12 +54,16 @@ const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const { user, logout } = useAuth();
 
-  const NavItem = ({ to, icon: Icon, label }: { to: string, icon: any, label: string }) => (
+  const NavItem = ({ to, icon: Icon, label, onSelect }: { to: string, icon: any, label: string, onSelect?: () => void }) => (
     <NavLink
       to={to}
-      onClick={() => setIsMobileMenuOpen(false)}
+      onClick={() => {
+        setIsMobileMenuOpen(false);
+        onSelect?.();
+      }}
       className={({ isActive }) =>
         `flex items-center justify-between px-4 py-3.5 rounded-xl transition-all duration-300 group ${
           isActive 
@@ -83,7 +87,11 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-slate-50 font-sans text-slate-900">
       {/* Sidebar Navigation */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-slate-900 border-r border-slate-800 transform transition-transform duration-300 ease-out md:relative md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} shadow-2xl md:shadow-none`}>
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 w-72 bg-slate-900 border-r border-slate-800 transform transition-transform duration-300 ease-out md:relative ${
+          isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+        } ${isSidebarOpen ? 'md:translate-x-0 md:w-72' : 'md:-translate-x-full md:w-0'} shadow-2xl md:shadow-none`}
+      >
         {/* Logo Area */}
         <div className="flex items-center justify-between p-8 border-b border-slate-800/50">
           <div className="flex items-center gap-3">
@@ -119,7 +127,12 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               <NavItem to="/settlement" icon={Briefcase} label="Company Settlement" />
               <NavItem to="/billings" icon={FileText} label="Driver Billings" />
               <NavItem to="/revenue" icon={Calculator} label="Revenue Calculation" />
-              <NavItem to="/driver-leads" icon={ClipboardList} label="Driver Leads" />
+              <NavItem
+                to="/driver-leads"
+                icon={ClipboardList}
+                label="Driver Leads"
+                onSelect={() => setIsSidebarOpen(false)}
+              />
               <NavItem to="/import" icon={Upload} label="Import Data" />
             </nav>
           </div>
@@ -162,6 +175,17 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
          <button onClick={() => setIsMobileMenuOpen(true)} className="text-slate-600 hover:text-indigo-600 transition-colors p-1">
            <Menu size={24} />
          </button>
+      </div>
+
+      {/* Desktop sidebar toggle */}
+      <div className="hidden md:flex items-center gap-2 px-6 pt-6">
+        <button
+          onClick={() => setIsSidebarOpen((prev) => !prev)}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg shadow-sm text-slate-700 hover:text-indigo-600 hover:border-indigo-200 transition-colors"
+        >
+          {isSidebarOpen ? <X size={18} /> : <Menu size={18} />}
+          <span className="text-sm font-semibold">{isSidebarOpen ? 'Hide Sidebar' : 'Show Sidebar'}</span>
+        </button>
       </div>
 
       {/* Main Content */}
