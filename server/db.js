@@ -1,26 +1,12 @@
 
-require('dotenv').config();
 const { Pool } = require('pg');
 
-// Vercel Postgres uses several env keys; try pooling connection first then fallbacks
-const connectionString =
-  process.env.POSTGRES_URL ||
-  process.env.DATABASE_URL ||
-  process.env.POSTGRES_PRISMA_URL ||
-  process.env.POSTGRES_URL_NON_POOLING;
+// Vercel Postgres uses 'POSTGRES_URL', generic hosts use 'DATABASE_URL'
+const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
 
 if (process.env.NODE_ENV === 'production' && !connectionString) {
   console.error("CRITICAL ERROR: No database connection string found. Please connect Vercel Postgres in the Storage tab.");
 }
-
-const connectionDebug = (() => {
-  try {
-    const url = new URL(connectionString);
-    return `${url.protocol}//${url.hostname}${url.pathname}`;
-  } catch (_err) {
-    return 'unavailable';
-  }
-})();
 
 const pool = new Pool({
   connectionString: connectionString || 'postgresql://postgres:password@localhost:5432/encho_cabs',
@@ -33,7 +19,7 @@ pool.on('error', (err, client) => {
 });
 
 pool.connect()
-  .then(() => console.log('Successfully connected to PostgreSQL database', connectionDebug === 'unavailable' ? '' : `(${connectionDebug})`))
+  .then(() => console.log('Successfully connected to PostgreSQL database'))
   .catch(err => {
     console.error('Failed to connect to PostgreSQL.', err.message);
   });
