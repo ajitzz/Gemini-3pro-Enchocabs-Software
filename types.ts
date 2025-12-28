@@ -159,49 +159,6 @@ export interface CompanySummaryRow {
   currentOs: number;
 }
 
-// Lead management
-export interface LeadList {
-  id: string;
-  name: string;
-  archived?: boolean;
-  created_at?: string;
-  updated_at?: string;
-}
-
-export interface LeadStatus {
-  id: string;
-  list_id: string;
-  name: string;
-  sort_order: number;
-}
-
-export interface LeadRecord {
-  id: string;
-  list_id: string;
-  lead_capture_at: string;
-  name: string;
-  platform: string;
-  source?: string;
-  phone: string;
-  phone_normalized: string;
-  city: string;
-  status_id?: string | null;
-  action_template_id?: string | null;
-  follow_up_at?: string | null;
-  assigned_to?: string | null;
-  notes?: string | null;
-  custom_fields?: Record<string, any>;
-  created_at?: string;
-  updated_at?: string;
-}
-
-export interface LeadImportResult {
-  importedCount: number;
-  updatedCount: number;
-  skippedCount: number;
-  errors: { row: number; message: string }[];
-}
-
 export interface CompanyWeeklySummary {
   id: string;
   startDate: string;

@@ -1315,29 +1315,26 @@ const DriverPortalPage: React.FC = () => {
             </div>
 
            {/* Tab Switcher */}
-           <div className="relative">
-               <div className="h-16" aria-hidden="true" />
-               <div className="fixed left-1/2 top-[30vh] z-30 w-full max-w-3xl -translate-x-1/2 px-2">
-                   <div className="flex p-1 bg-white/95 backdrop-blur rounded-xl border border-slate-100 shadow-lg shadow-indigo-100/80 ring-1 ring-slate-100/80">
-                       <button
-                          onClick={() => setActiveTab('home')}
-                          className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'home' ? 'bg-[#4f46e5] text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
-                       >
-                          Overview
-                       </button>
-                       <button
-                          onClick={() => setActiveTab('daily')}
-                          className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'daily' ? 'bg-[#4f46e5] text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
-                       >
-                          Daily Log
-                       </button>
-                       <button
-                          onClick={() => setActiveTab('billing')}
-                          className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'billing' ? 'bg-[#4f46e5] text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
-                       >
-                          Billings
-                       </button>
-                   </div>
+           <div className="sticky top-[92px] z-30">
+               <div className="flex p-1 bg-white/95 backdrop-blur rounded-xl border border-slate-100 shadow-md">
+                   <button
+                      onClick={() => setActiveTab('home')}
+                      className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'home' ? 'bg-[#4f46e5] text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+                   >
+                      Overview
+                   </button>
+                   <button
+                      onClick={() => setActiveTab('daily')}
+                      className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'daily' ? 'bg-[#4f46e5] text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+                   >
+                      Daily Log
+                   </button>
+                   <button
+                      onClick={() => setActiveTab('billing')}
+                      className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'billing' ? 'bg-[#4f46e5] text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+                   >
+                      Billings
+                   </button>
                </div>
            </div>
 

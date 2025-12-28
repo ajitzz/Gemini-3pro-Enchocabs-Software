@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Calendar, Wallet, Menu, X, Users, Coffee, Upload, Settings, Briefcase, FileText, Calculator, UserCircle, LogOut, Shield, Kanban } from 'lucide-react';
+import { LayoutDashboard, Calendar, Wallet, Menu, X, Users, Coffee, Upload, Settings, Briefcase, FileText, Calculator, UserCircle, LogOut, Shield } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import DailyEntryPage from './components/DailyEntryPage';
 import WeeklyWalletPage from './components/WeeklyWalletPage';
@@ -15,7 +15,6 @@ import RevenuePage from './components/RevenuePage';
 import DriverPortalPage from './components/DriverPortalPage';
 import LoginPage from './components/LoginPage';
 import AdminAccessPage from './components/AdminAccessPage';
-import LeadAdminPage from './components/LeadAdminPage';
 
 // --- PROTECTED ROUTE WRAPPER ---
 const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode, allowedRoles: string[] }) => {
@@ -116,7 +115,6 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               <NavItem to="/registration" icon={Users} label="Registration" />
               <NavItem to="/defaults" icon={Settings} label="Manage Defaults" />
               <NavItem to="/leaves" icon={Coffee} label="Leaves" />
-              <NavItem to="/admin/leads" icon={Kanban} label="Driver Leads" />
               <NavItem to="/settlement" icon={Briefcase} label="Company Settlement" />
               <NavItem to="/billings" icon={FileText} label="Driver Billings" />
               <NavItem to="/revenue" icon={Calculator} label="Revenue Calculation" />
@@ -180,11 +178,6 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   );
 };
 
-const LeadsRoute = () => {
-  const { user } = useAuth();
-  return <LeadAdminPage role={user?.role || 'admin'} />;
-};
-
 const App: React.FC = () => {
   return (
     <AuthProvider>
@@ -213,7 +206,6 @@ const App: React.FC = () => {
                             <Route path="/settlement" element={<CompanySettlementPage />} />
                             <Route path="/billings" element={<DriverBillingsPage />} />
                             <Route path="/revenue" element={<RevenuePage />} />
-                            <Route path="/admin/leads" element={<LeadsRoute />} />
                             <Route path="/import" element={<ImportPage />} />
                             <Route path="/admin-access" element={<AdminAccessPage />} />
                         </Routes>
