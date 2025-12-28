@@ -571,18 +571,34 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
                   }
                 }}
               />
-              <button
-                className="px-3 py-2 bg-slate-900 text-white rounded-lg text-sm"
-                onClick={() => {
-                  const input = document.querySelector<HTMLInputElement>('input[placeholder="Add status label"]');
-                  if (input) {
-                    addStatusOption(input.value);
-                    input.value = '';
-                  }
-                }}
-              >
-                Add
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  className="px-3 py-2 bg-slate-900 text-white rounded-lg text-sm"
+                  onClick={() => {
+                    const input = document.querySelector<HTMLInputElement>('input[placeholder="Add status label"]');
+                    if (input) {
+                      addStatusOption(input.value);
+                      input.value = '';
+                    }
+                  }}
+                >
+                  Add
+                </button>
+                <button
+                  className="px-3 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm disabled:opacity-50"
+                  disabled={!selectedStatus}
+                  onClick={() => selectedStatus && editStatusOption(selectedStatus)}
+                >
+                  Edit
+                </button>
+                <button
+                  className="px-3 py-2 border border-slate-200 text-rose-600 rounded-lg text-sm disabled:opacity-50"
+                  disabled={!selectedStatus}
+                  onClick={() => selectedStatus && removeStatusOption(selectedStatus.id)}
+                >
+                  Remove
+                </button>
+              </div>
             </div>
           </section>
         </div>
@@ -601,24 +617,6 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               <div className="flex flex-col gap-1">
-                <label className="text-xs text-slate-500">Created date</label>
-                <input
-                  type="date"
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                  value={newLeadDate}
-                  onChange={(e) => setNewLeadDate(e.target.value)}
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-slate-500">Platform</label>
-                <input
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                  placeholder="Walk-in / WhatsApp / Meta"
-                  value={newLead.platform || ''}
-                  onChange={(e) => setNewLead((prev) => ({ ...prev, platform: e.target.value }))}
-                />
-              </div>
-              <div className="flex flex-col gap-1">
                 <label className="text-xs text-slate-500">Full name</label>
                 <input
                   className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
@@ -631,7 +629,7 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
                 <label className="text-xs text-slate-500">Phone</label>
                 <input
                   className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                  placeholder="Contact number"
+                  placeholder="Phone number"
                   value={newLead.phone || ''}
                   onChange={(e) => setNewLead((prev) => ({ ...prev, phone: e.target.value }))}
                 />
@@ -640,9 +638,27 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
                 <label className="text-xs text-slate-500">City</label>
                 <input
                   className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                  placeholder="Location"
+                  placeholder="City"
                   value={newLead.city || ''}
                   onChange={(e) => setNewLead((prev) => ({ ...prev, city: e.target.value }))}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-slate-500">Platform</label>
+                <input
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                  placeholder="Walk-in, website, campaign"
+                  value={newLead.platform || ''}
+                  onChange={(e) => setNewLead((prev) => ({ ...prev, platform: e.target.value }))}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-slate-500">Lead date</label>
+                <input
+                  type="date"
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                  value={newLeadDate}
+                  onChange={(e) => setNewLeadDate(e.target.value)}
                 />
               </div>
               <div className="flex flex-col gap-1">
