@@ -1,112 +1,4 @@
-          <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-2">
-            <div className="flex items-center justify-between gap-2 text-slate-700">
-              <div className="flex items-center gap-2">
-                <ListChecks size={18} className="text-indigo-600" />
-                <div>
-                  <p className="font-semibold">Import / export</p>
-                  <p className="text-[11px] text-slate-500">Active sheet: {leadLists.find((l) => l.id === activeListId)?.name || 'Select a sheet'}</p>
-                </div>
-              </div>
-              <button
-                className="px-2 py-1 text-xs rounded-md border border-slate-200 text-slate-600 hover:text-indigo-700 disabled:opacity-60"
-                onClick={handleExport}
-                disabled={!activeListId}
-              >
-                <div className="flex items-center gap-1"><Download size={14} /> Export</div>
-              </button>
-            </div>
-            <div className="flex flex-col gap-2 text-sm text-slate-600">
-              <label className="px-3 py-2 bg-slate-50 border border-dashed border-slate-200 rounded-lg text-sm flex items-center gap-2 cursor-pointer">
-                <Upload size={16} className="text-indigo-600" />
-                <span className="text-slate-700">{file ? file.name : 'Choose Excel/CSV'}</span>
-                <input type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-              </label>
-              <div className="flex items-center gap-2">
-                <select
-                  className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                  value={dedupeMode}
-                  onChange={(e) => setDedupeMode(e.target.value)}
-                >
-                  <option value="skip">Skip duplicates</option>
-                  <option value="update">Update matches</option>
-                  <option value="keep_both">Keep both</option>
-                </select>
-                <button
-                  className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-                  disabled={!file || importing || !activeListId}
-                  onClick={handleImport}
-                >
-                  {importing && <Loader2 size={16} className="animate-spin" />} Import
-                </button>
-              </div>
-              {importSummary && (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-[11px] text-slate-700 flex flex-wrap gap-2">
-                  <span className="font-semibold text-slate-800">Last import</span>
-                  <span>Imported: {importSummary.importedCount}</span>
-                  <span>Updated: {importSummary.updatedCount}</span>
-                  <span>Skipped: {importSummary.skippedCount}</span>
-                  {importSummary.errors?.length > 0 && (
-                    <span className="text-rose-600">Errors: {importSummary.errors.slice(0, 2).map((e) => `Row ${e.row}`).join(',')}</span>
-                  )}
-                  <span className="text-slate-500">Dedupe: {dedupeMode}</span>
-                </div>
-              )}
-            </div>
-          </section>          <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-2">
-            <div className="flex items-center justify-between gap-2 text-slate-700">
-              <div className="flex items-center gap-2">
-                <ListChecks size={18} className="text-indigo-600" />
-                <div>
-                  <p className="font-semibold">Import / export</p>
-                  <p className="text-[11px] text-slate-500">Active sheet: {leadLists.find((l) => l.id === activeListId)?.name || 'Select a sheet'}</p>
-                </div>
-              </div>
-              <button
-                className="px-2 py-1 text-xs rounded-md border border-slate-200 text-slate-600 hover:text-indigo-700 disabled:opacity-60"
-                onClick={handleExport}
-                disabled={!activeListId}
-              >
-                <div className="flex items-center gap-1"><Download size={14} /> Export</div>
-              </button>
-            </div>
-            <div className="flex flex-col gap-2 text-sm text-slate-600">
-              <label className="px-3 py-2 bg-slate-50 border border-dashed border-slate-200 rounded-lg text-sm flex items-center gap-2 cursor-pointer">
-                <Upload size={16} className="text-indigo-600" />
-                <span className="text-slate-700">{file ? file.name : 'Choose Excel/CSV'}</span>
-                <input type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-              </label>
-              <div className="flex items-center gap-2">
-                <select
-                  className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                  value={dedupeMode}
-                  onChange={(e) => setDedupeMode(e.target.value)}
-                >
-                  <option value="skip">Skip duplicates</option>
-                  <option value="update">Update matches</option>
-                  <option value="keep_both">Keep both</option>
-                </select>
-                <button
-                  className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-                  disabled={!file || importing || !activeListId}
-                  onClick={handleImport}
-                >
-                  {importing && <Loader2 size={16} className="animate-spin" />} Import
-                </button>
-              </div>
-              {importSummary && (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-[11px] text-slate-700 flex flex-wrap gap-2">
-                  <span className="font-semibold text-slate-800">Last import</span>
-                  <span>Imported: {importSummary.importedCount}</span>
-                  <span>Updated: {importSummary.updatedCount}</span>
-                  <span>Skipped: {importSummary.skippedCount}</span>
-                  {importSummary.errors?.length > 0 && (
-                    <span className="text-rose-600">Errors: {importSummary.errors.slice(0, 2).map((e) => `Row ${e.row}`).join(',')}</span>
-                  )}
-                  <span className="text-slate-500">Dedupe: {dedupeMode}</span>
-                </div>
-              )}
-            </div>
-          </section>import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Loader2,
   PlusCircle,
@@ -465,19 +357,72 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
 
       <div className="grid gap-4 lg:grid-cols-[360px,1fr]">
         <div className="space-y-4">
-          <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-2">
-            <div className="flex items-center justify-between gap-2 text-slate-700">
+          <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
+            <div className="flex items-start gap-2 text-slate-700">
+              <FileSpreadsheet size={18} className="text-indigo-600" />
+              <div>
+                <p className="font-semibold">Sheets</p>
+                <p className="text-xs text-slate-500">Create, rename, and jump between lead sheets. Created date is auto-pulled into each record.</p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <input
+                className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                placeholder="New sheet name"
+                value={newListName}
+                onChange={(e) => setNewListName(e.target.value)}
+              />
+              <button
+                className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm"
+                onClick={async () => {
+                  if (!newListName.trim()) return;
+                  const created = await leadService.createLeadList(newListName.trim(), role);
+                  setLeadLists((prev) => [created, ...prev]);
+                  setActiveListId(created.id);
+                  setNewListName('');
+                }}
+              >
+                <PlusCircle size={16} />
+              </button>
+            </div>
+            <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
+              {leadLists.map((list) => (
+                <div
+                  key={list.id}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition ${
+                    activeListId === list.id ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-700'
+                  }`}
+                >
+                  <button className="flex-1 text-left" onClick={() => setActiveListId(list.id)}>{list.name}</button>
+                  <button
+                    className="text-xs text-slate-500 hover:text-indigo-600"
+                    onClick={async () => {
+                      const name = prompt('Rename sheet', list.name);
+                      if (!name) return;
+                      const renamed = await leadService.renameLeadList(list.id, name, role);
+                      setLeadLists((prev) => prev.map((l) => (l.id === list.id ? renamed : l)));
+                    }}
+                  >
+                    <Pencil size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm space-y-3">
+            <div className="flex flex-col gap-1 text-slate-700 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2">
                 <ListChecks size={18} className="text-indigo-600" />
-                <div>
+                <div className="leading-tight">
                   <p className="font-semibold">Import / export</p>
-                  <p className="text-[11px] text-slate-500">Active sheet: {leadLists.find((l) => l.id === activeListId)?.name || 'Select a sheet'}</p>
+                  <p className="text-[11px] text-slate-500">{hasActiveList ? `Sheet: ${leadLists.find((l) => l.id === activeListId)?.name || 'Select a sheet'}` : 'Pick a sheet above'}</p>
                 </div>
               </div>
               <button
                 className="px-2 py-1 text-xs rounded-md border border-slate-200 text-slate-600 hover:text-indigo-700 disabled:opacity-60"
                 onClick={handleExport}
-                disabled={!activeListId}
+                disabled={!hasActiveList}
               >
                 <div className="flex items-center gap-1"><Download size={14} /> Export</div>
               </button>
@@ -485,14 +430,21 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
             <div className="flex flex-col gap-2 text-sm text-slate-600">
               <label className="px-3 py-2 bg-slate-50 border border-dashed border-slate-200 rounded-lg text-sm flex items-center gap-2 cursor-pointer">
                 <Upload size={16} className="text-indigo-600" />
-                <span className="text-slate-700">{file ? file.name : 'Choose Excel/CSV'}</span>
-                <input type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+                <span className="text-slate-700">{file ? file.name : 'Upload Excel/CSV'}</span>
+                <input
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  className="hidden"
+                  disabled={!hasActiveList}
+                  onChange={(e) => setFile(e.target.files?.[0] || null)}
+                />
               </label>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <select
                   className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm"
                   value={dedupeMode}
                   onChange={(e) => setDedupeMode(e.target.value)}
+                  disabled={!hasActiveList}
                 >
                   <option value="skip">Skip duplicates</option>
                   <option value="update">Update matches</option>
@@ -500,42 +452,11 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
                 </select>
                 <button
                   className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-                  disabled={!file || importing || !activeListId}
+                  disabled={!file || importing || !hasActiveList}
                   onClick={handleImport}
                 >
                   {importing && <Loader2 size={16} className="animate-spin" />} Import
                 </button>
-              </div>
-              <div className="flex flex-col gap-2 text-sm text-slate-600">
-                <label className="px-3 py-2 bg-slate-50 border border-dashed border-slate-200 rounded-lg text-sm flex items-center gap-2 cursor-pointer">
-                  <Upload size={16} className="text-indigo-600" />
-                  <span className="text-slate-700">{file ? file.name : 'Choose Excel/CSV'}</span>
-                  <input
-                    type="file"
-                    accept=".csv,.xlsx,.xls"
-                    className="hidden"
-                    disabled={!hasActiveList}
-                    onChange={(e) => setFile(e.target.files?.[0] || null)}
-                  />
-                </label>
-                <div className="flex items-center gap-2">
-                  <select
-                    className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                    value={dedupeMode}
-                    onChange={(e) => setDedupeMode(e.target.value)}
-                    disabled={!hasActiveList}
-                  >
-                    <option value="skip">Skip duplicates</option>
-                    <option value="update">Update matches</option>
-                    <option value="keep_both">Keep both</option>
-                  </select>
-                  <button
-                    className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-                    disabled={!file || importing || !hasActiveList}
-                    onClick={handleImport}
-                  >
-                    {importing && <Loader2 size={16} className="animate-spin" />} Import
-                  </button>
               </div>
               {importSummary && (
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-[11px] text-slate-700 flex flex-wrap gap-2">
@@ -552,164 +473,150 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
             </div>
           </section>
 
-
-          <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-slate-700">
-                <StickyNote size={18} className="text-indigo-600" />
-                <div>
-                  <p className="font-semibold">Status designer</p>
-                  <p className="text-xs text-slate-500">Light options. Select one to edit or remove.</p>
+            <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-slate-700">
+                  <StickyNote size={18} className="text-indigo-600" />
+                  <div>
+                    <p className="font-semibold">Status designer</p>
+                    <p className="text-xs text-slate-500">Tap a status button, then edit or remove it.</p>
+                  </div>
                 </div>
-              </div>
-              <button className="text-xs text-indigo-600" onClick={() => addStatusOption('New status')}>+ Quick add</button>
-            </div>
-            <div className="flex flex-wrap gap-2 max-h-[200px] overflow-y-auto pr-1">
-              {statusOptions.map((option) => (
-                <button
-                  key={option.id}
-                  className={`px-3 py-2 rounded-full border text-sm transition flex items-center gap-2 ${
-                    selectedStatusId === option.id
-                      ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
-                      : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-indigo-200 hover:text-indigo-700'
-                  }`}
-                  onClick={() => setSelectedStatusId(option.id)}
-                >
-                  <span className="font-medium">{option.label}</span>
-                  {selectedStatusId === option.id && <span className="text-[10px] text-indigo-600">Selected</span>}
+                <button className="text-xs text-indigo-600" onClick={() => addStatusOption('New status')} disabled={!hasActiveList}>
+                  + Quick add
                 </button>
-              ))}
-            </div>
-            <div className="flex flex-wrap gap-2 text-xs">
-              <button
-                className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600 hover:text-indigo-700 disabled:opacity-50"
-                onClick={() => selectedStatus && editStatusOption(selectedStatus)}
-                disabled={!selectedStatus}
-              >
-                Edit selected
-              </button>
-              <button
-                className="px-3 py-2 rounded-lg border border-slate-200 text-rose-600 hover:border-rose-200 disabled:opacity-50"
-                onClick={() => selectedStatusId && removeStatusOption(selectedStatusId)}
-                disabled={!selectedStatusId}
-              >
-                Remove selected
-              </button>
-            </div>
-            <div className="flex gap-2">
-              <input
-                className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                placeholder="Add status label"
-                value={newStatusLabel}
-                onChange={(e) => setNewStatusLabel(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    addStatusOption(newStatusLabel);
-                  }
-                }}
-                disabled={!hasActiveList}
-              />
-              <div className="flex items-center gap-2">
-                <button
-                  className="px-3 py-2 bg-slate-900 text-white rounded-lg text-sm"
-                  onClick={() => {
-                    const input = document.querySelector<HTMLInputElement>('input[placeholder="Add status label"]');
-                    if (input) {
-                      addStatusOption(input.value);
-                      input.value = '';
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {statusOptions.map((option) => (
+                  <button
+                    key={option.id}
+                    className={`px-3 py-1 rounded-md border text-sm transition shadow-none ${
+                      selectedStatusId === option.id
+                        ? 'border-indigo-200 bg-indigo-50 text-slate-800'
+                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                    }`}
+                    onClick={() => hasActiveList && setSelectedStatusId(option.id)}
+                    disabled={!hasActiveList}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+                <input
+                  className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                  placeholder="Add status label"
+                  value={newStatusLabel}
+                  onChange={(e) => setNewStatusLabel(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      addStatusOption(newStatusLabel);
                     }
                   }}
-                >
-                  Add
-                </button>
-                <button
-                  className="px-3 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm disabled:opacity-50"
-                  disabled={!selectedStatus}
-                  onClick={() => selectedStatus && editStatusOption(selectedStatus)}
-                >
-                  Edit
-                </button>
-                <button
-                  className="px-3 py-2 border border-slate-200 text-rose-600 rounded-lg text-sm disabled:opacity-50"
-                  disabled={!selectedStatus}
-                  onClick={() => selectedStatus && removeStatusOption(selectedStatus.id)}
-                >
-                  Remove
-                </button>
+                  disabled={!hasActiveList}
+                />
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className="px-3 py-2 bg-slate-900 text-white rounded-lg text-sm disabled:opacity-50"
+                    onClick={() => addStatusOption(newStatusLabel)}
+                    disabled={!hasActiveList}
+                  >
+                    Add
+                  </button>
+                  <button
+                    className="px-3 py-2 border border-slate-200 text-slate-700 rounded-lg text-sm disabled:opacity-50"
+                    disabled={!selectedStatus || !hasActiveList}
+                    onClick={() => selectedStatus && editStatusOption(selectedStatus)}
+                  >
+                    Edit selected
+                  </button>
+                  <button
+                    className="px-3 py-2 border border-slate-200 text-rose-600 rounded-lg text-sm disabled:opacity-50"
+                    disabled={!selectedStatus || !hasActiveList}
+                    onClick={() => selectedStatus && removeStatusOption(selectedStatus.id)}
+                  >
+                    Remove selected
+                  </button>
+                </div>
               </div>
-            </div>
-          </section>
+            </section>
         </div>
 
         <div className="space-y-4">
           <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-slate-700">
-                <Sparkles size={18} className="text-indigo-600" />
-                <div>
-                  <p className="font-semibold">Add lead to current sheet</p>
-                  <p className="text-xs text-slate-500">Form-first capture with created date, status, admin, updates, and note.</p>
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-slate-700">
+                  <PlusCircle size={18} className="text-indigo-600" />
+                  <div>
+                    <p className="font-semibold">Add new lead</p>
+                    <p className="text-xs text-slate-500">{hasActiveList ? 'Saves to the selected sheet' : 'Select a sheet to enable the form'}</p>
+                  </div>
                 </div>
+                <div className="text-[11px] text-slate-500">Created date auto-saves.</div>
               </div>
-              <div className="text-[11px] text-slate-500">Active sheet: {leadLists.find((l) => l.id === activeListId)?.name || 'Select a sheet'}</div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-slate-500">Full name</label>
-                <input
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                  placeholder="Driver name"
-                  value={newLead.name || ''}
-                  onChange={(e) => setNewLead((prev) => ({ ...prev, name: e.target.value }))}
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-slate-500">Phone</label>
-                <input
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                  placeholder="Phone number"
-                  value={newLead.phone || ''}
-                  onChange={(e) => setNewLead((prev) => ({ ...prev, phone: e.target.value }))}
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-slate-500">City</label>
-                <input
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                  placeholder="City"
-                  value={newLead.city || ''}
-                  onChange={(e) => setNewLead((prev) => ({ ...prev, city: e.target.value }))}
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-slate-500">Platform</label>
-                <input
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                  placeholder="Walk-in, website, campaign"
-                  value={newLead.platform || ''}
-                  onChange={(e) => setNewLead((prev) => ({ ...prev, platform: e.target.value }))}
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-slate-500">Lead date</label>
-                <input
-                  type="date"
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                  value={newLeadDate}
-                  onChange={(e) => setNewLeadDate(e.target.value)}
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-slate-500">Status</label>
-                <select
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                  value={newLeadStatus}
-                  onChange={(e) => setNewLeadStatus(e.target.value)}
-                >
-                  {statusOptionsWithEmpty.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-500">Full name</label>
+                  <input
+                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                    placeholder="Driver name"
+                    value={newLead.name || ''}
+                    onChange={(e) => setNewLead((prev) => ({ ...prev, name: e.target.value }))}
+                    disabled={!hasActiveList}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-500">Phone</label>
+                  <input
+                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                    placeholder="Phone number"
+                    value={newLead.phone || ''}
+                    onChange={(e) => setNewLead((prev) => ({ ...prev, phone: e.target.value }))}
+                    disabled={!hasActiveList}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-500">City</label>
+                  <input
+                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                    placeholder="City"
+                    value={newLead.city || ''}
+                    onChange={(e) => setNewLead((prev) => ({ ...prev, city: e.target.value }))}
+                    disabled={!hasActiveList}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-500">Platform</label>
+                  <input
+                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                    placeholder="Walk-in, website, campaign"
+                    value={newLead.platform || ''}
+                    onChange={(e) => setNewLead((prev) => ({ ...prev, platform: e.target.value }))}
+                    disabled={!hasActiveList}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-500">Lead date</label>
+                  <input
+                    type="date"
+                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                    value={newLeadDate}
+                    onChange={(e) => setNewLeadDate(e.target.value)}
+                    disabled={!hasActiveList}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-500">Status</label>
+                  <select
+                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                    value={newLeadStatus}
+                    onChange={(e) => setNewLeadStatus(e.target.value)}
+                    disabled={!hasActiveList}
+                  >
+                    {statusOptionsWithEmpty.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
                   ))}
                 </select>
               </div>
