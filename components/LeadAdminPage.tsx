@@ -180,6 +180,7 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
   const [newLeadNote, setNewLeadNote] = useState('');
   const [creatingLead, setCreatingLead] = useState(false);
   const [statusOptions, setStatusOptions] = useState<OptionItem[]>(defaultStatusOptions);
+  const [newStatusLabel, setNewStatusLabel] = useState('');
   const [updateDrafts, setUpdateDrafts] = useState<Record<string, { text: string; date: string }>>({});
   const [selectedStatusId, setSelectedStatusId] = useState('');
 
@@ -194,6 +195,8 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
     if (!activeListId) return;
     setLoading(true);
     setStatusOptions(loadStatusOptions(activeListId));
+    setNewStatusLabel('');
+    setFile(null);
     leadService
       .fetchLeads({ listId: activeListId, role, limit: 300, sort: 'latest' })
       .then((res) => setLeads(res.items))
@@ -201,6 +204,7 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
   }, [activeListId, role]);
 
   const statusOptionsWithEmpty = useMemo(() => [{ id: '', label: 'No status' }, ...statusOptions], [statusOptions]);
+  const hasActiveList = Boolean(activeListId);
 
   const handleLeadUpdate = async (lead: LeadRecord, patch: Partial<LeadRecord>) => {
     const mergedPatch = { ...patch } as Partial<LeadRecord>;
@@ -272,6 +276,7 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
     const items = [...statusOptions, option];
     setStatusOptions(items);
     saveStatusOptions(activeListId, items);
+    setNewStatusLabel('');
   };
 
   const editStatusOption = (option: OptionItem) => {
@@ -316,7 +321,7 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
     handleLeadUpdate(lead, { custom_fields: { ...lead.custom_fields, updates } });
   };
 
-  const renderLeadRow = (lead: LeadRecord) => {
+    const renderLeadRow = (lead: LeadRecord) => {
     const updates = leadUpdates(lead);
     return (
       <tr key={lead.id} className="border-b border-slate-100 hover:bg-indigo-50/30">
@@ -501,6 +506,37 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
                   {importing && <Loader2 size={16} className="animate-spin" />} Import
                 </button>
               </div>
+              <div className="flex flex-col gap-2 text-sm text-slate-600">
+                <label className="px-3 py-2 bg-slate-50 border border-dashed border-slate-200 rounded-lg text-sm flex items-center gap-2 cursor-pointer">
+                  <Upload size={16} className="text-indigo-600" />
+                  <span className="text-slate-700">{file ? file.name : 'Choose Excel/CSV'}</span>
+                  <input
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    className="hidden"
+                    disabled={!hasActiveList}
+                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                  />
+                </label>
+                <div className="flex items-center gap-2">
+                  <select
+                    className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                    value={dedupeMode}
+                    onChange={(e) => setDedupeMode(e.target.value)}
+                    disabled={!hasActiveList}
+                  >
+                    <option value="skip">Skip duplicates</option>
+                    <option value="update">Update matches</option>
+                    <option value="keep_both">Keep both</option>
+                  </select>
+                  <button
+                    className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                    disabled={!file || importing || !hasActiveList}
+                    onClick={handleImport}
+                  >
+                    {importing && <Loader2 size={16} className="animate-spin" />} Import
+                  </button>
+              </div>
               {importSummary && (
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-[11px] text-slate-700 flex flex-wrap gap-2">
                   <span className="font-semibold text-slate-800">Last import</span>
@@ -564,12 +600,14 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
               <input
                 className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm"
                 placeholder="Add status label"
+                value={newStatusLabel}
+                onChange={(e) => setNewStatusLabel(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
-                    addStatusOption((e.target as HTMLInputElement).value);
-                    (e.target as HTMLInputElement).value = '';
+                    addStatusOption(newStatusLabel);
                   }
                 }}
+                disabled={!hasActiveList}
               />
               <div className="flex items-center gap-2">
                 <button
@@ -676,24 +714,26 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
                 </select>
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-xs text-slate-500">Admin</label>
-                <input
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                  placeholder="Handled by"
-                  value={newLeadAdmin}
-                  onChange={(e) => setNewLeadAdmin(e.target.value)}
-                />
-              </div>
-              <div className="flex flex-col gap-1 md:col-span-2 lg:col-span-2">
-                <label className="text-xs text-slate-500">Note</label>
-                <textarea
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                  rows={2}
-                  placeholder="Next step, promised follow-up, documents needed"
-                  value={newLeadNote}
-                  onChange={(e) => setNewLeadNote(e.target.value)}
-                />
-              </div>
+                  <label className="text-xs text-slate-500">Admin</label>
+                  <input
+                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                    placeholder="Handled by"
+                    value={newLeadAdmin}
+                    onChange={(e) => setNewLeadAdmin(e.target.value)}
+                    disabled={!hasActiveList}
+                  />
+                </div>
+                <div className="flex flex-col gap-1 md:col-span-2 lg:col-span-2">
+                  <label className="text-xs text-slate-500">Note</label>
+                  <textarea
+                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                    rows={2}
+                    placeholder="Next step, promised follow-up, documents needed"
+                    value={newLeadNote}
+                    onChange={(e) => setNewLeadNote(e.target.value)}
+                    disabled={!hasActiveList}
+                  />
+                </div>
             </div>
             <div className="flex justify-end">
               <button
