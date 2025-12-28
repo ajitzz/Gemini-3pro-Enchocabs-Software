@@ -2,15 +2,28 @@
 import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping, ManagerAccess, AdminAccess, DriverBillingRecord, CashMode } from '../types';
 
 // logic: Use local proxy in dev (npm run dev), use Render URL in production (Vercel)
-const isLocal = ((import.meta as any).env && (import.meta as any).env.DEV) || 
+const isLocal = ((import.meta as any).env && (import.meta as any).env.DEV) ||
                 (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'));
 
 const getApiBase = () => {
+    // 1) Always prefer the local proxy when running the Vite dev server
     if (isLocal) return '/api';
+
+    // 2) Respect explicit environment configuration if provided during the build
     const env = (import.meta as any).env;
-    if (env && env.VITE_API_URL) {
-        return env.VITE_API_URL.replace(/\/$/, '');
+    const envUrl = env?.VITE_API_URL || env?.PUBLIC_API_URL || '';
+    if (envUrl) {
+        return envUrl.replace(/\/$/, '');
     }
+
+    // 3) Default to the current origin so that the deployed frontend can talk to
+    //    the colocated API without hardcoding a Render URL. This keeps the app
+    //    resilient if the backend domain changes but the site stays on the same host.
+    if (typeof window !== 'undefined' && window.location?.origin) {
+        return `${window.location.origin.replace(/\/$/, '')}/api`;
+    }
+
+    // 4) Final hardcoded fallback (legacy Render deployment)
     return 'https://enchocabs-software-orginal-gemini3pro-1.onrender.com/api';
 };
 
