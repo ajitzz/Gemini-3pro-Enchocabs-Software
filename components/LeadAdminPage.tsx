@@ -7,12 +7,12 @@ import {
   NotebookTabs,
   Pencil,
   Trash,
+  Phone,
   StickyNote,
   ListChecks,
   CalendarClock,
   Sparkles,
   Plus,
-  FileSpreadsheet,
 } from 'lucide-react';
 import { leadService } from '../services/leadsService';
 import { LeadList, LeadRecord, LeadImportResult } from '../types';
@@ -32,8 +32,7 @@ interface LeadUpdateEntry {
   date: string;
 }
 
-const uid = () =>
-  typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+const uid = () => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
 
 const defaultStatusOptions: OptionItem[] = [
   { id: uid(), label: 'Interested' },
@@ -72,9 +71,7 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
   const [newLeadNote, setNewLeadNote] = useState('');
   const [creatingLead, setCreatingLead] = useState(false);
   const [statusOptions, setStatusOptions] = useState<OptionItem[]>(defaultStatusOptions);
-  const [newStatusLabel, setNewStatusLabel] = useState('');
   const [updateDrafts, setUpdateDrafts] = useState<Record<string, { text: string; date: string }>>({});
-  const [selectedStatusId, setSelectedStatusId] = useState('');
 
   useEffect(() => {
     leadService.listLeadLists(role).then((lists) => {
@@ -87,8 +84,6 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
     if (!activeListId) return;
     setLoading(true);
     setStatusOptions(loadStatusOptions(activeListId));
-    setNewStatusLabel('');
-    setFile(null);
     leadService
       .fetchLeads({ listId: activeListId, role, limit: 300, sort: 'latest' })
       .then((res) => setLeads(res.items))
@@ -96,7 +91,6 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
   }, [activeListId, role]);
 
   const statusOptionsWithEmpty = useMemo(() => [{ id: '', label: 'No status' }, ...statusOptions], [statusOptions]);
-  const hasActiveList = Boolean(activeListId);
 
   const handleLeadUpdate = async (lead: LeadRecord, patch: Partial<LeadRecord>) => {
     const mergedPatch = { ...patch } as Partial<LeadRecord>;
@@ -168,7 +162,6 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
     const items = [...statusOptions, option];
     setStatusOptions(items);
     saveStatusOptions(activeListId, items);
-    setNewStatusLabel('');
   };
 
   const editStatusOption = (option: OptionItem) => {
@@ -184,10 +177,14 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
     const items = statusOptions.filter((o) => o.id !== optionId);
     setStatusOptions(items);
     saveStatusOptions(activeListId, items);
-    if (selectedStatusId === optionId) setSelectedStatusId('');
   };
 
-  const selectedStatus = statusOptions.find((o) => o.id === selectedStatusId);
+  const promptText = `You are managing driver leads inside named sheets. Always ask which sheet to work in first. Within a sheet you can:\n` +
+    `- import or export leads via CSV/Excel\n` +
+    `- add leads with date, platform, full name, phone, city, status, admin, and notes\n` +
+    `- customize status labels (Interested, Not Interested, Waiting, Confirmed, plus any new ones)\n` +
+    `- log dated updates per lead (e.g., 2024-06-01: "Documents collected")\n` +
+    `- keep records tidy for recruiters to filter and follow up.`;
 
   const getLeadCreatedDate = (lead: LeadRecord) => lead.custom_fields?.created_time || lead.lead_capture_at;
 
@@ -213,37 +210,37 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
     handleLeadUpdate(lead, { custom_fields: { ...lead.custom_fields, updates } });
   };
 
-    const renderLeadRow = (lead: LeadRecord) => {
+  const renderLeadRow = (lead: LeadRecord) => {
     const updates = leadUpdates(lead);
     return (
-      <tr key={lead.id} className="border-b border-slate-100 hover:bg-indigo-50/30">
-        <td className="px-3 py-3 text-xs text-slate-500 whitespace-nowrap">{new Date(getLeadCreatedDate(lead)).toLocaleDateString()}</td>
-        <td className="px-3 py-3">
+      <tr key={lead.id} className="border-t border-slate-100 hover:bg-slate-50/70">
+        <td className="px-4 py-3 text-sm text-slate-600">{new Date(getLeadCreatedDate(lead)).toLocaleDateString()}</td>
+        <td className="px-4 py-3">
           <input
-            className="border border-slate-200 rounded-md px-2 py-1 text-sm w-full bg-white"
+            className="border border-slate-200 rounded-lg px-2 py-1 text-sm w-full"
             value={lead.platform || ''}
             onChange={(e) => handleLeadUpdate(lead, { platform: e.target.value })}
           />
         </td>
-        <td className="px-3 py-3 min-w-[180px]">
+        <td className="px-4 py-3">
           <div className="font-semibold text-slate-900">{lead.name}</div>
           <div className="text-xs text-slate-500">{lead.city || '—'}</div>
         </td>
-        <td className="px-3 py-3 whitespace-nowrap">
+        <td className="px-4 py-3">
           <button className="text-indigo-600 hover:underline" onClick={() => window.open(`tel:${lead.phone_normalized}`)}>
             {lead.phone_normalized}
           </button>
         </td>
-        <td className="px-3 py-3">
+        <td className="px-4 py-3">
           <input
-            className="border border-slate-200 rounded-md px-2 py-1 text-sm w-full bg-white"
+            className="border border-slate-200 rounded-lg px-2 py-1 text-sm w-full"
             value={lead.city || ''}
             onChange={(e) => handleLeadUpdate(lead, { city: e.target.value })}
           />
         </td>
-        <td className="px-3 py-3">
+        <td className="px-4 py-3">
           <select
-            className="border border-slate-200 rounded-md px-2 py-1 text-sm w-full bg-white"
+            className="border border-slate-200 rounded-lg px-2 py-1 text-sm w-full"
             value={lead.status_id || ''}
             onChange={(e) => handleLeadUpdate(lead, { status_id: e.target.value || null })}
           >
@@ -254,49 +251,51 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
             ))}
           </select>
         </td>
-        <td className="px-3 py-3">
+        <td className="px-4 py-3">
           <input
-            className="border border-slate-200 rounded-md px-2 py-1 text-sm w-full bg-white"
+            className="border border-slate-200 rounded-lg px-2 py-1 text-sm w-full"
             placeholder="Admin name"
             value={(lead.custom_fields as any)?.admin || ''}
-            onChange={(e) => handleLeadUpdate(lead, { custom_fields: { ...lead.custom_fields, admin: e.target.value } })}
+            onChange={(e) =>
+              handleLeadUpdate(lead, { custom_fields: { ...lead.custom_fields, admin: e.target.value } })
+            }
           />
         </td>
-        <td className="px-3 py-3 min-w-[260px]">
-          <div className="flex flex-col gap-2">
-            <div className="flex flex-wrap gap-2">
-              {updates.map((item) => (
-                <span
-                  key={item.id}
-                  className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full px-3 py-1 text-xs"
-                >
-                  <span className="font-medium">{item.date}</span>
-                  <span className="text-slate-700">{item.text}</span>
-                  <button className="text-slate-400 hover:text-rose-600" onClick={() => handleRemoveUpdate(lead, item.id)}>
-                    <Trash size={12} />
-                  </button>
-                </span>
-              ))}
-            </div>
-            <div className="flex items-center gap-2 bg-slate-50 border border-dashed border-slate-200 rounded-lg p-2">
+        <td className="px-4 py-3 space-y-2">
+          <div className="flex flex-wrap gap-2">
+            {updates.map((item) => (
+              <span
+                key={item.id}
+                className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full px-3 py-1 text-xs"
+              >
+                <span className="font-medium">{item.date}</span>
+                <span className="text-slate-700">{item.text}</span>
+                <button className="text-slate-400 hover:text-rose-600" onClick={() => handleRemoveUpdate(lead, item.id)}>
+                  <Trash size={12} />
+                </button>
+              </span>
+            ))}
+          </div>
+          <div className="flex flex-col gap-2 bg-slate-50 border border-dashed border-slate-200 rounded-lg p-2">
+            <div className="flex gap-2">
               <input
                 type="date"
-                className="border border-slate-200 rounded-md px-2 py-1 text-xs w-32 bg-white"
+                className="border border-slate-200 rounded-lg px-2 py-1 text-sm w-36"
                 value={updateDrafts[lead.id]?.date || ''}
                 onChange={(e) =>
                   setUpdateDrafts((prev) => ({ ...prev, [lead.id]: { ...(prev[lead.id] || { text: '', date: '' }), date: e.target.value } }))
                 }
               />
               <input
-                className="border border-slate-200 rounded-md px-2 py-1 text-xs flex-1 bg-white"
-                placeholder="Add update with date"
+                className="border border-slate-200 rounded-lg px-2 py-1 text-sm flex-1"
+                placeholder="Add update"
                 value={updateDrafts[lead.id]?.text || ''}
                 onChange={(e) =>
                   setUpdateDrafts((prev) => ({ ...prev, [lead.id]: { ...(prev[lead.id] || { text: '', date: '' }), text: e.target.value } }))
                 }
               />
               <button
-                className="px-2 py-2 bg-indigo-600 text-white rounded-md text-xs flex items-center gap-1 disabled:opacity-50"
+                className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-xs flex items-center gap-1 disabled:opacity-50"
                 onClick={() => handleAddUpdate(lead)}
               >
                 <Plus size={14} />
@@ -304,9 +303,9 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
             </div>
           </div>
         </td>
-        <td className="px-3 py-3">
+        <td className="px-4 py-3">
           <textarea
-            className="w-full border border-slate-200 rounded-md px-2 py-1 text-sm bg-white"
+            className="w-full border border-slate-200 rounded-lg px-2 py-1 text-sm"
             rows={2}
             value={lead.notes || ''}
             onChange={(e) => handleLeadUpdate(lead, { notes: e.target.value })}
@@ -318,365 +317,300 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
 
   return (
     <div className="space-y-6">
-      <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-r from-slate-900 via-indigo-900 to-slate-900 text-white shadow-xl">
-        <div className="absolute inset-0 opacity-25" style={{ backgroundImage: 'radial-gradient(circle at 10% 20%, #fff 0, transparent 30%)' }} />
-        <div className="relative p-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 bg-white/10 border border-white/20 text-white px-3 py-1 rounded-full text-xs font-semibold">
-              <NotebookTabs size={14} /> Driver leads workspace
-            </div>
+      <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase text-slate-500 font-semibold tracking-widest">Driver pipeline</p>
+          <h1 className="text-3xl font-black text-slate-900">Lead manager</h1>
+          <p className="text-sm text-slate-600">
+            Organise sheets, import Excel/CSV files, and keep dated updates for every driver prospect.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            className="px-3 py-2 bg-slate-900 text-white rounded-lg text-sm flex items-center gap-2"
+            onClick={handleExport}
+            disabled={!activeListId}
+          >
+            <Download size={16} /> Export
+          </button>
+          <label className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm flex items-center gap-2 cursor-pointer">
+            <Upload size={16} />
+            <span>{importing ? 'Importing...' : 'Import'}</span>
+            <input type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+          </label>
+          <select
+            className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+            value={dedupeMode}
+            onChange={(e) => setDedupeMode(e.target.value)}
+          >
+            <option value="skip">Skip duplicates</option>
+            <option value="update">Update matches</option>
+            <option value="keep_both">Keep both</option>
+          </select>
+          <button
+            className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm flex items-center gap-2 disabled:opacity-50"
+            disabled={!file || importing}
+            onClick={handleImport}
+          >
+            {importing && <Loader2 size={16} className="animate-spin" />} Start import
+          </button>
+        </div>
+      </header>
+
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        <section className="bg-white border border-slate-200 rounded-2xl p-4 space-y-4 shadow-sm">
+          <div className="flex items-center gap-2">
+            <NotebookTabs size={18} className="text-indigo-600" />
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-indigo-200">Sheets + imports + inline updates</p>
-              <h1 className="text-3xl font-black">Lead manager</h1>
-            </div>
-            <p className="text-sm text-indigo-100 max-w-2xl">
-              Organise leads through named sheets, import Excel/CSV, customise statuses, and keep dated updates beside every record so recruiters know the next move.
-            </p>
-            <div className="flex flex-wrap gap-2 text-xs text-indigo-100">
-              <span className="inline-flex items-center gap-1 bg-white/10 px-2 py-1 rounded-full"><Sparkles size={12} /> Modern layout</span>
-              <span className="inline-flex items-center gap-1 bg-white/10 px-2 py-1 rounded-full"><CalendarClock size={12} /> Created date captured</span>
-              <span className="inline-flex items-center gap-1 bg-white/10 px-2 py-1 rounded-full"><StickyNote size={12} /> Status + updates inline</span>
+              <p className="font-semibold text-slate-800">Sheets</p>
+              <p className="text-xs text-slate-500">Keep cities, campaigns, or recruiters in separate sheets.</p>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-3 text-center text-sm">
-            <div className="bg-white/10 border border-white/20 rounded-2xl p-3">
-              <p className="text-indigo-100 text-[11px]">Active sheet</p>
-              <p className="text-lg font-bold">{leadLists.find((l) => l.id === activeListId)?.name || 'None'}</p>
-            </div>
-            <div className="bg-white/10 border border-white/20 rounded-2xl p-3">
-              <p className="text-indigo-100 text-[11px]">Leads loaded</p>
-              <p className="text-lg font-bold">{leads.length}</p>
-            </div>
-            <div className="bg-white/10 border border-white/20 rounded-2xl p-3">
-              <p className="text-indigo-100 text-[11px]">Statuses</p>
-              <p className="text-lg font-bold">{statusOptions.length}</p>
-            </div>
+
+          <div className="flex gap-2">
+            <input
+              className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm"
+              placeholder="New sheet name"
+              value={newListName}
+              onChange={(e) => setNewListName(e.target.value)}
+            />
+            <button
+              className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm"
+              onClick={async () => {
+                if (!newListName.trim()) return;
+                const created = await leadService.createLeadList(newListName.trim(), role);
+                setLeadLists((prev) => [created, ...prev]);
+                setActiveListId(created.id);
+                setNewListName('');
+              }}
+            >
+              <PlusCircle size={16} />
+            </button>
           </div>
-        </div>
-      </div>
 
-      <div className="grid gap-4 lg:grid-cols-[360px,1fr]">
-        <div className="space-y-4">
-          <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
-            <div className="flex items-start gap-2 text-slate-700">
-              <FileSpreadsheet size={18} className="text-indigo-600" />
-              <div>
-                <p className="font-semibold">Sheets</p>
-                <p className="text-xs text-slate-500">Create, rename, and jump between lead sheets. Created date is auto-pulled into each record.</p>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <input
-                className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                placeholder="New sheet name"
-                value={newListName}
-                onChange={(e) => setNewListName(e.target.value)}
-              />
-              <button
-                className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm"
-                onClick={async () => {
-                  if (!newListName.trim()) return;
-                  const created = await leadService.createLeadList(newListName.trim(), role);
-                  setLeadLists((prev) => [created, ...prev]);
-                  setActiveListId(created.id);
-                  setNewListName('');
-                }}
+          <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+            {leadLists.map((list) => (
+              <div
+                key={list.id}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition ${
+                  activeListId === list.id ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-700'
+                }`}
               >
-                <PlusCircle size={16} />
-              </button>
-            </div>
-            <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
-              {leadLists.map((list) => (
-                <div
-                  key={list.id}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition ${
-                    activeListId === list.id ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-700'
-                  }`}
-                >
-                  <button className="flex-1 text-left" onClick={() => setActiveListId(list.id)}>{list.name}</button>
-                  <button
-                    className="text-xs text-slate-500 hover:text-indigo-600"
-                    onClick={async () => {
-                      const name = prompt('Rename sheet', list.name);
-                      if (!name) return;
-                      const renamed = await leadService.renameLeadList(list.id, name, role);
-                      setLeadLists((prev) => prev.map((l) => (l.id === list.id ? renamed : l)));
-                    }}
-                  >
-                    <Pencil size={14} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-2">
-            <div className="flex items-center justify-between gap-2 text-slate-700">
-              <div className="flex items-center gap-2">
-                <ListChecks size={18} className="text-indigo-600" />
-                <div className="leading-tight">
-                  <p className="font-semibold">Import / export</p>
-                  <p className="text-[11px] text-slate-500">{hasActiveList ? `Sheet: ${leadLists.find((l) => l.id === activeListId)?.name || 'Select a sheet'}` : 'Choose a sheet to enable'}</p>
-                </div>
-              </div>
-              <button
-                className="px-2 py-1 text-xs rounded-md border border-slate-200 text-slate-600 hover:text-indigo-700 disabled:opacity-60"
-                onClick={handleExport}
-                disabled={!hasActiveList}
-              >
-                <div className="flex items-center gap-1"><Download size={14} /> Export</div>
-              </button>
-            </div>
-            <div className="flex flex-col gap-2 text-sm text-slate-600">
-              <label className="px-3 py-2 bg-slate-50 border border-dashed border-slate-200 rounded-lg text-sm flex items-center gap-2 cursor-pointer">
-                <Upload size={16} className="text-indigo-600" />
-                <span className="text-slate-700">{file ? file.name : 'Choose Excel/CSV'}</span>
-                <input
-                  type="file"
-                  accept=".csv,.xlsx,.xls"
-                  className="hidden"
-                  disabled={!hasActiveList}
-                  onChange={(e) => setFile(e.target.files?.[0] || null)}
-                />
-              </label>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <select
-                  className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                  value={dedupeMode}
-                  onChange={(e) => setDedupeMode(e.target.value)}
-                  disabled={!hasActiveList}
-                >
-                  <option value="skip">Skip duplicates</option>
-                  <option value="update">Update matches</option>
-                  <option value="keep_both">Keep both</option>
-                </select>
+                <button className="flex-1 text-left" onClick={() => setActiveListId(list.id)}>{list.name}</button>
                 <button
-                  className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-                  disabled={!file || importing || !hasActiveList}
-                  onClick={handleImport}
-                >
-                  {importing && <Loader2 size={16} className="animate-spin" />} Import
-                </button>
-              </div>
-              {importSummary && (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-[11px] text-slate-700 flex flex-wrap gap-2">
-                  <span className="font-semibold text-slate-800">Last import</span>
-                  <span>Imported: {importSummary.importedCount}</span>
-                  <span>Updated: {importSummary.updatedCount}</span>
-                  <span>Skipped: {importSummary.skippedCount}</span>
-                  {importSummary.errors?.length > 0 && (
-                    <span className="text-rose-600">Errors: {importSummary.errors.slice(0, 2).map((e) => `Row ${e.row}`).join(',')}</span>
-                  )}
-                  <span className="text-slate-500">Dedupe: {dedupeMode}</span>
-                </div>
-              )}
-            </div>
-          </section>
-
-            <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-slate-700">
-                  <StickyNote size={18} className="text-indigo-600" />
-                  <div>
-                    <p className="font-semibold">Status designer</p>
-                    <p className="text-xs text-slate-500">Select an option to edit or remove it.</p>
-                  </div>
-                </div>
-                <button className="text-xs text-indigo-600" onClick={() => addStatusOption('New status')} disabled={!hasActiveList}>
-                  + Quick add
-                </button>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {statusOptions.map((option) => (
-                  <button
-                    key={option.id}
-                    className={`px-3 py-1 rounded-full border text-sm transition ${
-                      selectedStatusId === option.id
-                        ? 'border-indigo-300 bg-indigo-50 text-slate-800'
-                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
-                    }`}
-                    onClick={() => hasActiveList && setSelectedStatusId(option.id)}
-                    disabled={!hasActiveList}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-              <div className="flex items-center gap-2 text-xs justify-between">
-                <input
-                  className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                  placeholder="Add status label"
-                  value={newStatusLabel}
-                  onChange={(e) => setNewStatusLabel(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      addStatusOption(newStatusLabel);
-                    }
+                  className="text-xs text-slate-500 hover:text-indigo-600"
+                  onClick={async () => {
+                    const name = prompt('Rename sheet', list.name);
+                    if (!name) return;
+                    const renamed = await leadService.renameLeadList(list.id, name, role);
+                    setLeadLists((prev) => prev.map((l) => (l.id === list.id ? renamed : l)));
                   }}
-                  disabled={!hasActiveList}
-                />
-                <div className="flex items-center gap-2">
-                  <button
-                    className="px-3 py-2 bg-slate-900 text-white rounded-lg text-sm disabled:opacity-50"
-                    onClick={() => addStatusOption(newStatusLabel)}
-                    disabled={!hasActiveList}
-                  >
-                    Add
-                  </button>
-                  <button
-                    className="px-3 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm disabled:opacity-50"
-                    disabled={!selectedStatus || !hasActiveList}
-                    onClick={() => selectedStatus && editStatusOption(selectedStatus)}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    className="px-3 py-2 border border-slate-200 text-rose-600 rounded-lg text-sm disabled:opacity-50"
-                    disabled={!selectedStatus || !hasActiveList}
-                    onClick={() => selectedStatus && removeStatusOption(selectedStatus.id)}
-                  >
-                    Remove
-                  </button>
-                </div>
+                >
+                  <Pencil size={14} />
+                </button>
               </div>
-            </section>
-        </div>
+            ))}
+          </div>
 
-        <div className="space-y-4">
-          <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-slate-700">
-                  <PlusCircle size={18} className="text-indigo-600" />
-                  <div>
-                    <p className="font-semibold">Add new lead</p>
-                    <p className="text-xs text-slate-500">{hasActiveList ? 'Saves to the selected sheet' : 'Select a sheet to enable the form'}</p>
-                  </div>
-                </div>
-                <div className="text-[11px] text-slate-500">Created date auto-saves.</div>
+          <div className="grid grid-cols-2 gap-2 text-center text-xs">
+            <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
+              <div className="text-lg font-bold text-slate-900">{leadLists.length}</div>
+              <div className="text-slate-500">Sheets</div>
+            </div>
+            <div className="rounded-lg bg-indigo-50 border border-indigo-100 p-3">
+              <div className="text-lg font-bold text-indigo-800">{leads.length}</div>
+              <div className="text-indigo-700">Leads in sheet</div>
+            </div>
+          </div>
+
+          {importSummary && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700 space-y-1">
+              <div className="font-semibold text-slate-800">Last import</div>
+              <div>Imported: {importSummary.importedCount}</div>
+              <div>Updated: {importSummary.updatedCount}</div>
+              <div>Skipped: {importSummary.skippedCount}</div>
+              {importSummary.errors?.length > 0 && (
+                <div className="text-rose-600">Errors: {importSummary.errors.slice(0, 2).map((e) => `Row ${e.row}`).join(', ')}</div>
+              )}
+              <div className="text-[11px] text-slate-500">Dedupe: {dedupeMode}</div>
+            </div>
+          )}
+        </section>
+
+        <section className="lg:col-span-3 space-y-4">
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
+            <div className="flex items-center gap-2 text-slate-700">
+              <ListChecks size={18} className="text-indigo-600" />
+              <div>
+                <p className="font-semibold">Add lead into current sheet</p>
+                <p className="text-xs text-slate-500">Attach date, platform, status, admin, and notes while saving.</p>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs text-slate-500">Full name</label>
-                  <input
-                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                    placeholder="Driver name"
-                    value={newLead.name || ''}
-                    onChange={(e) => setNewLead((prev) => ({ ...prev, name: e.target.value }))}
-                    disabled={!hasActiveList}
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs text-slate-500">Phone</label>
-                  <input
-                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                    placeholder="Phone number"
-                    value={newLead.phone || ''}
-                    onChange={(e) => setNewLead((prev) => ({ ...prev, phone: e.target.value }))}
-                    disabled={!hasActiveList}
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs text-slate-500">City</label>
-                  <input
-                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                    placeholder="City"
-                    value={newLead.city || ''}
-                    onChange={(e) => setNewLead((prev) => ({ ...prev, city: e.target.value }))}
-                    disabled={!hasActiveList}
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs text-slate-500">Platform</label>
-                  <input
-                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                    placeholder="Walk-in, website, campaign"
-                    value={newLead.platform || ''}
-                    onChange={(e) => setNewLead((prev) => ({ ...prev, platform: e.target.value }))}
-                    disabled={!hasActiveList}
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs text-slate-500">Lead date</label>
-                  <input
-                    type="date"
-                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                    value={newLeadDate}
-                    onChange={(e) => setNewLeadDate(e.target.value)}
-                    disabled={!hasActiveList}
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs text-slate-500">Status</label>
-                  <select
-                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                    value={newLeadStatus}
-                    onChange={(e) => setNewLeadStatus(e.target.value)}
-                    disabled={!hasActiveList}
-                  >
-                    {statusOptionsWithEmpty.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.label}
-                      </option>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-slate-500">Created date</label>
+                <input
+                  type="date"
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                  value={newLeadDate}
+                  onChange={(e) => setNewLeadDate(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-slate-500">Platform</label>
+                <input
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                  placeholder="Walk-in / WhatsApp / Meta"
+                  value={newLead.platform || ''}
+                  onChange={(e) => setNewLead((prev) => ({ ...prev, platform: e.target.value }))}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-slate-500">Full name</label>
+                <input
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                  placeholder="Driver name"
+                  value={newLead.name || ''}
+                  onChange={(e) => setNewLead((prev) => ({ ...prev, name: e.target.value }))}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-slate-500">Phone</label>
+                <input
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                  placeholder="Phone number"
+                  value={newLead.phone || ''}
+                  onChange={(e) => setNewLead((prev) => ({ ...prev, phone: e.target.value }))}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-slate-500">City</label>
+                <input
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                  placeholder="City / Area"
+                  value={newLead.city || ''}
+                  onChange={(e) => setNewLead((prev) => ({ ...prev, city: e.target.value }))}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-slate-500">Status</label>
+                <select
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                  value={newLeadStatus}
+                  onChange={(e) => setNewLeadStatus(e.target.value)}
+                >
+                  {statusOptionsWithEmpty.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
                   ))}
                 </select>
               </div>
               <div className="flex flex-col gap-1">
-                  <label className="text-xs text-slate-500">Admin</label>
-                  <input
-                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                    placeholder="Handled by"
-                    value={newLeadAdmin}
-                    onChange={(e) => setNewLeadAdmin(e.target.value)}
-                    disabled={!hasActiveList}
-                  />
-                </div>
-                <div className="flex flex-col gap-1 md:col-span-2 lg:col-span-2">
-                  <label className="text-xs text-slate-500">Note</label>
-                  <textarea
-                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                    rows={2}
-                    placeholder="Next step, promised follow-up, documents needed"
-                    value={newLeadNote}
-                    onChange={(e) => setNewLeadNote(e.target.value)}
-                    disabled={!hasActiveList}
-                  />
-                </div>
+                <label className="text-xs text-slate-500">Admin</label>
+                <input
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                  placeholder="Owner / recruiter"
+                  value={newLeadAdmin}
+                  onChange={(e) => setNewLeadAdmin(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1 md:col-span-2 lg:col-span-2">
+                <label className="text-xs text-slate-500">Note</label>
+                <textarea
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                  placeholder="First call summary, sourcing info, expectations"
+                  rows={2}
+                  value={newLeadNote}
+                  onChange={(e) => setNewLeadNote(e.target.value)}
+                />
+              </div>
             </div>
-            <div className="flex justify-end">
+            <div className="flex flex-wrap items-center gap-3">
               <button
                 className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm flex items-center gap-2 disabled:opacity-50"
                 onClick={handleCreateLead}
                 disabled={creatingLead || !activeListId}
               >
-                {creatingLead && <Loader2 size={16} className="animate-spin" />} Add lead
+                {creatingLead && <Loader2 size={16} className="animate-spin" />} Save lead
               </button>
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <CalendarClock size={14} /> Date and admin are saved inside each record for auditing.
+              </div>
             </div>
-          </section>
+          </div>
 
-          <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-            <div className="px-4 py-3 border-b border-slate-200 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-slate-700">
-                <Sparkles size={18} className={loading ? 'animate-spin text-indigo-600' : 'text-indigo-600'} />
+                <StickyNote size={18} className="text-indigo-600" />
                 <div>
-                  <p className="font-semibold">Lead records</p>
-                  <p className="text-xs text-slate-500">Fields: created_time, platform, full_name, phone, city, status, admin, update, note.</p>
+                  <p className="font-semibold">Status options</p>
+                  <p className="text-xs text-slate-500">Only the statuses you add will appear in the records.</p>
                 </div>
               </div>
-              <div className="text-[11px] text-slate-500">Inline edits save automatically for the active sheet.</div>
+              <button className="text-xs text-indigo-600" onClick={() => addStatusOption('New status')}>+ Quick add</button>
+            </div>
+            <div className="space-y-2">
+              {statusOptions.map((option) => (
+                <div key={option.id} className="flex items-center gap-2 border border-slate-200 rounded-lg px-3 py-2">
+                  <span className="flex-1 text-sm text-slate-800">{option.label}</span>
+                  <button className="text-slate-500 hover:text-indigo-600" onClick={() => editStatusOption(option)}>
+                    <Pencil size={14} />
+                  </button>
+                  <button className="text-slate-400 hover:text-rose-600" onClick={() => removeStatusOption(option.id)}>
+                    <Trash size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input
+                className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                placeholder="Add status label"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    addStatusOption((e.target as HTMLInputElement).value);
+                    (e.target as HTMLInputElement).value = '';
+                  }
+                }}
+              />
+              <button
+                className="px-3 py-2 bg-slate-900 text-white rounded-lg text-sm"
+                onClick={() => {
+                  const input = document.querySelector<HTMLInputElement>('input[placeholder="Add status label"]');
+                  if (input) {
+                    addStatusOption(input.value);
+                    input.value = '';
+                  }
+                }}
+              >
+                Add
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-200 flex items-center gap-2 text-slate-700">
+              <Sparkles size={18} className={loading ? 'animate-spin text-indigo-600' : 'text-indigo-600'} />
+              <div>
+                <p className="font-semibold">Lead records</p>
+                <p className="text-xs text-slate-500">All fields inline editable: created date, platform, status, admin, updates, notes.</p>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="bg-slate-50 text-slate-600">
                   <tr>
-                    <th className="text-left px-3 py-3">Created</th>
-                    <th className="text-left px-3 py-3">Platform</th>
-                    <th className="text-left px-3 py-3">Full name</th>
-                    <th className="text-left px-3 py-3">Phone</th>
-                    <th className="text-left px-3 py-3">City</th>
-                    <th className="text-left px-3 py-3">Status</th>
-                    <th className="text-left px-3 py-3">Admin</th>
-                    <th className="text-left px-3 py-3">Updates</th>
-                    <th className="text-left px-3 py-3">Note</th>
+                    <th className="text-left px-4 py-3">Created</th>
+                    <th className="text-left px-4 py-3">Platform</th>
+                    <th className="text-left px-4 py-3">Full name</th>
+                    <th className="text-left px-4 py-3">Phone</th>
+                    <th className="text-left px-4 py-3">City</th>
+                    <th className="text-left px-4 py-3">Status</th>
+                    <th className="text-left px-4 py-3">Admin</th>
+                    <th className="text-left px-4 py-3">Updates</th>
+                    <th className="text-left px-4 py-3">Note</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -691,8 +625,27 @@ const LeadAdminPage: React.FC<LeadAdminPageProps> = ({ role }) => {
                 </tbody>
               </table>
             </div>
-          </section>
-        </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex items-start gap-3">
+              <Phone size={20} className="text-amber-500" />
+              <div className="space-y-1 text-sm text-slate-700">
+                <div className="font-semibold text-slate-900">Better suggestions for arranging leads</div>
+                <ul className="list-disc ml-4 space-y-1 text-slate-600">
+                  <li>Use one sheet per city, campaign, or recruiter to keep ownership clear.</li>
+                  <li>Enforce the four key statuses; add new ones only when they are meaningful.</li>
+                  <li>Always log dated updates after every call so the next recruiter knows the latest promise.</li>
+                  <li>Keep notes brief (who called, what was promised, next step) to avoid clutter.</li>
+                </ul>
+              </div>
+            </div>
+            <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-3 text-sm text-slate-700">
+              <div className="font-semibold text-slate-900 mb-2">Prompt to brief an AI assistant</div>
+              <pre className="whitespace-pre-wrap text-xs bg-white border border-slate-200 rounded-lg p-3 text-slate-800">{promptText}</pre>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   );
