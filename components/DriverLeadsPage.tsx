@@ -538,15 +538,17 @@ const DriverLeadsPage: React.FC = () => {
                     >
                       <Edit3 size={12} /> Rename
                     </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSheetToDelete(sheet);
-                      }}
-                      className="flex items-center gap-1 text-rose-500 hover:text-rose-600"
-                    >
-                      <Trash2 size={12} /> Delete
-                    </button>
+                    {sheets.length > 1 && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSheetToDelete(sheet);
+                        }}
+                        className="flex items-center gap-1 text-rose-500 hover:text-rose-600"
+                      >
+                        <Trash2 size={12} /> Delete
+                      </button>
+                    )}
                   </div>
                 </button>
               ))}
