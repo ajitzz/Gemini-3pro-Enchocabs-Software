@@ -2,8 +2,10 @@
 const express = require('express');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
+const { createHash } = require('crypto');
 const { OAuth2Client } = require('google-auth-library');
 const db = require('./db');
+const { getJSON: getCacheJSON, setJSON: setCacheJSON, deleteKeys: deleteCacheKeys } = require('./cache');
 const app = express();
 
 app.use(cors());
@@ -272,10 +274,60 @@ const calculateDriverStatsServer = (driverName, allDaily, allWallets, sortedSlab
   };
 };
 
+const clampTtlSeconds = (value, fallbackSeconds) => {
+  const numeric = Number(value);
+  if (Number.isNaN(numeric)) return fallbackSeconds;
+  return Math.min(Math.max(numeric, 30), 300);
+};
+
+const SUMMARY_CACHE_KEY = 'summary:global';
+const BILLINGS_CACHE_KEY = 'driver-billings:all';
+const SUMMARY_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.SUMMARY_CACHE_TTL_SECONDS || 120, 120);
+const BILLINGS_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.BILLINGS_CACHE_TTL_SECONDS || 300, 300);
+
 const summaryCache = {
   data: null,
-  lastUpdated: 0,
-  ttlMs: 60 * 1000, // 1 minute cache to keep initial load snappy without staleness
+  etag: null,
+  expiresAt: 0,
+};
+
+const resetSummaryCache = () => {
+  summaryCache.data = null;
+  summaryCache.etag = null;
+  summaryCache.expiresAt = 0;
+};
+
+const computeEtag = (payload) => createHash('sha1').update(JSON.stringify(payload)).digest('hex');
+
+const respondWithCacheHeaders = (req, res, payload, etag, cacheStatus, maxAgeSeconds) => {
+  if (cacheStatus) {
+    res.set('X-Cache', cacheStatus);
+  }
+
+  if (etag) {
+    res.set('ETag', etag);
+    if (req.headers['if-none-match'] === etag) {
+      return res.status(304).end();
+    }
+  }
+
+  const safeAge = Math.max(30, Math.min(maxAgeSeconds, 300));
+  const staleWindow = Math.max(15, Math.floor(safeAge / 2));
+  res.set('Cache-Control', `public, max-age=${safeAge - staleWindow}, stale-while-revalidate=${staleWindow}`);
+
+  return res.json(payload);
+};
+
+const invalidateSummaryCache = async () => {
+  resetSummaryCache();
+  await deleteCacheKeys([SUMMARY_CACHE_KEY]);
+};
+
+const invalidateBillingsCache = async () => deleteCacheKeys([BILLINGS_CACHE_KEY]);
+
+const invalidateAggregateCaches = async () => {
+  await invalidateSummaryCache();
+  await invalidateBillingsCache();
 };
 
 // --- INITIALIZATION SQL ---
@@ -502,11 +554,18 @@ const initDb = async () => {
     `);
     
     await db.query(`
-      UPDATE drivers 
-      SET qr_code = NULL 
-      WHERE qr_code IS NOT NULL 
+      UPDATE drivers
+      SET qr_code = NULL
+      WHERE qr_code IS NOT NULL
       AND (trim(qr_code) = '' OR qr_code = '0' OR qr_code = '.' OR qr_code = '-' OR lower(qr_code) = 'n/a' OR lower(qr_code) = 'null');
     `);
+
+    // 4. Performance indexes for common filters
+    await db.query('CREATE INDEX IF NOT EXISTS daily_entries_date_idx ON daily_entries (date);');
+    await db.query('CREATE INDEX IF NOT EXISTS daily_entries_driver_idx ON daily_entries ((lower(driver)));');
+    await db.query('CREATE INDEX IF NOT EXISTS weekly_wallets_driver_week_idx ON weekly_wallets (driver, week_start_date, week_end_date);');
+    await db.query('CREATE INDEX IF NOT EXISTS driver_billings_week_idx ON driver_billings (week_start_date, week_end_date);');
+    await db.query('CREATE INDEX IF NOT EXISTS driver_billings_driver_idx ON driver_billings ((lower(driver_name)));');
 
     console.log("Database initialized. Tables ready.");
   } catch (err) {
@@ -711,6 +770,7 @@ const syncDriverBillings = async () => {
     }
 
     await client.query('COMMIT');
+    await invalidateBillingsCache();
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -769,6 +829,12 @@ app.post('/api/auth/google', async (req, res) => {
 
 app.get('/api/driver-billings', async (req, res) => {
   try {
+    const cached = await getCacheJSON(BILLINGS_CACHE_KEY);
+    if (cached?.payload) {
+      const cachedEtag = cached.etag || computeEtag(cached.payload);
+      return respondWithCacheHeaders(req, res, cached.payload, cachedEtag, 'REDIS', BILLINGS_CACHE_TTL_SECONDS);
+    }
+
     await syncDriverBillings();
 
     const result = await db.query(`
@@ -791,7 +857,11 @@ app.get('/api/driver-billings', async (req, res) => {
       wallet: Number(r.wallet), walletOverdue: Number(r.walletOverdue),
       adjustments: Number(r.adjustments), payout: Number(r.payout)
     }));
-    res.json(safeRows);
+
+    const etag = computeEtag(safeRows);
+    await setCacheJSON(BILLINGS_CACHE_KEY, { payload: safeRows, etag }, BILLINGS_CACHE_TTL_SECONDS);
+
+    return respondWithCacheHeaders(req, res, safeRows, etag, 'MISS', BILLINGS_CACHE_TTL_SECONDS);
   } catch (err) {
     console.error("Error fetching billings:", err);
     res.status(500).json({ error: err.message });
@@ -820,6 +890,7 @@ app.post('/api/driver-billings', async (req, res) => {
       b.wallet, b.walletOverdue, b.adjustments, b.payout, b.status || 'Finalized'
     ]);
     await syncDriverBillings();
+    await invalidateBillingsCache();
     res.json(result.rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -828,6 +899,7 @@ app.delete('/api/driver-billings/:id', async (req, res) => {
   try {
     await db.query('DELETE FROM driver_billings WHERE id = $1', [req.params.id]);
     await syncDriverBillings();
+    await invalidateBillingsCache();
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -909,10 +981,11 @@ app.post('/api/drivers', async (req, res) => {
       idToUse, nameToSave, mobileToSave, d.email, d.joinDate, d.terminationDate || null, 
       d.deposit, qrToSave, d.vehicle, d.status, d.currentShift, d.defaultRent, d.notes, d.isManager
     ]);
-    
+
     await client.query('COMMIT');
+    await invalidateSummaryCache();
     res.json(result.rows[0]);
-  } catch (err) { 
+  } catch (err) {
     await client.query('ROLLBACK');
     if (err.code === '23505') {
         let msg = "Duplicate entry detected in database.";
@@ -931,6 +1004,7 @@ app.post('/api/drivers', async (req, res) => {
 app.delete('/api/drivers/:id', async (req, res) => {
   try {
     const result = await db.query('DELETE FROM drivers WHERE id = $1', [req.params.id]);
+    await invalidateSummaryCache();
     res.json({ success: true });
   } catch (err) {
     console.error("Delete Error:", err);
@@ -939,13 +1013,26 @@ app.delete('/api/drivers/:id', async (req, res) => {
 });
 
 // --- DASHBOARD SUMMARY (SERVER-SIDE FOR FAST INITIAL LOADS) ---
-app.get('/api/summary', async (_req, res) => {
+app.get('/api/summary', async (req, res) => {
   const now = Date.now();
-  if (summaryCache.data && now - summaryCache.lastUpdated < summaryCache.ttlMs) {
-    return res.json(summaryCache.data);
+  if (summaryCache.data && summaryCache.expiresAt <= now) {
+    resetSummaryCache();
+  }
+  if (summaryCache.data && summaryCache.expiresAt > now) {
+    return respondWithCacheHeaders(req, res, summaryCache.data, summaryCache.etag, 'MEM', SUMMARY_CACHE_TTL_SECONDS);
   }
 
   try {
+    if (!summaryCache.data) {
+      const cached = await getCacheJSON(SUMMARY_CACHE_KEY);
+      if (cached?.payload) {
+        summaryCache.data = cached.payload;
+        summaryCache.etag = cached.etag || computeEtag(cached.payload);
+        summaryCache.expiresAt = now + SUMMARY_CACHE_TTL_SECONDS * 1000;
+        return respondWithCacheHeaders(req, res, summaryCache.data, summaryCache.etag, 'REDIS', SUMMARY_CACHE_TTL_SECONDS);
+      }
+    }
+
     const [dailyRes, walletRes, slabRes] = await Promise.all([
       db.query("SELECT id, to_char(date, 'YYYY-MM-DD') as date, driver, rent, collection, fuel, due, payout FROM daily_entries"),
       db.query("SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as week_start_date, to_char(week_end_date, 'YYYY-MM-DD') as week_end_date, trips, wallet_week, days_worked_override, rent_override, adjustments FROM weekly_wallets"),
@@ -1000,10 +1087,14 @@ app.get('/api/summary', async (_req, res) => {
     };
 
     const payload = { driverSummaries, global };
+    const etag = computeEtag(payload);
     summaryCache.data = payload;
-    summaryCache.lastUpdated = now;
+    summaryCache.etag = etag;
+    summaryCache.expiresAt = Date.now() + SUMMARY_CACHE_TTL_SECONDS * 1000;
 
-    res.json(payload);
+    await setCacheJSON(SUMMARY_CACHE_KEY, { payload, etag }, SUMMARY_CACHE_TTL_SECONDS);
+
+    return respondWithCacheHeaders(req, res, payload, etag, 'MISS', SUMMARY_CACHE_TTL_SECONDS);
   } catch (err) {
     console.error('Summary aggregation error:', err);
     res.status(500).json({ error: 'Failed to build dashboard summary.' });
@@ -1049,6 +1140,7 @@ app.post('/api/daily-entries', async (req, res) => {
     `;
     const result = await db.query(q, [e.id, isoDate, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, payoutDateISO, e.notes]);
     await syncDriverBillings();
+    await invalidateAggregateCaches();
     res.json(result.rows[0]);
   } catch (err) {
     if (err.code === '23505') {
@@ -1116,6 +1208,7 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
 
     await client.query('COMMIT');
     await syncDriverBillings();
+    await invalidateAggregateCaches();
     res.json({ success: true });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -1132,6 +1225,7 @@ app.delete('/api/daily-entries/:id', async (req, res) => {
   try {
     await db.query('DELETE FROM daily_entries WHERE id = $1', [req.params.id]);
     await syncDriverBillings();
+    await invalidateAggregateCaches();
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1167,6 +1261,7 @@ app.post('/api/weekly-wallets', async (req, res) => {
     `;
     const result = await db.query(q, [w.id, w.driver, startISO, endISO || null, w.earnings, w.refund, w.diff, w.cash, w.charges, w.trips, w.walletWeek, w.daysWorkedOverride ?? null, w.rentOverride ?? null, w.adjustments || 0, w.notes]);
     await syncDriverBillings();
+    await invalidateAggregateCaches();
     res.json(result.rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1175,6 +1270,7 @@ app.delete('/api/weekly-wallets/:id', async (req, res) => {
   try {
     await db.query('DELETE FROM weekly_wallets WHERE id = $1', [req.params.id]);
     await syncDriverBillings();
+    await invalidateAggregateCaches();
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1259,6 +1355,7 @@ app.post('/api/rental-slabs/:type', async (req, res) => {
       );
     }
     await client.query('COMMIT');
+    await invalidateSummaryCache();
     res.json({ success: true });
   } catch (err) {
     await client.query('ROLLBACK');
