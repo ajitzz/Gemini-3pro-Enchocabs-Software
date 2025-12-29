@@ -258,6 +258,22 @@ const DriverBillingsPage: React.FC = () => {
       currentWeekKey ? `${toDisplayDate(currentWeekKey as string)}` : ''
   ));
 
+  const calculateWalletWeek = (source: any) => {
+      const earnings = Number(source?.earnings ?? source?.collection ?? 0) || 0;
+      const refund = Number(source?.refund ?? 0) || 0;
+      const diff = Number(source?.diff ?? 0) || 0;
+      const cash = Number(source?.cash ?? 0) || 0;
+      const charges = Number(source?.charges ?? 0) || 0;
+
+      return earnings + refund - (diff + cash + charges);
+  };
+
+  const deriveWalletWeek = (bill: any) => {
+      if (bill.weeklyDetails) return calculateWalletWeek(bill.weeklyDetails);
+      if (bill.wallet !== undefined && bill.wallet !== null) return Number(bill.wallet) || 0;
+      return calculateWalletWeek(bill);
+  };
+
   const billingTotals = useMemo(() => {
       const totals = displayedBills.reduce((acc, bill) => {
           acc.daysWorked += bill.daysWorked || 0;
@@ -266,7 +282,7 @@ const DriverBillingsPage: React.FC = () => {
           acc.collection += bill.collection || 0;
           acc.due += bill.due || 0;
           acc.fuel += bill.fuel || 0;
-          acc.wallet += bill.wallet || 0;
+          acc.wallet += deriveWalletWeek(bill);
           acc.walletOverdue += bill.walletOverdue || 0;
           acc.adjustments += bill.adjustments || 0;
           acc.payout += bill.payout || 0;
@@ -322,7 +338,7 @@ const DriverBillingsPage: React.FC = () => {
           cash: bill.weeklyDetails?.cash ?? 0,
           charges: bill.weeklyDetails?.charges ?? 0,
           trips: bill.weeklyDetails?.trips ?? bill.trips ?? 0,
-          walletWeek: bill.weeklyDetails?.walletWeek ?? bill.wallet ?? 0,
+          walletWeek: deriveWalletWeek(bill),
           daysWorkedOverride: bill.weeklyDetails?.daysWorkedOverride,
           rentOverride: bill.weeklyDetails?.rentOverride,
           adjustments: bill.weeklyDetails?.adjustments ?? bill.adjustments ?? 0,
