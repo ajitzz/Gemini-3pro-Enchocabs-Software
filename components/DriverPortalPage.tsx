@@ -667,7 +667,7 @@ const DriverPortalPage: React.FC = () => {
 
         const monthEarningsTotal = currentMonthWeeks.reduce((sum, w) => sum + (w.earnings || 0), 0);
         const monthEarningRanges = currentMonthWeeks.map(w => `${formatDate(w.weekStartDate)} - ${formatDate(w.weekEndDate)}`);
-        monthWallet = currentMonthWeeks.reduce((sum, w) => sum + (w.walletWeek || 0), 0);
+        monthWallet = currentMonthWeeks.reduce((sum, w) => sum + calculateWalletWeek(w), 0);
 
         const monthDaily = rawDaily.filter(entry => {
             const d = new Date(entry.date);
@@ -749,7 +749,7 @@ const DriverPortalPage: React.FC = () => {
                 rangePayout += (entry.payout || 0);
             });
 
-            rangeWallet = rangeWeekly.reduce((sum, week) => sum + (week.walletWeek || 0), 0);
+            rangeWallet = rangeWeekly.reduce((sum, week) => sum + calculateWalletWeek(week), 0);
             rangeEarnings = rangeWeekly.reduce((sum, week) => sum + (week.earnings || 0), 0);
         }
 
