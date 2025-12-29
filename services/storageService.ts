@@ -361,11 +361,18 @@ export const storageService = {
   calculateDriverStats,
 
   getSummary: async (): Promise<{ driverSummaries: DriverSummary[], global: GlobalSummary }> => {
-    // 1. Fetch all raw data
+    try {
+      // Prefer server-side aggregation to avoid transferring heavy datasets to the browser
+      return await api.get('/summary');
+    } catch (err) {
+      console.warn('Falling back to client-side summary calculation:', err);
+    }
+
+    // Fallback path: compute on the client if the optimized endpoint is unavailable
     const [dailyEntries, weeklyWallets, rentalSlabs] = await Promise.all([
-        storageService.getDailyEntries(),
-        storageService.getWeeklyWallets(),
-        storageService.getDriverRentalSlabs()
+      storageService.getDailyEntries(),
+      storageService.getWeeklyWallets(),
+      storageService.getDriverRentalSlabs()
     ]);
     const sortedSlabs = rentalSlabs.sort((a, b) => a.minTrips - b.minTrips);
 
@@ -374,9 +381,8 @@ export const storageService = {
       ...weeklyWallets.map(w => w.driver)
     ])).sort();
 
-    // 2. Use Centralized Calculation Logic
-    const driverSummaries: DriverSummary[] = drivers.map(driver => 
-        calculateDriverStats(driver, dailyEntries, weeklyWallets, sortedSlabs)
+    const driverSummaries: DriverSummary[] = drivers.map(driver =>
+      calculateDriverStats(driver, dailyEntries, weeklyWallets, sortedSlabs)
     );
 
     const global: GlobalSummary = {
