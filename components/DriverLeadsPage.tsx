@@ -5,6 +5,7 @@ import {
   ClipboardList,
   ChevronDown,
   Clock,
+  AlertTriangle,
   Database,
   Edit3,
   FileSpreadsheet,
@@ -75,6 +76,8 @@ const DriverLeadsPage: React.FC = () => {
   const [importing, setImporting] = useState(false);
   const [updateEditor, setUpdateEditor] = useState<{ leadId: string; text: string; date: string } | null>(null);
   const [isStatusesOpen, setIsStatusesOpen] = useState(true);
+  const [sheetToDelete, setSheetToDelete] = useState<LeadSheet | null>(null);
+  const [sheetEditor, setSheetEditor] = useState<{ sheetId: string; name: string; description: string } | null>(null);
 
   const activeSheet = useMemo(() => {
     if (!sheets.length) return undefined;
@@ -168,6 +171,21 @@ const DriverLeadsPage: React.FC = () => {
     if (activeSheetId === sheetId && filtered.length) {
       setActiveSheetId(filtered[0].id);
     }
+  };
+
+  const confirmDeleteSheet = () => {
+    if (!sheetToDelete) return;
+    deleteSheet(sheetToDelete.id);
+    setSheetToDelete(null);
+  };
+
+  const saveSheetEdits = () => {
+    if (!sheetEditor) return;
+    const name = sheetEditor.name.trim();
+    const description = sheetEditor.description.trim();
+    if (!name) return;
+    updateSheet(sheetEditor.sheetId, (sheet) => ({ ...sheet, name, description }));
+    setSheetEditor(null);
   };
 
   const addStatus = () => {
@@ -510,17 +528,28 @@ const DriverLeadsPage: React.FC = () => {
                     <span>•</span>
                     {sheet.createdBy || 'Admin'}
                   </div>
-                  {sheets.length > 1 && (
+                  <div className="flex items-center justify-between pt-1 text-[11px] text-slate-500">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        deleteSheet(sheet.id);
+                        setSheetEditor({ sheetId: sheet.id, name: sheet.name, description: sheet.description || '' });
                       }}
-                      className="text-[11px] text-rose-500 hover:text-rose-600 flex items-center gap-1"
+                      className="flex items-center gap-1 hover:text-indigo-600"
                     >
-                      <Trash2 size={12} /> Delete sheet
+                      <Edit3 size={12} /> Rename
                     </button>
-                  )}
+                    {sheets.length > 1 && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSheetToDelete(sheet);
+                        }}
+                        className="flex items-center gap-1 text-rose-500 hover:text-rose-600"
+                      >
+                        <Trash2 size={12} /> Delete
+                      </button>
+                    )}
+                  </div>
                 </button>
               ))}
             </div>
@@ -705,6 +734,83 @@ const DriverLeadsPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {sheetEditor && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2 text-slate-800 font-semibold">
+                <Edit3 size={18} /> Rename sheet
+              </div>
+              <button onClick={() => setSheetEditor(null)} className="text-slate-500 hover:text-slate-700">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-sm text-slate-600 font-semibold">Sheet name</label>
+                <input
+                  value={sheetEditor.name}
+                  onChange={(e) => setSheetEditor((prev) => (prev ? { ...prev, name: e.target.value } : prev))}
+                  className="w-full mt-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-slate-600 font-semibold">Description</label>
+                <textarea
+                  value={sheetEditor.description}
+                  onChange={(e) => setSheetEditor((prev) => (prev ? { ...prev, description: e.target.value } : prev))}
+                  className="w-full mt-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  rows={3}
+                />
+              </div>
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  onClick={() => setSheetEditor(null)}
+                  className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveSheetEdits}
+                  disabled={!sheetEditor.name.trim()}
+                  className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Check size={16} className="inline-block mr-1" /> Save changes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {sheetToDelete && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6">
+            <div className="flex items-center gap-3 text-rose-600 font-semibold mb-3">
+              <AlertTriangle size={18} /> Delete sheet?
+            </div>
+            <p className="text-sm text-slate-600">
+              This will permanently remove <span className="font-semibold">{sheetToDelete.name}</span> and all of its leads. This action
+              cannot be undone.
+            </p>
+            <div className="flex items-center justify-end gap-2 mt-4">
+              <button
+                onClick={() => setSheetToDelete(null)}
+                className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteSheet}
+                className="px-4 py-2 rounded-lg bg-rose-600 text-white font-semibold hover:bg-rose-700"
+              >
+                <Trash2 size={16} className="inline-block mr-1" /> Delete sheet
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {updateEditor && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50">
