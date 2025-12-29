@@ -482,14 +482,14 @@ const DriverLeadsPage: React.FC = () => {
         </div>
       </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          <div className="lg:col-span-1 space-y-4">
-            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+      <div className="grid grid-cols-1 lg:grid-cols-[320px,1fr] gap-6 items-start">
+        <div className="space-y-4">
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm h-full flex flex-col">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-slate-800">Sheets</h3>
               <CalendarDays size={16} className="text-slate-400" />
             </div>
-            <div className="mt-3 space-y-2 max-h-[340px] overflow-auto pr-1">
+            <div className="mt-3 space-y-2 overflow-y-auto pr-1 flex-1 max-h-[60vh]">
               {sheets.map((sheet) => (
                 <button
                   key={sheet.id}
@@ -527,7 +527,7 @@ const DriverLeadsPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="lg:col-span-3 space-y-4">
+        <div className="space-y-4 w-full">
           <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
