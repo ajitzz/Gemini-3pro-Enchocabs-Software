@@ -77,6 +77,17 @@ const formatWeekRange = (startDate: string, endDate: string) => {
     return `${startFmt} - ${endFmt}${yearSuffix}`;
 };
 
+// Ensure wallet calculations consistently include charges
+const calculateWalletWeek = (wallet: WeeklyWallet) => {
+    const earnings = Number(wallet.earnings) || 0;
+    const refund = Number(wallet.refund) || 0;
+    const diff = Number(wallet.diff) || 0;
+    const cash = Number(wallet.cash) || 0;
+    const charges = Number(wallet.charges) || 0;
+
+    return earnings + refund - (diff + cash + charges);
+};
+
 const calculateDriverStats = (
     driverName: string,
     allDaily: DailyEntry[],
@@ -146,7 +157,7 @@ const calculateDriverStats = (
         const weeklyFuel = weekDaily.reduce((sum, d) => sum + d.fuel, 0);
         const weeklyDue = weekDaily.reduce((sum, d) => sum + d.due, 0);
         const weeklyPayout = weekDaily.reduce((sum, d) => sum + (d.payout || 0), 0);
-        const weeklyWalletTotal = wallet.walletWeek + (wallet.adjustments || 0);
+        const weeklyWalletTotal = calculateWalletWeek(wallet) + (wallet.adjustments || 0);
 
         // Accumulate
         totalCollection += weeklyCollection;
