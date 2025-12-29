@@ -78,6 +78,7 @@ const DriverLeadsPage: React.FC = () => {
   const [isStatusesOpen, setIsStatusesOpen] = useState(true);
   const [sheetToDelete, setSheetToDelete] = useState<LeadSheet | null>(null);
   const [sheetEditor, setSheetEditor] = useState<{ sheetId: string; name: string; description: string } | null>(null);
+  const [confirmSheetEdit, setConfirmSheetEdit] = useState(false);
 
   const activeSheet = useMemo(() => {
     if (!sheets.length) return undefined;
@@ -186,6 +187,7 @@ const DriverLeadsPage: React.FC = () => {
     if (!name) return;
     updateSheet(sheetEditor.sheetId, (sheet) => ({ ...sheet, name, description }));
     setSheetEditor(null);
+    setConfirmSheetEdit(false);
   };
 
   const addStatus = () => {
@@ -742,7 +744,13 @@ const DriverLeadsPage: React.FC = () => {
               <div className="flex items-center gap-2 text-slate-800 font-semibold">
                 <Edit3 size={18} /> Rename sheet
               </div>
-              <button onClick={() => setSheetEditor(null)} className="text-slate-500 hover:text-slate-700">
+              <button
+                onClick={() => {
+                  setSheetEditor(null);
+                  setConfirmSheetEdit(false);
+                }}
+                className="text-slate-500 hover:text-slate-700"
+              >
                 <X size={18} />
               </button>
             </div>
@@ -766,19 +774,50 @@ const DriverLeadsPage: React.FC = () => {
               </div>
               <div className="flex items-center justify-end gap-2">
                 <button
-                  onClick={() => setSheetEditor(null)}
+                  onClick={() => {
+                    setSheetEditor(null);
+                    setConfirmSheetEdit(false);
+                  }}
                   className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={saveSheetEdits}
+                  onClick={() => setConfirmSheetEdit(true)}
                   disabled={!sheetEditor.name.trim()}
                   className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Check size={16} className="inline-block mr-1" /> Save changes
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {sheetEditor && confirmSheetEdit && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6">
+            <div className="flex items-center gap-3 text-amber-600 font-semibold mb-2">
+              <AlertTriangle size={18} /> Confirm sheet changes
+            </div>
+            <p className="text-sm text-slate-600">
+              Save updates to <span className="font-semibold">{sheetEditor.name || 'this sheet'}</span>? This will update the
+              sheet name and description for everyone who can view it.
+            </p>
+            <div className="flex items-center justify-end gap-2 mt-4">
+              <button
+                onClick={() => setConfirmSheetEdit(false)}
+                className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600"
+              >
+                Review again
+              </button>
+              <button
+                onClick={saveSheetEdits}
+                className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700"
+              >
+                <Check size={16} className="inline-block mr-1" /> Confirm save
+              </button>
             </div>
           </div>
         </div>
