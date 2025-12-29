@@ -115,6 +115,159 @@ const getSundayISO = (mondayStr) => {
   return d.toISOString().slice(0, 10);
 };
 
+// --- AGGREGATION HELPERS (SERVER-SIDE DASHBOARD SUMMARY) ---
+const formatWeekRange = (startDate, endDate) => {
+  const start = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
+
+  const startFmt = start.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  const endFmt = end.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  const yearSuffix = start.getUTCFullYear() !== end.getUTCFullYear()
+    ? ` '${String(end.getUTCFullYear()).slice(-2)}`
+    : '';
+
+  return `${startFmt} - ${endFmt}${yearSuffix}`;
+};
+
+const calculateDriverStatsServer = (driverName, allDaily, allWallets, sortedSlabs) => {
+  const driverWallets = allWallets.filter((w) => normalizeDriver(w.driver) === normalizeDriver(driverName));
+  const driverDaily = allDaily.filter((d) => normalizeDriver(d.driver) === normalizeDriver(driverName));
+
+  let totalCollection = 0;
+  let totalRent = 0;
+  let totalFuel = 0;
+  let totalDue = 0;
+  let totalPayout = 0;
+  let totalWalletWeek = 0;
+
+  const processedDailyIds = new Set();
+  let latestWeekRange;
+
+  let cutoffCollection = 0;
+  let cutoffRent = 0;
+  let cutoffFuel = 0;
+  let cutoffDue = 0;
+  let cutoffPayout = 0;
+  let cutoffWalletWeek = 0;
+
+  const sortedWallets = [...driverWallets].sort((a, b) => b.weekEndDate.localeCompare(a.weekEndDate));
+  const latestWallet = sortedWallets[0];
+  const latestWalletEndDate = latestWallet?.weekEndDate;
+  const latestWalletId = latestWallet?.id;
+
+  sortedWallets.forEach((wallet) => {
+    const startDate = wallet.weekStartDate;
+    const endDate = wallet.weekEndDate;
+
+    const weekDaily = driverDaily.filter((d) => {
+      if (processedDailyIds.has(d.id)) return false;
+      const date = d.date;
+      return date >= startDate && date <= endDate;
+    });
+
+    weekDaily.forEach((d) => processedDailyIds.add(d.id));
+
+    const trips = wallet.trips;
+    const slab = sortedSlabs.find((s) => trips >= s.minTrips && (s.maxTrips === null || trips <= s.maxTrips));
+
+    let rentRateUsed = 0;
+    if (wallet.rentOverride !== undefined && wallet.rentOverride !== null) {
+      rentRateUsed = wallet.rentOverride;
+    } else if (weekDaily.length > 0) {
+      rentRateUsed = weekDaily.reduce((sum, d) => sum + d.rent, 0) / weekDaily.length;
+    } else {
+      rentRateUsed = slab ? slab.rentAmount : 0;
+    }
+
+    const daysWorked = wallet.daysWorkedOverride !== undefined && wallet.daysWorkedOverride !== null
+      ? wallet.daysWorkedOverride
+      : weekDaily.length;
+
+    const weeklyRentTotal = rentRateUsed * daysWorked;
+
+    const weeklyCollection = weekDaily.reduce((sum, d) => sum + d.collection, 0);
+    const weeklyFuel = weekDaily.reduce((sum, d) => sum + d.fuel, 0);
+    const weeklyDue = weekDaily.reduce((sum, d) => sum + d.due, 0);
+    const weeklyPayout = weekDaily.reduce((sum, d) => sum + (d.payout || 0), 0);
+    const weeklyWalletTotal = wallet.walletWeek + (wallet.adjustments || 0);
+
+    totalCollection += weeklyCollection;
+    totalRent += weeklyRentTotal;
+    totalFuel += weeklyFuel;
+    totalDue += weeklyDue;
+    totalPayout += weeklyPayout;
+    totalWalletWeek += weeklyWalletTotal;
+
+    if (wallet.id === latestWalletId) {
+      latestWeekRange = formatWeekRange(startDate, endDate);
+    }
+
+    if (latestWalletEndDate && wallet.weekEndDate <= latestWalletEndDate) {
+      cutoffCollection += weeklyCollection;
+      cutoffRent += weeklyRentTotal;
+      cutoffFuel += weeklyFuel;
+      cutoffDue += weeklyDue;
+      cutoffPayout += weeklyPayout;
+      cutoffWalletWeek += weeklyWalletTotal;
+    }
+  });
+
+  driverDaily.forEach((d) => {
+    if (!processedDailyIds.has(d.id)) {
+      totalCollection += d.collection;
+      totalRent += d.rent;
+      totalFuel += d.fuel;
+      totalDue += d.due;
+      totalPayout += d.payout || 0;
+
+      if (latestWalletEndDate && d.date <= latestWalletEndDate) {
+        cutoffCollection += d.collection;
+        cutoffRent += d.rent;
+        cutoffFuel += d.fuel;
+        cutoffDue += d.due;
+        cutoffPayout += d.payout || 0;
+      }
+    }
+  });
+
+  const finalTotal = totalCollection - totalRent - totalFuel + totalDue + totalWalletWeek - totalPayout;
+  const cutoffTotal = latestWalletEndDate
+    ? (cutoffCollection - cutoffRent - cutoffFuel + cutoffDue + cutoffWalletWeek - cutoffPayout)
+    : finalTotal;
+
+  let netPayout = finalTotal;
+  let netPayoutSource = 'overall';
+  let netPayoutRange;
+
+  if (latestWalletEndDate) {
+    netPayout = cutoffTotal;
+    netPayoutSource = 'latest-wallet';
+    const latestWalletStart = latestWallet?.weekStartDate || getMondayISO(latestWalletEndDate);
+    const resolvedStart = latestWalletStart || latestWalletEndDate;
+    netPayoutRange = formatWeekRange(resolvedStart, latestWalletEndDate);
+  }
+
+  return {
+    driver: driverName,
+    totalCollection,
+    totalRent,
+    totalFuel,
+    totalDue,
+    totalPayout,
+    totalWalletWeek,
+    finalTotal,
+    netPayout,
+    netPayoutSource,
+    netPayoutRange
+  };
+};
+
+const summaryCache = {
+  data: null,
+  lastUpdated: 0,
+  ttlMs: 60 * 1000, // 1 minute cache to keep initial load snappy without staleness
+};
+
 // --- INITIALIZATION SQL ---
 const initDb = async () => {
   try {
@@ -764,9 +917,81 @@ app.delete('/api/drivers/:id', async (req, res) => {
   try {
     const result = await db.query('DELETE FROM drivers WHERE id = $1', [req.params.id]);
     res.json({ success: true });
-  } catch (err) { 
+  } catch (err) {
     console.error("Delete Error:", err);
-    res.status(500).json({ error: err.message }); 
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- DASHBOARD SUMMARY (SERVER-SIDE FOR FAST INITIAL LOADS) ---
+app.get('/api/summary', async (_req, res) => {
+  const now = Date.now();
+  if (summaryCache.data && now - summaryCache.lastUpdated < summaryCache.ttlMs) {
+    return res.json(summaryCache.data);
+  }
+
+  try {
+    const [dailyRes, walletRes, slabRes] = await Promise.all([
+      db.query("SELECT id, to_char(date, 'YYYY-MM-DD') as date, driver, rent, collection, fuel, due, payout FROM daily_entries"),
+      db.query("SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as week_start_date, to_char(week_end_date, 'YYYY-MM-DD') as week_end_date, trips, wallet_week, days_worked_override, rent_override, adjustments FROM weekly_wallets"),
+      db.query("SELECT min_trips as \"minTrips\", max_trips as \"maxTrips\", rent_amount as \"rentAmount\" FROM rental_slabs WHERE slab_type = 'driver' ORDER BY min_trips")
+    ]);
+
+    const dailyEntries = dailyRes.rows.map((r) => ({
+      ...r,
+      collection: Number(r.collection) || 0,
+      rent: Number(r.rent) || 0,
+      fuel: Number(r.fuel) || 0,
+      due: Number(r.due) || 0,
+      payout: Number(r.payout) || 0,
+    }));
+
+    const weeklyWallets = walletRes.rows.map((w) => ({
+      ...w,
+      weekStartDate: getMondayISO(w.week_start_date),
+      weekEndDate: toISODate(w.week_end_date) || getSundayISO(getMondayISO(w.week_start_date)),
+      trips: Number(w.trips) || 0,
+      walletWeek: Number(w.wallet_week) || 0,
+      daysWorkedOverride: w.days_worked_override !== null ? Number(w.days_worked_override) : null,
+      rentOverride: w.rent_override !== null ? Number(w.rent_override) : null,
+      adjustments: Number(w.adjustments || 0),
+    }));
+
+    const rentalSlabs = slabRes.rows.map((r) => ({
+      minTrips: Number(r.minTrips),
+      maxTrips: r.maxTrips === null ? null : Number(r.maxTrips),
+      rentAmount: Number(r.rentAmount)
+    }));
+    const sortedSlabs = (rentalSlabs.length ? rentalSlabs : defaultDriverRentalSlabs).sort((a, b) => a.minTrips - b.minTrips);
+
+    const drivers = Array.from(new Set([
+      ...dailyEntries.map((d) => d.driver).filter(Boolean),
+      ...weeklyWallets.map((w) => w.driver).filter(Boolean)
+    ])).sort();
+
+    const driverSummaries = drivers.map((driver) =>
+      calculateDriverStatsServer(driver, dailyEntries, weeklyWallets, sortedSlabs)
+    );
+
+    const global = {
+      totalCollection: driverSummaries.reduce((sum, d) => sum + d.totalCollection, 0),
+      totalRent: driverSummaries.reduce((sum, d) => sum + d.totalRent, 0),
+      totalFuel: driverSummaries.reduce((sum, d) => sum + d.totalFuel, 0),
+      totalDue: driverSummaries.reduce((sum, d) => sum + d.totalDue, 0),
+      totalPayout: driverSummaries.reduce((sum, d) => sum + d.totalPayout, 0),
+      totalWalletWeek: driverSummaries.reduce((sum, d) => sum + d.totalWalletWeek, 0),
+      pendingFromDrivers: driverSummaries.filter((d) => d.finalTotal < 0).reduce((sum, d) => sum + Math.abs(d.finalTotal), 0),
+      payableToDrivers: driverSummaries.filter((d) => d.finalTotal > 0).reduce((sum, d) => sum + d.finalTotal, 0),
+    };
+
+    const payload = { driverSummaries, global };
+    summaryCache.data = payload;
+    summaryCache.lastUpdated = now;
+
+    res.json(payload);
+  } catch (err) {
+    console.error('Summary aggregation error:', err);
+    res.status(500).json({ error: 'Failed to build dashboard summary.' });
   }
 });
 
