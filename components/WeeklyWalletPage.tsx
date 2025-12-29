@@ -258,16 +258,16 @@ const WeeklyWalletPage: React.FC = () => {
     return (
       toNumber(wallet.earnings) +
       toNumber(wallet.refund) -
-      (toNumber(wallet.diff) + toNumber(wallet.cash))
+      (toNumber(wallet.diff) + toNumber(wallet.cash) + toNumber(wallet.charges))
     );
   };
 
   const calculateDeductions = (wallet: WeeklyWallet) => {
-    return toNumber(wallet.diff) + toNumber(wallet.cash);
+    return toNumber(wallet.diff) + toNumber(wallet.cash) + toNumber(wallet.charges);
   };
 
   const calculateWalletAfterCharges = (wallet: WeeklyWallet) => {
-    return calculateWalletWeek(wallet) - toNumber(wallet.charges);
+    return calculateWalletWeek(wallet);
   };
 
   const weekTotals = useMemo(() => {

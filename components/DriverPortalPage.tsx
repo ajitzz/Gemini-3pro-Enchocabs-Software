@@ -375,6 +375,16 @@ const DriverPortalPage: React.FC = () => {
       return dateString.split('-').reverse().join('-');
   };
 
+  const calculateWalletWeek = (wallet: WeeklyWallet) => {
+      const earnings = Number(wallet.earnings) || 0;
+      const refund = Number(wallet.refund) || 0;
+      const diff = Number(wallet.diff) || 0;
+      const cash = Number(wallet.cash) || 0;
+      const charges = Number(wallet.charges) || 0;
+
+      return earnings + refund - (diff + cash + charges);
+  };
+
   // --- 1. BILLING CALCULATION ENGINE ---
   const billingData = useMemo(() => {
     if (!viewingAsDriver) return [];
@@ -412,7 +422,7 @@ const DriverPortalPage: React.FC = () => {
        const collection = relevantDaily.reduce((sum, d) => sum + d.collection, 0);
        const fuel = relevantDaily.reduce((sum, d) => sum + d.fuel, 0);
        const overdue = relevantDaily.reduce((sum, d) => sum + d.due, 0);
-       const walletAmount = wallet.walletWeek;
+       const walletAmount = calculateWalletWeek(wallet);
        const grossEarnings = wallet.earnings || 0; 
 
        const adjustments = wallet.adjustments || 0;

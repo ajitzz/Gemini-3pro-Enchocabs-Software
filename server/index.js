@@ -129,6 +129,16 @@ const formatWeekRange = (startDate, endDate) => {
   return `${startFmt} - ${endFmt}${yearSuffix}`;
 };
 
+const calculateWalletWeek = (wallet) => {
+  const earnings = Number(wallet.earnings) || 0;
+  const refund = Number(wallet.refund) || 0;
+  const diff = Number(wallet.diff) || 0;
+  const cash = Number(wallet.cash) || 0;
+  const charges = Number(wallet.charges) || 0;
+
+  return earnings + refund - (diff + cash + charges);
+};
+
 const calculateDriverStatsServer = (driverName, allDaily, allWallets, sortedSlabs) => {
   const driverWallets = allWallets.filter((w) => normalizeDriver(w.driver) === normalizeDriver(driverName));
   const driverDaily = allDaily.filter((d) => normalizeDriver(d.driver) === normalizeDriver(driverName));
@@ -189,7 +199,7 @@ const calculateDriverStatsServer = (driverName, allDaily, allWallets, sortedSlab
     const weeklyFuel = weekDaily.reduce((sum, d) => sum + d.fuel, 0);
     const weeklyDue = weekDaily.reduce((sum, d) => sum + d.due, 0);
     const weeklyPayout = weekDaily.reduce((sum, d) => sum + (d.payout || 0), 0);
-    const weeklyWalletTotal = wallet.walletWeek + (wallet.adjustments || 0);
+    const weeklyWalletTotal = calculateWalletWeek(wallet) + (wallet.adjustments || 0);
 
     totalCollection += weeklyCollection;
     totalRent += weeklyRentTotal;
@@ -516,7 +526,7 @@ const defaultDriverRentalSlabs = [
 const calculateDriverBillings = async () => {
   const [slabRes, walletRes, dailyRes, driverRes] = await Promise.all([
     db.query("SELECT min_trips as \"minTrips\", max_trips as \"maxTrips\", rent_amount as \"rentAmount\" FROM rental_slabs WHERE slab_type = 'driver' ORDER BY min_trips"),
-    db.query("SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as week_start_date, to_char(week_end_date, 'YYYY-MM-DD') as week_end_date, trips, wallet_week, rent_override, days_worked_override, adjustments, notes FROM weekly_wallets"),
+    db.query("SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as week_start_date, to_char(week_end_date, 'YYYY-MM-DD') as week_end_date, earnings, refund, diff, cash, charges, trips, wallet_week, rent_override, days_worked_override, adjustments, notes FROM weekly_wallets"),
     db.query("SELECT id, to_char(date, 'YYYY-MM-DD') as date, driver, shift, qr_code, collection, fuel, due FROM daily_entries"),
     db.query("SELECT id, name, qr_code FROM drivers")
   ]);
@@ -543,6 +553,11 @@ const driverRentalSlabs = rentalSlabs.length > 0 ? rentalSlabs : defaultDriverRe
       ...w,
       week_start_date: start,
       week_end_date: resolvedEnd,
+      earnings: Number(w.earnings) || 0,
+      refund: Number(w.refund) || 0,
+      diff: Number(w.diff) || 0,
+      cash: Number(w.cash) || 0,
+      charges: Number(w.charges) || 0,
       trips: Number(w.trips) || 0,
       wallet_week: Number(w.wallet_week) || 0,
       rent_override: w.rent_override !== null ? Number(w.rent_override) : null,
@@ -607,7 +622,7 @@ const slab = driverRentalSlabs.find((s) => trips >= s.minTrips && (s.maxTrips ==
     const collection = entries.reduce((sum, e) => sum + e.collection, 0);
     const due = entries.reduce((sum, e) => sum + e.due, 0);
     const fuel = entries.reduce((sum, e) => sum + e.fuel, 0);
-    const walletAmount = wallet ? wallet.wallet_week : 0;
+    const walletAmount = wallet ? calculateWalletWeek(wallet) : 0;
     const adjustments = wallet ? wallet.adjustments : 0;
 
     const payout = collection - rentTotal - fuel + due + walletAmount + adjustments;
