@@ -482,7 +482,7 @@ const DriverLeadsPage: React.FC = () => {
         </div>
       </div>
 
-       <div className="grid grid-cols-1 lg:grid-cols-[260px,minmax(0,1fr)] gap-4 xl:gap-6 items-start">
+         <div className="grid grid-cols-1 lg:grid-cols-[260px,minmax(0,1fr)] gap-4 xl:gap-6 items-start">
         <div className="space-y-4">
           <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm h-full flex flex-col">
             <div className="flex items-center justify-between">
