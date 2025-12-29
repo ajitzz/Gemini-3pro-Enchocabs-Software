@@ -614,94 +614,94 @@ const DriverLeadsPage: React.FC = () => {
               </button>
             </div>
           </div>
+        </div>
 
-         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden w-full">
-            <div className="overflow-auto w-full">
-              <table className="min-w-full text-left text-sm">
-                <thead className="bg-slate-50 border-b border-slate-200 text-[12px] text-slate-500 uppercase tracking-wider">
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden w-full xl:col-span-2">
+          <div className="overflow-auto w-full">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200 text-[12px] text-slate-500 uppercase tracking-wider">
+                <tr>
+                  <th className="px-4 py-3">Created</th>
+                  <th className="px-4 py-3">Platform</th>
+                  <th className="px-4 py-3">Lead</th>
+                  <th className="px-4 py-3">Phone</th>
+                  <th className="px-4 py-3">City</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Admin</th>
+                  <th className="px-4 py-3">Update</th>
+                  <th className="px-4 py-3">Note</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredLeads.length === 0 && (
                   <tr>
-                    <th className="px-4 py-3">Created</th>
-                    <th className="px-4 py-3">Platform</th>
-                    <th className="px-4 py-3">Lead</th>
-                    <th className="px-4 py-3">Phone</th>
-                    <th className="px-4 py-3">City</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Admin</th>
-                    <th className="px-4 py-3">Update</th>
-                    <th className="px-4 py-3">Note</th>
-                    <th className="px-4 py-3 text-right">Actions</th>
+                    <td className="px-4 py-6 text-center text-sm text-slate-500" colSpan={10}>
+                      No leads yet. Add manually or import a file.
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {filteredLeads.length === 0 && (
-                    <tr>
-                      <td className="px-4 py-6 text-center text-sm text-slate-500" colSpan={10}>
-                        No leads yet. Add manually or import a file.
+                )}
+                {filteredLeads.map((lead) => {
+                  const status = activeSheet ? mapStatus(activeSheet, lead.statusId) : undefined;
+                  const update = latestUpdate(lead);
+                  return (
+                    <tr key={lead.id} className="border-b border-slate-100 hover:bg-slate-50/60">
+                      <td className="px-4 py-3 text-slate-700 text-xs">{lead.createdTime}</td>
+                      <td className="px-4 py-3 text-slate-800 font-medium">{lead.platform}</td>
+                      <td className="px-4 py-3">
+                        <div className="font-semibold text-slate-900">{lead.fullName}</div>
+                        <div className="text-xs text-slate-500">{lead.city}</div>
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">{lead.phone || '—'}</td>
+                      <td className="px-4 py-3 text-slate-700">{lead.city || '—'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${colorMap[status?.color || 'slate']}`}>
+                          {status?.label || 'Unmapped'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">{lead.admin || '—'}</td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {update ? (
+                          <div className="flex items-center gap-2 text-xs text-slate-600">
+                            <CalendarDays size={14} className="text-slate-400" />
+                            <span className="font-semibold text-slate-800">{update.date}</span>
+                            <span className="text-slate-500">{update.text}</span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-400">No updates</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700 max-w-xs">
+                        <div className="line-clamp-2 text-sm">{lead.note || '—'}</div>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() =>
+                              setUpdateEditor({
+                                leadId: lead.id,
+                                text: lead.note || '',
+                                date: new Date().toISOString().slice(0, 10)
+                              })
+                            }
+                            className="p-2 rounded-lg border border-slate-200 text-slate-600 hover:border-indigo-200 hover:text-indigo-600"
+                            title="Add dated update"
+                          >
+                            <Edit3 size={14} />
+                          </button>
+                          <button
+                            onClick={() => deleteLead(lead.id)}
+                            className="p-2 rounded-lg border border-slate-200 text-rose-500 hover:border-rose-200"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
-                  )}
-                  {filteredLeads.map((lead) => {
-                    const status = activeSheet ? mapStatus(activeSheet, lead.statusId) : undefined;
-                    const update = latestUpdate(lead);
-                    return (
-                      <tr key={lead.id} className="border-b border-slate-100 hover:bg-slate-50/60">
-                        <td className="px-4 py-3 text-slate-700 text-xs">{lead.createdTime}</td>
-                        <td className="px-4 py-3 text-slate-800 font-medium">{lead.platform}</td>
-                        <td className="px-4 py-3">
-                          <div className="font-semibold text-slate-900">{lead.fullName}</div>
-                          <div className="text-xs text-slate-500">{lead.city}</div>
-                        </td>
-                        <td className="px-4 py-3 text-slate-700">{lead.phone || '—'}</td>
-                        <td className="px-4 py-3 text-slate-700">{lead.city || '—'}</td>
-                        <td className="px-4 py-3">
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${colorMap[status?.color || 'slate']}`}>
-                            {status?.label || 'Unmapped'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-slate-700">{lead.admin || '—'}</td>
-                        <td className="px-4 py-3 text-slate-700">
-                          {update ? (
-                            <div className="flex items-center gap-2 text-xs text-slate-600">
-                              <CalendarDays size={14} className="text-slate-400" />
-                              <span className="font-semibold text-slate-800">{update.date}</span>
-                              <span className="text-slate-500">{update.text}</span>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-slate-400">No updates</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-slate-700 max-w-xs">
-                          <div className="line-clamp-2 text-sm">{lead.note || '—'}</div>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() =>
-                                setUpdateEditor({
-                                  leadId: lead.id,
-                                  text: lead.note || '',
-                                  date: new Date().toISOString().slice(0, 10)
-                                })
-                              }
-                              className="p-2 rounded-lg border border-slate-200 text-slate-600 hover:border-indigo-200 hover:text-indigo-600"
-                              title="Add dated update"
-                            >
-                              <Edit3 size={14} />
-                            </button>
-                            <button
-                              onClick={() => deleteLead(lead.id)}
-                              className="p-2 rounded-lg border border-slate-200 text-rose-500 hover:border-rose-200"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
