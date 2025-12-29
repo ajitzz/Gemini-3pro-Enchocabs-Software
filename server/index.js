@@ -252,11 +252,14 @@ const calculateDriverStatsServer = (driverName, allDaily, allWallets, sortedSlab
   let netPayoutRange;
 
   if (latestWalletEndDate) {
-    netPayout = cutoffTotal;
-    netPayoutSource = 'latest-wallet';
-    const latestWalletStart = latestWallet?.weekStartDate || getMondayISO(latestWalletEndDate);
-    const resolvedStart = latestWalletStart || latestWalletEndDate;
-    netPayoutRange = formatWeekRange(resolvedStart, latestWalletEndDate);
+    const candidate = Math.min(cutoffTotal, finalTotal);
+    netPayout = candidate;
+
+    if (candidate === cutoffTotal) {
+      netPayoutSource = 'latest-wallet';
+      netPayoutRange = latestWeekRange
+        ?? (latestWallet ? formatWeekRange(latestWallet.weekStartDate, latestWallet.weekEndDate) : undefined);
+    }
   }
 
   return {
