@@ -482,7 +482,7 @@ const DriverLeadsPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[320px,1fr] gap-6 items-start">
+       <div className="grid grid-cols-1 lg:grid-cols-[260px,minmax(0,1fr)] gap-4 xl:gap-6 items-start">
         <div className="space-y-4">
           <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm h-full flex flex-col">
             <div className="flex items-center justify-between">
@@ -615,8 +615,8 @@ const DriverLeadsPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-            <div className="overflow-auto">
+         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden w-full">
+            <div className="overflow-auto w-full">
               <table className="min-w-full text-left text-sm">
                 <thead className="bg-slate-50 border-b border-slate-200 text-[12px] text-slate-500 uppercase tracking-wider">
                   <tr>
