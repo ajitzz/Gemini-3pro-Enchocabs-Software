@@ -54,6 +54,7 @@ const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const { user, logout } = useAuth();
 
   const NavItem = ({ to, icon: Icon, label }: { to: string, icon: any, label: string }) => (
@@ -83,7 +84,15 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-slate-50 font-sans text-slate-900">
       {/* Sidebar Navigation */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-slate-900 border-r border-slate-800 transform transition-transform duration-300 ease-out md:relative md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} shadow-2xl md:shadow-none`}>
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 w-72 bg-slate-900 border-r border-slate-800 transform transition-all duration-300 ease-out md:relative ${
+          isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+        } ${
+          isSidebarCollapsed
+            ? 'md:-translate-x-full md:w-0 md:border-transparent md:opacity-0 md:pointer-events-none'
+            : 'md:translate-x-0 md:w-72 md:opacity-100'
+        } shadow-2xl md:shadow-none`}
+      >
         {/* Logo Area */}
         <div className="flex items-center justify-between p-8 border-b border-slate-800/50">
           <div className="flex items-center gap-3">
@@ -166,6 +175,15 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
       {/* Main Content */}
       <main className="flex-1 overflow-auto p-4 md:p-8 lg:p-10 max-w-[1920px] mx-auto w-full">
+         <div className="hidden md:flex items-center mb-6">
+           <button
+             onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+             className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold bg-white shadow-sm border border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-200 transition-colors"
+           >
+             {isSidebarCollapsed ? <Menu size={18} /> : <X size={18} />}
+             <span>{isSidebarCollapsed ? 'Show navigation' : 'Hide navigation'}</span>
+           </button>
+         </div>
          {children}
       </main>
       
