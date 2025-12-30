@@ -545,111 +545,96 @@ const DriverLeadsPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 xl:grid-cols-[1.7fr,1fr] gap-6">
-        <div className="relative overflow-hidden rounded-2xl border border-indigo-900/30 bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-800 text-white shadow-xl p-6">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="space-y-2">
-              <p className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-indigo-100 ring-1 ring-white/15">
-                <Activity size={12} /> Driver Lead Workspace
-              </p>
-              <h1 className="text-3xl font-bold leading-tight">Organise driver leads with clarity</h1>
-              <p className="text-sm text-indigo-100/80 max-w-3xl">
-                Design every touchpoint—from capture to follow-up—with a premium, clutter-free view. Add, edit, and update leads without losing context.
-              </p>
-              <div className="flex flex-wrap items-center gap-2 text-xs text-indigo-100/80">
-                <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1 font-semibold">
-                  <Check size={12} /> Auto-saves locally
-                </span>
-                <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1 font-semibold">
-                  <NotebookPen size={12} /> Keep dated updates
-                </span>
-                <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1 font-semibold">
-                  <FileSpreadsheet size={12} /> Import & export ready
-                </span>
-              </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] text-indigo-500 font-semibold">Driver Lead Workspace</p>
+              <h1 className="text-2xl font-bold text-slate-900 mt-1">Sheets to organise leads</h1>
+              <p className="text-slate-500 mt-1">Create sheets, import XLS/CSV, and keep updates with dated history.</p>
             </div>
-            <div className="flex flex-col gap-2 items-stretch md:items-end">
+            <div className="flex gap-3">
               <button
                 onClick={createSheet}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-white text-slate-900 px-4 py-2.5 text-sm font-semibold shadow-lg shadow-indigo-900/20 hover:-translate-y-[1px] hover:shadow-xl hover:shadow-indigo-900/25 transition disabled:opacity-60"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl shadow hover:bg-indigo-700 transition disabled:opacity-50"
                 disabled={!sheetForm.name.trim()}
               >
-                <Plus size={16} /> Create sheet
+                <Plus size={16} /> New Sheet
               </button>
-              <div className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold text-indigo-100 ring-1 ring-white/15">
-                <CalendarDays size={14} /> {new Date().toLocaleDateString()}
-              </div>
             </div>
           </div>
 
-          <div className="mt-5 grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="rounded-xl border border-white/15 bg-white/5 p-4 backdrop-blur">
-              <div className="flex items-center justify-between text-[11px] uppercase text-indigo-100 font-semibold">Total leads</div>
-              <div className="flex items-center gap-2 mt-2 text-2xl font-bold">{leadMetrics.total}</div>
-              <p className="text-[12px] text-indigo-100/80">Across {activeSheet?.statuses.length || 0} statuses</p>
+          <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+              <div className="flex items-center justify-between text-xs uppercase text-slate-500 font-semibold">Total leads</div>
+              <div className="flex items-center gap-2 mt-2 text-2xl font-bold text-slate-900">
+                <BarChart3 size={18} className="text-indigo-500" />
+                {leadMetrics.total}
+              </div>
+              <p className="text-[12px] text-slate-500 mt-1">Across {activeSheet?.statuses.length || 0} statuses</p>
             </div>
-            <div className="rounded-xl border border-white/15 bg-amber-400/10 p-4 backdrop-blur">
-              <div className="flex items-center justify-between text-[11px] uppercase text-amber-100 font-semibold">Waiting</div>
-              <div className="flex items-center gap-2 mt-2 text-2xl font-bold">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <div className="flex items-center justify-between text-xs uppercase text-amber-600 font-semibold">Waiting</div>
+              <div className="flex items-center gap-2 mt-2 text-2xl font-bold text-amber-700">
                 <Clock size={18} />
                 {leadMetrics.waiting}
               </div>
-              <p className="text-[12px] text-amber-100/80">Nudge these today</p>
+              <p className="text-[12px] text-amber-700/80">Keep these moving</p>
             </div>
-            <div className="rounded-xl border border-white/15 bg-emerald-400/10 p-4 backdrop-blur">
-              <div className="flex items-center justify-between text-[11px] uppercase text-emerald-100 font-semibold">Confirmed</div>
-              <div className="flex items-center gap-2 mt-2 text-2xl font-bold">
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+              <div className="flex items-center justify-between text-xs uppercase text-emerald-700 font-semibold">Confirmed</div>
+              <div className="flex items-center gap-2 mt-2 text-2xl font-bold text-emerald-700">
                 <Check size={18} />
                 {leadMetrics.confirmed}
               </div>
-              <p className="text-[12px] text-emerald-100/80">Ready for onboarding</p>
+              <p className="text-[12px] text-emerald-700/80">Ready for onboarding</p>
             </div>
-            <div className="rounded-xl border border-white/15 bg-rose-400/10 p-4 backdrop-blur">
-              <div className="flex items-center justify-between text-[11px] uppercase text-rose-100 font-semibold">Stale</div>
-              <div className="flex items-center gap-2 mt-2 text-2xl font-bold">
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
+              <div className="flex items-center justify-between text-xs uppercase text-rose-600 font-semibold">Stale</div>
+              <div className="flex items-center gap-2 mt-2 text-2xl font-bold text-rose-700">
                 <Activity size={18} />
                 {leadMetrics.stale}
               </div>
-              <p className="text-[12px] text-rose-100/80">No update in 7+ days</p>
+              <p className="text-[12px] text-rose-700/80">No update in 7+ days</p>
             </div>
           </div>
 
           <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="rounded-xl border border-white/15 bg-white/5 p-4 backdrop-blur">
-              <div className="flex items-center gap-2 text-sm font-semibold text-indigo-50 mb-3">
+            <div className="border border-slate-200 rounded-xl p-4">
+              <div className="flex items-center gap-2 text-sm text-slate-600 font-semibold mb-3">
                 <ClipboardList size={16} /> New sheet details
               </div>
               <input
                 value={sheetForm.name}
                 onChange={(e) => setSheetForm((prev) => ({ ...prev, name: e.target.value }))}
                 placeholder="Sheet title (e.g., Feb WhatsApp Leads)"
-                className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-indigo-100/70 focus:outline-none focus:ring-2 focus:ring-white/30"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
               />
               <textarea
                 value={sheetForm.description}
                 onChange={(e) => setSheetForm((prev) => ({ ...prev, description: e.target.value }))}
                 placeholder="Short description"
-                className="w-full mt-2 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-indigo-100/70 focus:outline-none focus:ring-2 focus:ring-white/30"
+                className="w-full mt-2 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
                 rows={2}
               />
             </div>
-            <div className="rounded-xl border border-white/15 bg-white/5 p-4 backdrop-blur">
-              <div className="flex items-center gap-2 text-sm font-semibold text-indigo-50 mb-3">
+            <div className="border border-slate-200 rounded-xl p-4">
+              <div className="flex items-center gap-2 text-sm text-slate-600 font-semibold mb-3">
                 <Database size={16} /> Quick import / download
               </div>
-              <label className="w-full flex items-center justify-between gap-3 rounded-lg border-2 border-dashed border-white/30 px-3 py-3 text-sm text-indigo-50 cursor-pointer hover:border-white/50 hover:bg-white/5">
+              <label className="w-full flex items-center justify-between gap-3 rounded-lg border-2 border-dashed border-slate-200 px-3 py-3 text-sm text-slate-500 cursor-pointer hover:border-indigo-200 hover:bg-indigo-50">
                 <div className="flex items-center gap-2">
                   {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
                   <span>{importing ? 'Importing...' : 'Import XLSX / CSV into active sheet'}</span>
                 </div>
                 <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => e.target.files?.[0] && importFile(e.target.files[0])} />
               </label>
-              <div className="flex flex-col gap-2 mt-2 text-xs text-indigo-100/90">
-                <p>Headers: created_time, platform, full_name, phone, city, status, admin, update, note</p>
+              <div className="flex flex-col gap-2 mt-2 text-xs text-slate-500">
+                <p>Headers supported: created_time, platform, full_name, phone, city, status, admin, update, note</p>
                 <button
                   type="button"
                   onClick={downloadTemplate}
-                  className="self-start inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/20 bg-white/10 text-[12px] font-semibold hover:border-white/40"
+                  className="self-start inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-[12px] font-semibold hover:border-indigo-200"
                 >
                   <FileSpreadsheet size={12} /> Download sample CSV
                 </button>
@@ -844,35 +829,22 @@ const DriverLeadsPage: React.FC = () => {
         </div>
 
         <div className="space-y-4 w-full">
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 space-y-4">
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div className="space-y-1">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Active sheet</p>
+              <div>
+                <p className="text-xs text-slate-500">Active sheet</p>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-xl font-bold text-slate-900">{activeSheet?.name || 'No sheet selected'}</h3>
+                  <h3 className="text-xl font-semibold text-slate-900">{activeSheet?.name || 'No sheet selected'}</h3>
                   {activeSheet && (
-                    <span className="px-2.5 py-1 rounded-full bg-indigo-50 text-[11px] font-semibold text-indigo-700 ring-1 ring-indigo-100">
+                    <span className="px-2 py-1 rounded-full bg-slate-100 text-[12px] text-slate-600 border border-slate-200">
                       {activeSheet.leads.length} leads
                     </span>
                   )}
-                  {!!activeSheet?.description && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200">
-                      <ClipboardList size={12} /> {activeSheet.description}
-                    </span>
-                  )}
-                </div>
-                <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-50 ring-1 ring-slate-200">
-                    <CalendarDays size={12} /> Last saved locally
-                  </span>
-                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-50 ring-1 ring-slate-200">
-                    <NotebookPen size={12} /> Keep notes for every touchpoint
-                  </span>
                 </div>
               </div>
-              <div className="w-full md:w-auto flex flex-wrap justify-end gap-2">
+              <div className="flex gap-2 w-full md:w-auto flex-wrap justify-end">
                 {activeSheet && (
-                  <div className="flex flex-wrap gap-2 justify-end">
+                  <div className="flex gap-2 flex-wrap">
                     <button
                       onClick={() => duplicateSheet(activeSheet.id)}
                       className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 hover:border-indigo-200"
@@ -914,12 +886,7 @@ const DriverLeadsPage: React.FC = () => {
                     </button>
                   </div>
                 )}
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm text-slate-600 w-full md:w-72 shadow-sm">
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-sm text-slate-600 w-full md:w-64">
                   <Filter size={14} />
                   <input
                     value={filterText}
@@ -931,7 +898,7 @@ const DriverLeadsPage: React.FC = () => {
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white w-full md:w-44 shadow-sm"
+                  className="px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white w-full md:w-48"
                 >
                   <option value="all">All statuses</option>
                   {activeSheet?.statuses.map((status) => (
@@ -943,25 +910,17 @@ const DriverLeadsPage: React.FC = () => {
                 <select
                   value={sortOption}
                   onChange={(e) => setSortOption(e.target.value as typeof sortOption)}
-                  className="px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white w-full md:w-44 shadow-sm"
+                  className="px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white w-full md:w-40"
                 >
                   <option value="recent">Latest touch</option>
                   <option value="oldest">Oldest first</option>
                   <option value="status">Group by status</option>
                 </select>
-              </div>
-              <div className="flex flex-wrap gap-2 w-full md:w-auto justify-end">
-                <label className="hidden md:flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 cursor-pointer bg-white shadow-sm hover:border-indigo-200">
+                <label className="hidden md:flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 cursor-pointer hover:border-indigo-200">
                   <FileSpreadsheet size={14} />
                   <span>Import</span>
                   <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => e.target.files?.[0] && importFile(e.target.files[0])} />
                 </label>
-                <button
-                  onClick={() => activeSheet && setIsStatusesOpen(true)}
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold shadow-sm hover:bg-indigo-700"
-                >
-                  <NotebookPen size={14} /> Edit statuses
-                </button>
               </div>
             </div>
 
