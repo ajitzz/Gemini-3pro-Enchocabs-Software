@@ -84,6 +84,20 @@ const DriverLeadsPage: React.FC = () => {
   const [sheetEditor, setSheetEditor] = useState<{ sheetId: string; name: string; description: string } | null>(null);
   const [confirmSheetEdit, setConfirmSheetEdit] = useState(false);
 
+  const downloadCSV = (headers: string[], rows: (string | number | null | undefined)[][], filename: string) => {
+    const escapeCell = (cell: string | number | null | undefined) => `"${String(cell ?? '').replace(/"/g, '""')}"`;
+    const csvContent = [headers.join(','), ...rows.map((row) => row.map(escapeCell).join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `${filename}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const activeSheet = useMemo(() => {
     if (!sheets.length) return undefined;
     return sheets.find((s) => s.id === activeSheetId) || sheets[0];
@@ -173,8 +187,8 @@ const DriverLeadsPage: React.FC = () => {
   const deleteSheet = (sheetId: string) => {
     const filtered = sheets.filter((s) => s.id !== sheetId);
     setSheets(filtered);
-    if (activeSheetId === sheetId && filtered.length) {
-      setActiveSheetId(filtered[0].id);
+    if (activeSheetId === sheetId) {
+      setActiveSheetId(filtered[0]?.id || '');
     }
   };
 
@@ -282,6 +296,31 @@ const DriverLeadsPage: React.FC = () => {
       })
     }));
     setUpdateEditor(null);
+  };
+
+  const exportActiveSheet = () => {
+    if (!activeSheet) return;
+    const headers = ['Created', 'Platform', 'Full Name', 'Phone', 'City', 'Status', 'Admin', 'Latest Update', 'Last Touch', 'Note'];
+    const rows = activeSheet.leads.map((lead) => {
+      const statusLabel = mapStatus(activeSheet, lead.statusId)?.label || 'Unknown';
+      const update = latestUpdate(lead);
+      const touchDate = latestTouch(lead);
+      const daysAgo = daysSince(touchDate);
+      return [
+        lead.createdTime,
+        lead.platform,
+        lead.fullName,
+        lead.phone,
+        lead.city,
+        statusLabel,
+        lead.admin,
+        update ? `${update.date} - ${update.text}` : '',
+        `${touchDate} (${daysAgo === 0 ? 'Today' : `${daysAgo}d ago`})`,
+        lead.note
+      ];
+    });
+    const sheetLabel = activeSheet.name.trim().replace(/\s+/g, '-').toLowerCase() || 'leads';
+    downloadCSV(headers, rows, `${sheetLabel}-leads`);
   };
 
   const mapStatus = (sheet: LeadSheet, statusId: string) => sheet.statuses.find((s) => s.id === statusId);
@@ -606,6 +645,11 @@ const DriverLeadsPage: React.FC = () => {
               <CalendarDays size={16} className="text-slate-400" />
             </div>
             <div className="mt-3 space-y-2 overflow-y-auto pr-1 flex-1 max-h-[60vh]">
+              {sheets.length === 0 && (
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-sm text-slate-600 text-center">
+                  No sheets yet. Create your first list to start tracking leads.
+                </div>
+              )}
               {sheets.map((sheet) => (
                 <button
                   key={sheet.id}
@@ -617,7 +661,7 @@ const DriverLeadsPage: React.FC = () => {
                   }`}
                 >
                   <div className="flex items-center justify-between text-sm font-semibold">
-                    <span>{sheet.name}</span>
+                    <span className="line-clamp-1">{sheet.name}</span>
                     <span className="text-[11px] text-slate-500">{sheet.leads.length} leads</span>
                   </div>
                   <p className="text-xs text-slate-500 line-clamp-2">{sheet.description || 'No description added'}</p>
@@ -636,17 +680,15 @@ const DriverLeadsPage: React.FC = () => {
                     >
                       <Edit3 size={12} /> Rename
                     </button>
-                    {sheets.length > 1 && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSheetToDelete(sheet);
-                        }}
-                        className="flex items-center gap-1 text-rose-500 hover:text-rose-600"
-                      >
-                        <Trash2 size={12} /> Delete
-                      </button>
-                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSheetToDelete(sheet);
+                      }}
+                      className="flex items-center gap-1 text-rose-500 hover:text-rose-600"
+                    >
+                      <Trash2 size={12} /> Delete
+                    </button>
                   </div>
                 </button>
               ))}
@@ -659,9 +701,39 @@ const DriverLeadsPage: React.FC = () => {
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-xs text-slate-500">Active sheet</p>
-                <h3 className="text-xl font-semibold text-slate-900">{activeSheet?.name || 'No sheet selected'}</h3>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-xl font-semibold text-slate-900">{activeSheet?.name || 'No sheet selected'}</h3>
+                  {activeSheet && (
+                    <span className="px-2 py-1 rounded-full bg-slate-100 text-[12px] text-slate-600 border border-slate-200">
+                      {activeSheet.leads.length} leads
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="flex gap-2 w-full md:w-auto">
+              <div className="flex gap-2 w-full md:w-auto flex-wrap justify-end">
+                {activeSheet && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setSheetEditor({ sheetId: activeSheet.id, name: activeSheet.name, description: activeSheet.description || '' })}
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 hover:border-indigo-200"
+                    >
+                      <Edit3 size={14} /> Rename
+                    </button>
+                    <button
+                      onClick={() => setSheetToDelete(activeSheet)}
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-rose-200 text-sm text-rose-600 hover:bg-rose-50"
+                    >
+                      <Trash2 size={14} /> Delete
+                    </button>
+                    <button
+                      onClick={exportActiveSheet}
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 hover:border-indigo-200"
+                      disabled={!activeSheet.leads.length}
+                    >
+                      <FileSpreadsheet size={14} /> Export
+                    </button>
+                  </div>
+                )}
                 <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-sm text-slate-600 w-full md:w-64">
                   <Filter size={14} />
                   <input
