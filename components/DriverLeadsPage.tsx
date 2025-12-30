@@ -3,6 +3,7 @@ import {
   CalendarDays,
   Check,
   ClipboardList,
+  Copy,
   ChevronDown,
   Clock,
   AlertTriangle,
@@ -83,6 +84,8 @@ const DriverLeadsPage: React.FC = () => {
   const [sheetToDelete, setSheetToDelete] = useState<LeadSheet | null>(null);
   const [sheetEditor, setSheetEditor] = useState<{ sheetId: string; name: string; description: string } | null>(null);
   const [confirmSheetEdit, setConfirmSheetEdit] = useState(false);
+  const [leadToDelete, setLeadToDelete] = useState<LeadRecord | null>(null);
+  const [sheetAction, setSheetAction] = useState<'clear' | 'delete' | null>(null);
 
   const downloadCSV = (headers: string[], rows: (string | number | null | undefined)[][], filename: string) => {
     const escapeCell = (cell: string | number | null | undefined) => `"${String(cell ?? '').replace(/"/g, '""')}"`;
@@ -194,8 +197,40 @@ const DriverLeadsPage: React.FC = () => {
 
   const confirmDeleteSheet = () => {
     if (!sheetToDelete) return;
-    deleteSheet(sheetToDelete.id);
+    if (sheetAction === 'clear') {
+      clearSheetLeads(sheetToDelete.id);
+    } else {
+      deleteSheet(sheetToDelete.id);
+    }
     setSheetToDelete(null);
+    setSheetAction(null);
+  };
+
+  const duplicateSheet = (sheetId: string) => {
+    const source = sheets.find((s) => s.id === sheetId);
+    if (!source) return;
+    const clonedStatuses = source.statuses.map((status) => ({ ...status }));
+    const clonedSheetId = uuidv4();
+    const clonedLeads = source.leads.map((lead) => ({
+      ...lead,
+      id: uuidv4(),
+      sheetId: clonedSheetId,
+      updates: lead.updates.map((update) => ({ ...update, id: uuidv4() }))
+    }));
+    const copy: LeadSheet = {
+      ...source,
+      id: clonedSheetId,
+      name: `${source.name} (Copy)`,
+      createdAt: new Date().toISOString(),
+      leads: clonedLeads,
+      statuses: clonedStatuses
+    };
+    setSheets((prev) => [copy, ...prev]);
+    setActiveSheetId(copy.id);
+  };
+
+  const clearSheetLeads = (sheetId: string) => {
+    updateSheet(sheetId, (sheet) => ({ ...sheet, leads: [] }));
   };
 
   const saveSheetEdits = () => {
@@ -278,6 +313,14 @@ const DriverLeadsPage: React.FC = () => {
   const deleteLead = (leadId: string) => {
     if (!activeSheet) return;
     updateSheet(activeSheet.id, (sheet) => ({ ...sheet, leads: sheet.leads.filter((lead) => lead.id !== leadId) }));
+  };
+
+  const downloadTemplate = () => {
+    const headers = ['created_time', 'platform', 'full_name', 'phone', 'city', 'status', 'admin', 'update', 'note'];
+    const rows = [
+      ['2024-05-01', 'Organic', 'Sample Lead', '+91 90000 12345', 'Chennai', 'Interested', 'Admin', 'Shared pricing deck', 'Notes stay here']
+    ];
+    downloadCSV(headers, rows, 'driver-leads-template');
   };
 
   const addLeadUpdate = () => {
@@ -572,7 +615,16 @@ const DriverLeadsPage: React.FC = () => {
                 </div>
                 <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => e.target.files?.[0] && importFile(e.target.files[0])} />
               </label>
-              <p className="text-xs text-slate-400 mt-2">Headers supported: created_time, platform, full_name, phone, city, status, admin, update, note</p>
+              <div className="flex flex-col gap-2 mt-2 text-xs text-slate-500">
+                <p>Headers supported: created_time, platform, full_name, phone, city, status, admin, update, note</p>
+                <button
+                  type="button"
+                  onClick={downloadTemplate}
+                  className="self-start inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-[12px] font-semibold hover:border-indigo-200"
+                >
+                  <FileSpreadsheet size={12} /> Download sample CSV
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -683,6 +735,7 @@ const DriverLeadsPage: React.FC = () => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
+                        setSheetAction('delete');
                         setSheetToDelete(sheet);
                       }}
                       className="flex items-center gap-1 text-rose-500 hover:text-rose-600"
@@ -712,7 +765,14 @@ const DriverLeadsPage: React.FC = () => {
               </div>
               <div className="flex gap-2 w-full md:w-auto flex-wrap justify-end">
                 {activeSheet && (
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      onClick={() => duplicateSheet(activeSheet.id)}
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 hover:border-indigo-200"
+                      title="Clone this sheet with its statuses and leads"
+                    >
+                      <Copy size={14} /> Duplicate
+                    </button>
                     <button
                       onClick={() => setSheetEditor({ sheetId: activeSheet.id, name: activeSheet.name, description: activeSheet.description || '' })}
                       className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 hover:border-indigo-200"
@@ -720,7 +780,20 @@ const DriverLeadsPage: React.FC = () => {
                       <Edit3 size={14} /> Rename
                     </button>
                     <button
-                      onClick={() => setSheetToDelete(activeSheet)}
+                      onClick={() => {
+                        setSheetAction('clear');
+                        setSheetToDelete(activeSheet);
+                      }}
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-amber-200 text-sm text-amber-700 hover:bg-amber-50 disabled:opacity-50"
+                      disabled={!activeSheet.leads.length}
+                    >
+                      <Database size={14} /> Clear leads
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSheetAction('delete');
+                        setSheetToDelete(activeSheet);
+                      }}
                       className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-rose-200 text-sm text-rose-600 hover:bg-rose-50"
                     >
                       <Trash2 size={14} /> Delete
@@ -892,8 +965,12 @@ const DriverLeadsPage: React.FC = () => {
                   const update = latestUpdate(lead);
                   const touchDate = latestTouch(lead);
                   const days = daysSince(touchDate);
+                  const stale = days >= 7;
                   return (
-                    <tr key={lead.id} className="border-b border-slate-100 hover:bg-slate-50/60">
+                    <tr
+                      key={lead.id}
+                      className={`border-b border-slate-100 hover:bg-slate-50/60 ${stale ? 'bg-amber-50/60' : ''}`}
+                    >
                       <td className="px-4 py-3 text-slate-700 text-xs">{lead.createdTime}</td>
                       <td className="px-4 py-3 text-slate-800 font-medium">{lead.platform}</td>
                       <td className="px-4 py-3">
@@ -941,7 +1018,10 @@ const DriverLeadsPage: React.FC = () => {
                           <Clock size={14} className="text-slate-400" />
                           <div>
                             <div className="font-semibold text-slate-800">{touchDate}</div>
-                            <div className="text-[11px] text-slate-500">{days === 0 ? 'Today' : `${days}d ago`}</div>
+                            <div className="text-[11px] text-slate-500 flex items-center gap-2">
+                              <span>{days === 0 ? 'Today' : `${days}d ago`}</span>
+                              {stale && <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold">Follow up</span>}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -964,8 +1044,9 @@ const DriverLeadsPage: React.FC = () => {
                             <Edit3 size={14} />
                           </button>
                           <button
-                            onClick={() => deleteLead(lead.id)}
+                            onClick={() => setLeadToDelete(lead)}
                             className="p-2 rounded-lg border border-slate-200 text-rose-500 hover:border-rose-200"
+                            title="Delete lead"
                           >
                             <Trash2 size={14} />
                           </button>
@@ -1070,24 +1151,69 @@ const DriverLeadsPage: React.FC = () => {
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6">
             <div className="flex items-center gap-3 text-rose-600 font-semibold mb-3">
-              <AlertTriangle size={18} /> Delete sheet?
+              <AlertTriangle size={18} />
+              {sheetAction === 'clear' ? 'Clear all leads?' : 'Delete sheet?'}
             </div>
             <p className="text-sm text-slate-600">
-              This will permanently remove <span className="font-semibold">{sheetToDelete.name}</span> and all of its leads. This action
-              cannot be undone.
+              {sheetAction === 'clear'
+                ? (
+                  <>Remove all leads inside <span className="font-semibold">{sheetToDelete.name}</span>? The sheet stays but the table will reset.</>
+                )
+                : (
+                  <>This will permanently remove <span className="font-semibold">{sheetToDelete.name}</span> and all of its leads. This action cannot be undone.</>
+                )}
             </p>
             <div className="flex items-center justify-end gap-2 mt-4">
               <button
-                onClick={() => setSheetToDelete(null)}
+                onClick={() => {
+                  setSheetToDelete(null);
+                  setSheetAction(null);
+                }}
                 className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmDeleteSheet}
+                className={`px-4 py-2 rounded-lg text-white font-semibold ${sheetAction === 'clear' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-rose-600 hover:bg-rose-700'}`}
+              >
+                <Trash2 size={16} className="inline-block mr-1" />
+                {sheetAction === 'clear' ? 'Clear leads' : 'Delete sheet'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {leadToDelete && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6">
+            <div className="flex items-center gap-3 text-rose-600 font-semibold mb-2">
+              <AlertTriangle size={18} /> Remove lead?
+            </div>
+            <p className="text-sm text-slate-600">
+              Delete <span className="font-semibold">{leadToDelete.fullName}</span> from <span className="font-semibold">{activeSheet?.name}</span>? This cannot be undone.
+            </p>
+            <div className="mt-3 p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1">
+              <div className="font-semibold text-slate-800">Last touch: {latestTouch(leadToDelete)}</div>
+              <div>Phone: {leadToDelete.phone || '—'}</div>
+              <div>Status: {mapStatus(activeSheet!, leadToDelete.statusId)?.label || 'Unknown'}</div>
+            </div>
+            <div className="flex items-center justify-end gap-2 mt-4">
+              <button
+                onClick={() => setLeadToDelete(null)}
+                className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  deleteLead(leadToDelete.id);
+                  setLeadToDelete(null);
+                }}
                 className="px-4 py-2 rounded-lg bg-rose-600 text-white font-semibold hover:bg-rose-700"
               >
-                <Trash2 size={16} className="inline-block mr-1" /> Delete sheet
+                <Trash2 size={16} className="inline-block mr-1" /> Delete lead
               </button>
             </div>
           </div>
