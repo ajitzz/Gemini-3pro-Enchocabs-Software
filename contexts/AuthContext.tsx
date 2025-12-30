@@ -18,6 +18,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const ADMIN_CACHE_KEY = 'driver_app_admin_cache_v1';
 const ADMIN_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const VALIDATION_GRACE_MS = 2 * 60 * 1000; // 2 minutes after login/validation
+const WARMUP_TIMEOUT_MS = 4000;
 
 const getApiBase = () => {
     // Check for Vite dev mode or specific local hostnames
@@ -57,6 +58,24 @@ const authApi = {
         }
         return response.json();
     }
+};
+
+const warmupBackend = async () => {
+  const API_BASE = getApiBase();
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), WARMUP_TIMEOUT_MS);
+
+  try {
+    await fetch(`${API_BASE}/health`, {
+      method: 'GET',
+      cache: 'no-store',
+      signal: controller.signal
+    });
+  } catch (error) {
+    console.warn('Backend warmup skipped:', error);
+  } finally {
+    window.clearTimeout(timeout);
+  }
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -122,6 +141,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.removeItem('driver_app_session');
     }
     setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    warmupBackend();
   }, []);
 
   const loginWithGoogleToken = async (token: string) => {
