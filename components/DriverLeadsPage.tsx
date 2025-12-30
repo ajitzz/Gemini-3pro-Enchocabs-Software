@@ -233,6 +233,18 @@ const DriverLeadsPage: React.FC = () => {
     updateSheet(sheetId, (sheet) => ({ ...sheet, leads: [] }));
   };
 
+  const confirmActiveSheetClear = () => {
+    if (!activeSheet) return;
+    setSheetAction('clear');
+    setSheetToDelete(activeSheet);
+  };
+
+  const confirmActiveSheetDelete = () => {
+    if (!activeSheet) return;
+    setSheetAction('delete');
+    setSheetToDelete(activeSheet);
+  };
+
   const saveSheetEdits = () => {
     if (!sheetEditor) return;
     const name = sheetEditor.name.trim();
@@ -407,6 +419,8 @@ const DriverLeadsPage: React.FC = () => {
 
     return [...activeSheet.leads].filter((lead) => byText(lead) && byStatus(lead)).sort(sorters[sortOption]);
   }, [activeSheet, filterText, sortOption, statusFilter]);
+
+  const isFiltered = filterText.trim().length > 0 || statusFilter !== 'all' || sortOption !== 'recent';
 
   const parseCSV = (content: string) => {
     const rows = content.split(/\r?\n/).filter(Boolean);
@@ -691,6 +705,71 @@ const DriverLeadsPage: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-[260px,minmax(0,1fr)] gap-4 xl:gap-6 items-start">
         <div className="space-y-4">
+          <div className="bg-slate-900 text-white rounded-2xl p-4 shadow-sm space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Sheet overview</p>
+                <h3 className="text-lg font-semibold leading-tight">
+                  {activeSheet?.name || 'No sheet selected'}
+                </h3>
+                <p className="text-sm text-slate-200/80">
+                  {activeSheet
+                    ? `${activeSheet.leads.length} leads • ${activeSheet.statuses.length} statuses`
+                    : 'Create a sheet to start adding leads'}
+                </p>
+              </div>
+              {activeSheet ? (
+                <div className="text-xs text-slate-200/80 text-right space-y-1">
+                  <div className="flex items-center gap-1 justify-end">
+                    <CalendarDays size={14} className="text-indigo-200" />
+                    <span>{new Date(activeSheet.createdAt).toLocaleDateString()}</span>
+                  </div>
+                  <div>Owner: {activeSheet.createdBy || 'Admin'}</div>
+                </div>
+              ) : (
+                <div className="text-xs text-slate-200/80">Use the form above to add your first list.</div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => activeSheet && duplicateSheet(activeSheet.id)}
+                disabled={!activeSheet}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-white text-slate-900 text-sm font-semibold px-3 py-2 border border-white/20 shadow-sm disabled:opacity-60"
+              >
+                <Copy size={14} /> Duplicate
+              </button>
+              <button
+                onClick={() => activeSheet && setSheetEditor({ sheetId: activeSheet.id, name: activeSheet.name, description: activeSheet.description || '' })}
+                disabled={!activeSheet}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-white/10 text-white text-sm font-semibold px-3 py-2 border border-white/20 hover:bg-white/20 disabled:opacity-60"
+              >
+                <Edit3 size={14} /> Rename
+              </button>
+              <button
+                onClick={confirmActiveSheetClear}
+                disabled={!activeSheet || !activeSheet.leads.length}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-amber-500/90 text-amber-950 text-sm font-semibold px-3 py-2 border border-amber-200 hover:bg-amber-400 disabled:opacity-60"
+              >
+                <Database size={14} /> Clear leads
+              </button>
+              <button
+                onClick={confirmActiveSheetDelete}
+                disabled={!activeSheet}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-rose-600 text-white text-sm font-semibold px-3 py-2 border border-rose-500 hover:bg-rose-700 disabled:opacity-60"
+              >
+                <Trash2 size={14} /> Delete sheet
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs text-slate-200/80">
+              <AlertTriangle size={14} className="text-amber-200" />
+              <span>
+                Duplicate to experiment, clear to reset leads, or delete to remove the entire sheet.
+              </span>
+            </div>
+          </div>
+
           <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm h-full flex flex-col">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-slate-800">Sheets</h3>
@@ -953,14 +1032,16 @@ const DriverLeadsPage: React.FC = () => {
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody>
-                {filteredLeads.length === 0 && (
-                  <tr>
-                    <td className="px-4 py-6 text-center text-sm text-slate-500" colSpan={10}>
-                      No leads yet. Add manually or import a file.
-                    </td>
-                  </tr>
-                )}
+                <tbody>
+                  {filteredLeads.length === 0 && (
+                    <tr>
+                      <td className="px-4 py-6 text-center text-sm text-slate-500" colSpan={10}>
+                        {isFiltered
+                          ? 'No leads match the current filters. Try clearing the search or status filter.'
+                          : 'No leads yet for this sheet. Add manually or import a file to get started.'}
+                      </td>
+                    </tr>
+                  )}
                 {filteredLeads.map((lead) => {
                   const update = latestUpdate(lead);
                   const touchDate = latestTouch(lead);
