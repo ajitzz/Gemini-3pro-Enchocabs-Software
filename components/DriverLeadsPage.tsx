@@ -86,6 +86,8 @@ const DriverLeadsPage: React.FC = () => {
   const [confirmSheetEdit, setConfirmSheetEdit] = useState(false);
   const [leadToDelete, setLeadToDelete] = useState<LeadRecord | null>(null);
   const [sheetAction, setSheetAction] = useState<'clear' | 'delete' | null>(null);
+  const [expandedLatestUpdates, setExpandedLatestUpdates] = useState<Set<string>>(new Set());
+  const [expandedHistories, setExpandedHistories] = useState<Set<string>>(new Set());
 
   const downloadCSV = (headers: string[], rows: (string | number | null | undefined)[][], filename: string) => {
     const escapeCell = (cell: string | number | null | undefined) => `"${String(cell ?? '').replace(/"/g, '""')}"`;
@@ -355,20 +357,17 @@ const DriverLeadsPage: React.FC = () => {
 
   const exportActiveSheet = () => {
     if (!activeSheet) return;
-    const headers = ['Created', 'Platform', 'Full Name', 'Phone', 'City', 'Status', 'Admin', 'Latest Update', 'Last Touch', 'Note'];
+    const headers = ['Created', 'Lead', 'Phone', 'Status', 'Latest Update', 'Last Touch', 'Note'];
     const rows = activeSheet.leads.map((lead) => {
       const statusLabel = mapStatus(activeSheet, lead.statusId)?.label || 'Unknown';
       const update = latestUpdate(lead);
       const touchDate = latestTouch(lead);
       const daysAgo = daysSince(touchDate);
       return [
-        lead.createdTime,
-        lead.platform,
-        lead.fullName,
+        `${lead.createdTime} (Platform: ${lead.platform || '—'})`,
+        `${lead.fullName}${lead.city ? `, ${lead.city}` : ''}`,
         lead.phone,
-        lead.city,
         statusLabel,
-        lead.admin,
         update ? `${update.date} - ${update.text}` : '',
         `${touchDate} (${daysAgo === 0 ? 'Today' : `${daysAgo}d ago`})`,
         lead.note
@@ -382,6 +381,22 @@ const DriverLeadsPage: React.FC = () => {
 
   const latestTouch = (lead: LeadRecord) => lead.updates[0]?.date || lead.createdTime;
   const latestUpdate = (lead: LeadRecord) => lead.updates[0];
+
+  const toggleExpandedLatest = (leadId: string) => {
+    setExpandedLatestUpdates((prev) => {
+      const next = new Set(prev);
+      next.has(leadId) ? next.delete(leadId) : next.add(leadId);
+      return next;
+    });
+  };
+
+  const toggleHistory = (leadId: string) => {
+    setExpandedHistories((prev) => {
+      const next = new Set(prev);
+      next.has(leadId) ? next.delete(leadId) : next.add(leadId);
+      return next;
+    });
+  };
 
   const updateLeadStatus = (leadId: string, statusId: string) => {
     if (!activeSheet) return;
@@ -1020,12 +1035,9 @@ const DriverLeadsPage: React.FC = () => {
               <thead className="bg-slate-50 border-b border-slate-200 text-[12px] text-slate-500 uppercase tracking-wider">
                 <tr>
                   <th className="px-4 py-3">Created</th>
-                  <th className="px-4 py-3">Platform</th>
                   <th className="px-4 py-3">Lead</th>
                   <th className="px-4 py-3">Phone</th>
-                  <th className="px-4 py-3">City</th>
                   <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Admin</th>
                   <th className="px-4 py-3">Latest update</th>
                   <th className="px-4 py-3">Last touch</th>
                   <th className="px-4 py-3">Note</th>
@@ -1035,7 +1047,7 @@ const DriverLeadsPage: React.FC = () => {
                 <tbody>
                   {filteredLeads.length === 0 && (
                     <tr>
-                      <td className="px-4 py-6 text-center text-sm text-slate-500" colSpan={10}>
+                      <td className="px-4 py-6 text-center text-sm text-slate-500" colSpan={8}>
                         {isFiltered
                           ? 'No leads match the current filters. Try clearing the search or status filter.'
                           : 'No leads yet for this sheet. Add manually or import a file to get started.'}
@@ -1052,14 +1064,15 @@ const DriverLeadsPage: React.FC = () => {
                       key={lead.id}
                       className={`border-b border-slate-100 hover:bg-slate-50/60 ${stale ? 'bg-amber-50/60' : ''}`}
                     >
-                      <td className="px-4 py-3 text-slate-700 text-xs">{lead.createdTime}</td>
-                      <td className="px-4 py-3 text-slate-800 font-medium">{lead.platform}</td>
+                      <td className="px-4 py-3 text-slate-700 text-xs">
+                        <div className="font-semibold text-slate-800 text-sm">{lead.createdTime}</div>
+                        <div className="text-[11px] text-slate-500">Platform: {lead.platform || '—'}</div>
+                      </td>
                       <td className="px-4 py-3">
                         <div className="font-semibold text-slate-900">{lead.fullName}</div>
-                        <div className="text-xs text-slate-500">{lead.city}</div>
+                        <div className="text-[11px] text-slate-500">{lead.city || 'City not set'}</div>
                       </td>
                       <td className="px-4 py-3 text-slate-700">{lead.phone || '—'}</td>
-                      <td className="px-4 py-3 text-slate-700">{lead.city || '—'}</td>
                       <td className="px-4 py-3">
                         <select
                           value={lead.statusId}
@@ -1077,17 +1090,54 @@ const DriverLeadsPage: React.FC = () => {
                           ))}
                         </select>
                       </td>
-                      <td className="px-4 py-3 text-slate-700">{lead.admin || '—'}</td>
                       <td className="px-4 py-3 text-slate-700">
                         {update ? (
-                          <div className="flex items-center gap-2 text-xs text-slate-600">
-                            <CalendarDays size={14} className="text-slate-400" />
-                            <span className="font-semibold text-slate-800">{update.date}</span>
-                            <span className="text-slate-500">{update.text}</span>
-                            {lead.updates.length > 1 && (
-                              <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">
-                                +{lead.updates.length - 1} more
-                              </span>
+                          <div className="flex flex-col gap-1 text-xs text-slate-600">
+                            <div className="flex items-start gap-2">
+                              <CalendarDays size={14} className="text-slate-400" />
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-semibold text-slate-800">{update.date}</span>
+                                  {lead.updates.length > 1 && (
+                                    <button
+                                      onClick={() => toggleHistory(lead.id)}
+                                      className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600 hover:bg-slate-200"
+                                    >
+                                      {expandedHistories.has(lead.id)
+                                        ? 'Hide previous'
+                                        : `+${lead.updates.length - 1} more`}
+                                    </button>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <span className="text-slate-500">
+                                    {expandedLatestUpdates.has(lead.id) || update.text.length <= 80
+                                      ? update.text
+                                      : `${update.text.slice(0, 80)}...`}
+                                  </span>
+                                  {update.text.length > 80 && (
+                                    <button
+                                      onClick={() => toggleExpandedLatest(lead.id)}
+                                      className="text-[11px] text-indigo-600 font-semibold hover:underline"
+                                    >
+                                      {expandedLatestUpdates.has(lead.id) ? 'Show less' : '...more'}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            {expandedHistories.has(lead.id) && lead.updates.slice(1).length > 0 && (
+                              <div className="mt-1 space-y-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
+                                {lead.updates.slice(1).map((previous) => (
+                                  <div key={previous.id} className="flex items-start gap-2">
+                                    <CalendarDays size={12} className="text-slate-400 mt-0.5" />
+                                    <div>
+                                      <div className="font-semibold text-slate-700">{previous.date}</div>
+                                      <div className="text-slate-500">{previous.text}</div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
                             )}
                           </div>
                         ) : (
