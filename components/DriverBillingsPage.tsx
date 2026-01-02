@@ -154,12 +154,20 @@ const DriverBillingsPage: React.FC = () => {
             getMondayISO(w.weekStartDate) === weekKey && normalize(w.driver) === normalize(bill.driverName)
         );
         const isRentOverridden = matchingWallet?.rentOverride !== undefined && matchingWallet?.rentOverride !== null;
+        const derivedAdjustments = matchingWallet?.adjustments ?? bill.adjustments ?? 0;
         const dailyDetails = dailyEntries.filter(d => {
             const range = getWeekRange(d.date);
             return range.start === weekKey && normalize(d.driver) === normalize(bill.driverName);
         });
         const normalizedDue = bill.due !== undefined ? bill.due : (bill.walletOverdue || 0);
         const normalizedWalletOverdue = bill.walletOverdue !== undefined ? bill.walletOverdue : normalizedDue;
+        const derivedDaysWorked = matchingWallet?.daysWorkedOverride ?? bill.daysWorked;
+        const derivedRentPerDay = isRentOverridden ? (matchingWallet?.rentOverride as number) : bill.rentPerDay;
+        const derivedRentTotal = derivedRentPerDay * derivedDaysWorked;
+        const derivedPayout = (bill.payout ?? 0) - (bill.adjustments ?? 0) + derivedAdjustments;
+        const normalizedDaily = isRentOverridden
+            ? dailyDetails.map(d => ({ ...d, rent: derivedRentPerDay }))
+            : dailyDetails;
 
         return {
             ...bill,
@@ -171,12 +179,17 @@ const DriverBillingsPage: React.FC = () => {
             startDate: bill.weekStartDate,
             endDate: bill.weekEndDate,
             calculatedDays: bill.daysWorked,
-            dailyDetails,
+            dailyDetails: normalizedDaily,
             weeklyDetails: matchingWallet ?? null,
             isProvisional: false,
             isRentOverridden,
             isAggregate: false,
-            isSaved: true
+            isSaved: true,
+            rentPerDay: derivedRentPerDay,
+            rentTotal: derivedRentTotal,
+            daysWorked: derivedDaysWorked,
+            adjustments: derivedAdjustments,
+            payout: derivedPayout
         };
     });
 
