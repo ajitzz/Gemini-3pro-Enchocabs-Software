@@ -188,7 +188,7 @@ const calculateDriverStats = (
         const weeklyFuel = weekDaily.reduce((sum, d) => sum + d.fuel, 0);
         const weeklyDue = weekDaily.reduce((sum, d) => sum + d.due, 0);
         const weeklyPayout = weekDaily.reduce((sum, d) => sum + (d.payout || 0), 0);
-        const weeklyWalletTotal = calculateWalletWeek(wallet) + (wallet.adjustments || 0);
+        const weeklyWalletTotal = calculateWalletWeek(wallet);
 
         // Accumulate
         totalCollection += weeklyCollection;

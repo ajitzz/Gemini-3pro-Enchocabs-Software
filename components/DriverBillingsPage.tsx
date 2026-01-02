@@ -145,6 +145,16 @@ const DriverBillingsPage: React.FC = () => {
 
   const normalize = (s: string) => s ? s.toLowerCase().replace(/[^a-z0-9]/g, '').trim() : '';
 
+  const adjustmentsByDriver = useMemo(() => {
+      const map = new Map<string, number>();
+      weeklyWallets.forEach(wallet => {
+          const adj = wallet.adjustments || 0;
+          if (!adj) return;
+          map.set(wallet.driver, (map.get(wallet.driver) || 0) + adj);
+      });
+      return map;
+  }, [weeklyWallets]);
+
   // --- 1. BILLING ENGINE ---
   const allBills = useMemo(() => {
     const mapped = billingRecords.map((bill) => {
@@ -155,7 +165,7 @@ const DriverBillingsPage: React.FC = () => {
         );
         const isRentOverridden = matchingWallet?.rentOverride !== undefined && matchingWallet?.rentOverride !== null;
         const derivedAdjustments = matchingWallet?.adjustments ?? bill.adjustments ?? 0;
-        const dailyDetails = dailyEntries.filter(d => {
+        let dailyDetails = dailyEntries.filter(d => {
             const range = getWeekRange(d.date);
             return range.start === weekKey && normalize(d.driver) === normalize(bill.driverName);
         });
@@ -168,9 +178,38 @@ const DriverBillingsPage: React.FC = () => {
             ? dailyDetails.map(d => ({ ...d, rent: derivedRentPerDay }))
             : dailyDetails;
 
+        const applyAdjustmentToDaily = (details: typeof dailyDetails) => {
+            if (!derivedAdjustments || details.length === 0) return details;
+
+            const targetDate = matchingWallet?.weekEndDate || bill.weekEndDate;
+            let targetIndex = details.findIndex(d => d.date === targetDate);
+
+            if (targetIndex === -1) {
+                const latest = [...details].sort((a, b) => b.date.localeCompare(a.date))[0];
+                targetIndex = details.findIndex(d => d.id === latest.id);
+            }
+
+            if (targetIndex === -1) return details;
+
+            return details.map((d, idx) =>
+                idx === targetIndex
+                    ? {
+                        ...d,
+                        appliedAdjustment: derivedAdjustments
+                    }
+                    : d
+            );
+        };
+
+        dailyDetails = applyAdjustmentToDaily(normalizedDaily);
+        const dueWithAdjustment = dailyDetails.length
+            ? dailyDetails.reduce((sum, d) => sum + (d.due || 0), 0)
+            : normalizedDue;
+
         return {
             ...bill,
-            due: normalizedDue,
+            due: dueWithAdjustment,
+            dueBase: normalizedDue,
             walletOverdue: normalizedWalletOverdue,
             driver: bill.driverName,
             weekRange,
@@ -178,7 +217,7 @@ const DriverBillingsPage: React.FC = () => {
             startDate: bill.weekStartDate,
             endDate: bill.weekEndDate,
             calculatedDays: bill.daysWorked,
-            dailyDetails: normalizedDaily,
+            dailyDetails,
             weeklyDetails: matchingWallet ?? null,
             isProvisional: false,
             isRentOverridden,
@@ -186,7 +225,9 @@ const DriverBillingsPage: React.FC = () => {
             isSaved: true,
             rentPerDay: derivedRentPerDay,
             rentTotal: derivedRentTotal,
-            daysWorked: derivedDaysWorked
+            daysWorked: derivedDaysWorked,
+            appliedAdjustment: derivedAdjustments,
+            adjustments: derivedAdjustments
         };
     });
 
@@ -575,6 +616,7 @@ const DriverBillingsPage: React.FC = () => {
                         <th className="px-6 py-4 font-semibold text-right tracking-wider">Rent</th>
                         <th className="px-6 py-4 font-semibold text-right tracking-wider">Fuel</th>
                         <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet</th>
+                        <th className="px-6 py-4 font-semibold text-right tracking-wider">Adjustments</th>
                         <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Payout</th>
                         <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Balance</th>
                       </tr>
@@ -592,6 +634,7 @@ const DriverBillingsPage: React.FC = () => {
                             <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalRent)}</td>
                             <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalFuel)}</td>
                             <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalWalletWeek)}</td>
+                            <td className="px-6 py-4 text-right text-amber-600 font-medium">{formatCurrency(adjustmentsByDriver.get(driver.driver) || 0)}</td>
                             <td className="px-6 py-4 text-right">
                               <div className="flex flex-col items-end gap-1">
                                 <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-bold border ${
@@ -802,7 +845,14 @@ const DriverBillingsPage: React.FC = () => {
                                    </td>
                                    <td className="px-6 py-4 text-right font-medium text-rose-600">-{formatCurrency(bill.rentTotal)}</td>
                                    <td className="px-6 py-4 text-right font-bold text-emerald-600">+{formatCurrency(bill.collection)}</td>
-                                   <td className="px-6 py-4 text-right text-slate-600">{formatCurrency(bill.due)}</td>
+                                   <td className="px-6 py-4 text-right text-slate-600">
+                                       <div className="flex flex-col items-end gap-0.5">
+                                           <span>{formatCurrency(bill.due)}</span>
+                                           {bill.appliedAdjustment ? (
+                                               <span className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide">Adj incl: {formatCurrency(bill.appliedAdjustment)}</span>
+                                           ) : null}
+                                       </div>
+                                   </td>
                                    <td className="px-6 py-4 text-right text-rose-500">-{formatCurrency(bill.fuel)}</td>
                                    <td className="px-6 py-4 text-right text-indigo-600">
                                        {bill.isProvisional ? <span className="text-slate-300">-</span> : `+${formatCurrency(bill.wallet)}`}
@@ -872,7 +922,14 @@ const DriverBillingsPage: React.FC = () => {
                                                           <td className="px-4 py-2 text-right text-emerald-600 font-medium">{formatCurrency(d.collection)}</td>
                                                           <td className="px-4 py-2 text-right text-slate-600">{formatCurrency(d.rent)}</td>
                                                           <td className="px-4 py-2 text-right text-rose-500">{formatCurrency(d.fuel)}</td>
-                                                          <td className="px-4 py-2 text-right text-slate-500">{formatCurrency(d.due)}</td>
+                                                          <td className="px-4 py-2 text-right text-slate-500">
+                                                              <div className="flex flex-col items-end gap-0.5">
+                                                                  <span>{formatCurrency(d.due)}</span>
+                                                                  {d.appliedAdjustment ? (
+                                                                      <span className="text-[10px] text-amber-600 font-semibold uppercase tracking-wide">Adjustment: {formatCurrency(d.appliedAdjustment)}</span>
+                                                                  ) : null}
+                                                              </div>
+                                                          </td>
                                                       </tr>
                                                   ))}
                                                   {(!bill.dailyDetails || bill.dailyDetails.length === 0) && (
