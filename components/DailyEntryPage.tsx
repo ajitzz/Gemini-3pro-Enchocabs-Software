@@ -360,6 +360,7 @@ const DailyEntryPage: React.FC = () => {
           const target = mapped[targetIndex];
           mapped[targetIndex] = {
               ...target,
+              due: (target.due || 0) + adjustment,
               adjustmentApplied: (target.adjustmentApplied || 0) + adjustment
           };
       });

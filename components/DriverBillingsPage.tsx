@@ -195,6 +195,7 @@ const DriverBillingsPage: React.FC = () => {
                 idx === targetIndex
                     ? {
                         ...d,
+                        due: (d.due || 0) + derivedAdjustments,
                         appliedAdjustment: derivedAdjustments
                     }
                     : d
@@ -204,7 +205,7 @@ const DriverBillingsPage: React.FC = () => {
         dailyDetails = applyAdjustmentToDaily(normalizedDaily);
         const dueWithAdjustment = dailyDetails.length
             ? dailyDetails.reduce((sum, d) => sum + (d.due || 0), 0)
-            : normalizedDue;
+            : normalizedDue + derivedAdjustments;
 
         return {
             ...bill,
@@ -226,8 +227,7 @@ const DriverBillingsPage: React.FC = () => {
             rentPerDay: derivedRentPerDay,
             rentTotal: derivedRentTotal,
             daysWorked: derivedDaysWorked,
-            appliedAdjustment: derivedAdjustments,
-            adjustments: derivedAdjustments
+            appliedAdjustment: derivedAdjustments
         };
     });
 
