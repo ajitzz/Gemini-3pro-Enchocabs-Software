@@ -39,7 +39,10 @@ if (redisUrl) {
     if (parsed.protocol === 'redis:' && looksLikeManagedRedis) {
       parsed.protocol = 'rediss:';
       redisUrl = parsed.toString();
-      console.warn('Redis URL upgraded to rediss:// for managed cloud host (TLS enforced).');
+      console.warn(
+        'Managed Redis host detected; upgrading connection string to rediss:// to enforce TLS. ' +
+          'If you are setting environment variables (e.g. on Vercel), prefer using rediss:// directly.'
+      );
     }
   } catch (err) {
     console.error('Invalid REDIS_URL provided. Redis cache disabled.', err.message || err);
