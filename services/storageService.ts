@@ -63,6 +63,37 @@ const api = {
   }
 };
 
+// Shared helper to keep all driver balance calculations aligned with Driver Portal logic
+export const getDriverBalanceSummaries = async () => {
+  const [dailyEntries, weeklyWallets, rentalSlabs, drivers] = await Promise.all([
+    storageService.getDailyEntries(),
+    storageService.getWeeklyWallets(),
+    storageService.getDriverRentalSlabs(),
+    storageService.getDrivers()
+  ]);
+
+  const sortedSlabs = [...rentalSlabs].sort((a, b) => a.minTrips - b.minTrips);
+  const sortedDaily = [...dailyEntries].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  const driverNames = Array.from(new Set([
+    ...drivers.map(d => d.name),
+    ...sortedDaily.map(d => d.driver),
+    ...weeklyWallets.map(w => w.driver)
+  ])).sort((a, b) => a.localeCompare(b));
+
+  const summaries = driverNames.map(driver =>
+    calculateDriverStats(driver, sortedDaily, weeklyWallets, sortedSlabs)
+  );
+
+  return {
+    summaries,
+    sortedDaily,
+    weeklyWallets,
+    sortedSlabs,
+    drivers
+  };
+};
+
 // --- CENTRALIZED CALCULATION HELPER ---
 const formatWeekRange = (startDate: string, endDate: string) => {
     const start = new Date(startDate);
@@ -370,6 +401,7 @@ export const storageService = {
   // --- Aggregation ---
   // Exposed for specific driver calculation (reused by Portal)
   calculateDriverStats,
+  getDriverBalanceSummaries,
 
   getSummary: async (): Promise<{ driverSummaries: DriverSummary[], global: GlobalSummary }> => {
     try {

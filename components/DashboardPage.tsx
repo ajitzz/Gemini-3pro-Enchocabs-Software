@@ -14,29 +14,7 @@ const DashboardPage: React.FC = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [dailyEntries, weeklyWallets, rentalSlabs, drivers] = await Promise.all<[
-        DailyEntry[],
-        WeeklyWallet[],
-        RentalSlab[],
-        Driver[]
-      ]>([
-        storageService.getDailyEntries(),
-        storageService.getWeeklyWallets(),
-        storageService.getDriverRentalSlabs(),
-        storageService.getDrivers()
-      ]);
-
-      const sortedSlabs: RentalSlab[] = [...rentalSlabs].sort((a, b) => a.minTrips - b.minTrips);
-      const sortedDaily = [...dailyEntries].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      const driverNames = Array.from(new Set([
-        ...drivers.map(d => d.name),
-        ...sortedDaily.map(d => d.driver),
-        ...weeklyWallets.map(w => w.driver)
-      ])).sort((a, b) => a.localeCompare(b));
-
-      const calculatedSummaries = driverNames.map(driver =>
-        storageService.calculateDriverStats(driver, sortedDaily, weeklyWallets, sortedSlabs)
-      );
+      const { summaries: calculatedSummaries } = await storageService.getDriverBalanceSummaries();
 
       const globalSummary: GlobalSummary = {
         totalCollection: calculatedSummaries.reduce((sum, d) => sum + d.totalCollection, 0),
@@ -60,8 +38,20 @@ const DashboardPage: React.FC = () => {
     loadData();
   }, []);
 
-  const filteredSummaries = summaries.filter(s => 
+  const filteredSummaries = summaries.filter(s =>
     filterDriver === '' || s.driver.toLowerCase().includes(filterDriver.toLowerCase())
+  );
+
+  const balanceTotals = filteredSummaries.reduce(
+    (acc, driver) => ({
+      collection: acc.collection + driver.totalCollection,
+      rent: acc.rent + driver.totalRent,
+      fuel: acc.fuel + driver.totalFuel,
+      wallet: acc.wallet + driver.totalWalletWeek,
+      netPayout: acc.netPayout + driver.netPayout,
+      finalTotal: acc.finalTotal + driver.finalTotal,
+    }),
+    { collection: 0, rent: 0, fuel: 0, wallet: 0, netPayout: 0, finalTotal: 0 }
   );
 
   const StatCard = ({ title, value, colorClass, icon: Icon, subtext, trend }: any) => (
@@ -223,6 +213,17 @@ const DashboardPage: React.FC = () => {
                   </tr>
                 )}
               </tbody>
+              <tfoot className="bg-slate-50 text-slate-700 font-bold border-t border-slate-100">
+                <tr>
+                  <td className="px-6 py-3">Totals</td>
+                  <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.collection)}</td>
+                  <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.rent)}</td>
+                  <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.fuel)}</td>
+                  <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.wallet)}</td>
+                  <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.netPayout)}</td>
+                  <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.finalTotal)}</td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>

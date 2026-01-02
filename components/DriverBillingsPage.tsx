@@ -42,29 +42,17 @@ const DriverBillingsPage: React.FC = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-        // Load critical data first
-        const [slabData, weeklyData, dailyData, driverData] = await Promise.all([
-            storageService.getDriverRentalSlabs(),
-            storageService.getWeeklyWallets(),
-            storageService.getDailyEntries(),
-            storageService.getDrivers()
-        ]);
-
-        const sortedSlabs = [...slabData].sort((a, b) => a.minTrips - b.minTrips);
-        const sortedDaily = [...dailyData].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        const driverNames = Array.from(new Set([
-            ...driverData.map(d => d.name),
-            ...sortedDaily.map(d => d.driver),
-            ...weeklyData.map(w => w.driver)
-        ])).sort((a, b) => a.localeCompare(b));
-
-        const calculatedSummaries = driverNames.map(driver =>
-            storageService.calculateDriverStats(driver, sortedDaily, weeklyData, sortedSlabs)
-        );
+        const {
+            summaries: calculatedSummaries,
+            sortedDaily,
+            sortedSlabs,
+            weeklyWallets: loadedWeeklyWallets,
+            drivers: driverData
+        } = await storageService.getDriverBalanceSummaries();
 
         setSummaries(calculatedSummaries);
         setRentalSlabs(sortedSlabs);
-        setWeeklyWallets(weeklyData);
+        setWeeklyWallets(loadedWeeklyWallets);
         setDailyEntries(sortedDaily);
         setDrivers(driverData);
 
@@ -139,8 +127,20 @@ const DriverBillingsPage: React.FC = () => {
       return isoDate.substring(0, 10).split('-').reverse().join('-');
   };
 
-  const filteredSummaries = summaries.filter(s => 
+  const filteredSummaries = summaries.filter(s =>
     filterDriver === '' || s.driver.toLowerCase().includes(filterDriver.toLowerCase())
+  );
+
+  const balanceTotals = filteredSummaries.reduce(
+    (acc, driver) => ({
+      collection: acc.collection + driver.totalCollection,
+      rent: acc.rent + driver.totalRent,
+      fuel: acc.fuel + driver.totalFuel,
+      wallet: acc.wallet + driver.totalWalletWeek,
+      netPayout: acc.netPayout + driver.netPayout,
+      finalTotal: acc.finalTotal + driver.finalTotal,
+    }),
+    { collection: 0, rent: 0, fuel: 0, wallet: 0, netPayout: 0, finalTotal: 0 }
   );
 
   const normalize = (s: string) => s ? s.toLowerCase().replace(/[^a-z0-9]/g, '').trim() : '';
@@ -606,11 +606,22 @@ const DriverBillingsPage: React.FC = () => {
                               }`}>
                                 {formatCurrency(driver.finalTotal)}
                               </span>
-                            </td>
-                          </tr>
-                       ))
+                          </td>
+                        </tr>
+                     ))
                       )}
                    </tbody>
+                   <tfoot className="bg-slate-50 text-slate-700 font-bold border-t border-slate-100">
+                      <tr>
+                        <td className="px-6 py-3">Totals</td>
+                        <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.collection)}</td>
+                        <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.rent)}</td>
+                        <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.fuel)}</td>
+                        <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.wallet)}</td>
+                        <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.netPayout)}</td>
+                        <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.finalTotal)}</td>
+                      </tr>
+                    </tfoot>
                    {displayedBills.length > 0 && (
                       <tfoot className="bg-slate-50 text-slate-700 font-bold border-t border-slate-100">
                         <tr>
