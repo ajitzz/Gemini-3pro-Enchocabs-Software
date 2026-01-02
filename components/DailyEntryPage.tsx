@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { DailyEntry, Driver, LeaveRecord } from '../types';
+import { DailyEntry, Driver, LeaveRecord, WeeklyWallet } from '../types';
 import { storageService } from '../services/storageService';
 import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check, AlertOctagon, FileDown } from 'lucide-react';
 
@@ -22,6 +22,8 @@ const InputField = ({ label, name, type = "text", value, onChange, onKeyDown, pl
      />
   </div>
 );
+
+type DisplayDailyEntry = DailyEntry & { adjustmentApplied?: number };
 
 // --- GLOBAL DRIVER FILTER COMPONENT ---
 interface DriverFilterProps {
@@ -267,6 +269,7 @@ const DailyEntryPage: React.FC = () => {
   const [entries, setEntries] = useState<DailyEntry[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [leaves, setLeaves] = useState<LeaveRecord[]>([]); // Added Leaves state
+  const [weeklyWallets, setWeeklyWallets] = useState<WeeklyWallet[]>([]);
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -311,22 +314,64 @@ const DailyEntryPage: React.FC = () => {
 
   const loadData = async () => {
     setLoading(true);
-    const [e, d, l] = await Promise.all([
+    const [e, d, l, w] = await Promise.all([
         storageService.getDailyEntries(),
         storageService.getDrivers(),
-        storageService.getLeaves() // Fetch leaves
+        storageService.getLeaves(), // Fetch leaves
+        storageService.getWeeklyWallets()
     ]);
-    
+
     setEntries(e.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
     setDrivers(d.filter(driver => !driver.terminationDate));
     setLeaves(l);
+    setWeeklyWallets(w);
     setLoading(false);
   };
 
+  const entriesWithAdjustments = useMemo<DisplayDailyEntry[]>(() => {
+      if (!weeklyWallets.length) return entries as DisplayDailyEntry[];
+
+      const mapped = entries.map(entry => ({ ...entry })) as DisplayDailyEntry[];
+
+      weeklyWallets.forEach(wallet => {
+          const adjustment = wallet.adjustments || 0;
+          if (!adjustment) return;
+
+          const candidates = mapped.filter(e =>
+              e.driver === wallet.driver &&
+              e.date >= wallet.weekStartDate &&
+              e.date <= wallet.weekEndDate
+          );
+
+          if (candidates.length === 0) return;
+
+          const targetDate = wallet.weekEndDate;
+          let targetIndex = mapped.findIndex(e =>
+              e.driver === wallet.driver && e.date === targetDate
+          );
+
+          if (targetIndex === -1) {
+              const latest = [...candidates].sort((a, b) => b.date.localeCompare(a.date))[0];
+              targetIndex = mapped.findIndex(e => e.id === latest.id);
+          }
+
+          if (targetIndex === -1) return;
+
+          const target = mapped[targetIndex];
+          mapped[targetIndex] = {
+              ...target,
+              due: (target.due || 0) + adjustment,
+              adjustmentApplied: (target.adjustmentApplied || 0) + adjustment
+          };
+      });
+
+      return mapped;
+  }, [entries, weeklyWallets]);
+
   const enteredDrivers = useMemo(() => {
-      const uniqueNames = new Set(entries.map(e => e.driver));
+      const uniqueNames = new Set(entriesWithAdjustments.map(e => e.driver));
       return Array.from(uniqueNames).sort();
-  }, [entries]);
+  }, [entriesWithAdjustments]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -578,7 +623,7 @@ const DailyEntryPage: React.FC = () => {
 
   // Filter Logic: Global Dates AND Column Specific Filters
   const filteredEntries = useMemo(() => {
-    return entries.filter(entry => {
+    return entriesWithAdjustments.filter(entry => {
         // 1. Global Date Range Filter
         const matchStart = filterDateStart === '' || entry.date >= filterDateStart;
         const matchEnd = filterDateEnd === '' || entry.date <= filterDateEnd;
@@ -603,7 +648,7 @@ const DailyEntryPage: React.FC = () => {
 
         return true;
     });
-  }, [entries, filterDateStart, filterDateEnd, filterDriver, columnFilters]);
+  }, [entriesWithAdjustments, filterDateStart, filterDateEnd, filterDriver, columnFilters]);
 
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -967,37 +1012,37 @@ const DailyEntryPage: React.FC = () => {
             <thead className="text-xs text-slate-500 uppercase bg-slate-50/50 border-b border-slate-100">
               <tr>
                 <th className="px-6 py-4 font-semibold tracking-wider min-w-[120px]">
-                    <ColumnFilter columnKey="date" label="Date" data={entries} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} formatter={formatDate} />
+                    <ColumnFilter columnKey="date" label="Date" data={entriesWithAdjustments} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} formatter={formatDate} />
                 </th>
                 <th className="px-6 py-4 font-semibold tracking-wider min-w-[180px]">
                     <div className="flex items-center gap-1">
                         <span>Driver /</span>
-                        <ColumnFilter columnKey="qrCode" label="QR" data={entries} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} />
+                        <ColumnFilter columnKey="qrCode" label="QR" data={entriesWithAdjustments} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} />
                     </div>
                 </th>
                 <th className="px-6 py-4 font-semibold tracking-wider min-w-[140px]">
-                    <ColumnFilter columnKey="vehicle" label="Vehicle" data={entries} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} />
+                    <ColumnFilter columnKey="vehicle" label="Vehicle" data={entriesWithAdjustments} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} />
                 </th>
                 <th className="px-6 py-4 font-semibold tracking-wider min-w-[100px]">
-                    <ColumnFilter columnKey="shift" label="Shift" data={entries} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} />
+                    <ColumnFilter columnKey="shift" label="Shift" data={entriesWithAdjustments} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} />
                 </th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider min-w-[100px]">
-                    <ColumnFilter columnKey="rent" label="Rent" data={entries} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} alignRight />
+                    <ColumnFilter columnKey="rent" label="Rent" data={entriesWithAdjustments} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} alignRight />
                 </th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider min-w-[120px]">
-                    <ColumnFilter columnKey="collection" label="Collection" data={entries} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} alignRight />
+                    <ColumnFilter columnKey="collection" label="Collection" data={entriesWithAdjustments} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} alignRight />
                 </th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider min-w-[100px]">
-                    <ColumnFilter columnKey="fuel" label="Fuel" data={entries} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} alignRight />
+                    <ColumnFilter columnKey="fuel" label="Fuel" data={entriesWithAdjustments} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} alignRight />
                 </th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider min-w-[100px]">
-                    <ColumnFilter columnKey="due" label="Due" data={entries} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} alignRight />
+                    <ColumnFilter columnKey="due" label="Due" data={entriesWithAdjustments} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} alignRight />
                 </th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider min-w-[100px]">
-                    <ColumnFilter columnKey="payout" label="Payout" data={entries} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} alignRight />
+                    <ColumnFilter columnKey="payout" label="Payout" data={entriesWithAdjustments} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} alignRight />
                 </th>
                 <th className="px-6 py-4 font-semibold text-left tracking-wider min-w-[150px]">
-                    <ColumnFilter columnKey="notes" label="Notes" data={entries} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} />
+                    <ColumnFilter columnKey="notes" label="Notes" data={entriesWithAdjustments} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} />
                 </th>
                 <th className="px-6 py-4 font-semibold text-center tracking-wider">Actions</th>
               </tr>
@@ -1008,7 +1053,7 @@ const DailyEntryPage: React.FC = () => {
               ) : displayedEntries.length === 0 ? (
                 <tr><td colSpan={11} className="px-6 py-12 text-center text-slate-400">No entries found matching criteria.</td></tr>
               ) : (
-                displayedEntries.map((entry: DailyEntry) => (
+                displayedEntries.map((entry: DisplayDailyEntry) => (
                   <tr key={entry.id} className="hover:bg-slate-50/80 transition-colors group">
                     <td className="px-6 py-4 text-slate-900 whitespace-nowrap font-medium">
                       {formatDate(entry.date)} <span className="text-slate-400 text-xs ml-1 font-normal">({entry.day.substring(0,3)})</span>
@@ -1027,9 +1072,14 @@ const DailyEntryPage: React.FC = () => {
                     <td className="px-6 py-4 text-right font-bold text-emerald-600">+₹{entry.collection}</td>
                     <td className="px-6 py-4 text-right text-rose-500 font-medium">-₹{entry.fuel}</td>
                     <td className="px-6 py-4 text-right font-bold">
-                      <span className={entry.due > 0 ? 'text-emerald-600' : entry.due < 0 ? 'text-rose-600' : 'text-slate-300'}>
-                        {entry.due > 0 ? '+' : ''}{entry.due}
-                      </span>
+                      <div className="flex flex-col items-end gap-0.5">
+                        <span className={entry.due > 0 ? 'text-emerald-600' : entry.due < 0 ? 'text-rose-600' : 'text-slate-300'}>
+                          {entry.due > 0 ? '+' : ''}{entry.due}
+                        </span>
+                        {entry.adjustmentApplied ? (
+                          <span className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide">Adjustment: {entry.adjustmentApplied > 0 ? '+' : ''}{entry.adjustmentApplied}</span>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-right text-indigo-600 font-medium">
                       {entry.payout ? (
