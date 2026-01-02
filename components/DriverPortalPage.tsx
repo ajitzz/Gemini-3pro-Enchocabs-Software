@@ -425,9 +425,10 @@ const DriverPortalPage: React.FC = () => {
        const walletAmount = calculateWalletWeek(wallet);
        const grossEarnings = wallet.earnings || 0; 
 
-       const adjustments = wallet.adjustments || 0;
-       
-       const payout = collection - rentTotal - fuel + overdue + walletAmount + adjustments;
+      const adjustments = Math.max(0, wallet.adjustments || 0);
+      const overdueWithAdjustments = overdue + adjustments;
+
+      const payout = collection - rentTotal - fuel + overdueWithAdjustments + walletAmount;
        
        const avgPerTrip = totalTrips > 0 ? grossEarnings / totalTrips : 0;
 
@@ -447,7 +448,7 @@ const DriverPortalPage: React.FC = () => {
            collection,
            fuel,
            wallet: walletAmount,
-           overdue,
+           overdue: overdueWithAdjustments,
            adjustments,
            payout,
            dailyDetails: relevantDaily,
@@ -613,6 +614,8 @@ const DriverPortalPage: React.FC = () => {
         let yearCollection = 0;
         let monthTrips = 0;
 
+        const safeAdjustment = (week: WeeklyWallet) => Math.max(0, week.adjustments || 0);
+
         rawDaily.forEach(entry => {
             const d = new Date(entry.date);
             const eYear = d.getFullYear();
@@ -642,6 +645,8 @@ const DriverPortalPage: React.FC = () => {
                 monthTrips += Number(w.trips ?? 0);
             }
         });
+
+        totalDues += rawWeekly.reduce((sum, w) => sum + safeAdjustment(w), 0);
 
         const currentMonthWeeks = rawWeekly.filter(w => {
             const startD = new Date(w.weekStartDate);
@@ -749,6 +754,7 @@ const DriverPortalPage: React.FC = () => {
                 rangePayout += (entry.payout || 0);
             });
 
+            rangeDues += rangeWeekly.reduce((sum, week) => sum + safeAdjustment(week), 0);
             rangeWallet = rangeWeekly.reduce((sum, week) => sum + calculateWalletWeek(week), 0);
             rangeEarnings = rangeWeekly.reduce((sum, week) => sum + (week.earnings || 0), 0);
         }
@@ -865,7 +871,7 @@ const DriverPortalPage: React.FC = () => {
                                 colorClass: 'text-amber-600'
                             },
                             {
-                                label: 'Dues',
+                                label: 'Dues (incl. adjustments)',
                                 value: aggregatedStats.rangeDues,
                                 colorClass: 'text-rose-500'
                             }
@@ -897,7 +903,7 @@ const DriverPortalPage: React.FC = () => {
                                 colorClass: 'text-amber-600'
                             },
                             {
-                                label: 'Dues',
+                                label: 'Dues (incl. adjustments)',
                                 value: aggregatedStats.totalDues,
                                 colorClass: 'text-rose-500'
                             }
