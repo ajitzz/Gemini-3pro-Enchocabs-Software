@@ -1,6 +1,22 @@
 const { createClient } = require('redis');
 
-const redisUrl = process.env.REDIS_URL || process.env.UPSTASH_REDIS_URL || process.env.REDIS_TLS_URL;
+const redisUrlRaw = process.env.REDIS_URL || process.env.UPSTASH_REDIS_URL || process.env.REDIS_TLS_URL;
+let redisUrl = redisUrlRaw;
+
+// Support accidental "redis-cli -u <url>" style values in REDIS_URL to avoid silent failures.
+if (redisUrlRaw && redisUrlRaw.includes('redis-cli')) {
+  const maybeUrl = redisUrlRaw
+    .split(/\s+/)
+    .find((token) => token.startsWith('redis://') || token.startsWith('rediss://'));
+
+  if (maybeUrl) {
+    console.warn('REDIS_URL appears to include a redis-cli command; using extracted URL token.');
+    redisUrl = maybeUrl;
+  } else {
+    console.error('REDIS_URL looks like a redis-cli command without a redis:// URL. Redis cache disabled.');
+    redisUrl = null;
+  }
+}
 let client = null;
 let connectPromise = null;
 
