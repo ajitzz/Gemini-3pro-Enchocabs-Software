@@ -126,7 +126,7 @@ const DriverPortalPage: React.FC = () => {
       }));
 
       rawWeekly.forEach(wallet => {
-          const adjustment = wallet.adjustments || 0;
+          const adjustment = Math.max(0, wallet.adjustments || 0);
           if (!adjustment) return;
 
           const candidates = mapped.filter(e =>
@@ -477,7 +477,7 @@ const DriverPortalPage: React.FC = () => {
        const walletAmount = calculateWalletWeek(wallet);
        const grossEarnings = wallet.earnings || 0; 
 
-      const adjustments = wallet.adjustments || 0;
+      const adjustments = Math.max(0, wallet.adjustments || 0);
 
       const payout = collection - rentTotal - fuel + overdue + walletAmount;
        
@@ -557,8 +557,8 @@ const DriverPortalPage: React.FC = () => {
           { label: 'Total Collection', value: stats.totalCollection, tone: 'positive' as const },
           { label: 'Vehicle Rent', value: -stats.totalRent, tone: 'negative' as const },
           { label: 'Fuel', value: -stats.totalFuel, tone: 'negative' as const },
-          { label: 'Dues & Adjustments', value: stats.totalDue, tone: stats.totalDue >= 0 ? 'positive' as const : 'negative' as const },
-          { label: 'Weekly Wallet & Adjustments', value: stats.totalWalletWeek, tone: stats.totalWalletWeek >= 0 ? 'positive' as const : 'negative' as const },
+          { label: 'Dues', value: stats.totalDue, tone: stats.totalDue >= 0 ? 'positive' as const : 'negative' as const },
+          { label: 'Weekly Wallet', value: stats.totalWalletWeek, tone: stats.totalWalletWeek >= 0 ? 'positive' as const : 'negative' as const },
           { label: 'Direct Payouts Recorded', value: -stats.totalPayout, tone: 'negative' as const }
       ]);
 
@@ -992,7 +992,6 @@ const DriverPortalPage: React.FC = () => {
           <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #16a34a;">${formatCurrency(d.collection)}</td>
           <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #dc2626;">${formatCurrency(d.fuel)}</td>
           <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #334155;">${formatCurrency(d.due)}</td>
-          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #f59e0b;">${formatCurrency(d.adjustments ?? 0)}</td>
         </tr>
       `).join('');
 
@@ -1057,7 +1056,6 @@ const DriverPortalPage: React.FC = () => {
                <div class="st-row"><span class="st-label">Wallet Earnings (Weekly)</span><span class="st-val green">+ ${formatCurrency(bill.wallet)}</span></div>
                <div class="st-row"><span class="st-label">Rental Collection</span><span class="st-val green">+ ${formatCurrency(bill.collection)}</span></div>
                <div class="st-row"><span class="st-label">Previous Dues/Credit</span><span class="st-val">${formatCurrency(bill.overdue)}</span></div>
-               <div class="st-row"><span class="st-label">Adjustments</span><span class="st-val">${formatCurrency(bill.adjustments)}</span></div>
             </div>
             <div class="net-box">
                <span class="net-label">WEEK PAYOUT</span>
@@ -1065,7 +1063,7 @@ const DriverPortalPage: React.FC = () => {
             </div>
             <div class="section-title" style="margin-top: 40px; text-align: left;">Daily Activity Log</div>
             <table>
-              <thead><tr><th>Date</th><th>Driver</th><th style="text-align:right">Rent</th><th style="text-align:right">Collection</th><th style="text-align:right">Fuel</th><th style="text-align:right">Dues</th><th style="text-align:right">Adjustments</th></tr></thead>
+              <thead><tr><th>Date</th><th>Driver</th><th style="text-align:right">Rent</th><th style="text-align:right">Collection</th><th style="text-align:right">Fuel</th><th style="text-align:right">Dues</th></tr></thead>
               <tbody>${dailyRows}</tbody>
             </table>
             <div class="wallet-section">
@@ -1795,7 +1793,6 @@ const DriverPortalPage: React.FC = () => {
                                 <div className="flex justify-between"><span className="text-slate-600 font-medium">Wallet Earnings (Weekly)</span><span className="font-bold text-emerald-600">+ {formatCurrency(selectedBill.wallet)}</span></div>
                                 <div className="flex justify-between"><span className="text-slate-600 font-medium">Rental Collection</span><span className="font-bold text-emerald-600">+ {formatCurrency(selectedBill.collection)}</span></div>
                                 <div className="flex justify-between"><span className="text-slate-600 font-medium">Previous Dues/Credit</span><span className="font-bold text-slate-800">{formatCurrency(selectedBill.overdue)}</span></div>
-                                <div className="flex justify-between"><span className="text-slate-600 font-medium">Adjustments</span><span className="font-bold text-slate-800">{formatCurrency(selectedBill.adjustments)}</span></div>
                             </div>
                             <div className="mt-6 bg-slate-100 p-4 rounded-xl flex justify-between items-center border-l-4 border-slate-800">
                                 <span className="text-sm font-bold text-slate-700 uppercase">Week Payout</span>

@@ -334,7 +334,7 @@ const DailyEntryPage: React.FC = () => {
       const mapped = entries.map(entry => ({ ...entry })) as DisplayDailyEntry[];
 
       weeklyWallets.forEach(wallet => {
-          const adjustment = wallet.adjustments || 0;
+          const adjustment = Math.max(0, wallet.adjustments || 0);
           if (!adjustment) return;
 
           const candidates = mapped.filter(e =>
@@ -1077,7 +1077,7 @@ const DailyEntryPage: React.FC = () => {
                           {entry.due > 0 ? '+' : ''}{entry.due}
                         </span>
                         {entry.adjustmentApplied ? (
-                          <span className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide">Adjustment: {entry.adjustmentApplied > 0 ? '+' : ''}{entry.adjustmentApplied}</span>
+                          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Adjustment included in due</span>
                         ) : null}
                       </div>
                     </td>
