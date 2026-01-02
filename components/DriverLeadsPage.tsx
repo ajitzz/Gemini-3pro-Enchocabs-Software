@@ -88,6 +88,13 @@ const DriverLeadsPage: React.FC = () => {
   const [sheetAction, setSheetAction] = useState<'clear' | 'delete' | null>(null);
   const [expandedLatestUpdates, setExpandedLatestUpdates] = useState<Set<string>>(new Set());
   const [expandedHistories, setExpandedHistories] = useState<Set<string>>(new Set());
+  const [duplicateWarning, setDuplicateWarning] = useState<{
+    active: boolean;
+    existingId: string;
+    payload: LeadRecord;
+    remaining: LeadRecord[];
+    workingLeads: LeadRecord[];
+  } | null>(null);
 
   const downloadCSV = (headers: string[], rows: (string | number | null | undefined)[][], filename: string) => {
     const escapeCell = (cell: string | number | null | undefined) => `"${String(cell ?? '').replace(/"/g, '""')}"`;
@@ -311,17 +318,20 @@ const DriverLeadsPage: React.FC = () => {
           ]
         : []
     };
-    updateSheet(activeSheet.id, (sheet) => ({ ...sheet, leads: [lead, ...sheet.leads] }));
-    setLeadForm({
-      platform: 'Organic',
-      fullName: '',
-      phone: '',
-      city: '',
-      statusId: activeSheet.statuses[0]?.id || DEFAULT_STATUSES[0].id,
-      admin: user?.name || '',
-      note: '',
-      createdTime: new Date().toISOString().slice(0, 10)
-    });
+
+    const queuedSuccessfully = processLeadQueue([lead]);
+    if (queuedSuccessfully) {
+      setLeadForm({
+        platform: 'Organic',
+        fullName: '',
+        phone: '',
+        city: '',
+        statusId: activeSheet.statuses[0]?.id || DEFAULT_STATUSES[0].id,
+        admin: user?.name || '',
+        note: '',
+        createdTime: new Date().toISOString().slice(0, 10)
+      });
+    }
   };
 
   const deleteLead = (leadId: string) => {
@@ -510,7 +520,7 @@ const DriverLeadsPage: React.FC = () => {
       if (ext === 'csv') {
         const text = await file.text();
         const leads = parseCSV(text);
-        updateSheet(activeSheet.id, (sheet) => ({ ...sheet, leads: [...leads, ...sheet.leads] }));
+        processLeadQueue(leads);
       } else if (isXLSXReady) {
         const arrayBuffer = await file.arrayBuffer();
         const workbook = XLSX.read(arrayBuffer, { type: 'array' });
@@ -519,10 +529,104 @@ const DriverLeadsPage: React.FC = () => {
         const leads = rows.map((r: Record<string, any>) => normalizeImportedRow(
           Object.fromEntries(Object.entries(r).map(([key, value]) => [String(key).toLowerCase(), value]))
         ));
-        updateSheet(activeSheet.id, (sheet) => ({ ...sheet, leads: [...leads, ...sheet.leads] }));
+        processLeadQueue(leads);
       }
     } finally {
       setImporting(false);
+    }
+  };
+
+  const normalizePhone = (phone: string) => phone.replace(/\D+/g, '');
+
+  const findDuplicateLead = (leads: LeadRecord[], candidate: LeadRecord) => {
+    const phoneKey = normalizePhone(candidate.phone || '');
+    if (phoneKey) {
+      const byPhone = leads.find((lead) => normalizePhone(lead.phone || '') === phoneKey);
+      if (byPhone) return byPhone;
+    }
+
+    const nameKey = candidate.fullName.trim().toLowerCase();
+    if (nameKey) {
+      const byName = leads.find((lead) => lead.fullName.trim().toLowerCase() === nameKey);
+      if (byName) return byName;
+    }
+
+    return undefined;
+  };
+
+  const processLeadQueue = (queue: LeadRecord[], workingLeads?: LeadRecord[]): boolean => {
+    if (!activeSheet || queue.length === 0) return false;
+
+    const currentLeads = workingLeads ?? activeSheet.leads;
+    const [candidate, ...rest] = queue;
+    const duplicate = findDuplicateLead(currentLeads, candidate);
+
+    if (duplicate) {
+      setDuplicateWarning({
+        active: true,
+        existingId: duplicate.id,
+        payload: candidate,
+        remaining: rest,
+        workingLeads: currentLeads
+      });
+      return false;
+    }
+
+    const nextLeads = [candidate, ...currentLeads];
+    updateSheet(activeSheet.id, (sheet) => ({ ...sheet, leads: nextLeads }));
+
+    if (rest.length) {
+      return processLeadQueue(rest, nextLeads);
+    }
+
+    return true;
+  };
+
+  const overrideDuplicateLead = () => {
+    if (!duplicateWarning || !activeSheet) return;
+
+    const updatedLead: LeadRecord = {
+      ...duplicateWarning.payload,
+      id: duplicateWarning.existingId,
+      sheetId: activeSheet.id
+    };
+
+    const mergedLeads = [
+      updatedLead,
+      ...duplicateWarning.workingLeads.filter((lead) => lead.id !== duplicateWarning.existingId)
+    ];
+
+    updateSheet(activeSheet.id, (sheet) => ({ ...sheet, leads: mergedLeads }));
+
+    const remaining = duplicateWarning.remaining || [];
+    setDuplicateWarning(null);
+
+    if (remaining.length) {
+      processLeadQueue(remaining, mergedLeads);
+    } else {
+      setLeadForm((prev) => ({
+        ...prev,
+        platform: 'Organic',
+        fullName: '',
+        phone: '',
+        city: '',
+        note: '',
+        statusId: activeSheet.statuses[0]?.id || DEFAULT_STATUSES[0].id,
+        createdTime: new Date().toISOString().slice(0, 10),
+        admin: user?.name || ''
+      }));
+    }
+  };
+
+  const cancelDuplicateLead = () => {
+    if (!duplicateWarning) return;
+
+    const remaining = duplicateWarning.remaining || [];
+    const workingLeads = duplicateWarning.workingLeads;
+    setDuplicateWarning(null);
+
+    if (remaining.length) {
+      processLeadQueue(remaining, workingLeads);
     }
   };
 
@@ -1191,6 +1295,42 @@ const DriverLeadsPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {duplicateWarning && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg p-6">
+            <div className="flex items-center gap-3 text-amber-600 font-semibold mb-2">
+              <AlertTriangle size={18} /> Duplicate lead detected
+            </div>
+            <p className="text-sm text-slate-700">
+              <span className="font-semibold">{duplicateWarning.payload.fullName || 'Unnamed lead'}</span>{' '}
+              {duplicateWarning.payload.phone ? `(${duplicateWarning.payload.phone})` : ''} already exists in{' '}
+              <span className="font-semibold">{activeSheet?.name || 'this sheet'}</span>. Do you want to override the
+              existing record?
+            </p>
+            <div className="mt-3 p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 space-y-1">
+              <div className="font-semibold text-amber-900">Existing lead</div>
+              <div>Name: {duplicateWarning.workingLeads.find((lead) => lead.id === duplicateWarning.existingId)?.fullName || '—'}</div>
+              <div>Phone: {duplicateWarning.workingLeads.find((lead) => lead.id === duplicateWarning.existingId)?.phone || '—'}</div>
+              <div>Status will change to: {mapStatus(activeSheet!, duplicateWarning.payload.statusId)?.label || 'Unknown'}</div>
+            </div>
+            <div className="flex items-center justify-end gap-2 mt-4">
+              <button
+                onClick={cancelDuplicateLead}
+                className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={overrideDuplicateLead}
+                className="px-4 py-2 rounded-lg bg-amber-600 text-white font-semibold hover:bg-amber-700"
+              >
+                <Check size={16} className="inline-block mr-1" /> Override & Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {sheetEditor && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50">
