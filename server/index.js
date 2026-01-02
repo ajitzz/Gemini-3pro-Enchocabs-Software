@@ -285,8 +285,21 @@ const clampTtlSeconds = (value, fallbackSeconds) => {
 
 const SUMMARY_CACHE_KEY = 'summary:global';
 const BILLINGS_CACHE_KEY = 'driver-billings:all';
+const DRIVERS_CACHE_KEY = 'drivers:all';
+const DAILY_ENTRIES_CACHE_KEY = 'daily-entries:all';
+const WEEKLY_WALLETS_CACHE_KEY = 'weekly-wallets:all';
+const ASSETS_CACHE_KEY = 'assets:all';
+const rentalSlabCacheKey = (type) => `rental-slabs:${type}`;
+const systemFlagCacheKey = (key) => `system-flag:${key}`;
+
 const SUMMARY_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.SUMMARY_CACHE_TTL_SECONDS || 120, 120);
 const BILLINGS_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.BILLINGS_CACHE_TTL_SECONDS || 300, 300);
+const DRIVERS_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.DRIVERS_CACHE_TTL_SECONDS || 240, 240);
+const DAILY_ENTRIES_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.DAILY_ENTRIES_CACHE_TTL_SECONDS || 240, 240);
+const WEEKLY_WALLETS_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.WEEKLY_WALLETS_CACHE_TTL_SECONDS || 240, 240);
+const ASSETS_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.ASSETS_CACHE_TTL_SECONDS || 600, 600);
+const RENTAL_SLAB_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.RENTAL_SLAB_CACHE_TTL_SECONDS || 600, 600);
+const SYSTEM_FLAG_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.SYSTEM_FLAG_CACHE_TTL_SECONDS || 600, 600);
 
 const summaryCache = {
   data: null,
@@ -299,6 +312,8 @@ const resetSummaryCache = () => {
   summaryCache.etag = null;
   summaryCache.expiresAt = 0;
 };
+
+const invalidateKeys = async (...keys) => deleteCacheKeys(keys.filter(Boolean));
 
 const computeEtag = (payload) => createHash('sha1').update(JSON.stringify(payload)).digest('hex');
 
@@ -910,7 +925,16 @@ app.delete('/api/driver-billings/:id', async (req, res) => {
 // --- DRIVERS ---
 app.get('/api/drivers', async (req, res) => {
   try {
+    const cached = await getCacheJSON(DRIVERS_CACHE_KEY);
+    if (cached) {
+      res.set('X-Cache', 'REDIS');
+      return res.json(cached);
+    }
+
     const result = await db.query(`SELECT id, name, mobile, email, to_char(join_date, 'YYYY-MM-DD') as "joinDate", to_char(termination_date, 'YYYY-MM-DD') as "terminationDate", deposit, qr_code as "qrCode", vehicle, status, current_shift as "currentShift", default_rent as "defaultRent", notes, is_manager as "isManager" FROM drivers ORDER BY name`);
+    await setCacheJSON(DRIVERS_CACHE_KEY, result.rows, DRIVERS_CACHE_TTL_SECONDS);
+
+    res.set('X-Cache', 'MISS');
     res.json(result.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -987,6 +1011,7 @@ app.post('/api/drivers', async (req, res) => {
 
     await client.query('COMMIT');
     await invalidateSummaryCache();
+    await invalidateKeys(DRIVERS_CACHE_KEY);
     res.json(result.rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -1008,6 +1033,7 @@ app.delete('/api/drivers/:id', async (req, res) => {
   try {
     const result = await db.query('DELETE FROM drivers WHERE id = $1', [req.params.id]);
     await invalidateSummaryCache();
+    await invalidateKeys(DRIVERS_CACHE_KEY);
     res.json({ success: true });
   } catch (err) {
     console.error("Delete Error:", err);
@@ -1107,11 +1133,20 @@ app.get('/api/summary', async (req, res) => {
 // --- DAILY ENTRIES ---
 app.get('/api/daily-entries', async (req, res) => {
   try {
+    const cached = await getCacheJSON(DAILY_ENTRIES_CACHE_KEY);
+    if (cached) {
+      res.set('X-Cache', 'REDIS');
+      return res.json(cached);
+    }
+
     const result = await db.query(`SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes FROM daily_entries ORDER BY date DESC`);
     const safeRows = result.rows.map(r => ({
       ...r,
       rent: Number(r.rent), collection: Number(r.collection), fuel: Number(r.fuel), due: Number(r.due), payout: Number(r.payout)
     }));
+
+    await setCacheJSON(DAILY_ENTRIES_CACHE_KEY, safeRows, DAILY_ENTRIES_CACHE_TTL_SECONDS);
+    res.set('X-Cache', 'MISS');
     res.json(safeRows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1144,6 +1179,7 @@ app.post('/api/daily-entries', async (req, res) => {
     const result = await db.query(q, [e.id, isoDate, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, payoutDateISO, e.notes]);
     await syncDriverBillings();
     await invalidateAggregateCaches();
+    await invalidateKeys(DAILY_ENTRIES_CACHE_KEY);
     res.json(result.rows[0]);
   } catch (err) {
     if (err.code === '23505') {
@@ -1212,6 +1248,7 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
     await client.query('COMMIT');
     await syncDriverBillings();
     await invalidateAggregateCaches();
+    await invalidateKeys(DAILY_ENTRIES_CACHE_KEY);
     res.json({ success: true });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -1229,6 +1266,7 @@ app.delete('/api/daily-entries/:id', async (req, res) => {
     await db.query('DELETE FROM daily_entries WHERE id = $1', [req.params.id]);
     await syncDriverBillings();
     await invalidateAggregateCaches();
+    await invalidateKeys(DAILY_ENTRIES_CACHE_KEY);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1236,14 +1274,22 @@ app.delete('/api/daily-entries/:id', async (req, res) => {
 // --- WEEKLY WALLETS ---
 app.get('/api/weekly-wallets', async (req, res) => {
   try {
+    const cached = await getCacheJSON(WEEKLY_WALLETS_CACHE_KEY);
+    if (cached) {
+      res.set('X-Cache', 'REDIS');
+      return res.json(cached);
+    }
+
     const result = await db.query(`SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate", to_char(week_end_date, 'YYYY-MM-DD') as "weekEndDate", earnings, refund, diff, cash, charges, trips, wallet_week as "walletWeek", days_worked_override as "daysWorkedOverride", rent_override as "rentOverride", adjustments, notes FROM weekly_wallets ORDER BY week_start_date DESC`);
     const safeRows = result.rows.map(r => ({
       ...r,
-      earnings: Number(r.earnings), refund: Number(r.refund), diff: Number(r.diff), cash: Number(r.cash), charges: Number(r.charges), walletWeek: Number(r.walletWeek), 
+      earnings: Number(r.earnings), refund: Number(r.refund), diff: Number(r.diff), cash: Number(r.cash), charges: Number(r.charges), walletWeek: Number(r.walletWeek),
       daysWorkedOverride: r.daysWorkedOverride !== null ? Number(r.daysWorkedOverride) : undefined,
       rentOverride: r.rentOverride !== null ? Number(r.rentOverride) : undefined,
       adjustments: Number(r.adjustments || 0)
     }));
+    await setCacheJSON(WEEKLY_WALLETS_CACHE_KEY, safeRows, WEEKLY_WALLETS_CACHE_TTL_SECONDS);
+    res.set('X-Cache', 'MISS');
     res.json(safeRows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1265,6 +1311,7 @@ app.post('/api/weekly-wallets', async (req, res) => {
     const result = await db.query(q, [w.id, w.driver, startISO, endISO || null, w.earnings, w.refund, w.diff, w.cash, w.charges, w.trips, w.walletWeek, w.daysWorkedOverride ?? null, w.rentOverride ?? null, w.adjustments || 0, w.notes]);
     await syncDriverBillings();
     await invalidateAggregateCaches();
+    await invalidateKeys(WEEKLY_WALLETS_CACHE_KEY);
     res.json(result.rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1274,6 +1321,7 @@ app.delete('/api/weekly-wallets/:id', async (req, res) => {
     await db.query('DELETE FROM weekly_wallets WHERE id = $1', [req.params.id]);
     await syncDriverBillings();
     await invalidateAggregateCaches();
+    await invalidateKeys(WEEKLY_WALLETS_CACHE_KEY);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1281,10 +1329,19 @@ app.delete('/api/weekly-wallets/:id', async (req, res) => {
 // --- ASSETS ---
 app.get('/api/assets', async (req, res) => {
   try {
+    const cached = await getCacheJSON(ASSETS_CACHE_KEY);
+    if (cached) {
+      res.set('X-Cache', 'REDIS');
+      return res.json(cached);
+    }
+
     const result = await db.query('SELECT type, value FROM assets');
     const vehicles = result.rows.filter(r => r.type === 'vehicle').map(r => r.value);
     const qrCodes = result.rows.filter(r => r.type === 'qrcode').map(r => r.value);
-    res.json({ vehicles, qrCodes });
+    const payload = { vehicles, qrCodes };
+    await setCacheJSON(ASSETS_CACHE_KEY, payload, ASSETS_CACHE_TTL_SECONDS);
+    res.set('X-Cache', 'MISS');
+    res.json(payload);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1297,6 +1354,7 @@ app.post('/api/assets', async (req, res) => {
     for (const v of vehicles) await client.query("INSERT INTO assets (type, value) VALUES ('vehicle', $1)", [v]);
     for (const q of qrCodes) await client.query("INSERT INTO assets (type, value) VALUES ('qrcode', $1)", [q]);
     await client.query('COMMIT');
+    await invalidateKeys(ASSETS_CACHE_KEY);
     res.json({ success: true });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -1309,11 +1367,20 @@ app.post('/api/assets', async (req, res) => {
 // --- SYSTEM FLAGS ---
 app.get('/api/system-flags/:key', async (req, res) => {
   try {
-    const result = await db.query('SELECT flag_value FROM system_flags WHERE flag_key = $1', [req.params.key]);
-    if (result.rows.length === 0) {
-      return res.json({ key: req.params.key, value: null });
+    const cacheKey = systemFlagCacheKey(req.params.key);
+    const cached = await getCacheJSON(cacheKey);
+    if (cached) {
+      res.set('X-Cache', 'REDIS');
+      return res.json(cached);
     }
-    res.json({ key: req.params.key, value: result.rows[0].flag_value });
+
+    const result = await db.query('SELECT flag_value FROM system_flags WHERE flag_key = $1', [req.params.key]);
+    const payload = result.rows.length === 0
+      ? { key: req.params.key, value: null }
+      : { key: req.params.key, value: result.rows[0].flag_value };
+    await setCacheJSON(cacheKey, payload, SYSTEM_FLAG_CACHE_TTL_SECONDS);
+    res.set('X-Cache', 'MISS');
+    res.json(payload);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1329,6 +1396,7 @@ app.post('/api/system-flags/:key', async (req, res) => {
        SET flag_value = EXCLUDED.flag_value, updated_at = CURRENT_TIMESTAMP`,
       [req.params.key, value]
     );
+    await invalidateKeys(systemFlagCacheKey(req.params.key));
     res.json({ key: req.params.key, value });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1338,8 +1406,17 @@ app.post('/api/system-flags/:key', async (req, res) => {
 // --- RENTAL SLABS ---
 app.get('/api/rental-slabs/:type', async (req, res) => {
   try {
+    const cacheKey = rentalSlabCacheKey(req.params.type);
+    const cached = await getCacheJSON(cacheKey);
+    if (cached) {
+      res.set('X-Cache', 'REDIS');
+      return res.json(cached);
+    }
+
     const result = await db.query(`SELECT id, min_trips as "minTrips", max_trips as "maxTrips", rent_amount as "rentAmount", notes FROM rental_slabs WHERE slab_type = $1 ORDER BY min_trips`, [req.params.type]);
     const safeRows = result.rows.map(r => ({ ...r, rentAmount: Number(r.rentAmount) }));
+    await setCacheJSON(cacheKey, safeRows, RENTAL_SLAB_CACHE_TTL_SECONDS);
+    res.set('X-Cache', 'MISS');
     res.json(safeRows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1359,6 +1436,7 @@ app.post('/api/rental-slabs/:type', async (req, res) => {
     }
     await client.query('COMMIT');
     await invalidateSummaryCache();
+    await invalidateKeys(rentalSlabCacheKey(type));
     res.json({ success: true });
   } catch (err) {
     await client.query('ROLLBACK');
