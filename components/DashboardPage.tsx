@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { storageService } from '../services/storageService';
-import { DriverSummary, GlobalSummary } from '../types';
+import { DriverSummary, GlobalSummary, Driver, DailyEntry, WeeklyWallet, RentalSlab } from '../types';
 import { Users, Banknote, Fuel, TrendingDown, TrendingUp, AlertCircle, ArrowUpRight, ArrowDownRight, Wallet } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Cell } from 'recharts';
 
@@ -13,10 +13,47 @@ const DashboardPage: React.FC = () => {
 
   const loadData = async () => {
     setLoading(true);
-    const data = await storageService.getSummary();
-    setSummaries(data.driverSummaries);
-    setGlobal(data.global);
-    setLoading(false);
+    try {
+      const [dailyEntries, weeklyWallets, rentalSlabs, drivers] = await Promise.all<[
+        DailyEntry[],
+        WeeklyWallet[],
+        RentalSlab[],
+        Driver[]
+      ]>([
+        storageService.getDailyEntries(),
+        storageService.getWeeklyWallets(),
+        storageService.getDriverRentalSlabs(),
+        storageService.getDrivers()
+      ]);
+
+      const sortedSlabs: RentalSlab[] = [...rentalSlabs].sort((a, b) => a.minTrips - b.minTrips);
+      const sortedDaily = [...dailyEntries].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      const driverNames = Array.from(new Set([
+        ...drivers.map(d => d.name),
+        ...sortedDaily.map(d => d.driver),
+        ...weeklyWallets.map(w => w.driver)
+      ])).sort((a, b) => a.localeCompare(b));
+
+      const calculatedSummaries = driverNames.map(driver =>
+        storageService.calculateDriverStats(driver, sortedDaily, weeklyWallets, sortedSlabs)
+      );
+
+      const globalSummary: GlobalSummary = {
+        totalCollection: calculatedSummaries.reduce((sum, d) => sum + d.totalCollection, 0),
+        totalRent: calculatedSummaries.reduce((sum, d) => sum + d.totalRent, 0),
+        totalFuel: calculatedSummaries.reduce((sum, d) => sum + d.totalFuel, 0),
+        totalDue: calculatedSummaries.reduce((sum, d) => sum + d.totalDue, 0),
+        totalPayout: calculatedSummaries.reduce((sum, d) => sum + d.totalPayout, 0),
+        totalWalletWeek: calculatedSummaries.reduce((sum, d) => sum + d.totalWalletWeek, 0),
+        pendingFromDrivers: calculatedSummaries.filter(d => d.finalTotal < 0).reduce((sum, d) => sum + Math.abs(d.finalTotal), 0),
+        payableToDrivers: calculatedSummaries.filter(d => d.finalTotal > 0).reduce((sum, d) => sum + d.finalTotal, 0),
+      };
+
+      setSummaries(calculatedSummaries);
+      setGlobal(globalSummary);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
