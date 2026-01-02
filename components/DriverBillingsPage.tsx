@@ -43,18 +43,29 @@ const DriverBillingsPage: React.FC = () => {
     setLoading(true);
     try {
         // Load critical data first
-        const [summaryData, slabData, weeklyData, dailyData, driverData] = await Promise.all([
-            storageService.getSummary(),
+        const [slabData, weeklyData, dailyData, driverData] = await Promise.all([
             storageService.getDriverRentalSlabs(),
             storageService.getWeeklyWallets(),
             storageService.getDailyEntries(),
             storageService.getDrivers()
         ]);
 
-        setSummaries(summaryData.driverSummaries);
-        setRentalSlabs(slabData.sort((a, b) => a.minTrips - b.minTrips));
+        const sortedSlabs = [...slabData].sort((a, b) => a.minTrips - b.minTrips);
+        const sortedDaily = [...dailyData].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        const driverNames = Array.from(new Set([
+            ...driverData.map(d => d.name),
+            ...sortedDaily.map(d => d.driver),
+            ...weeklyData.map(w => w.driver)
+        ])).sort((a, b) => a.localeCompare(b));
+
+        const calculatedSummaries = driverNames.map(driver =>
+            storageService.calculateDriverStats(driver, sortedDaily, weeklyData, sortedSlabs)
+        );
+
+        setSummaries(calculatedSummaries);
+        setRentalSlabs(sortedSlabs);
         setWeeklyWallets(weeklyData);
-        setDailyEntries(dailyData.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+        setDailyEntries(sortedDaily);
         setDrivers(driverData);
 
         // Attempt to load billings separately to handle 404/500 gracefully during deployment/migration
