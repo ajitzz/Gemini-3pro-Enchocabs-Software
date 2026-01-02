@@ -82,25 +82,6 @@ const DriverBillingsPage: React.FC = () => {
     return `₹${Math.round(val).toLocaleString('en-IN')}`;
   };
 
-  const applyAdjustmentToDaily = (entries: any[], adjustment: number, weekEndDate: string) => {
-      if (!adjustment || !entries || entries.length === 0) return entries;
-
-      const cloned = entries.map(e => ({ ...e }));
-      let targetIndex = cloned.findIndex(d => d.date === weekEndDate);
-      if (targetIndex === -1) targetIndex = cloned.length - 1;
-
-      const target = cloned[targetIndex];
-      const existingAdjustment = target.adjustments ?? 0;
-      const combinedAdjustment = existingAdjustment + adjustment;
-
-      target.adjustments = combinedAdjustment;
-      target.dueWithAdjustment = (target.due ?? 0) + adjustment;
-      target.adjustmentNote = `Includes adjustment of ${formatCurrency(adjustment)}`;
-      target.isAdjustmentDay = true;
-
-      return cloned;
-  };
-
   // --- ROBUST DATE HELPERS (UTC STRICT) ---
   const isValidDateStr = (dateStr: any) => {
       if (!dateStr || typeof dateStr !== 'string') return false;
@@ -180,15 +161,12 @@ const DriverBillingsPage: React.FC = () => {
         });
         const normalizedDue = bill.due !== undefined ? bill.due : (bill.walletOverdue || 0);
         const normalizedWalletOverdue = bill.walletOverdue !== undefined ? bill.walletOverdue : normalizedDue;
-        const normalizedDueWithAdjustments = normalizedDue + (derivedAdjustments || 0);
         const derivedDaysWorked = matchingWallet?.daysWorkedOverride ?? bill.daysWorked;
         const derivedRentPerDay = isRentOverridden ? (matchingWallet?.rentOverride as number) : bill.rentPerDay;
         const derivedRentTotal = derivedRentPerDay * derivedDaysWorked;
         const normalizedDaily = isRentOverridden
             ? dailyDetails.map(d => ({ ...d, rent: derivedRentPerDay }))
             : dailyDetails;
-
-        const dailyWithAdjustments = applyAdjustmentToDaily(normalizedDaily, derivedAdjustments, bill.weekEndDate);
 
         return {
             ...bill,
@@ -200,7 +178,7 @@ const DriverBillingsPage: React.FC = () => {
             startDate: bill.weekStartDate,
             endDate: bill.weekEndDate,
             calculatedDays: bill.daysWorked,
-            dailyDetails: dailyWithAdjustments,
+            dailyDetails: normalizedDaily,
             weeklyDetails: matchingWallet ?? null,
             isProvisional: false,
             isRentOverridden,
@@ -208,9 +186,7 @@ const DriverBillingsPage: React.FC = () => {
             isSaved: true,
             rentPerDay: derivedRentPerDay,
             rentTotal: derivedRentTotal,
-            daysWorked: derivedDaysWorked,
-            adjustments: derivedAdjustments,
-            dueWithAdjustments: normalizedDueWithAdjustments
+            daysWorked: derivedDaysWorked
         };
     });
 
@@ -272,9 +248,7 @@ const DriverBillingsPage: React.FC = () => {
               const entry = aggMap.get(bill.driver);
               // Use standardized field
               const ovr = (bill as any).walletOverdue || 0;
-              const dueVal = (bill as any).dueWithAdjustments !== undefined
-                  ? (bill as any).dueWithAdjustments
-                  : ((bill as any).due !== undefined ? (bill as any).due : ovr);
+              const dueVal = (bill as any).due !== undefined ? (bill as any).due : ovr;
 
               entry.daysWorked += (bill.daysWorked || 0);
               entry.trips += (bill.trips || 0);
@@ -327,8 +301,7 @@ const DriverBillingsPage: React.FC = () => {
           acc.trips += bill.trips || 0;
           acc.rentTotal += bill.rentTotal || 0;
           acc.collection += bill.collection || 0;
-          const dueValue = bill.dueWithAdjustments ?? bill.due ?? 0;
-          acc.due += dueValue;
+          acc.due += bill.due || 0;
           acc.fuel += bill.fuel || 0;
           acc.wallet += deriveWalletWeek(bill);
           acc.walletOverdue += bill.walletOverdue || 0;
@@ -486,7 +459,7 @@ const DriverBillingsPage: React.FC = () => {
           <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">${formatCurrency(d.rent)}</td>
           <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">${formatCurrency(d.collection)}</td>
           <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">${formatCurrency(d.fuel)}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">${formatCurrency(d.dueWithAdjustment ?? d.due)}${d.adjustments ? `<div style=\"font-size: 10px; color: #d97706; margin-top: 4px;\">Includes adjustment ${formatCurrency(d.adjustments)}</div>` : ''}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">${formatCurrency(d.due)}</td>
           <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">${formatCurrency(d.adjustments ?? 0)}</td>
         </tr>
       `).join('') : '';
@@ -510,7 +483,7 @@ const DriverBillingsPage: React.FC = () => {
                <div class="label">Fuel Advances</div><div class="value negative">- ${formatCurrency(bill.fuel)}</div>
                <div class="label">Wallet Earnings</div><div class="value positive">+ ${formatCurrency(bill.wallet)}</div>
                <div class="label">Rental Collection</div><div class="value positive">+ ${formatCurrency(bill.collection)}</div>
-               <div class="label">Daily Dues</div><div class="value">${formatCurrency(bill.dueWithAdjustments ?? bill.due)}${bill.adjustments ? `<div style=\"font-size:10px;color:#d97706;margin-top:4px;\">Includes adjustment ${formatCurrency(bill.adjustments)}</div>` : ''}</div>
+               <div class="label">Daily Dues</div><div class="value">${formatCurrency(bill.due)}</div>
                <div class="label">Wallet Overdue (Dues)</div><div class="value">${formatCurrency(bill.walletOverdue)}</div>
                <div class="label">Adjustments</div><div class="value">${formatCurrency(bill.adjustments)}</div>
             </div>
@@ -829,14 +802,7 @@ const DriverBillingsPage: React.FC = () => {
                                    </td>
                                    <td className="px-6 py-4 text-right font-medium text-rose-600">-{formatCurrency(bill.rentTotal)}</td>
                                    <td className="px-6 py-4 text-right font-bold text-emerald-600">+{formatCurrency(bill.collection)}</td>
-                                   <td className="px-6 py-4 text-right text-slate-700 font-semibold">
-                                      {formatCurrency(bill.dueWithAdjustments ?? bill.due)}
-                                      {bill.adjustments ? (
-                                          <div className="text-[10px] text-amber-600 font-semibold mt-0.5">
-                                              Includes adjustment {formatCurrency(bill.adjustments)}
-                                          </div>
-                                      ) : null}
-                                   </td>
+                                   <td className="px-6 py-4 text-right text-slate-600">{formatCurrency(bill.due)}</td>
                                    <td className="px-6 py-4 text-right text-rose-500">-{formatCurrency(bill.fuel)}</td>
                                    <td className="px-6 py-4 text-right text-indigo-600">
                                        {bill.isProvisional ? <span className="text-slate-300">-</span> : `+${formatCurrency(bill.wallet)}`}
@@ -906,14 +872,7 @@ const DriverBillingsPage: React.FC = () => {
                                                           <td className="px-4 py-2 text-right text-emerald-600 font-medium">{formatCurrency(d.collection)}</td>
                                                           <td className="px-4 py-2 text-right text-slate-600">{formatCurrency(d.rent)}</td>
                                                           <td className="px-4 py-2 text-right text-rose-500">{formatCurrency(d.fuel)}</td>
-                                                          <td className="px-4 py-2 text-right text-slate-700 font-semibold">
-                                                              {formatCurrency(d.dueWithAdjustment ?? d.due)}
-                                                              {d.adjustments ? (
-                                                                  <div className="text-[10px] text-amber-600 font-semibold mt-0.5">
-                                                                      Includes adjustment {formatCurrency(d.adjustments)}
-                                                                  </div>
-                                                              ) : null}
-                                                          </td>
+                                                          <td className="px-4 py-2 text-right text-slate-500">{formatCurrency(d.due)}</td>
                                                       </tr>
                                                   ))}
                                                   {(!bill.dailyDetails || bill.dailyDetails.length === 0) && (

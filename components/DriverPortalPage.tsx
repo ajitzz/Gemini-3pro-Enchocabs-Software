@@ -375,25 +375,6 @@ const DriverPortalPage: React.FC = () => {
       return dateString.split('-').reverse().join('-');
   };
 
-  const applyAdjustmentToDaily = (entries: any[], adjustment: number, weekEndDate: string) => {
-      if (!adjustment || !entries || entries.length === 0) return entries;
-
-      const cloned = entries.map(e => ({ ...e }));
-      let targetIndex = cloned.findIndex(d => d.date === weekEndDate);
-      if (targetIndex === -1) targetIndex = cloned.length - 1;
-
-      const target = cloned[targetIndex];
-      const existingAdjustment = target.adjustments ?? 0;
-      const combinedAdjustment = existingAdjustment + adjustment;
-
-      target.adjustments = combinedAdjustment;
-      target.dueWithAdjustment = (target.due ?? 0) + adjustment;
-      target.adjustmentNote = `Includes adjustment of ${formatCurrency(adjustment)}`;
-      target.isAdjustmentDay = true;
-
-      return cloned;
-  };
-
   const calculateWalletWeek = (wallet: WeeklyWallet) => {
       const earnings = Number(wallet.earnings) || 0;
       const refund = Number(wallet.refund) || 0;
@@ -447,11 +428,8 @@ const DriverPortalPage: React.FC = () => {
        const adjustments = wallet.adjustments || 0;
        
        const payout = collection - rentTotal - fuel + overdue + walletAmount + adjustments;
-       const overdueWithAdjustments = overdue + (adjustments || 0);
        
        const avgPerTrip = totalTrips > 0 ? grossEarnings / totalTrips : 0;
-
-       const dailyDetails = applyAdjustmentToDaily(relevantDaily, adjustments, wallet.weekEndDate);
 
        return {
            id: wallet.id,
@@ -471,9 +449,8 @@ const DriverPortalPage: React.FC = () => {
            wallet: walletAmount,
            overdue,
            adjustments,
-           dueWithAdjustments: overdueWithAdjustments,
            payout,
-           dailyDetails,
+           dailyDetails: relevantDaily,
            weeklyDetails: wallet,
            isAdjusted: !!slab || (wallet.rentOverride !== undefined && wallet.rentOverride !== null)
        };
@@ -962,7 +939,7 @@ const DriverPortalPage: React.FC = () => {
           <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #334155;">${formatCurrency(d.rent)}</td>
           <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #16a34a;">${formatCurrency(d.collection)}</td>
           <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #dc2626;">${formatCurrency(d.fuel)}</td>
-          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #334155;">${formatCurrency(d.dueWithAdjustment ?? d.due)}${d.adjustments ? `<div style="font-size: 10px; color: #d97706; margin-top: 4px; font-weight: 700;">Includes adjustment ${formatCurrency(d.adjustments)}</div>` : ''}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #334155;">${formatCurrency(d.due)}</td>
           <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #f59e0b;">${formatCurrency(d.adjustments ?? 0)}</td>
         </tr>
       `).join('');
@@ -1027,7 +1004,7 @@ const DriverPortalPage: React.FC = () => {
                <div class="st-row"><span class="st-label">Fuel Advances</span><span class="st-val red">- ${formatCurrency(bill.fuel)}</span></div>
                <div class="st-row"><span class="st-label">Wallet Earnings (Weekly)</span><span class="st-val green">+ ${formatCurrency(bill.wallet)}</span></div>
                <div class="st-row"><span class="st-label">Rental Collection</span><span class="st-val green">+ ${formatCurrency(bill.collection)}</span></div>
-               <div class="st-row"><span class="st-label">Previous Dues/Credit</span><span class="st-val">${formatCurrency(bill.dueWithAdjustments ?? bill.overdue)}${bill.adjustments ? `<div style=\"font-size:11px;color:#d97706;margin-top:4px;\">Includes adjustment ${formatCurrency(bill.adjustments)}</div>` : ''}</span></div>
+               <div class="st-row"><span class="st-label">Previous Dues/Credit</span><span class="st-val">${formatCurrency(bill.overdue)}</span></div>
                <div class="st-row"><span class="st-label">Adjustments</span><span class="st-val">${formatCurrency(bill.adjustments)}</span></div>
             </div>
             <div class="net-box">
@@ -1754,17 +1731,7 @@ const DriverPortalPage: React.FC = () => {
                                 <div className="flex justify-between"><span className="text-slate-600 font-medium">Fuel Advances</span><span className="font-bold text-rose-600">- {formatCurrency(selectedBill.fuel)}</span></div>
                                 <div className="flex justify-between"><span className="text-slate-600 font-medium">Wallet Earnings (Weekly)</span><span className="font-bold text-emerald-600">+ {formatCurrency(selectedBill.wallet)}</span></div>
                                 <div className="flex justify-between"><span className="text-slate-600 font-medium">Rental Collection</span><span className="font-bold text-emerald-600">+ {formatCurrency(selectedBill.collection)}</span></div>
-                                <div className="flex justify-between">
-                                    <span className="text-slate-600 font-medium">Previous Dues/Credit</span>
-                                    <span className="font-bold text-slate-800 text-right">
-                                        {formatCurrency(selectedBill.dueWithAdjustments ?? selectedBill.overdue)}
-                                        {selectedBill.adjustments ? (
-                                            <div className="text-[10px] text-amber-600 font-semibold mt-0.5">
-                                                Includes adjustment {formatCurrency(selectedBill.adjustments)}
-                                            </div>
-                                        ) : null}
-                                    </span>
-                                </div>
+                                <div className="flex justify-between"><span className="text-slate-600 font-medium">Previous Dues/Credit</span><span className="font-bold text-slate-800">{formatCurrency(selectedBill.overdue)}</span></div>
                                 <div className="flex justify-between"><span className="text-slate-600 font-medium">Adjustments</span><span className="font-bold text-slate-800">{formatCurrency(selectedBill.adjustments)}</span></div>
                             </div>
                             <div className="mt-6 bg-slate-100 p-4 rounded-xl flex justify-between items-center border-l-4 border-slate-800">
