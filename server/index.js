@@ -199,7 +199,9 @@ const calculateDriverStatsServer = (driverName, allDaily, allWallets, sortedSlab
 
     const weeklyCollection = weekDaily.reduce((sum, d) => sum + d.collection, 0);
     const weeklyFuel = weekDaily.reduce((sum, d) => sum + d.fuel, 0);
-    const weeklyDue = weekDaily.reduce((sum, d) => sum + d.due, 0);
+    const weeklyDueBase = weekDaily.reduce((sum, d) => sum + d.due, 0);
+    const weeklyAdjustment = Number(wallet.adjustments || 0);
+    const weeklyDue = weeklyDueBase + weeklyAdjustment;
     const weeklyPayout = weekDaily.reduce((sum, d) => sum + (d.payout || 0), 0);
     const weeklyWalletTotal = calculateWalletWeek(wallet);
 
@@ -697,12 +699,13 @@ const slab = driverRentalSlabs.find((s) => trips >= s.minTrips && (s.maxTrips ==
 
     const rentTotal = rentPerDay * daysWorked;
     const collection = entries.reduce((sum, e) => sum + e.collection, 0);
-    const due = entries.reduce((sum, e) => sum + e.due, 0);
+    const baseDue = entries.reduce((sum, e) => sum + e.due, 0);
     const fuel = entries.reduce((sum, e) => sum + e.fuel, 0);
     const walletAmount = wallet ? calculateWalletWeek(wallet) : 0;
-    const adjustments = wallet ? wallet.adjustments : 0;
+    const adjustments = wallet ? Number(wallet.adjustments || 0) : 0;
+    const dueWithAdjustments = baseDue + adjustments;
 
-    const payout = collection - rentTotal - fuel + due + walletAmount + adjustments;
+    const payout = collection - rentTotal - fuel + dueWithAdjustments + walletAmount;
 
     billings.push({
       driver_id: driverInfo.id || null,
@@ -715,10 +718,10 @@ const slab = driverRentalSlabs.find((s) => trips >= s.minTrips && (s.maxTrips ==
       rent_per_day: rentPerDay,
       rent_total: rentTotal,
       collection,
-      due,
+      due: dueWithAdjustments,
       fuel,
       wallet: walletAmount,
-      wallet_overdue: due,
+      wallet_overdue: dueWithAdjustments,
       adjustments,
       payout,
       status: 'Finalized'
