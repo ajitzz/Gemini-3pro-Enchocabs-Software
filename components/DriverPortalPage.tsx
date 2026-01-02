@@ -425,9 +425,9 @@ const DriverPortalPage: React.FC = () => {
        const walletAmount = calculateWalletWeek(wallet);
        const grossEarnings = wallet.earnings || 0; 
 
-       const adjustments = wallet.adjustments || 0;
-       
-       const payout = collection - rentTotal - fuel + overdue + walletAmount + adjustments;
+      const adjustments = wallet.adjustments || 0;
+
+      const payout = collection - rentTotal - fuel + overdue + walletAmount;
        
        const avgPerTrip = totalTrips > 0 ? grossEarnings / totalTrips : 0;
 
@@ -1152,7 +1152,7 @@ const DriverPortalPage: React.FC = () => {
                                </span>
                            </div>
                            <p className="text-[11px] text-slate-500 leading-snug">
-                               Net payout is calculated as collections minus rent and fuel, plus dues and wallet adjustments, minus any direct payouts already recorded.
+                               Net payout is calculated as collections minus rent and fuel, plus dues, minus any direct payouts already recorded.
                            </p>
                        </div>
                    </div>
