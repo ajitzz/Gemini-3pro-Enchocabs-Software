@@ -258,7 +258,7 @@ const WeeklyWalletPage: React.FC = () => {
     return (
       toNumber(wallet.earnings) +
       toNumber(wallet.refund) -
-      (toNumber(wallet.diff) + toNumber(wallet.cash) + toNumber(wallet.charges))
+      (toNumber(wallet.diff) + toNumber(wallet.cash))
     );
   };
 
@@ -267,7 +267,7 @@ const WeeklyWalletPage: React.FC = () => {
   };
 
   const calculateWalletAfterCharges = (wallet: WeeklyWallet) => {
-    return calculateWalletWeek(wallet);
+    return calculateWalletWeek(wallet) - toNumber(wallet.charges);
   };
 
   const weekTotals = useMemo(() => {
@@ -325,7 +325,7 @@ const WeeklyWalletPage: React.FC = () => {
       return;
     }
 
-    const headers = ['Week Range', 'Driver', 'Trips', 'Earnings', 'Refund', 'Deductions', 'Wallet Week', 'Wallet (- Charges)', 'Notes'];
+    const headers = ['Week Range', 'Driver', 'Trips', 'Earnings', 'Refund', 'Deductions', 'Wallet Week', 'Wallet (+ Charges)', 'Notes'];
     const rows = filteredWallets.map(wallet => {
       const deductions = calculateDeductions(wallet);
       const walletWeek = calculateWalletWeek(wallet);
@@ -598,7 +598,7 @@ const WeeklyWalletPage: React.FC = () => {
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Refund</th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Deductions</th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet Week</th>
-                <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet /- Charges</th>
+                <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet /+ Charges</th>
                 <th className="px-6 py-4 font-semibold text-center tracking-wider">Actions</th>
               </tr>
             </thead>
@@ -609,7 +609,6 @@ const WeeklyWalletPage: React.FC = () => {
                 <tr><td colSpan={9} className="p-12 text-center text-slate-400">No records found.</td></tr>
               ) : (
                 filteredWallets.map(w => {
-                  const charges = toNumber(w.charges);
                   const walletWeek = calculateWalletWeek(w);
                   const deductions = calculateDeductions(w);
                   const walletAfterCharges = calculateWalletAfterCharges(w);
