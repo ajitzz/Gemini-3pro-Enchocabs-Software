@@ -28,7 +28,8 @@ const DriverBillingsPage: React.FC = () => {
   const [editingBillId, setEditingBillId] = useState<string | null>(null);
   const [editFormData, setEditFormData] = useState({
       daysWorked: 0,
-      rentPerDay: 0
+      rentPerDay: 0,
+      adjustments: 0
   });
   
   // UI Feedback
@@ -368,10 +369,11 @@ const DriverBillingsPage: React.FC = () => {
       setEditingBillId(bill.id);
       setEditFormData({
           daysWorked: bill.daysWorked,
-          rentPerDay: bill.rentPerDay
+          rentPerDay: bill.rentPerDay,
+          adjustments: Math.max(0, bill.weeklyDetails?.adjustments ?? bill.adjustments ?? 0)
       });
   };
-    const buildWalletPayload = (bill: any): WeeklyWallet => {
+    const buildWalletPayload = (bill: any, adjustmentOverride?: number): WeeklyWallet => {
       return {
           id: bill.weeklyDetails?.id || bill.walletId || crypto.randomUUID(),
           driver: bill.driver,
@@ -386,7 +388,7 @@ const DriverBillingsPage: React.FC = () => {
           walletWeek: deriveWalletWeek(bill),
           daysWorkedOverride: bill.weeklyDetails?.daysWorkedOverride,
           rentOverride: bill.weeklyDetails?.rentOverride,
-          adjustments: Math.max(0, bill.weeklyDetails?.adjustments ?? bill.adjustments ?? 0),
+          adjustments: Math.max(0, adjustmentOverride ?? bill.weeklyDetails?.adjustments ?? bill.adjustments ?? 0),
           notes: bill.weeklyDetails?.notes || 'Generated from Billing Page'
       };
   };
@@ -399,11 +401,12 @@ const DriverBillingsPage: React.FC = () => {
 
       try {
            // If no weekly record exists, create a stub so the edit persists.
-          const baseWallet = buildWalletPayload(bill);
+          const baseWallet = buildWalletPayload(bill, editFormData.adjustments);
           const updatedWallet: WeeklyWallet = {
               ...baseWallet,
               daysWorkedOverride: editFormData.daysWorked,
-              rentOverride: editFormData.rentPerDay
+              rentOverride: editFormData.rentPerDay,
+              adjustments: Math.max(0, editFormData.adjustments)
           };
 
           await storageService.saveWeeklyWallet(updatedWallet);
@@ -989,6 +992,17 @@ const DriverBillingsPage: React.FC = () => {
                               className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
                           />
                           <p className="text-[10px] text-amber-600 mt-1">This will override standard slab calculations.</p>
+                      </div>
+
+                      <div>
+                          <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Adjustment (₹)</label>
+                          <input
+                              type="number"
+                              value={editFormData.adjustments}
+                              onChange={(e) => setEditFormData({ ...editFormData, adjustments: parseFloat(e.target.value) || 0 })}
+                              className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
+                          />
+                          <p className="text-[10px] text-slate-500 mt-1">Adjustment will be added to the weekly due total.</p>
                       </div>
                   </div>
 
