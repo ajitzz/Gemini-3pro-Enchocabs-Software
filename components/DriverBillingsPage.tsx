@@ -39,6 +39,11 @@ const DriverBillingsPage: React.FC = () => {
     loadData();
   }, []);
 
+  const ensurePositive = (value: number | null | undefined) => {
+      const numeric = Number(value) || 0;
+      return numeric < 0 ? 0 : numeric;
+  };
+
   const loadData = async () => {
     setLoading(true);
     try {
@@ -154,12 +159,13 @@ const DriverBillingsPage: React.FC = () => {
             getMondayISO(w.weekStartDate) === weekKey && normalize(w.driver) === normalize(bill.driverName)
         );
         const isRentOverridden = matchingWallet?.rentOverride !== undefined && matchingWallet?.rentOverride !== null;
-        const derivedAdjustments = matchingWallet?.adjustments ?? bill.adjustments ?? 0;
+        const derivedAdjustments = ensurePositive(matchingWallet?.adjustments ?? bill.adjustments ?? 0);
         const dailyDetails = dailyEntries.filter(d => {
             const range = getWeekRange(d.date);
             return range.start === weekKey && normalize(d.driver) === normalize(bill.driverName);
         });
         const normalizedDue = bill.due !== undefined ? bill.due : (bill.walletOverdue || 0);
+        const dueWithAdjustments = normalizedDue + derivedAdjustments;
         const normalizedWalletOverdue = bill.walletOverdue !== undefined ? bill.walletOverdue : normalizedDue;
         const derivedDaysWorked = matchingWallet?.daysWorkedOverride ?? bill.daysWorked;
         const derivedRentPerDay = isRentOverridden ? (matchingWallet?.rentOverride as number) : bill.rentPerDay;
@@ -170,7 +176,7 @@ const DriverBillingsPage: React.FC = () => {
 
         return {
             ...bill,
-            due: normalizedDue,
+            due: dueWithAdjustments,
             walletOverdue: normalizedWalletOverdue,
             driver: bill.driverName,
             weekRange,
@@ -344,7 +350,7 @@ const DriverBillingsPage: React.FC = () => {
       setEditFormData({
           daysWorked: bill.daysWorked,
           rentPerDay: bill.rentPerDay,
-           adjustments: bill.adjustments || 0
+           adjustments: ensurePositive(bill.adjustments)
       });
   };
     const buildWalletPayload = (bill: any): WeeklyWallet => {
@@ -362,7 +368,7 @@ const DriverBillingsPage: React.FC = () => {
           walletWeek: deriveWalletWeek(bill),
           daysWorkedOverride: bill.weeklyDetails?.daysWorkedOverride,
           rentOverride: bill.weeklyDetails?.rentOverride,
-          adjustments: bill.weeklyDetails?.adjustments ?? bill.adjustments ?? 0,
+          adjustments: ensurePositive(bill.weeklyDetails?.adjustments ?? bill.adjustments ?? 0),
           notes: bill.weeklyDetails?.notes || 'Generated from Billing Page'
       };
   };
@@ -380,7 +386,7 @@ const DriverBillingsPage: React.FC = () => {
               ...baseWallet,
               daysWorkedOverride: editFormData.daysWorked,
               rentOverride: editFormData.rentPerDay,
-              adjustments: editFormData.adjustments
+              adjustments: ensurePositive(editFormData.adjustments)
           };
 
           await storageService.saveWeeklyWallet(updatedWallet);
@@ -483,7 +489,7 @@ const DriverBillingsPage: React.FC = () => {
                <div class="label">Fuel Advances</div><div class="value negative">- ${formatCurrency(bill.fuel)}</div>
                <div class="label">Wallet Earnings</div><div class="value positive">+ ${formatCurrency(bill.wallet)}</div>
                <div class="label">Rental Collection</div><div class="value positive">+ ${formatCurrency(bill.collection)}</div>
-               <div class="label">Daily Dues</div><div class="value">${formatCurrency(bill.due)}</div>
+               <div class="label">Daily Dues (incl. adjustments)</div><div class="value">${formatCurrency(bill.due)}<div style="font-size:10px;color:#16a34a;margin-top:2px;">Includes +${formatCurrency(bill.adjustments)} adjustments</div></div>
                <div class="label">Wallet Overdue (Dues)</div><div class="value">${formatCurrency(bill.walletOverdue)}</div>
                <div class="label">Adjustments</div><div class="value">${formatCurrency(bill.adjustments)}</div>
             </div>
@@ -759,7 +765,7 @@ const DriverBillingsPage: React.FC = () => {
                              <th className="px-6 py-4 text-right">RENT / DAY</th>
                              <th className="px-6 py-4 text-right">RENT TOTAL</th>
                              <th className="px-6 py-4 text-right">COLLECTION</th>
-                             <th className="px-6 py-4 text-right">DUE</th>
+                             <th className="px-6 py-4 text-right">DUE (incl. adj.)</th>
                              <th className="px-6 py-4 text-right">FUEL</th>
                              <th className="px-6 py-4 text-right">WALLET</th>
                              <th className="px-6 py-4 text-right">WALLET OVERDUE</th>
@@ -802,7 +808,9 @@ const DriverBillingsPage: React.FC = () => {
                                    </td>
                                    <td className="px-6 py-4 text-right font-medium text-rose-600">-{formatCurrency(bill.rentTotal)}</td>
                                    <td className="px-6 py-4 text-right font-bold text-emerald-600">+{formatCurrency(bill.collection)}</td>
-                                   <td className="px-6 py-4 text-right text-slate-600">{formatCurrency(bill.due)}</td>
+                                   <td className="px-6 py-4 text-right text-slate-600">{formatCurrency(bill.due)}
+                                       <div className="text-[10px] text-emerald-600 font-semibold">Adj added: {formatCurrency(bill.adjustments)}</div>
+                                   </td>
                                    <td className="px-6 py-4 text-right text-rose-500">-{formatCurrency(bill.fuel)}</td>
                                    <td className="px-6 py-4 text-right text-indigo-600">
                                        {bill.isProvisional ? <span className="text-slate-300">-</span> : `+${formatCurrency(bill.wallet)}`}
@@ -972,15 +980,16 @@ const DriverBillingsPage: React.FC = () => {
                           <p className="text-[10px] text-amber-600 mt-1">This will override standard slab calculations.</p>
                       </div>
 
-                      <div>
-                          <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Adjustments (₹)</label>
-                          <input 
-                              type="number" 
-                              value={editFormData.adjustments}
-                              onChange={(e) => setEditFormData({...editFormData, adjustments: parseFloat(e.target.value) || 0})}
-                              className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
-                          />
-                      </div>
+          <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Adjustments (₹)</label>
+              <input
+                  type="number"
+                  value={editFormData.adjustments}
+                  onChange={(e) => setEditFormData({...editFormData, adjustments: ensurePositive(parseFloat(e.target.value))})}
+                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
+              />
+              <p className="text-[10px] text-emerald-600 mt-1">Adjustments are added to dues and must be zero or more.</p>
+          </div>
                   </div>
 
                   <div className="flex flex-col gap-3">
