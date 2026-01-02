@@ -19,6 +19,10 @@ View your app in AI Studio: https://ai.studio/apps/drive/1uujoGkL20G_JOEUoqiymNN
 3. Run the app:
    `npm run dev`
 
+## Redis configuration
+
+If you enable caching, set `REDIS_URL` (or `UPSTASH_REDIS_URL`) to the raw connection string, **not** a `redis-cli -u ...` command. Managed Redis providers such as Redis Cloud/RedisLabs typically require TLS; use a `rediss://` URL for those hosts.
+
 ## Keep the Render service warm (optional)
 
 If you are deploying to Render's free tier and want to reduce cold-start delays, set a `KEEP_ALIVE_URL` environment variable to the deployed URL you want pinged (for example, `https://<your-app>.onrender.com/health`). The server will ping this URL on startup and then every 14 minutes by default (configure with `KEEP_ALIVE_INTERVAL_MINUTES`).

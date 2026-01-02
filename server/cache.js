@@ -21,6 +21,28 @@ let client = null;
 let connectPromise = null;
 
 if (redisUrl) {
+  try {
+    const parsed = new URL(redisUrl);
+    const host = parsed.hostname.toLowerCase();
+
+    const looksLikeManagedRedis =
+      host.includes('upstash') ||
+      host.includes('rediscloud') ||
+      host.includes('redislabs') ||
+      host.endsWith('.cloud');
+
+    if (parsed.protocol === 'redis:' && looksLikeManagedRedis) {
+      parsed.protocol = 'rediss:';
+      redisUrl = parsed.toString();
+      console.warn('Redis URL upgraded to rediss:// for managed cloud host (TLS enforced).');
+    }
+  } catch (err) {
+    console.error('Invalid REDIS_URL provided. Redis cache disabled.', err.message || err);
+    redisUrl = null;
+  }
+}
+
+if (redisUrl) {
   client = createClient({
     url: redisUrl,
     socket: {
