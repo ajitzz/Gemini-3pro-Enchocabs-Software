@@ -160,6 +160,12 @@ const DriverBillingsPage: React.FC = () => {
         });
         const normalizedDue = bill.due !== undefined ? bill.due : (bill.walletOverdue || 0);
         const normalizedWalletOverdue = bill.walletOverdue !== undefined ? bill.walletOverdue : normalizedDue;
+        const derivedDaysWorked = matchingWallet?.daysWorkedOverride ?? bill.daysWorked;
+        const derivedRentPerDay = isRentOverridden ? (matchingWallet?.rentOverride as number) : bill.rentPerDay;
+        const derivedRentTotal = derivedRentPerDay * derivedDaysWorked;
+        const normalizedDaily = isRentOverridden
+            ? dailyDetails.map(d => ({ ...d, rent: derivedRentPerDay }))
+            : dailyDetails;
 
         return {
             ...bill,
@@ -171,12 +177,15 @@ const DriverBillingsPage: React.FC = () => {
             startDate: bill.weekStartDate,
             endDate: bill.weekEndDate,
             calculatedDays: bill.daysWorked,
-            dailyDetails,
+            dailyDetails: normalizedDaily,
             weeklyDetails: matchingWallet ?? null,
             isProvisional: false,
             isRentOverridden,
             isAggregate: false,
-            isSaved: true
+            isSaved: true,
+            rentPerDay: derivedRentPerDay,
+            rentTotal: derivedRentTotal,
+            daysWorked: derivedDaysWorked
         };
     });
 
