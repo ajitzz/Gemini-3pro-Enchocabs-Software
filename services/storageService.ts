@@ -187,17 +187,14 @@ const calculateDriverStats = (
         const weeklyCollection = weekDaily.reduce((sum, d) => sum + d.collection, 0);
         const weeklyFuel = weekDaily.reduce((sum, d) => sum + d.fuel, 0);
         const weeklyDue = weekDaily.reduce((sum, d) => sum + d.due, 0);
-        const weeklyAdjustments = Math.max(0, wallet.adjustments || 0);
         const weeklyPayout = weekDaily.reduce((sum, d) => sum + (d.payout || 0), 0);
-        const weeklyWalletTotal = calculateWalletWeek(wallet);
-
-        const weeklyDueWithAdjustments = weeklyDue + weeklyAdjustments;
+        const weeklyWalletTotal = calculateWalletWeek(wallet) + (wallet.adjustments || 0);
 
         // Accumulate
         totalCollection += weeklyCollection;
         totalRent += weeklyRentTotal;
         totalFuel += weeklyFuel;
-        totalDue += weeklyDueWithAdjustments;
+        totalDue += weeklyDue;
         totalPayout += weeklyPayout;
         totalWalletWeek += weeklyWalletTotal;
 
@@ -209,7 +206,7 @@ const calculateDriverStats = (
             cutoffCollection += weeklyCollection;
             cutoffRent += weeklyRentTotal;
             cutoffFuel += weeklyFuel;
-            cutoffDue += weeklyDueWithAdjustments;
+            cutoffDue += weeklyDue;
             cutoffPayout += weeklyPayout;
             cutoffWalletWeek += weeklyWalletTotal;
         }
