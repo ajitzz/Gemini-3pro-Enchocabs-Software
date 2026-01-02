@@ -164,7 +164,6 @@ const DriverBillingsPage: React.FC = () => {
         const derivedDaysWorked = matchingWallet?.daysWorkedOverride ?? bill.daysWorked;
         const derivedRentPerDay = isRentOverridden ? (matchingWallet?.rentOverride as number) : bill.rentPerDay;
         const derivedRentTotal = derivedRentPerDay * derivedDaysWorked;
-        const derivedPayout = (bill.payout ?? 0) - (bill.adjustments ?? 0) + derivedAdjustments;
         const normalizedDaily = isRentOverridden
             ? dailyDetails.map(d => ({ ...d, rent: derivedRentPerDay }))
             : dailyDetails;
@@ -187,9 +186,7 @@ const DriverBillingsPage: React.FC = () => {
             isSaved: true,
             rentPerDay: derivedRentPerDay,
             rentTotal: derivedRentTotal,
-            daysWorked: derivedDaysWorked,
-            adjustments: derivedAdjustments,
-            payout: derivedPayout
+            daysWorked: derivedDaysWorked
         };
     });
 
