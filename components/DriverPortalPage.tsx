@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
+type PortalDailyEntry = DailyEntry & { adjustmentApplied?: number; adjustedDue?: number };
+
 const DriverPortalPage: React.FC = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -112,17 +114,67 @@ const DriverPortalPage: React.FC = () => {
       };
   }, [rawDaily]);
 
+  const dailyWithAdjustments = useMemo<PortalDailyEntry[]>(() => {
+      if (!rawWeekly.length) {
+          return rawDaily.map(entry => ({ ...entry, adjustedDue: entry.due }));
+      }
+
+      const mapped: PortalDailyEntry[] = rawDaily.map(entry => ({
+          ...entry,
+          adjustmentApplied: 0,
+          adjustedDue: entry.due
+      }));
+
+      rawWeekly.forEach(wallet => {
+          const adjustment = wallet.adjustments || 0;
+          if (!adjustment) return;
+
+          const candidates = mapped.filter(e =>
+              e.driver === wallet.driver &&
+              e.date >= wallet.weekStartDate &&
+              e.date <= wallet.weekEndDate
+          );
+
+          if (candidates.length === 0) return;
+
+          const targetDate = wallet.weekEndDate;
+          let targetIndex = mapped.findIndex(e =>
+              e.driver === wallet.driver && e.date === targetDate
+          );
+
+          if (targetIndex === -1) {
+              const latest = [...candidates].sort((a, b) => b.date.localeCompare(a.date))[0];
+              targetIndex = mapped.findIndex(e => e.id === latest.id);
+          }
+
+          if (targetIndex === -1) return;
+
+          const target = mapped[targetIndex];
+          const applied = (target.adjustmentApplied || 0) + adjustment;
+          mapped[targetIndex] = {
+              ...target,
+              adjustmentApplied: applied,
+              adjustedDue: (target.due || 0) + applied
+          };
+      });
+
+      return mapped.map(entry => ({
+          ...entry,
+          adjustedDue: entry.adjustedDue ?? (entry.due || 0) + (entry.adjustmentApplied || 0)
+      }));
+  }, [rawDaily, rawWeekly]);
+
   const filteredDaily = useMemo(() => {
       const start = fromDate ? new Date(`${fromDate}T00:00:00`).getTime() : null;
       const end = toDate ? new Date(`${toDate}T23:59:59`).getTime() : null;
 
-      return rawDaily.filter(entry => {
+      return dailyWithAdjustments.filter(entry => {
           const entryTime = new Date(entry.date).getTime();
           if (start !== null && entryTime < start) return false;
           if (end !== null && entryTime > end) return false;
           return true;
       });
-  }, [rawDaily, fromDate, toDate]);
+  }, [dailyWithAdjustments, fromDate, toDate]);
 
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
@@ -1599,41 +1651,52 @@ const DriverPortalPage: React.FC = () => {
                       {filteredDaily.length === 0 ? (
                           <div className="p-8 text-center text-slate-400 text-sm">No daily records found for the selected dates.</div>
                       ) : (
-                          filteredDaily.map(entry => (
-                              <div key={entry.id} className="p-4 hover:bg-slate-50 transition-colors">
-                                  <div className="flex justify-between items-start mb-2">
-                                      <div className="flex items-center gap-2">
-                                          <div className="bg-indigo-50 text-indigo-600 p-1.5 rounded-lg">
-                                              <Calendar size={14} />
+                          filteredDaily.map(entry => {
+                              const adjustedDue = entry.adjustedDue ?? entry.due;
+
+                              return (
+                                  <div key={entry.id} className="p-4 hover:bg-slate-50 transition-colors">
+                                      <div className="flex justify-between items-start mb-2">
+                                          <div className="flex items-center gap-2">
+                                              <div className="bg-indigo-50 text-indigo-600 p-1.5 rounded-lg">
+                                                  <Calendar size={14} />
+                                              </div>
+                                              <div>
+                                                  <p className="text-sm font-bold text-slate-800">{formatDate(entry.date)}</p>
+                                                  <p className="text-[10px] text-slate-400 uppercase font-medium">{entry.day.substring(0,3)} • {entry.shift}</p>
+                                              </div>
                                           </div>
-                                          <div>
-                                              <p className="text-sm font-bold text-slate-800">{formatDate(entry.date)}</p>
-                                              <p className="text-[10px] text-slate-400 uppercase font-medium">{entry.day.substring(0,3)} • {entry.shift}</p>
-                                          </div>
-                                      </div>
-                                      <span className="font-bold text-emerald-600 text-sm bg-emerald-50 px-2 py-1 rounded-lg">
-                                          {formatCurrency(entry.collection)}
-                                      </span>
-                                  </div>
-                                  
-                                  <div className="grid grid-cols-3 gap-2 text-[10px] text-slate-500 bg-slate-50/50 p-2 rounded-lg">
-                                      <div>
-                                          <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Rent</span>
-                                          {formatCurrency(entry.rent)}
-                                      </div>
-                                      <div>
-                                          <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Fuel</span>
-                                          {formatCurrency(entry.fuel)}
-                                      </div>
-                                      <div>
-                                          <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Due</span>
-                                          <span className={entry.due !== 0 ? (entry.due > 0 ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold') : ''}>
-                                              {entry.due > 0 ? '+' : ''}{entry.due}
+                                          <span className="font-bold text-emerald-600 text-sm bg-emerald-50 px-2 py-1 rounded-lg">
+                                              {formatCurrency(entry.collection)}
                                           </span>
                                       </div>
+
+                                      <div className="grid grid-cols-3 gap-2 text-[10px] text-slate-500 bg-slate-50/50 p-2 rounded-lg">
+                                          <div>
+                                              <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Rent</span>
+                                              {formatCurrency(entry.rent)}
+                                          </div>
+                                          <div>
+                                              <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Fuel</span>
+                                              {formatCurrency(entry.fuel)}
+                                          </div>
+                                          <div>
+                                              <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Due</span>
+                                              <div className="flex flex-col items-end gap-0.5">
+                                                  <span className={adjustedDue !== 0 ? (adjustedDue > 0 ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold') : ''}>
+                                                      {adjustedDue > 0 ? '+' : ''}{adjustedDue}
+                                                  </span>
+                                                  {entry.adjustmentApplied ? (
+                                                      <span className="text-[9px] font-semibold text-amber-600 uppercase tracking-wide">
+                                                          Adjustment: {entry.adjustmentApplied > 0 ? '+' : ''}{entry.adjustmentApplied}
+                                                      </span>
+                                                  ) : null}
+                                              </div>
+                                          </div>
+                                      </div>
                                   </div>
-                              </div>
-                          ))
+                              );
+                          })
                       )}
                   </div>
               </div>
