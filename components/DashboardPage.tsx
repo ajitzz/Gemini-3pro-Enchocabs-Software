@@ -14,12 +14,17 @@ const DashboardPage: React.FC = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [dailyEntries, weeklyWallets, rentalSlabs, drivers] = (await Promise.all([
+      const [dailyEntries, weeklyWallets, rentalSlabs, drivers] = await Promise.all<[
+        DailyEntry[],
+        WeeklyWallet[],
+        RentalSlab[],
+        Driver[]
+      ]>([
         storageService.getDailyEntries(),
         storageService.getWeeklyWallets(),
         storageService.getDriverRentalSlabs(),
         storageService.getDrivers()
-      ])) as [DailyEntry[], WeeklyWallet[], RentalSlab[], Driver[]];
+      ]);
 
       const sortedSlabs: RentalSlab[] = [...rentalSlabs].sort((a, b) => a.minTrips - b.minTrips);
       const sortedDaily = [...dailyEntries].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
