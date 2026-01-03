@@ -1083,56 +1083,45 @@ const DriverLeadsPage: React.FC = () => {
               const days = daysSince(touchDate);
               const stale = days >= 7;
               const historyOpen = expandedHistories.has(lead.id);
-              const phoneDigits = normalizePhoneForActions(lead.phone || '');
 
               return (
                 <div
                   key={lead.id}
-                  className={`rounded-2xl border shadow-sm bg-white ${
-                    stale ? 'border-amber-200 bg-amber-50/50' : 'border-slate-200'
-                  }`}
+                  className={`rounded-2xl border shadow-sm bg-white ${stale ? 'border-amber-200 bg-amber-50/50' : 'border-slate-200'}`}
                 >
-                  <div className="flex flex-col gap-4 p-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2 text-[12px] text-slate-500">
-                          <span
-                            className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                              colorMap[mapStatus(activeSheet!, lead.statusId)?.color || 'slate']
-                            }`}
-                          >
+                  <div className="flex flex-col gap-3 p-4">
+                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 text-xs text-slate-500">
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${colorMap[mapStatus(activeSheet!, lead.statusId)?.color || 'slate']}`}>
                             {mapStatus(activeSheet!, lead.statusId)?.label || 'Status'}
                           </span>
+                          <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">{lead.createdTime}</span>
                           <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">{lead.city || 'City not set'}</span>
-                          <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">Added {lead.createdTime}</span>
-                          <span className="px-2 py-1 rounded-full bg-indigo-50 text-indigo-700">
-                            Last touch {touchDate} ({days === 0 ? 'Today' : `${days}d ago`})
-                          </span>
                         </div>
-                        <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-                            <span>{lead.fullName}</span>
-                            <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full">
-                              {lead.platform || '—'}
-                            </span>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
-                            <span className="flex items-center gap-1">
-                              <Phone size={14} />
-                              {lead.phone || '—'}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <UserRound size={14} />
-                              {lead.admin || 'Admin'}
-                            </span>
-                          </div>
+                        <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                          {lead.fullName}
+                          <span className="text-xs font-medium text-indigo-600">{lead.platform || '—'}</span>
+                        </h3>
+                        <div className="flex flex-wrap gap-3 text-sm text-slate-600">
+                          <span className="flex items-center gap-1">
+                            <Phone size={14} />
+                            {lead.phone || '—'}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <UserRound size={14} />
+                            {lead.admin || 'Admin'}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <NotebookPen size={14} /> Last touch {touchDate} ({days === 0 ? 'Today' : `${days}d ago`})
+                          </span>
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2 justify-end">
                         <select
                           value={lead.statusId}
                           onChange={(e) => updateLeadStatus(lead.id, e.target.value)}
-                          className="rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white shadow-sm"
+                          className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
                         >
                           {activeSheet?.statuses.map((status) => (
                             <option key={status.id} value={status.id}>
@@ -1142,103 +1131,49 @@ const DriverLeadsPage: React.FC = () => {
                         </select>
                         <button
                           onClick={() => setUpdateEditor({ leadId: lead.id, text: '', date: new Date().toISOString().slice(0, 10) })}
-                          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 bg-white shadow-sm hover:border-indigo-200"
+                          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:border-indigo-200"
                         >
-                          <Edit3 size={14} /> Quick note
+                          <Edit3 size={14} /> Add update
                         </button>
                         <button
                           onClick={() => setLeadToDelete(lead)}
-                          className="inline-flex items-center gap-2 rounded-xl border border-rose-200 px-3 py-2 text-sm text-rose-600 bg-rose-50 hover:bg-rose-100"
+                          className="inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm text-rose-600 hover:bg-rose-50"
                         >
                           <Trash2 size={14} /> Delete
                         </button>
                       </div>
                     </div>
 
-                    <div className="flex flex-col gap-3 rounded-xl bg-slate-50 border border-slate-200 p-3">
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm text-slate-700">
-                        <div className="flex items-center gap-2 rounded-lg bg-white border border-slate-200 px-3 py-2">
-                          <ClipboardList size={16} className="text-indigo-500" />
-                          <div>
-                            <p className="text-[11px] uppercase text-slate-500">Lead</p>
-                            <p className="font-semibold text-slate-900">{lead.fullName}</p>
-                            <p className="text-[12px] text-slate-500">{lead.city || '—'}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 rounded-lg bg-white border border-slate-200 px-3 py-2">
-                          <Phone size={16} className="text-emerald-600" />
-                          <div>
-                            <p className="text-[11px] uppercase text-slate-500">Call / WhatsApp</p>
-                            <p className="font-semibold text-slate-900">{lead.phone || '—'}</p>
-                            <p className="text-[12px] text-slate-500">{lead.platform || 'Platform not set'}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 rounded-lg bg-white border border-slate-200 px-3 py-2">
-                          <Clock size={16} className="text-amber-600" />
-                          <div>
-                            <p className="text-[11px] uppercase text-slate-500">Next action</p>
-                            <p className="font-semibold text-slate-900">{lead.note || update?.text || 'Add update'}</p>
-                            <p className="text-[12px] text-slate-500">{update ? `Last update on ${update.date}` : 'No updates yet'}</p>
-                          </div>
-                        </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                        <p className="text-xs uppercase text-slate-500">Lead</p>
+                        <p className="font-semibold text-slate-900">{lead.fullName}</p>
+                        <p className="text-xs text-slate-500">{lead.city || '—'}</p>
                       </div>
-
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                        <a
-                          href={phoneDigits ? `tel:${phoneDigits}` : undefined}
-                          className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold shadow-sm ${
-                            phoneDigits
-                              ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                              : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                          }`}
-                          onClick={(e) => {
-                            if (!phoneDigits) e.preventDefault();
-                          }}
-                        >
-                          <Phone size={16} /> Call now
-                        </a>
-                        <a
-                          href={phoneDigits ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(
-                                `Hi ${lead.fullName || ''}! Following up from driver leads.`
-                              )}` : undefined}
-                          target="_blank"
-                          rel="noreferrer"
-                          className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold shadow-sm ${
-                            phoneDigits
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
-                              : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                          }`}
-                          onClick={(e) => {
-                            if (!phoneDigits) e.preventDefault();
-                          }}
-                        >
-                          <Activity size={16} /> WhatsApp
-                        </a>
-                        <button
-                          onClick={() => setUpdateEditor({ leadId: lead.id, text: update?.text || '', date: touchDate })}
-                          className="flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold shadow-sm bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100"
-                        >
-                          <NotebookPen size={16} /> Update log
-                        </button>
-                        <button
-                          onClick={() => toggleHistory(lead.id)}
-                          className="flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold shadow-sm bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
-                        >
-                          <Clock size={16} /> {historyOpen ? 'Hide' : 'Timeline'}
-                        </button>
+                      <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                        <p className="text-xs uppercase text-slate-500">Call</p>
+                        <p className="font-semibold text-slate-900">{lead.phone || '—'}</p>
+                        <p className="text-xs text-slate-500">{lead.platform || 'Platform not set'}</p>
+                      </div>
+                      <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                        <p className="text-xs uppercase text-slate-500">Next action</p>
+                        <p className="font-semibold text-slate-900">{lead.note || update?.text || 'Add update'}</p>
+                        <p className="text-xs text-slate-500">{update ? `Last update on ${update.date}` : 'No updates yet'}</p>
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-2 text-xs text-slate-500 items-center justify-between">
-                      <div className="flex flex-wrap gap-2">
-                        <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">
-                          Latest update {update ? update.date : '—'}
-                        </span>
+                    <div className="flex items-center justify-between">
+                      <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+                        <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">Latest update {update ? update.date : '—'}</span>
                         {update && <span className="px-2 py-1 rounded-full bg-indigo-50 text-indigo-700">{update.text}</span>}
                       </div>
-                      <span className={stale ? 'text-amber-600 font-semibold' : 'text-emerald-700 font-semibold'}>
-                        {stale ? 'Needs attention' : 'Active'}
-                      </span>
+                      <button
+                        onClick={() => toggleHistory(lead.id)}
+                        className="text-sm font-semibold text-indigo-600 flex items-center gap-1"
+                      >
+                        {historyOpen ? 'Hide history' : 'View full history'}
+                        <ChevronDown size={14} className={historyOpen ? 'rotate-180 transition' : 'transition'} />
+                      </button>
                     </div>
 
                     {historyOpen && (
