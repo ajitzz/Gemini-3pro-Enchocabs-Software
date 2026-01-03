@@ -342,7 +342,7 @@ const DriverPortalPage: React.FC = () => {
   };
 
   const returnToDashboard = async () => {
-      navigate('/');
+      navigate('/app');
   };
 
   const exitView = async () => {
