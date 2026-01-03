@@ -90,6 +90,7 @@ const DriverLeadsPage: React.FC = () => {
   const [sheetAction, setSheetAction] = useState<'clear' | 'delete' | null>(null);
   const [expandedLatestUpdates, setExpandedLatestUpdates] = useState<Set<string>>(new Set());
   const [expandedHistories, setExpandedHistories] = useState<Set<string>>(new Set());
+  const [quickNotes, setQuickNotes] = useState<Record<string, string>>({});
   const [duplicateWarning, setDuplicateWarning] = useState<{
     active: boolean;
     existingId: string;
@@ -367,6 +368,29 @@ const DriverLeadsPage: React.FC = () => {
     setUpdateEditor(null);
   };
 
+  const saveQuickNote = (leadId: string) => {
+    if (!activeSheet) return;
+    const text = (quickNotes[leadId] || '').trim();
+    if (!text) return;
+
+    const today = normalizeDate(new Date());
+    updateSheet(activeSheet.id, (sheet) => ({
+      ...sheet,
+      leads: sheet.leads.map((lead) => {
+        if (lead.id !== leadId) return lead;
+        const quickUpdate: LeadUpdate = {
+          id: uuidv4(),
+          text,
+          date: today,
+          author: user?.name || 'Admin'
+        };
+        return { ...lead, note: text, updates: [quickUpdate, ...lead.updates] };
+      })
+    }));
+
+    setQuickNotes((prev) => ({ ...prev, [leadId]: '' }));
+  };
+
   const exportActiveSheet = () => {
     if (!activeSheet) return;
     const headers = ['Created', 'Lead', 'Phone', 'Status', 'Latest Update', 'Last Touch', 'Note'];
@@ -391,7 +415,19 @@ const DriverLeadsPage: React.FC = () => {
 
   const mapStatus = (sheet: LeadSheet, statusId: string) => sheet.statuses.find((s) => s.id === statusId);
 
-  const normalizePhoneForActions = (phone: string) => phone.replace(/\D/g, '');
+  const normalizePhoneForActions = (phone: string, defaultCountryCode = '91') => {
+    const digitsOnly = phone.replace(/\D+/g, '').replace(/^0+/, '');
+    if (!digitsOnly) {
+      return { dial: '', whatsapp: '', display: '' };
+    }
+    const withCountry = digitsOnly.length === 10 ? `${defaultCountryCode}${digitsOnly}` : digitsOnly;
+    const sanitized = withCountry.startsWith('+') ? withCountry.slice(1) : withCountry;
+    return {
+      dial: `tel:+${sanitized}`,
+      whatsapp: `https://wa.me/${sanitized}`,
+      display: `+${sanitized}`
+    };
+  };
 
   const latestTouch = (lead: LeadRecord) => lead.updates[0]?.date || lead.createdTime;
   const latestUpdate = (lead: LeadRecord) => lead.updates[0];
@@ -1083,45 +1119,47 @@ const DriverLeadsPage: React.FC = () => {
               const days = daysSince(touchDate);
               const stale = days >= 7;
               const historyOpen = expandedHistories.has(lead.id);
+              const contact = normalizePhoneForActions(lead.phone);
 
               return (
                 <div
                   key={lead.id}
                   className={`rounded-2xl border shadow-sm bg-white ${stale ? 'border-amber-200 bg-amber-50/50' : 'border-slate-200'}`}
                 >
-                  <div className="flex flex-col gap-3 p-4">
-                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2 text-xs text-slate-500">
-                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${colorMap[mapStatus(activeSheet!, lead.statusId)?.color || 'slate']}`}>
+                  <div className="flex flex-col gap-4 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap gap-2 text-xs text-slate-600">
+                          <span className={`px-2 py-1 rounded-full text-[11px] font-semibold ${colorMap[mapStatus(activeSheet!, lead.statusId)?.color || 'slate']}`}>
                             {mapStatus(activeSheet!, lead.statusId)?.label || 'Status'}
                           </span>
-                          <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">{lead.createdTime}</span>
                           <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">{lead.city || 'City not set'}</span>
+                          <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">Created {lead.createdTime}</span>
+                          <span className="px-2 py-1 rounded-full bg-amber-50 text-amber-700">{days === 0 ? 'Touched today' : `${days}d since touch`}</span>
                         </div>
-                        <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
-                          {lead.fullName}
-                          <span className="text-xs font-medium text-indigo-600">{lead.platform || '—'}</span>
-                        </h3>
-                        <div className="flex flex-wrap gap-3 text-sm text-slate-600">
-                          <span className="flex items-center gap-1">
-                            <Phone size={14} />
-                            {lead.phone || '—'}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <UserRound size={14} />
-                            {lead.admin || 'Admin'}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <NotebookPen size={14} /> Last touch {touchDate} ({days === 0 ? 'Today' : `${days}d ago`})
-                          </span>
+                        <div className="space-y-1">
+                          <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                            {lead.fullName}
+                            <span className="text-xs font-medium text-indigo-600">{lead.platform || '—'}</span>
+                          </h3>
+                          <div className="flex flex-wrap gap-2 text-sm text-slate-600">
+                            <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700 inline-flex items-center gap-1">
+                              <Phone size={14} /> {contact.display || lead.phone || '—'}
+                            </span>
+                            <span className="px-2 py-1 rounded-full bg-slate-50 text-slate-600 inline-flex items-center gap-1">
+                              <UserRound size={14} /> Handled by {lead.admin || 'Admin'}
+                            </span>
+                            <span className="px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 inline-flex items-center gap-1">
+                              <NotebookPen size={14} /> Last touch {touchDate}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                      <div className="flex flex-wrap gap-2 justify-end">
+                      <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                         <select
                           value={lead.statusId}
                           onChange={(e) => updateLeadStatus(lead.id, e.target.value)}
-                          className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                          className="w-full sm:w-auto rounded-lg border border-slate-200 px-3 py-2 text-sm"
                         >
                           {activeSheet?.statuses.map((status) => (
                             <option key={status.id} value={status.id}>
@@ -1130,50 +1168,97 @@ const DriverLeadsPage: React.FC = () => {
                           ))}
                         </select>
                         <button
-                          onClick={() => setUpdateEditor({ leadId: lead.id, text: '', date: new Date().toISOString().slice(0, 10) })}
-                          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:border-indigo-200"
-                        >
-                          <Edit3 size={14} /> Add update
-                        </button>
-                        <button
                           onClick={() => setLeadToDelete(lead)}
-                          className="inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm text-rose-600 hover:bg-rose-50"
+                          className="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm text-rose-600 hover:bg-rose-50"
                         >
                           <Trash2 size={14} /> Delete
                         </button>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-sm text-slate-700">
-                        <p className="text-xs uppercase text-slate-500">Lead</p>
-                        <p className="font-semibold text-slate-900">{lead.fullName}</p>
-                        <p className="text-xs text-slate-500">{lead.city || '—'}</p>
+                        <p className="text-xs uppercase text-slate-500">Primary contact</p>
+                        <p className="font-semibold text-slate-900">{contact.display || lead.phone || 'Not shared'}</p>
+                        <p className="text-xs text-slate-500">Tap actions below to call or WhatsApp instantly.</p>
                       </div>
-                      <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-sm text-slate-700">
-                        <p className="text-xs uppercase text-slate-500">Call</p>
-                        <p className="font-semibold text-slate-900">{lead.phone || '—'}</p>
-                        <p className="text-xs text-slate-500">{lead.platform || 'Platform not set'}</p>
-                      </div>
-                      <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-sm text-slate-700">
-                        <p className="text-xs uppercase text-slate-500">Next action</p>
-                        <p className="font-semibold text-slate-900">{lead.note || update?.text || 'Add update'}</p>
-                        <p className="text-xs text-slate-500">{update ? `Last update on ${update.date}` : 'No updates yet'}</p>
+                      <div className="rounded-xl bg-indigo-50/70 border border-indigo-100 px-3 py-2 text-sm text-indigo-800 space-y-1">
+                        <p className="text-xs uppercase text-indigo-600">Latest context</p>
+                        <p className="font-semibold">{lead.note || update?.text || 'Add update'}</p>
+                        <p className="text-[11px] text-indigo-600/80">{update ? `Updated on ${update.date}` : 'No updates yet'}</p>
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      <a
+                        href={contact.dial || undefined}
+                        onClick={(e) => !contact.dial && e.preventDefault()}
+                        className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                          contact.dial
+                            ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                            : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                        }`}
+                      >
+                        <Phone size={15} /> Call
+                      </a>
+                      <a
+                        href={contact.whatsapp || undefined}
+                        onClick={(e) => !contact.whatsapp && e.preventDefault()}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                          contact.whatsapp
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                            : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                        }`}
+                      >
+                        WhatsApp
+                      </a>
+                      <button
+                        onClick={() => setUpdateEditor({ leadId: lead.id, text: '', date: new Date().toISOString().slice(0, 10) })}
+                        className="flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold bg-slate-900 text-white hover:bg-indigo-700"
+                      >
+                        <Edit3 size={15} /> Update
+                      </button>
+                      <button
+                        onClick={() => toggleHistory(lead.id)}
+                        className="flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold bg-slate-100 text-slate-800 border border-slate-200"
+                      >
+                        {historyOpen ? 'Hide timeline' : 'View timeline'}
+                        <ChevronDown size={14} className={historyOpen ? 'rotate-180 transition' : 'transition'} />
+                      </button>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2">
+                      <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                        <span>Quick note</span>
+                        <button
+                          onClick={() => saveQuickNote(lead.id)}
+                          disabled={!(quickNotes[lead.id] || '').trim()}
+                          className="px-3 py-1 rounded-lg bg-indigo-600 text-white text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Save to timeline
+                        </button>
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          value={quickNotes[lead.id] || ''}
+                          onChange={(e) => setQuickNotes((prev) => ({ ...prev, [lead.id]: e.target.value }))}
+                          placeholder="Add a quick note to log follow-ups"
+                          className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                        />
+                        <div className="text-[11px] text-slate-500 sm:w-48">
+                          Latest: {update ? `${update.date} — ${update.text}` : 'No updates yet'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between flex-wrap gap-2">
                       <div className="flex flex-wrap gap-2 text-xs text-slate-500">
                         <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">Latest update {update ? update.date : '—'}</span>
                         {update && <span className="px-2 py-1 rounded-full bg-indigo-50 text-indigo-700">{update.text}</span>}
                       </div>
-                      <button
-                        onClick={() => toggleHistory(lead.id)}
-                        className="text-sm font-semibold text-indigo-600 flex items-center gap-1"
-                      >
-                        {historyOpen ? 'Hide history' : 'View full history'}
-                        <ChevronDown size={14} className={historyOpen ? 'rotate-180 transition' : 'transition'} />
-                      </button>
+                      <div className="text-xs text-slate-500">Touchpoint timeline stays pinned for mobile.</div>
                     </div>
 
                     {historyOpen && (
