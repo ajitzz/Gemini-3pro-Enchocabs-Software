@@ -23,9 +23,9 @@ export default function Footer(){
           <div className={`${s.brand} ${s.reveal}`}><div className={s.brandLg}>ENCHO</div></div>
           <div className={`${s.contacts} ${s.reveal}`}>
             <div className={s.rows}>
-              <div className={s.label}>Tel:</div><div> +91-6364704396</div>
-              <div className={s.label}>Email:</div><div> <a href="mailto:enchoenterprises@gmail.com">enchoenterprises@gmail.com</a></div>
-              <div className={s.label}>Location:</div><div> Bangalore</div>
+              <div className={s.label}>Rental</div><div>Tel: +91-6364704396</div>
+              <div className={s.label}>Salary</div><div>Email: <a href="mailto:enchoenterprises@gmail.com">enchoenterprises@gmail.com</a></div>
+              <div className={s.label}>About</div><div>Location: Bangalore</div>
             </div>
           </div>
           <div className={`${s.subscribe} ${s.reveal}`}>

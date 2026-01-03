@@ -1,0 +1,32 @@
+.section{padding:120px 0; background:linear-gradient(180deg,#f9f9ff 0%, #ffffff 100%); color:#111}
+.title{font-family:var(--font-poppins), var(--font-inter); text-align:center; font-size:clamp(1.6rem,3.2vw,2.2rem); margin:0 0 28px}
+.carousel{position:relative}
+.viewport{overflow:hidden}
+.track{display:flex; gap:24px; will-change:transform; padding:0; margin:0; list-style:none}
+.card{flex:0 0 calc((100% - 48px)/3); background:#fff; border-radius:16px; box-shadow:0 10px 28px rgba(0,0,0,.08); padding:22px; transition:transform .2s ease, box-shadow .2s ease}
+.card:hover{transform:translateY(-4px) scale(1.01); box-shadow:0 16px 38px rgba(0,0,0,.12)}
+.head{display:flex; align-items:center; gap:12px; margin-bottom:8px}
+.avatar{width:52px; height:52px; border-radius:50%; object-fit:cover}
+.name{font-weight:700; display:flex; align-items:center; gap:8px}
+.verified{color:#1d9bf0}
+.role{color:#666; font-size:.95rem}
+.stars{color:#ffb020; margin:10px 0}
+.strong{font-weight:800}
+.text{margin:10px 0 8px; color:#444; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden}
+.more{color:#2563eb; font-weight:600}
+
+.arrow{position:absolute; top:50%; transform:translateY(-50%); width:40px; height:40px; border-radius:50%; border:0; background:#fff; box-shadow:0 6px 14px rgba(0,0,0,.15); display:grid; place-items:center; cursor:pointer}
+.prev{left:-8px}
+.next{right:-8px}
+
+.dots{display:flex; justify-content:center; gap:8px; margin-top:16px}
+.dot{width:8px; height:8px; border-radius:50%; background:#cfd6e8; border:0}
+.active{background:#8293A2}
+
+@media (max-width:1023px){
+  .card{flex:0 0 calc((100% - 24px)/2)}
+}
+@media (max-width:639px){
+  .card{flex:0 0 100%}
+  .prev{left:6px} .next{right:6px}
+}
