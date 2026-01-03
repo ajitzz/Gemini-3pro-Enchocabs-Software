@@ -64,9 +64,9 @@ const Layout: React.FC = () => {
       end={end}
       onClick={() => setIsMobileMenuOpen(false)}
       className={({ isActive }) =>
-        `flex items-center justify-between px-4 py-3.5 rounded-xl transition-all duration-300 group ${
-          isActive 
-            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50 translate-x-1' 
+        `flex items-center justify-between px-4 py-3.5 rounded-xl transition-all duration-300 group cursor-pointer ${
+          isActive
+            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50 translate-x-1'
             : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
         }`
       }
