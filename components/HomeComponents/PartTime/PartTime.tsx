@@ -1,47 +1,29 @@
-import Collapsible from "@/components/Collapsible/Collapsible";
-// import PremiumWhatYouGetCard from "@/components/PremiumWhatYouGetCard/PremiumWhatYouGetCard";
-import s from './PartTime.module.css';
-import Image from "next/image";
+import React from 'react';
 
-export default function PartTime() {
-  const defaultContent = `We are launching a student partner program where  students can take a WagonR CNG car on a daily rental and work part-time with Uber. After fuel and basic expenses, each car is expected to generate around ₹3,000–₹5,000 per day fro vehicle, which the students can share among themselves. The program is designed with flexible timings so that driving does not clash with classes, assignments, or exams. We also guide and monitor students for the first week to help them get started and test their performance, and all payments from Uber go directly to the students’ bank accounts, giving them full control over their earnings.`
+const PartTime: React.FC = () => {
   return (
- <section id="partTime" className="bg-white py-20 text-neutral-900 sm:py-24" aria-label="partTime Plan">
-      <div className="container space-y-16">
-        <div className="grid gap-10 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-start">
-          <div className="space-y-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-gray-500">Part-Time Plan</p>
-            <h2 className="text-3xl font-semibold text-neutral-900 sm:text-4xl">Student Plan: Earn While You Learn</h2>
-              <Collapsible
-  defaultContent={defaultContent}
-  className="text-base text-neutral-700"
-  previewSentences={5}
-/>
-
+    <section className="bg-slate-50 py-16">
+      <div className="mx-auto max-w-5xl px-6">
+        <div className="rounded-3xl bg-gradient-to-r from-slate-900 to-indigo-800 px-8 py-10 text-white shadow-xl">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-indigo-200">Opportunities</p>
+              <h3 className="mt-2 text-2xl font-bold">Join as a part-time driver</h3>
+              <p className="mt-3 max-w-2xl text-slate-200">
+                Start the conversation from this public page and complete onboarding securely once you receive a staff invitation.
+              </p>
+            </div>
+            <a
+              href="mailto:info@enchocabs.com"
+              className="inline-flex items-center justify-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-slate-900 shadow-lg shadow-slate-900/20 transition hover:bg-indigo-50"
+            >
+              Contact us
+            </a>
           </div>
- <div className="flex justify-center lg:justify-end">
-           <div className={s.frame}>
-          {/* <iframe
-            src="https://www.youtube.com/shorts/4BiAYfkFkyI"
-            title="Salary Plan Video"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            allowFullScreen
-          /> */}
-          <div className="relative w-full h-full">
-  <Image
- src="https://i.ibb.co/q32DfMRb/Untitled-design-4.jpg" alt="Untitled-design-4"
-    fill
-    className="object-cover"
-  />
-</div>
         </div>
-</div>
-      
-
-        </div>
-
-
-         </div>
+      </div>
     </section>
   );
-}
+};
+
+export default PartTime;

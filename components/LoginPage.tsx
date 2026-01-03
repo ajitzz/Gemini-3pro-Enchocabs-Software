@@ -15,9 +15,9 @@ const LoginPage: React.FC = () => {
   useEffect(() => {
     if (user) {
       if (user.role === 'driver') {
-        navigate('/portal');
+        navigate('/staff/portal');
       } else {
-        navigate('/');
+        navigate('/staff/dashboard');
       }
     }
   }, [user, navigate]);

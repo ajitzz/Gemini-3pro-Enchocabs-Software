@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { HashRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
+import { HashRouter, Routes, Route, NavLink, Navigate, useLocation, Outlet } from 'react-router-dom';
 import { LayoutDashboard, Calendar, Wallet, Menu, X, Users, Coffee, Upload, Settings, Briefcase, FileText, Calculator, UserCircle, LogOut, Shield, ClipboardList } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import DailyEntryPage from './components/DailyEntryPage';
@@ -16,6 +16,7 @@ import DriverPortalPage from './components/DriverPortalPage';
 import LoginPage from './components/LoginPage';
 import AdminAccessPage from './components/AdminAccessPage';
 import DriverLeadsPage from './components/DriverLeadsPage';
+import HomePage from './components/HomePage';
 
 // --- PROTECTED ROUTE WRAPPER ---
 const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode, allowedRoles: string[] }) => {
@@ -40,19 +41,19 @@ const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode
   if (loading || validatingAccess) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div></div>;
 
   if (!user) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    return <Navigate to="/staff/login" state={{ from: location }} replace />;
   }
 
   if (!allowedRoles.includes(user.role)) {
      // Redirect logic based on role mismatch
-     if (user.role === 'driver') return <Navigate to="/portal" replace />;
-     return <Navigate to="/" replace />;
+     if (user.role === 'driver') return <Navigate to="/staff/portal" replace />;
+     return <Navigate to="/staff/dashboard" replace />;
   }
 
   return <>{children}</>;
 };
 
-const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const Layout: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const { user, logout } = useAuth();
@@ -113,23 +114,23 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <div>
             <p className="px-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-3">Overview</p>
             <nav className="space-y-1">
-              <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
-              <NavItem to="/daily" icon={Calendar} label="Daily Entries" />
-              <NavItem to="/weekly" icon={Wallet} label="Weekly Wallet" />
+              <NavItem to="/staff/dashboard" icon={LayoutDashboard} label="Dashboard" />
+              <NavItem to="/staff/daily" icon={Calendar} label="Daily Entries" />
+              <NavItem to="/staff/weekly" icon={Wallet} label="Weekly Wallet" />
             </nav>
           </div>
-          
+
           <div>
             <p className="px-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-3">Management</p>
             <nav className="space-y-1">
-              <NavItem to="/registration" icon={Users} label="Registration" />
-              <NavItem to="/defaults" icon={Settings} label="Manage Defaults" />
-              <NavItem to="/leaves" icon={Coffee} label="Leaves" />
-              <NavItem to="/settlement" icon={Briefcase} label="Company Settlement" />
-              <NavItem to="/billings" icon={FileText} label="Driver Billings" />
-              <NavItem to="/revenue" icon={Calculator} label="Revenue Calculation" />
-              <NavItem to="/driver-leads" icon={ClipboardList} label="Driver Leads" />
-              <NavItem to="/import" icon={Upload} label="Import Data" />
+              <NavItem to="/staff/registration" icon={Users} label="Registration" />
+              <NavItem to="/staff/defaults" icon={Settings} label="Manage Defaults" />
+              <NavItem to="/staff/leaves" icon={Coffee} label="Leaves" />
+              <NavItem to="/staff/settlement" icon={Briefcase} label="Company Settlement" />
+              <NavItem to="/staff/billings" icon={FileText} label="Driver Billings" />
+              <NavItem to="/staff/revenue" icon={Calculator} label="Revenue Calculation" />
+              <NavItem to="/staff/driver-leads" icon={ClipboardList} label="Driver Leads" />
+              <NavItem to="/staff/import" icon={Upload} label="Import Data" />
             </nav>
           </div>
 
@@ -137,9 +138,9 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
              <p className="px-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-3">System</p>
              <nav className="space-y-1">
                 {user?.role === 'super_admin' && (
-                    <NavItem to="/admin-access" icon={Shield} label="Admin Access" />
+                    <NavItem to="/staff/admin-access" icon={Shield} label="Admin Access" />
                 )}
-                <NavItem to="/portal" icon={UserCircle} label="Driver View Mode" />
+                <NavItem to="/staff/portal" icon={UserCircle} label="Driver View Mode" />
              </nav>
           </div>
         </div>
@@ -184,7 +185,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
              <span>{isSidebarCollapsed ? 'Show navigation' : 'Hide navigation'}</span>
            </button>
          </div>
-         {children}
+         <Outlet />
       </main>
       
       {/* Overlay for mobile menu */}
@@ -203,36 +204,38 @@ const App: React.FC = () => {
     <AuthProvider>
         <HashRouter>
         <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            
+            <Route path="/" element={<HomePage />} />
+            <Route path="/staff/login" element={<LoginPage />} />
+
             {/* Driver Portal Route (Secure) */}
-            <Route path="/portal" element={
+            <Route path="/staff/portal" element={
                 <ProtectedRoute allowedRoles={['driver', 'admin', 'super_admin']}>
                     <DriverPortalPage />
                 </ProtectedRoute>
             } />
-            
+
             {/* Admin Routes (Wrapped in Layout) */}
-            <Route path="/*" element={
+            <Route path="/staff" element={
                 <ProtectedRoute allowedRoles={['admin', 'super_admin']}>
-                    <Layout>
-                        <Routes>
-                            <Route path="/" element={<DashboardPage />} />
-                            <Route path="/daily" element={<DailyEntryPage />} />
-                            <Route path="/weekly" element={<WeeklyWalletPage />} />
-                            <Route path="/registration" element={<RegistrationPage />} />
-                            <Route path="/defaults" element={<ManageDefaultsPage />} />
-                            <Route path="/leaves" element={<LeavePage />} />
-                            <Route path="/settlement" element={<CompanySettlementPage />} />
-                            <Route path="/billings" element={<DriverBillingsPage />} />
-                            <Route path="/revenue" element={<RevenuePage />} />
-                            <Route path="/driver-leads" element={<DriverLeadsPage />} />
-                            <Route path="/import" element={<ImportPage />} />
-                            <Route path="/admin-access" element={<AdminAccessPage />} />
-                        </Routes>
-                    </Layout>
+                    <Layout />
                 </ProtectedRoute>
-            } />
+            }>
+                <Route index element={<DashboardPage />} />
+                <Route path="dashboard" element={<DashboardPage />} />
+                <Route path="daily" element={<DailyEntryPage />} />
+                <Route path="weekly" element={<WeeklyWalletPage />} />
+                <Route path="registration" element={<RegistrationPage />} />
+                <Route path="defaults" element={<ManageDefaultsPage />} />
+                <Route path="leaves" element={<LeavePage />} />
+                <Route path="settlement" element={<CompanySettlementPage />} />
+                <Route path="billings" element={<DriverBillingsPage />} />
+                <Route path="revenue" element={<RevenuePage />} />
+                <Route path="driver-leads" element={<DriverLeadsPage />} />
+                <Route path="import" element={<ImportPage />} />
+                <Route path="admin-access" element={<AdminAccessPage />} />
+            </Route>
+
+            <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         </HashRouter>
     </AuthProvider>
