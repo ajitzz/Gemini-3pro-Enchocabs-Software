@@ -17,7 +17,7 @@ export default function Footer(){
   }, []);
 
   return (
-    <footer ref={rootRef} id="footer" className={`light ${s.footer}`} aria-label="ENCHO Footer">
+    <footer ref={rootRef} id="footer" className={`light flex flex-col items-center justify-center ${s.footer}`} aria-label="ENCHO Footer">
       <div className="container">
         <div className={s.grid}>
           <div className={`${s.brand} ${s.reveal}`}><div className={s.brandLg}>ENCHO</div></div>
