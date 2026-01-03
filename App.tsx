@@ -16,6 +16,9 @@ import DriverPortalPage from './components/DriverPortalPage';
 import LoginPage from './components/LoginPage';
 import AdminAccessPage from './components/AdminAccessPage';
 import DriverLeadsPage from './components/DriverLeadsPage';
+import HomePage from './components/HomePage';
+
+const ADMIN_BASE_PATH = '/admin';
 
 // --- PROTECTED ROUTE WRAPPER ---
 const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode, allowedRoles: string[] }) => {
@@ -46,6 +49,7 @@ const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode
   if (!allowedRoles.includes(user.role)) {
      // Redirect logic based on role mismatch
      if (user.role === 'driver') return <Navigate to="/portal" replace />;
+     if (user.role === 'admin' || user.role === 'super_admin') return <Navigate to={ADMIN_BASE_PATH} replace />;
      return <Navigate to="/" replace />;
   }
 
@@ -113,23 +117,23 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <div>
             <p className="px-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-3">Overview</p>
             <nav className="space-y-1">
-              <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
-              <NavItem to="/daily" icon={Calendar} label="Daily Entries" />
-              <NavItem to="/weekly" icon={Wallet} label="Weekly Wallet" />
+              <NavItem to={ADMIN_BASE_PATH} icon={LayoutDashboard} label="Dashboard" />
+              <NavItem to={`${ADMIN_BASE_PATH}/daily`} icon={Calendar} label="Daily Entries" />
+              <NavItem to={`${ADMIN_BASE_PATH}/weekly`} icon={Wallet} label="Weekly Wallet" />
             </nav>
           </div>
           
           <div>
             <p className="px-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-3">Management</p>
             <nav className="space-y-1">
-              <NavItem to="/registration" icon={Users} label="Registration" />
-              <NavItem to="/defaults" icon={Settings} label="Manage Defaults" />
-              <NavItem to="/leaves" icon={Coffee} label="Leaves" />
-              <NavItem to="/settlement" icon={Briefcase} label="Company Settlement" />
-              <NavItem to="/billings" icon={FileText} label="Driver Billings" />
-              <NavItem to="/revenue" icon={Calculator} label="Revenue Calculation" />
-              <NavItem to="/driver-leads" icon={ClipboardList} label="Driver Leads" />
-              <NavItem to="/import" icon={Upload} label="Import Data" />
+              <NavItem to={`${ADMIN_BASE_PATH}/registration`} icon={Users} label="Registration" />
+              <NavItem to={`${ADMIN_BASE_PATH}/defaults`} icon={Settings} label="Manage Defaults" />
+              <NavItem to={`${ADMIN_BASE_PATH}/leaves`} icon={Coffee} label="Leaves" />
+              <NavItem to={`${ADMIN_BASE_PATH}/settlement`} icon={Briefcase} label="Company Settlement" />
+              <NavItem to={`${ADMIN_BASE_PATH}/billings`} icon={FileText} label="Driver Billings" />
+              <NavItem to={`${ADMIN_BASE_PATH}/revenue`} icon={Calculator} label="Revenue Calculation" />
+              <NavItem to={`${ADMIN_BASE_PATH}/driver-leads`} icon={ClipboardList} label="Driver Leads" />
+              <NavItem to={`${ADMIN_BASE_PATH}/import`} icon={Upload} label="Import Data" />
             </nav>
           </div>
 
@@ -137,7 +141,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
              <p className="px-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-3">System</p>
              <nav className="space-y-1">
                 {user?.role === 'super_admin' && (
-                    <NavItem to="/admin-access" icon={Shield} label="Admin Access" />
+                    <NavItem to={`${ADMIN_BASE_PATH}/admin-access`} icon={Shield} label="Admin Access" />
                 )}
                 <NavItem to="/portal" icon={UserCircle} label="Driver View Mode" />
              </nav>
@@ -203,32 +207,33 @@ const App: React.FC = () => {
     <AuthProvider>
         <HashRouter>
         <Routes>
+            <Route path="/" element={<HomePage />} />
             <Route path="/login" element={<LoginPage />} />
-            
+
             {/* Driver Portal Route (Secure) */}
             <Route path="/portal" element={
                 <ProtectedRoute allowedRoles={['driver', 'admin', 'super_admin']}>
                     <DriverPortalPage />
                 </ProtectedRoute>
             } />
-            
+
             {/* Admin Routes (Wrapped in Layout) */}
-            <Route path="/*" element={
+            <Route path={`${ADMIN_BASE_PATH}/*`} element={
                 <ProtectedRoute allowedRoles={['admin', 'super_admin']}>
                     <Layout>
                         <Routes>
-                            <Route path="/" element={<DashboardPage />} />
-                            <Route path="/daily" element={<DailyEntryPage />} />
-                            <Route path="/weekly" element={<WeeklyWalletPage />} />
-                            <Route path="/registration" element={<RegistrationPage />} />
-                            <Route path="/defaults" element={<ManageDefaultsPage />} />
-                            <Route path="/leaves" element={<LeavePage />} />
-                            <Route path="/settlement" element={<CompanySettlementPage />} />
-                            <Route path="/billings" element={<DriverBillingsPage />} />
-                            <Route path="/revenue" element={<RevenuePage />} />
-                            <Route path="/driver-leads" element={<DriverLeadsPage />} />
-                            <Route path="/import" element={<ImportPage />} />
-                            <Route path="/admin-access" element={<AdminAccessPage />} />
+                            <Route path={ADMIN_BASE_PATH} element={<DashboardPage />} />
+                            <Route path={`${ADMIN_BASE_PATH}/daily`} element={<DailyEntryPage />} />
+                            <Route path={`${ADMIN_BASE_PATH}/weekly`} element={<WeeklyWalletPage />} />
+                            <Route path={`${ADMIN_BASE_PATH}/registration`} element={<RegistrationPage />} />
+                            <Route path={`${ADMIN_BASE_PATH}/defaults`} element={<ManageDefaultsPage />} />
+                            <Route path={`${ADMIN_BASE_PATH}/leaves`} element={<LeavePage />} />
+                            <Route path={`${ADMIN_BASE_PATH}/settlement`} element={<CompanySettlementPage />} />
+                            <Route path={`${ADMIN_BASE_PATH}/billings`} element={<DriverBillingsPage />} />
+                            <Route path={`${ADMIN_BASE_PATH}/revenue`} element={<RevenuePage />} />
+                            <Route path={`${ADMIN_BASE_PATH}/driver-leads`} element={<DriverLeadsPage />} />
+                            <Route path={`${ADMIN_BASE_PATH}/import`} element={<ImportPage />} />
+                            <Route path={`${ADMIN_BASE_PATH}/admin-access`} element={<AdminAccessPage />} />
                         </Routes>
                     </Layout>
                 </ProtectedRoute>
