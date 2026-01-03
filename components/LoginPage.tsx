@@ -17,7 +17,7 @@ const LoginPage: React.FC = () => {
       if (user.role === 'driver') {
         navigate('/portal');
       } else {
-        navigate('/');
+        navigate('/admin');
       }
     }
   }, [user, navigate]);
