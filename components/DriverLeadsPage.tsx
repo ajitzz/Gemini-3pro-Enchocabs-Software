@@ -78,6 +78,8 @@ const DriverLeadsPage: React.FC = () => {
   const [sortOption, setSortOption] = useState<'recent' | 'oldest' | 'status'>('recent');
   const [isXLSXReady, setIsXLSXReady] = useState<boolean>(typeof XLSX !== 'undefined');
   const [importing, setImporting] = useState(false);
+  const [isSheetFormOpen, setIsSheetFormOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [updateEditor, setUpdateEditor] = useState<{ leadId: string; text: string; date: string } | null>(null);
   const [isStatusesOpen, setIsStatusesOpen] = useState(false);
   const [sheetToDelete, setSheetToDelete] = useState<LeadSheet | null>(null);
@@ -663,168 +665,164 @@ const DriverLeadsPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 lg:grid-cols-[320px,minmax(0,1fr)] gap-4 xl:gap-6 items-start">
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="space-y-1">
-              <p className="text-xs uppercase tracking-[0.2em] text-indigo-500 font-semibold">Driver Lead Workspace</p>
-              <h1 className="text-xl font-bold text-slate-900">Sheets to organise leads</h1>
-              <p className="text-sm text-slate-500">Create sheets, import XLS/CSV, and keep updates with dated history.</p>
-            </div>
-            <div className="relative">
-              <button
-                onClick={() => setIsStatusesOpen((prev) => !prev)}
-                className="inline-flex items-center gap-2 px-3 py-1.5 text-[12px] rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
-                aria-label={isStatusesOpen ? 'Hide statuses manager' : 'Show statuses manager'}
-              >
-                <NotebookPen size={14} /> Statuses
-              </button>
-              {isStatusesOpen && (
-                <div className="absolute right-0 mt-2 w-72 rounded-xl border border-slate-200 bg-white shadow-xl p-3 space-y-3 z-20">
-                  <div className="flex items-center justify-between text-sm font-semibold text-slate-800">
-                    <span>Statuses</span>
-                    <button
-                      onClick={() => setIsStatusesOpen(false)}
-                      className="p-1 rounded-full hover:bg-slate-100 text-slate-500"
-                      aria-label="Close statuses manager"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                  <div className="flex gap-2">
-                    <input
-                      value={statusDraft}
-                      onChange={(e) => setStatusDraft(e.target.value)}
-                      placeholder="Add status"
-                      className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                    />
-                    <button
-                      onClick={addStatus}
-                      className="px-3 rounded-lg bg-slate-900 text-white text-sm hover:bg-indigo-700"
-                    >
-                      Add
-                    </button>
-                  </div>
-                  <div className="space-y-2 max-h-[220px] overflow-auto pr-1 text-sm">
-                    {activeSheet?.statuses.map((status) => (
-                      <div key={status.id} className="flex items-center gap-2 group">
-                        <div
-                          className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${colorMap[status.color || 'slate']}`}
-                          contentEditable
-                          suppressContentEditableWarning
-                          onBlur={(e) => updateStatusLabel(status.id, e.currentTarget.textContent || status.label)}
-                        >
-                          {status.label}
-                        </div>
-                        {activeSheet.statuses.length > 1 && (
-                          <button
-                            onClick={() => removeStatus(status.id)}
-                            className="opacity-0 group-hover:opacity-100 text-rose-500 hover:text-rose-600"
+      <div className="grid grid-cols-1 lg:grid-cols-[360px,minmax(0,1fr)] gap-4 xl:gap-6 items-start">
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2 flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-xs uppercase tracking-[0.2em] text-indigo-500 font-semibold">Driver Lead Workspace</p>
+                <h1 className="text-xl font-bold text-slate-900">Sheets to organise leads</h1>
+                <p className="text-sm text-slate-500">Create sheets, import XLS/CSV, and keep updates with dated history.</p>
+              </div>
+              <div className="relative">
+                <button
+                  onClick={() => setIsStatusesOpen((prev) => !prev)}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-[12px] rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+                  aria-label={isStatusesOpen ? 'Hide statuses manager' : 'Show statuses manager'}
+                >
+                  <NotebookPen size={14} /> Statuses
+                </button>
+                {isStatusesOpen && (
+                  <div className="absolute right-0 mt-2 w-72 rounded-xl border border-slate-200 bg-white shadow-xl p-3 space-y-3 z-20">
+                    <div className="flex items-center justify-between text-sm font-semibold text-slate-800">
+                      <span>Statuses</span>
+                      <button
+                        onClick={() => setIsStatusesOpen(false)}
+                        className="p-1 rounded-full hover:bg-slate-100 text-slate-500"
+                        aria-label="Close statuses manager"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        value={statusDraft}
+                        onChange={(e) => setStatusDraft(e.target.value)}
+                        placeholder="Add status"
+                        className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                      />
+                      <button
+                        onClick={addStatus}
+                        className="px-3 rounded-lg bg-slate-900 text-white text-sm hover:bg-indigo-700"
+                      >
+                        Add
+                      </button>
+                    </div>
+                    <div className="space-y-2 max-h-[220px] overflow-auto pr-1 text-sm">
+                      {activeSheet?.statuses.map((status) => (
+                        <div key={status.id} className="flex items-center gap-2 group">
+                          <div
+                            className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${colorMap[status.color || 'slate']}`}
+                            contentEditable
+                            suppressContentEditableWarning
+                            onBlur={(e) => updateStatusLabel(status.id, e.currentTarget.textContent || status.label)}
                           >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                            {status.label}
+                          </div>
+                          {activeSheet.statuses.length > 1 && (
+                            <button
+                              onClick={() => removeStatus(status.id)}
+                              className="opacity-0 group-hover:opacity-100 text-rose-500 hover:text-rose-600"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
+                )}
+              </div>
+            </div>
+
+            <div className="md:col-span-2 grid grid-cols-2 lg:grid-cols-2 gap-3">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                <div className="flex items-center justify-between text-[11px] uppercase text-slate-500 font-semibold">Total leads</div>
+                <div className="flex items-center gap-2 mt-2 text-xl font-bold text-slate-900">
+                  <BarChart3 size={16} className="text-indigo-500" />
+                  {leadMetrics.total}
                 </div>
-              )}
+                <p className="text-[12px] text-slate-500 mt-1">Across {activeSheet?.statuses.length || 0} statuses</p>
+              </div>
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <div className="flex items-center justify-between text-[11px] uppercase text-amber-600 font-semibold">Waiting</div>
+                <div className="flex items-center gap-2 mt-2 text-xl font-bold text-amber-700">
+                  <Clock size={16} />
+                  {leadMetrics.waiting}
+                </div>
+                <p className="text-[12px] text-amber-700/80">Keep these moving</p>
+              </div>
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                <div className="flex items-center justify-between text-[11px] uppercase text-emerald-700 font-semibold">Confirmed</div>
+                <div className="flex items-center gap-2 mt-2 text-xl font-bold text-emerald-700">
+                  <Check size={16} />
+                  {leadMetrics.confirmed}
+                </div>
+                <p className="text-[12px] text-emerald-700/80">Ready for onboarding</p>
+              </div>
+              <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
+                <div className="flex items-center justify-between text-[11px] uppercase text-rose-600 font-semibold">Stale</div>
+                <div className="flex items-center gap-2 mt-2 text-xl font-bold text-rose-700">
+                  <Activity size={16} />
+                  {leadMetrics.stale}
+                </div>
+                <p className="text-[12px] text-rose-700/80">No update in 7+ days</p>
+              </div>
             </div>
-          </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-2 gap-3">
-            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-              <div className="flex items-center justify-between text-[11px] uppercase text-slate-500 font-semibold">Total leads</div>
-              <div className="flex items-center gap-2 mt-2 text-xl font-bold text-slate-900">
-                <BarChart3 size={16} className="text-indigo-500" />
-                {leadMetrics.total}
-              </div>
-              <p className="text-[12px] text-slate-500 mt-1">Across {activeSheet?.statuses.length || 0} statuses</p>
-            </div>
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-              <div className="flex items-center justify-between text-[11px] uppercase text-amber-600 font-semibold">Waiting</div>
-              <div className="flex items-center gap-2 mt-2 text-xl font-bold text-amber-700">
-                <Clock size={16} />
-                {leadMetrics.waiting}
-              </div>
-              <p className="text-[12px] text-amber-700/80">Keep these moving</p>
-            </div>
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-              <div className="flex items-center justify-between text-[11px] uppercase text-emerald-700 font-semibold">Confirmed</div>
-              <div className="flex items-center gap-2 mt-2 text-xl font-bold text-emerald-700">
-                <Check size={16} />
-                {leadMetrics.confirmed}
-              </div>
-              <p className="text-[12px] text-emerald-700/80">Ready for onboarding</p>
-            </div>
-            <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
-              <div className="flex items-center justify-between text-[11px] uppercase text-rose-600 font-semibold">Stale</div>
-              <div className="flex items-center gap-2 mt-2 text-xl font-bold text-rose-700">
-                <Activity size={16} />
-                {leadMetrics.stale}
-              </div>
-              <p className="text-[12px] text-rose-700/80">No update in 7+ days</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3">
-            <div className="border border-slate-200 rounded-xl p-4 space-y-3">
-              <div className="flex items-center gap-2 text-sm text-slate-600 font-semibold">
-                <ClipboardList size={16} /> New sheet details
-              </div>
-              <input
-                value={sheetForm.name}
-                onChange={(e) => setSheetForm((prev) => ({ ...prev, name: e.target.value }))}
-                placeholder="Sheet title (e.g., Feb WhatsApp Leads)"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
-              />
-              <textarea
-                value={sheetForm.description}
-                onChange={(e) => setSheetForm((prev) => ({ ...prev, description: e.target.value }))}
-                placeholder="Short description"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                rows={2}
-              />
-              <div className="flex justify-end">
+            <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="border border-slate-200 rounded-xl p-4 flex flex-col justify-between bg-slate-50/40">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-2 text-sm text-slate-700 font-semibold">
+                      <ClipboardList size={16} /> New sheet details
+                    </div>
+                    <p className="text-[12px] text-slate-500 mt-1">Open a compact form to add a fresh lead sheet.</p>
+                  </div>
+                  <span className="px-2 py-1 rounded-full bg-white border text-[11px] text-slate-500">{sheets.length} total</span>
+                </div>
                 <button
-                  onClick={createSheet}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl shadow hover:bg-indigo-700 transition disabled:opacity-50"
-                  disabled={!sheetForm.name.trim()}
+                  onClick={() => setIsSheetFormOpen(true)}
+                  className="mt-3 inline-flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg shadow hover:bg-indigo-700 transition"
                 >
-                  <Plus size={16} /> New Sheet
+                  <Plus size={16} /> Add new sheet
                 </button>
               </div>
-            </div>
 
-            <div className="border border-slate-200 rounded-xl p-4">
-              <div className="flex items-center gap-2 text-sm text-slate-600 font-semibold mb-3">
-                <Database size={16} /> Quick import / download
-              </div>
-              <label className="w-full flex items-center justify-between gap-3 rounded-lg border-2 border-dashed border-slate-200 px-3 py-3 text-sm text-slate-500 cursor-pointer hover:border-indigo-200 hover:bg-indigo-50">
-                <div className="flex items-center gap-2">
-                  {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-                  <span>{importing ? 'Importing...' : 'Import XLSX / CSV into active sheet'}</span>
+              <div className="border border-slate-200 rounded-xl p-4 flex flex-col justify-between">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-2 text-sm text-slate-700 font-semibold">
+                      <Database size={16} /> Quick import / download
+                    </div>
+                    <p className="text-[12px] text-slate-500 mt-1">Keep the sidebar short. Launch import when you need it.</p>
+                  </div>
+                  <span className="px-2 py-1 rounded-full bg-slate-50 border text-[11px] text-slate-500">CSV / XLSX</span>
                 </div>
-                <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => e.target.files?.[0] && importFile(e.target.files[0])} />
-              </label>
-              <div className="flex flex-col gap-2 mt-2 text-xs text-slate-500">
-                <p>Headers supported: created_time, platform, full_name, phone, city, status, admin, update, note</p>
-                <button
-                  type="button"
-                  onClick={downloadTemplate}
-                  className="self-start inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-[12px] font-semibold hover:border-indigo-200"
-                >
-                  <FileSpreadsheet size={12} /> Download sample CSV
-                </button>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setIsImportModalOpen(true)}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 text-white text-sm hover:bg-indigo-700"
+                  >
+                    {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />} Import
+                  </button>
+                  <button
+                    type="button"
+                    onClick={downloadTemplate}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm font-semibold hover:border-indigo-200"
+                  >
+                    <FileSpreadsheet size={14} /> Sample CSV
+                  </button>
+                </div>
               </div>
             </div>
 
-            <div className="border border-slate-200 rounded-2xl p-4 shadow-sm h-full flex flex-col">
+            <div className="md:col-span-2 border border-slate-200 rounded-2xl p-4 shadow-sm h-full flex flex-col">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-slate-800">Sheets</h3>
                 <CalendarDays size={16} className="text-slate-400" />
               </div>
-              <div className="mt-3 space-y-2 overflow-y-auto pr-1 flex-1 max-h-[60vh]">
+              <div className="mt-3 space-y-2 overflow-y-auto pr-1 flex-1 max-h-[46vh]">
                 {sheets.length === 0 && (
                   <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-sm text-slate-600 text-center">
                     No sheets yet. Create your first list to start tracking leads.
@@ -1226,6 +1224,86 @@ const DriverLeadsPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {isSheetFormOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-40">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-slate-800 font-semibold">
+                <ClipboardList size={18} /> New sheet details
+              </div>
+              <button onClick={() => setIsSheetFormOpen(false)} className="text-slate-500 hover:text-slate-700">
+                <X size={18} />
+              </button>
+            </div>
+            <p className="text-sm text-slate-600">Keep the sidebar compact—add sheet details only when needed.</p>
+            <div className="space-y-3">
+              <input
+                value={sheetForm.name}
+                onChange={(e) => setSheetForm((prev) => ({ ...prev, name: e.target.value }))}
+                placeholder="Sheet title (e.g., Feb WhatsApp Leads)"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+              />
+              <textarea
+                value={sheetForm.description}
+                onChange={(e) => setSheetForm((prev) => ({ ...prev, description: e.target.value }))}
+                placeholder="Short description"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                rows={3}
+              />
+              <div className="flex items-center justify-end gap-2">
+                <button onClick={() => setIsSheetFormOpen(false)} className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600">
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    if (!sheetForm.name.trim()) return;
+                    createSheet();
+                    setIsSheetFormOpen(false);
+                  }}
+                  className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-50"
+                  disabled={!sheetForm.name.trim()}
+                >
+                  <Plus size={16} className="inline-block mr-1" /> Save sheet
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isImportModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-40">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-slate-800 font-semibold">
+                <Database size={18} /> Quick import / download
+              </div>
+              <button onClick={() => setIsImportModalOpen(false)} className="text-slate-500 hover:text-slate-700">
+                <X size={18} />
+              </button>
+            </div>
+            <p className="text-sm text-slate-600">Import data into the active sheet only when you need extra space for details.</p>
+            <label className="w-full flex items-center justify-between gap-3 rounded-lg border-2 border-dashed border-slate-200 px-3 py-3 text-sm text-slate-500 cursor-pointer hover:border-indigo-200 hover:bg-indigo-50">
+              <div className="flex items-center gap-2">
+                {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+                <span>{importing ? 'Importing...' : 'Import XLSX / CSV into active sheet'}</span>
+              </div>
+              <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => e.target.files?.[0] && importFile(e.target.files[0])} />
+            </label>
+            <div className="flex flex-col gap-2 text-xs text-slate-500">
+              <p>Headers supported: created_time, platform, full_name, phone, city, status, admin, update, note</p>
+              <button
+                type="button"
+                onClick={downloadTemplate}
+                className="self-start inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-[12px] font-semibold hover:border-indigo-200"
+              >
+                <FileSpreadsheet size={12} /> Download sample CSV
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {duplicateWarning && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50">
