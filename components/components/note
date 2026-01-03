@@ -1,0 +1,4 @@
+DIRECT_URL=PRISMA_DATABASE_URL( in vercel Env)
+Terminal->npx prisma migrate deploy ,npx prisma db push
+
+git push-> git add .,

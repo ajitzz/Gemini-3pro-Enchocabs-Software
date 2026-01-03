@@ -1,0 +1,19 @@
+.vision{position:relative; z-index:2; background:#0a0a0a; padding:96px 0; --fade-h:clamp(110px,16vw,240px)}
+/* === gradient fade from hero into vision (begin) === */
+.vision::before{
+  content:""; position:absolute; left:0; right:0;
+  top:calc(-1 * var(--fade-h)); height:var(--fade-h); pointer-events:none; z-index:-1;
+  background:linear-gradient(to bottom, rgba(10,10,10,0) 0%, rgba(10,10,10,0.35) 35%, rgba(10,10,10,0.7) 70%, #0a0a0a 100%);
+}
+/* === gradient fade (end) === */
+.wrap{display:grid; grid-template-columns:1.1fr .9fr; gap:40px; align-items:center}
+.text{position:relative; padding-left:28px}
+.text::before{content:""; position:absolute; left:0; top:0; bottom:0; width:2px; background:linear-gradient(180deg, var(--accent), rgba(130,147,162,.2)); border-radius:2px}
+.eyebrow{letter-spacing:.18em; text-transform:uppercase; color:#aab5bf; font-size:.8rem}
+.h2{font-family:var(--font-poppins); font-size:clamp(1.6rem,3.2vw,2.4rem); margin:.25em 0 12px}
+.scroll{max-height:520px; overflow:auto; padding-right:8px}
+.img{display:grid; place-items:center; justify-self:end}
+.figure{width:min(560px,92%); filter:drop-shadow(0 40px 80px rgba(0,0,0,.55))}
+.accent{color:var(--accent)}
+@media (max-width:960px){ .wrap{grid-template-columns:1fr} .img{order:-1; margin-bottom:22px} .scroll{max-height:none} }
+@media (max-width:767px){ .vision{--fade-h:clamp(80px,14vw,140px)} }

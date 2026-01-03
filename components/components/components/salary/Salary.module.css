@@ -1,0 +1,20 @@
+.section{background:#fff;color:#111;padding:120px 0}
+.grid{display:grid; grid-template-columns:.95fr 1.05fr; gap:40px; align-items:center}
+.text{position:relative; padding-left:28px}
+.text::before{content:""; position:absolute; left:0; top:0; bottom:0; width:2px;
+  background:linear-gradient(180deg,#111, rgba(17,17,17,.15))}
+.h2{font-family:var(--font-poppins), var(--font-inter); letter-spacing:.18em; font-weight:700;
+  font-size:clamp(1.4rem,3.2vw,2rem); margin:0 0 10px}
+.scroll{max-height:420px; overflow-y:auto; padding-right:8px}
+.scroll::-webkit-scrollbar{width:6px}
+.scroll::-webkit-scrollbar-thumb{background:rgba(130,147,162,.45); border-radius:6px}
+.btn{display:inline-flex; align-items:center; gap:8px; padding:10px 14px; border-radius:999px; font-weight:700; border:1px solid rgba(0,0,0,.15); margin-top:10px}
+.btnLight{background:#D7D4D5; color:#111; border-color:rgba(17,17,17,.25)}
+.frame{justify-self:start; width:min(720px,95%); aspect-ratio:16/9; border-radius:16px; overflow:hidden;
+  box-shadow:0 24px 60px rgba(0,0,0,.2)}
+.frame iframe{width:100%; height:100%; border:0}
+@media (max-width:960px){
+  .grid{grid-template-columns:1fr}
+  .frame{justify-self:center}
+  .scroll{max-height:none}
+}

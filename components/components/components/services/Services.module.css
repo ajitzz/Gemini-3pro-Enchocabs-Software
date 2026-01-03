@@ -1,0 +1,7 @@
+.section{background:#fff;color:#111;padding:120px 0}
+.head{max-width:760px; padding-left:28px; position:relative; margin:0 auto 20px 0}
+.head::before{content:""; position:absolute; left:0; top:0; bottom:0; width:2px;
+  background:linear-gradient(180deg,#111,rgba(17,17,17,.15))}
+.eyebrow{color:#8293A2; letter-spacing:.18em; text-transform:uppercase; font-size:.8rem}
+.title{font-family:var(--font-poppins), var(--font-inter); font-weight:600;
+  font-size:clamp(1.4rem,3vw,2rem); margin:10px 0 0}

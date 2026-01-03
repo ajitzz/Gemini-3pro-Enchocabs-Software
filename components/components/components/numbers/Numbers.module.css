@@ -1,0 +1,18 @@
+.section{background:#fff;color:#111;padding:140px 0}
+.grid{display:grid; grid-template-columns:1.1fr .9fr; gap:64px; align-items:center}
+.fig{justify-self:end}
+.fig img{width:min(720px,95%); height:auto; object-fit:contain}
+.title{font-family:var(--font-poppins), var(--font-inter); font-weight:600;
+  font-size:clamp(1.6rem,3.2vw,2.2rem); margin:0 0 36px}
+.metrics{display:grid; grid-template-columns:1fr 1fr; gap:48px 56px}
+.metric{}
+.value{font-family:var(--font-poppins), var(--font-inter); font-weight:600;
+  font-size:clamp(2rem,5vw,3rem); line-height:1; margin:0 0 6px; white-space:pre-line}
+.rule{width:180px; max-width:100%; height:2px; background:rgba(17,17,17,.28); margin:6px 0 12px}
+.label{letter-spacing:.18em; text-transform:uppercase; font-size:.8rem; color:#555}
+.textBlock .value{font-weight:600; font-size:clamp(1.05rem,1.8vw,1.2rem); line-height:1.6; letter-spacing:.02em}
+@media (max-width:960px){
+  .grid{grid-template-columns:1fr}
+  .fig{justify-self:center}
+}
+@media (max-width:600px){ .metrics{grid-template-columns:1fr} }
