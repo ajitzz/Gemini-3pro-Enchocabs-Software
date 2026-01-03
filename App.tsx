@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { HashRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
 import { LayoutDashboard, Calendar, Wallet, Menu, X, Users, Coffee, Upload, Settings, Briefcase, FileText, Calculator, UserCircle, LogOut, Shield, ClipboardList } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import DailyEntryPage from './components/DailyEntryPage';
@@ -41,7 +41,7 @@ const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode
   if (loading || validatingAccess) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div></div>;
 
   if (!user) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    return <Navigate to="/staff" state={{ from: location }} replace />;
   }
 
   if (!allowedRoles.includes(user.role)) {
@@ -202,41 +202,42 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 const App: React.FC = () => {
   return (
     <AuthProvider>
-        <HashRouter>
-        <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/login" element={<LoginPage />} />
+        <BrowserRouter>
+          <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/staff" element={<LoginPage />} />
+              <Route path="/login" element={<Navigate to="/staff" replace />} />
 
-            {/* Driver Portal Route (Secure) */}
-            <Route path="/portal" element={
-                <ProtectedRoute allowedRoles={['driver', 'admin', 'super_admin']}>
-                    <DriverPortalPage />
-                </ProtectedRoute>
-            } />
+              {/* Driver Portal Route (Secure) */}
+              <Route path="/portal" element={
+                  <ProtectedRoute allowedRoles={['driver', 'admin', 'super_admin']}>
+                      <DriverPortalPage />
+                  </ProtectedRoute>
+              } />
 
-            {/* Admin Routes (Wrapped in Layout) */}
-            <Route path="/app/*" element={
-                <ProtectedRoute allowedRoles={['admin', 'super_admin']}>
-                    <Layout>
-                        <Routes>
-                            <Route path="/app" element={<DashboardPage />} />
-                            <Route path="/app/daily" element={<DailyEntryPage />} />
-                            <Route path="/app/weekly" element={<WeeklyWalletPage />} />
-                            <Route path="/app/registration" element={<RegistrationPage />} />
-                            <Route path="/app/defaults" element={<ManageDefaultsPage />} />
-                            <Route path="/app/leaves" element={<LeavePage />} />
-                            <Route path="/app/settlement" element={<CompanySettlementPage />} />
-                            <Route path="/app/billings" element={<DriverBillingsPage />} />
-                            <Route path="/app/revenue" element={<RevenuePage />} />
-                            <Route path="/app/driver-leads" element={<DriverLeadsPage />} />
-                            <Route path="/app/import" element={<ImportPage />} />
-                            <Route path="/app/admin-access" element={<AdminAccessPage />} />
-                        </Routes>
-                    </Layout>
-                </ProtectedRoute>
-            } />
-        </Routes>
-        </HashRouter>
+              {/* Admin Routes (Wrapped in Layout) */}
+              <Route path="/app/*" element={
+                  <ProtectedRoute allowedRoles={['admin', 'super_admin']}>
+                      <Layout>
+                          <Routes>
+                              <Route path="/app" element={<DashboardPage />} />
+                              <Route path="/app/daily" element={<DailyEntryPage />} />
+                              <Route path="/app/weekly" element={<WeeklyWalletPage />} />
+                              <Route path="/app/registration" element={<RegistrationPage />} />
+                              <Route path="/app/defaults" element={<ManageDefaultsPage />} />
+                              <Route path="/app/leaves" element={<LeavePage />} />
+                              <Route path="/app/settlement" element={<CompanySettlementPage />} />
+                              <Route path="/app/billings" element={<DriverBillingsPage />} />
+                              <Route path="/app/revenue" element={<RevenuePage />} />
+                              <Route path="/app/driver-leads" element={<DriverLeadsPage />} />
+                              <Route path="/app/import" element={<ImportPage />} />
+                              <Route path="/app/admin-access" element={<AdminAccessPage />} />
+                          </Routes>
+                      </Layout>
+                  </ProtectedRoute>
+              } />
+          </Routes>
+        </BrowserRouter>
     </AuthProvider>
   );
 };
