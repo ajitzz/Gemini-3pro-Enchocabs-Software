@@ -4,7 +4,7 @@ export default function Salary() {
   const defaultContent = `We provide full support to every  Staffs. Encho Cabs offers training on routes and app usage, guidance on how to work safely and efficiently, and continuous phone and road assistance whenever needed. For drivers coming from other cities, we help ensure a good standard of living, including safe accommodation. Every driver is our responsibility, and we treat each one with respect, care, and professionalism.`
 
   return (
-    <section id="salary" className={`flex flex-col items-center justify-center bg-white py-20 text-neutral-900 sm:py-24`s.section} aria-label="Salary Plan">
+    <section id="salary" className={`flex flex-col items-center justify-center bg-white py-20 text-neutral-900 sm:py-24 ${s.section}` } aria-label="Salary Plan">
       <div className={`container ${s.grid}`}>
         <div className={s.frame}>
           {/* <iframe
