@@ -23,7 +23,7 @@ export default function HomePage() {
       <Numbers />
      <Testimonials items={[]} autoplay interval={3500} />
       <Footer />
-    </div>
+
  </>
   );
 }
