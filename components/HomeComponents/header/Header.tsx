@@ -8,7 +8,7 @@ export default function Header(){
 
   return (
     <header className={s.header}>
-      <div id="nav" className={`container  flex flex-col items-center justify-center${s.nav}`}>
+      <div id="nav" className={`container  flex flex-col items-center justify-center ${s.nav}`}>
         <a href="#/" className={s.brand}>ENCHO</a>
 
         <ul className={s.menu}>
