@@ -58,14 +58,15 @@ const Layout: React.FC = () => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const { user, logout } = useAuth();
 
-  const NavItem = ({ to, icon: Icon, label }: { to: string, icon: any, label: string }) => (
+  const NavItem = ({ to, icon: Icon, label, end = false }: { to: string, icon: any, label: string, end?: boolean }) => (
     <NavLink
       to={to}
+      end={end}
       onClick={() => setIsMobileMenuOpen(false)}
       className={({ isActive }) =>
-        `flex items-center justify-between px-4 py-3.5 rounded-xl transition-all duration-300 group ${
-          isActive 
-            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50 translate-x-1' 
+        `flex items-center justify-between px-4 py-3.5 rounded-xl transition-all duration-300 group cursor-pointer ${
+          isActive
+            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50 translate-x-1'
             : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
         }`
       }
@@ -114,7 +115,7 @@ const Layout: React.FC = () => {
           <div>
             <p className="px-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-3">Overview</p>
             <nav className="space-y-1">
-              <NavItem to="/app" icon={LayoutDashboard} label="Dashboard" />
+              <NavItem to="/app" icon={LayoutDashboard} label="Dashboard" end />
               <NavItem to="/app/daily" icon={Calendar} label="Daily Entries" />
               <NavItem to="/app/weekly" icon={Wallet} label="Weekly Wallet" />
             </nav>
