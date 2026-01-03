@@ -2,7 +2,11 @@
 
 export default function Services() {
   return (
-     <section id="services" className="bg-white py-20 text-neutral-900 sm:py-24" aria-label="Services">
+     <section 
+  id="services" 
+  className="flex flex-col items-center justify-center bg-white py-20 text-neutral-900 sm:py-24" 
+  aria-label="Services"
+>
       <div className="container">
      <div className="mx-auto max-w-3xl space-y-4">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-gray-500">Services</p>
