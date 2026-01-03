@@ -4,12 +4,27 @@ import { storageService } from '../services/storageService';
 import { DriverSummary, GlobalSummary, Driver, DailyEntry, WeeklyWallet, RentalSlab } from '../types';
 import { Users, Banknote, Fuel, TrendingDown, TrendingUp, AlertCircle, ArrowUpRight, ArrowDownRight, Wallet } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Cell } from 'recharts';
+import NetCalculationPopup from './NetCalculationPopup';
 
 const DashboardPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [summaries, setSummaries] = useState<DriverSummary[]>([]);
   const [global, setGlobal] = useState<GlobalSummary | null>(null);
   const [filterDriver, setFilterDriver] = useState('');
+  const [calcPopup, setCalcPopup] = useState<{
+    metric: 'netPayout' | 'netBalance';
+    netValue: number;
+    values: {
+      collection: number;
+      rent: number;
+      fuel: number;
+      due: number;
+      wallet: number;
+      payout: number;
+    };
+    title?: string;
+    sourceNote?: string;
+  } | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -37,6 +52,26 @@ const DashboardPage: React.FC = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  const openCalcPopup = (driver: DriverSummary, metric: 'netPayout' | 'netBalance') => {
+    setCalcPopup({
+      metric,
+      netValue: metric === 'netPayout' ? driver.netPayout : driver.finalTotal,
+      values: {
+        collection: driver.totalCollection,
+        rent: driver.totalRent,
+        fuel: driver.totalFuel,
+        due: driver.totalDue,
+        wallet: driver.totalWalletWeek,
+        payout: driver.totalPayout,
+      },
+      title: `${metric === 'netPayout' ? 'Net Payout' : 'Net Balance'} • ${driver.driver}`,
+      sourceNote:
+        metric === 'netPayout' && driver.netPayoutSource === 'latest-wallet' && driver.netPayoutRange
+          ? `Using lowest balance till ${driver.netPayoutRange}`
+          : undefined,
+    });
+  };
 
   const filteredSummaries = summaries.filter(s =>
     filterDriver === '' || s.driver.toLowerCase().includes(filterDriver.toLowerCase())
@@ -90,6 +125,16 @@ const DashboardPage: React.FC = () => {
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto animate-fade-in">
+      {calcPopup && (
+        <NetCalculationPopup
+          metric={calcPopup.metric}
+          values={calcPopup.values}
+          netValue={calcPopup.netValue}
+          title={calcPopup.title}
+          sourceNote={calcPopup.sourceNote}
+          onClose={() => setCalcPopup(null)}
+        />
+      )}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Financial Overview</h2>
@@ -176,7 +221,11 @@ const DashboardPage: React.FC = () => {
                     <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalFuel)}</td>
                     <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalWalletWeek)}</td>
                     <td className="px-6 py-4 text-right">
-                      <div className="flex flex-col items-end gap-1">
+                      <div
+                        className="flex flex-col items-end gap-1 cursor-pointer"
+                        onClick={() => openCalcPopup(driver, 'netPayout')}
+                        title="View net payout calculation"
+                      >
                         <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-bold border ${
                           driver.netPayout < 0
                             ? 'bg-rose-50 text-rose-700 border-rose-100'
@@ -192,11 +241,15 @@ const DashboardPage: React.FC = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-bold border ${
-                        driver.finalTotal < 0
-                          ? 'bg-rose-50 text-rose-700 border-rose-100'
-                          : 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                      }`}>
+                      <span
+                        onClick={() => openCalcPopup(driver, 'netBalance')}
+                        className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-bold border ${
+                          driver.finalTotal < 0
+                            ? 'bg-rose-50 text-rose-700 border-rose-100'
+                            : 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                        } cursor-pointer`}
+                        title="View net balance calculation"
+                      >
                         {formatCurrency(driver.finalTotal)}
                       </span>
                     </td>

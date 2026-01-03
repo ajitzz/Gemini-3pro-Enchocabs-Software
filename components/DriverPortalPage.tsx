@@ -10,6 +10,7 @@ import {
   CheckCircle, AlertCircle, Eye, X, ShieldCheck, Users, ArrowLeft, Lock, ArrowRight, Gauge, BarChart3, ChevronDown, Copy, AlertTriangle, ArrowUpRight, Clock
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import NetCalculationPopup from './NetCalculationPopup';
 
 type PortalDailyEntry = DailyEntry & { adjustmentApplied?: number; adjustedDue?: number };
 
@@ -47,7 +48,20 @@ const DriverPortalPage: React.FC = () => {
   const [copiedDriverId, setCopiedDriverId] = useState<string | null>(null);
   const [teamCashModes, setTeamCashModes] = useState<Record<string, CashMode>>({});
   const [teamCashModeUpdating, setTeamCashModeUpdating] = useState<Record<string, boolean>>({});
-  const [showNetPayoutPopup, setShowNetPayoutPopup] = useState(false);
+  const [calcPopup, setCalcPopup] = useState<{
+      metric: 'netPayout' | 'netBalance';
+      values: {
+          collection: number;
+          rent: number;
+          fuel: number;
+          due: number;
+          wallet: number;
+          payout: number;
+      };
+      netValue: number;
+      title?: string;
+      sourceNote?: string;
+  } | null>(null);
 
   const tabOptions: {
       key: 'home' | 'daily' | 'billing';
@@ -515,6 +529,29 @@ const DriverPortalPage: React.FC = () => {
       return storageService.calculateDriverStats(viewingAsDriver.name, rawDaily, rawWeekly, rentalSlabs);
   }, [viewingAsDriver, rawDaily, rawWeekly, rentalSlabs]);
 
+  const openCalculationPopup = (metric: 'netPayout' | 'netBalance') => {
+      if (!driverStats) return;
+
+      setCalcPopup({
+          metric,
+          values: {
+              collection: driverStats.totalCollection,
+              rent: driverStats.totalRent,
+              fuel: driverStats.totalFuel,
+              due: driverStats.totalDue,
+              wallet: driverStats.totalWalletWeek,
+              payout: driverStats.totalPayout
+          },
+          netValue: metric === 'netPayout' ? driverStats.netPayout : driverStats.finalTotal,
+          title: `${metric === 'netPayout' ? 'Net Payout' : 'Net Balance'}${viewingAsDriver ? ` • ${viewingAsDriver.name}` : ''}`,
+          sourceNote: metric === 'netPayout'
+              ? (driverStats.netPayoutSource === 'latest-wallet' && driverStats.netPayoutRange
+                  ? `Using the latest wallet window (${driverStats.netPayoutRange}) to stay conservative.`
+                  : 'Using overall balance across all recorded activity.')
+              : 'Overall balance across all recorded activity.'
+      });
+  };
+
   const balanceSummary = useMemo(() => {
       if (!driverStats) return { netPayout: 0, totalCollection: 0, totalRawRent: 0, totalFuel: 0, totalWallet: 0, netRange: undefined as string | undefined };
       return {
@@ -526,95 +563,6 @@ const DriverPortalPage: React.FC = () => {
           totalWallet: driverStats.totalWalletWeek
       };
   }, [driverStats]);
-
-  const netPayoutDetails = useMemo(() => {
-      if (!driverStats || !viewingAsDriver) return null;
-
-      const earliestDate = rawDaily.length > 0
-          ? rawDaily.reduce((min, entry) => entry.date < min ? entry.date : min, rawDaily[0].date)
-          : undefined;
-      const latestDate = rawDaily.length > 0
-          ? rawDaily.reduce((max, entry) => entry.date > max ? entry.date : max, rawDaily[0].date)
-          : undefined;
-
-      const now = new Date();
-      const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-      const currentMonthEnd = new Date(nextMonthStart.getTime() - 1);
-
-      const isWithinRange = (dateString: string, start: Date, end: Date) => {
-          const date = new Date(dateString);
-          return date >= start && date < end;
-      };
-
-      const thisMonthDaily = rawDaily.filter(d => isWithinRange(d.date, currentMonthStart, nextMonthStart));
-      const previousDaily = rawDaily.filter(d => new Date(d.date) < currentMonthStart);
-
-      const thisMonthWeekly = rawWeekly.filter(w => isWithinRange(w.weekEndDate, currentMonthStart, nextMonthStart));
-      const previousWeekly = rawWeekly.filter(w => new Date(w.weekEndDate) < currentMonthStart);
-
-      const buildBreakdown = (stats: typeof driverStats) => ([
-          { label: 'Total Collection', value: stats.totalCollection, tone: 'positive' as const },
-          { label: 'Vehicle Rent', value: -stats.totalRent, tone: 'negative' as const },
-          { label: 'Fuel', value: -stats.totalFuel, tone: 'negative' as const },
-          { label: 'Dues', value: stats.totalDue, tone: stats.totalDue >= 0 ? 'positive' as const : 'negative' as const },
-          { label: 'Weekly Wallet', value: stats.totalWalletWeek, tone: stats.totalWalletWeek >= 0 ? 'positive' as const : 'negative' as const },
-          { label: 'Direct Payouts Recorded', value: -stats.totalPayout, tone: 'negative' as const }
-      ]);
-
-      const thisMonthStats = storageService.calculateDriverStats(
-          viewingAsDriver.name,
-          thisMonthDaily,
-          thisMonthWeekly,
-          rentalSlabs
-      );
-
-      const previousMonthStats = storageService.calculateDriverStats(
-          viewingAsDriver.name,
-          previousDaily,
-          previousWeekly,
-          rentalSlabs
-      );
-
-      const monthLabel = currentMonthStart.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-      const previousLabel = previousDaily.length === 0 && previousWeekly.length === 0
-          ? 'Previous Months'
-          : `Before ${monthLabel}`;
-
-      const previousEarliest = previousDaily.length > 0
-          ? previousDaily.reduce((min, entry) => entry.date < min ? entry.date : min, previousDaily[0].date)
-          : (previousWeekly.length > 0
-              ? previousWeekly.reduce((min, entry) => entry.weekStartDate < min ? entry.weekStartDate : min, previousWeekly[0].weekStartDate)
-              : undefined);
-
-      const previousLatest = previousDaily.length > 0
-          ? previousDaily.reduce((max, entry) => entry.date > max ? entry.date : max, previousDaily[0].date)
-          : (previousWeekly.length > 0
-              ? previousWeekly.reduce((max, entry) => entry.weekEndDate > max ? entry.weekEndDate : max, previousWeekly[0].weekEndDate)
-              : undefined);
-
-      return {
-          rangeLabel: driverStats.netPayoutRange || (earliestDate && latestDate ? `${formatDate(earliestDate)} - ${formatDate(latestDate)}` : 'No activity found'),
-          source: driverStats.netPayoutSource,
-          monthly: [
-              {
-                  label: `${monthLabel} (This Month)`,
-                  range: `${currentMonthStart.toLocaleDateString('en-GB')} - ${currentMonthEnd.toLocaleDateString('en-GB')}`,
-                  breakdown: buildBreakdown(thisMonthStats),
-                  net: thisMonthStats.netPayout
-              },
-              {
-                  label: previousLabel,
-                  range: previousEarliest || previousLatest
-                      ? `${previousEarliest ? formatDate(previousEarliest) : '-'} - ${previousLatest ? formatDate(previousLatest) : '-'}`
-                      : 'No earlier records',
-                  breakdown: buildBreakdown(previousMonthStats),
-                  net: previousMonthStats.netPayout
-              }
-          ],
-          net: driverStats.netPayout
-      };
-  }, [driverStats, rawDaily, rawWeekly, rentalSlabs, viewingAsDriver]);
 
   // --- 3. AGGREGATED STATS (Month/Prev Month/Year) ---
     const aggregatedStats = useMemo(() => {
@@ -1135,80 +1083,16 @@ const DriverPortalPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] font-sans pb-24">
-      {showNetPayoutPopup && netPayoutDetails && (
-          <div
-              className="fixed inset-0 z-50 flex items-center justify-center px-4 sm:px-6"
-              onClick={() => setShowNetPayoutPopup(false)}
-          >
-              <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" />
-              <div
-                  className="relative w-full max-w-[430px] sm:max-w-[520px] h-[82vh] max-h-[90vh] rounded-3xl shadow-2xl border border-slate-100 bg-gradient-to-b from-white via-slate-50 to-white overflow-hidden flex flex-col"
-                  onClick={(e) => e.stopPropagation()}
-              >
-                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(99,102,241,0.08),transparent_35%),radial-gradient(circle_at_80%_0%,rgba(236,72,153,0.08),transparent_30%)] pointer-events-none" />
-                  <div className="flex-shrink-0 flex items-start justify-between px-6 py-4 border-b border-slate-100 bg-white/90 backdrop-blur relative">
-                      <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-indigo-500 via-violet-500 to-fuchsia-500" />
-                       <div className="space-y-0.5">
-                           <p className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-slate-500">Net Payout Summary</p>
-                           <p className="text-base font-black text-slate-900">{netPayoutDetails.rangeLabel}</p>
-                          <p className="text-[11px] text-slate-400 font-semibold">{netPayoutDetails.source === 'latest-wallet' ? 'Using latest wallet window (lowest balance)' : 'Across all available records'}</p>
-                       </div>
-                       <button
-                           className="p-2 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
-                           onClick={() => setShowNetPayoutPopup(false)}
-                           aria-label="Close net payout summary"
-                       >
-                           <X size={16} />
-                       </button>
-                   </div>
-                  <div className="relative flex-1 overflow-hidden">
-                      <div className="absolute inset-0 overflow-y-auto px-6 pb-6 pt-4 space-y-4 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent overscroll-contain">
-                           <div className="space-y-3">
-                               {netPayoutDetails.monthly.map(section => (
-                                   <div key={section.label} className="border border-slate-100 rounded-2xl p-4 bg-white shadow-sm">
-                                       <div className="flex items-start justify-between gap-2">
-                                           <div>
-                                               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-indigo-500">{section.label}</p>
-                                               <p className="text-[11px] text-slate-500 font-semibold">{section.range}</p>
-                                           </div>
-                                           <div className="text-right">
-                                               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Net Payout</p>
-                                               <p className="text-xl font-black text-slate-800">{formatCurrencyInt(section.net)}</p>
-                                               <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${section.net >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-                                                   {section.net >= 0 ? 'Receivable' : 'Payable'}
-                                               </span>
-                                           </div>
-                                       </div>
-                                       <div className="grid grid-cols-2 gap-2 mt-3">
-                                           {section.breakdown.map(item => (
-                                               <div key={item.label} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
-                                                   <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">{item.label}</p>
-                                                   <p className={`text-sm font-extrabold ${item.tone === 'positive' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                       {formatCurrencyInt(item.value)}
-                                                   </p>
-                                               </div>
-                                           ))}
-                                       </div>
-                                   </div>
-                               ))}
-                           </div>
-                           <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 flex items-center justify-between shadow-sm">
-                               <div>
-                                   <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-indigo-500">Overall Net Payout</p>
-                                   <p className="text-2xl font-black text-indigo-900">{formatCurrencyInt(netPayoutDetails.net)}</p>
-                               </div>
-                               <span className={`px-3 py-1 rounded-full text-[11px] font-bold ${netPayoutDetails.net >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-                                   {netPayoutDetails.net >= 0 ? 'Receivable' : 'Payable'}
-                               </span>
-                           </div>
-                           <p className="text-[11px] text-slate-500 leading-snug">
-                               Net payout is calculated as collections minus rent and fuel, plus dues, minus any direct payouts already recorded.
-                           </p>
-                       </div>
-                   </div>
-               </div>
-           </div>
-       )}
+      {calcPopup && (
+          <NetCalculationPopup
+              metric={calcPopup.metric}
+              values={calcPopup.values}
+              netValue={calcPopup.netValue}
+              title={calcPopup.title}
+              sourceNote={calcPopup.sourceNote}
+              onClose={() => setCalcPopup(null)}
+          />
+      )}
        {/* 1. Header & Nav */}
        <header className="bg-[#1e293b] text-white sticky top-0 z-30 shadow-xl">
            <div className="max-w-md mx-auto px-6 py-4 flex items-center justify-between">
@@ -1317,17 +1201,28 @@ const DriverPortalPage: React.FC = () => {
                        </div>
                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                            {/* @ts-ignore */}
-                           {topCards.data.stats?.map((stat: any) => (
-                               <div key={stat.label} className="bg-slate-50 border border-slate-100 rounded-2xl px-3 py-2 text-center shadow-sm">
-                                   <p className="text-[10px] text-slate-400 font-bold uppercase mb-1 tracking-[0.12em]">{stat.label}</p>
-                                   <p className={`text-base font-extrabold ${stat.colorClass || 'text-slate-800'}`}>
-                                       {typeof stat.value === 'number' ? formatCurrencyInt(stat.value) : stat.value}
-                                   </p>
-                                   {stat.subtext && (
-                                       <p className="text-[9px] text-slate-400 font-semibold leading-tight">{stat.subtext}</p>
-                                   )}
-                               </div>
-                           ))}
+                           {topCards.data.stats?.map((stat: any) => {
+                               const isNetPayout = stat.label === 'Net Payout';
+                               const isNetBalance = stat.label === 'Net Balance';
+
+                               return (
+                                   <div
+                                       key={stat.label}
+                                       onClick={(isNetPayout || isNetBalance) ? () => openCalculationPopup(isNetPayout ? 'netPayout' : 'netBalance') : undefined}
+                                       className={`bg-slate-50 border border-slate-100 rounded-2xl px-3 py-2 text-center shadow-sm ${
+                                           (isNetPayout || isNetBalance) ? 'cursor-pointer hover:shadow-md transition' : ''
+                                       }`}
+                                   >
+                                       <p className="text-[10px] text-slate-400 font-bold uppercase mb-1 tracking-[0.12em]">{stat.label}</p>
+                                       <p className={`text-base font-extrabold ${stat.colorClass || 'text-slate-800'}`}>
+                                           {typeof stat.value === 'number' ? formatCurrencyInt(stat.value) : stat.value}
+                                       </p>
+                                       {stat.subtext && (
+                                           <p className="text-[9px] text-slate-400 font-semibold leading-tight">{stat.subtext}</p>
+                                       )}
+                                   </div>
+                               );
+                           })}
                        </div>
                    </div>
                ) : (
@@ -1336,7 +1231,7 @@ const DriverPortalPage: React.FC = () => {
                        {/* @ts-ignore */}
                        {/* @ts-ignore */}
                        <div
-                           onClick={activeTab === 'home' ? () => setShowNetPayoutPopup(true) : undefined}
+                           onClick={activeTab === 'home' ? () => openCalculationPopup('netPayout') : undefined}
                            className={`${topCards.left?.colorClass ?? ''} p-6 rounded-[24px] text-white relative overflow-hidden shadow-xl flex flex-col justify-center ${topCards.left?.colSpan ? `col-span-${topCards.left.colSpan}` : ''} ${activeTab === 'home' ? 'cursor-pointer transition transform hover:-translate-y-0.5' : ''}`}
                        >
                            {/* @ts-ignore */}

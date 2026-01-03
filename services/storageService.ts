@@ -168,11 +168,13 @@ const calculateDriverStats = (
         const trips = wallet.trips;
         const slab = sortedSlabs.find(s => trips >= s.minTrips && (s.maxTrips === null || trips <= s.maxTrips));
 
+        const dailyRentTotal = weekDaily.reduce((sum, d) => sum + d.rent, 0);
+
         let rentRateUsed = 0;
         if (wallet.rentOverride !== undefined && wallet.rentOverride !== null) {
             rentRateUsed = wallet.rentOverride;
         } else if (weekDaily.length > 0) {
-            rentRateUsed = weekDaily.reduce((sum, d) => sum + d.rent, 0) / weekDaily.length;
+            rentRateUsed = dailyRentTotal / weekDaily.length;
         } else {
             rentRateUsed = slab ? slab.rentAmount : 0;
         }
@@ -181,7 +183,8 @@ const calculateDriverStats = (
             ? wallet.daysWorkedOverride
             : weekDaily.length;
 
-        const weeklyRentTotal = rentRateUsed * daysWorked;
+        const extraDays = Math.max(0, daysWorked - weekDaily.length);
+        const weeklyRentTotal = dailyRentTotal + (extraDays * rentRateUsed);
 
         // Sum Daily Values
         const weeklyCollection = weekDaily.reduce((sum, d) => sum + d.collection, 0);
