@@ -4,7 +4,6 @@ import {
   Check,
   ClipboardList,
   Copy,
-  ChevronDown,
   Clock,
   AlertTriangle,
   Database,
@@ -80,7 +79,7 @@ const DriverLeadsPage: React.FC = () => {
   const [isXLSXReady, setIsXLSXReady] = useState<boolean>(typeof XLSX !== 'undefined');
   const [importing, setImporting] = useState(false);
   const [updateEditor, setUpdateEditor] = useState<{ leadId: string; text: string; date: string } | null>(null);
-  const [isStatusesOpen, setIsStatusesOpen] = useState(true);
+  const [isStatusesOpen, setIsStatusesOpen] = useState(false);
   const [sheetToDelete, setSheetToDelete] = useState<LeadSheet | null>(null);
   const [sheetEditor, setSheetEditor] = useState<{ sheetId: string; name: string; description: string } | null>(null);
   const [confirmSheetEdit, setConfirmSheetEdit] = useState(false);
@@ -664,63 +663,113 @@ const DriverLeadsPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
+      <div className="grid grid-cols-1 lg:grid-cols-[320px,minmax(0,1fr)] gap-4 xl:gap-6 items-start">
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-1">
               <p className="text-xs uppercase tracking-[0.2em] text-indigo-500 font-semibold">Driver Lead Workspace</p>
-              <h1 className="text-2xl font-bold text-slate-900 mt-1">Sheets to organise leads</h1>
-              <p className="text-slate-500 mt-1">Create sheets, import XLS/CSV, and keep updates with dated history.</p>
+              <h1 className="text-xl font-bold text-slate-900">Sheets to organise leads</h1>
+              <p className="text-sm text-slate-500">Create sheets, import XLS/CSV, and keep updates with dated history.</p>
             </div>
-            <div className="flex gap-3">
+            <div className="relative">
               <button
-                onClick={createSheet}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl shadow hover:bg-indigo-700 transition disabled:opacity-50"
-                disabled={!sheetForm.name.trim()}
+                onClick={() => setIsStatusesOpen((prev) => !prev)}
+                className="inline-flex items-center gap-2 px-3 py-1.5 text-[12px] rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+                aria-label={isStatusesOpen ? 'Hide statuses manager' : 'Show statuses manager'}
               >
-                <Plus size={16} /> New Sheet
+                <NotebookPen size={14} /> Statuses
               </button>
+              {isStatusesOpen && (
+                <div className="absolute right-0 mt-2 w-72 rounded-xl border border-slate-200 bg-white shadow-xl p-3 space-y-3 z-20">
+                  <div className="flex items-center justify-between text-sm font-semibold text-slate-800">
+                    <span>Statuses</span>
+                    <button
+                      onClick={() => setIsStatusesOpen(false)}
+                      className="p-1 rounded-full hover:bg-slate-100 text-slate-500"
+                      aria-label="Close statuses manager"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      value={statusDraft}
+                      onChange={(e) => setStatusDraft(e.target.value)}
+                      placeholder="Add status"
+                      className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                    />
+                    <button
+                      onClick={addStatus}
+                      className="px-3 rounded-lg bg-slate-900 text-white text-sm hover:bg-indigo-700"
+                    >
+                      Add
+                    </button>
+                  </div>
+                  <div className="space-y-2 max-h-[220px] overflow-auto pr-1 text-sm">
+                    {activeSheet?.statuses.map((status) => (
+                      <div key={status.id} className="flex items-center gap-2 group">
+                        <div
+                          className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${colorMap[status.color || 'slate']}`}
+                          contentEditable
+                          suppressContentEditableWarning
+                          onBlur={(e) => updateStatusLabel(status.id, e.currentTarget.textContent || status.label)}
+                        >
+                          {status.label}
+                        </div>
+                        {activeSheet.statuses.length > 1 && (
+                          <button
+                            onClick={() => removeStatus(status.id)}
+                            className="opacity-0 group-hover:opacity-100 text-rose-500 hover:text-rose-600"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-2 gap-3">
             <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-              <div className="flex items-center justify-between text-xs uppercase text-slate-500 font-semibold">Total leads</div>
-              <div className="flex items-center gap-2 mt-2 text-2xl font-bold text-slate-900">
-                <BarChart3 size={18} className="text-indigo-500" />
+              <div className="flex items-center justify-between text-[11px] uppercase text-slate-500 font-semibold">Total leads</div>
+              <div className="flex items-center gap-2 mt-2 text-xl font-bold text-slate-900">
+                <BarChart3 size={16} className="text-indigo-500" />
                 {leadMetrics.total}
               </div>
               <p className="text-[12px] text-slate-500 mt-1">Across {activeSheet?.statuses.length || 0} statuses</p>
             </div>
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-              <div className="flex items-center justify-between text-xs uppercase text-amber-600 font-semibold">Waiting</div>
-              <div className="flex items-center gap-2 mt-2 text-2xl font-bold text-amber-700">
-                <Clock size={18} />
+              <div className="flex items-center justify-between text-[11px] uppercase text-amber-600 font-semibold">Waiting</div>
+              <div className="flex items-center gap-2 mt-2 text-xl font-bold text-amber-700">
+                <Clock size={16} />
                 {leadMetrics.waiting}
               </div>
               <p className="text-[12px] text-amber-700/80">Keep these moving</p>
             </div>
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-              <div className="flex items-center justify-between text-xs uppercase text-emerald-700 font-semibold">Confirmed</div>
-              <div className="flex items-center gap-2 mt-2 text-2xl font-bold text-emerald-700">
-                <Check size={18} />
+              <div className="flex items-center justify-between text-[11px] uppercase text-emerald-700 font-semibold">Confirmed</div>
+              <div className="flex items-center gap-2 mt-2 text-xl font-bold text-emerald-700">
+                <Check size={16} />
                 {leadMetrics.confirmed}
               </div>
               <p className="text-[12px] text-emerald-700/80">Ready for onboarding</p>
             </div>
             <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
-              <div className="flex items-center justify-between text-xs uppercase text-rose-600 font-semibold">Stale</div>
-              <div className="flex items-center gap-2 mt-2 text-2xl font-bold text-rose-700">
-                <Activity size={18} />
+              <div className="flex items-center justify-between text-[11px] uppercase text-rose-600 font-semibold">Stale</div>
+              <div className="flex items-center gap-2 mt-2 text-xl font-bold text-rose-700">
+                <Activity size={16} />
                 {leadMetrics.stale}
               </div>
               <p className="text-[12px] text-rose-700/80">No update in 7+ days</p>
             </div>
           </div>
 
-          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="border border-slate-200 rounded-xl p-4">
-              <div className="flex items-center gap-2 text-sm text-slate-600 font-semibold mb-3">
+          <div className="grid grid-cols-1 gap-3">
+            <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+              <div className="flex items-center gap-2 text-sm text-slate-600 font-semibold">
                 <ClipboardList size={16} /> New sheet details
               </div>
               <input
@@ -733,10 +782,20 @@ const DriverLeadsPage: React.FC = () => {
                 value={sheetForm.description}
                 onChange={(e) => setSheetForm((prev) => ({ ...prev, description: e.target.value }))}
                 placeholder="Short description"
-                className="w-full mt-2 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
                 rows={2}
               />
+              <div className="flex justify-end">
+                <button
+                  onClick={createSheet}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl shadow hover:bg-indigo-700 transition disabled:opacity-50"
+                  disabled={!sheetForm.name.trim()}
+                >
+                  <Plus size={16} /> New Sheet
+                </button>
+              </div>
             </div>
+
             <div className="border border-slate-200 rounded-xl p-4">
               <div className="flex items-center gap-2 text-sm text-slate-600 font-semibold mb-3">
                 <Database size={16} /> Quick import / download
@@ -759,190 +818,62 @@ const DriverLeadsPage: React.FC = () => {
                 </button>
               </div>
             </div>
-          </div>
-        </div>
 
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-          <div className="flex items-center justify-between text-sm font-semibold text-slate-800">
-            <div className="flex items-center gap-2">
-              <span>Statuses</span>
-              <NotebookPen size={16} className="text-slate-400" />
-            </div>
-            <button
-              onClick={() => setIsStatusesOpen((prev) => !prev)}
-              className="p-1 rounded-lg hover:bg-slate-100 text-slate-500"
-              aria-label={isStatusesOpen ? 'Collapse statuses' : 'Expand statuses'}
-            >
-              <ChevronDown
-                size={16}
-                className={`transition-transform ${isStatusesOpen ? 'rotate-180 text-slate-700' : 'rotate-0'}`}
-              />
-            </button>
-          </div>
-          {isStatusesOpen && (
-            <div className="space-y-3 mt-3">
-              <div className="flex gap-2">
-                <input
-                  value={statusDraft}
-                  onChange={(e) => setStatusDraft(e.target.value)}
-                  placeholder="Add status"
-                  className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                />
-                <button
-                  onClick={addStatus}
-                  className="px-3 rounded-lg bg-slate-900 text-white text-sm hover:bg-indigo-700"
-                >
-                  Add
-                </button>
+            <div className="border border-slate-200 rounded-2xl p-4 shadow-sm h-full flex flex-col">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-800">Sheets</h3>
+                <CalendarDays size={16} className="text-slate-400" />
               </div>
-              <div className="space-y-2 max-h-[240px] overflow-auto pr-1">
-                {activeSheet?.statuses.map((status) => (
-                  <div key={status.id} className="flex items-center gap-2 group">
-                    <div
-                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${colorMap[status.color || 'slate']}`}
-                      contentEditable
-                      suppressContentEditableWarning
-                      onBlur={(e) => updateStatusLabel(status.id, e.currentTarget.textContent || status.label)}
-                    >
-                      {status.label}
-                    </div>
-                    {activeSheet.statuses.length > 1 && (
-                      <button
-                        onClick={() => removeStatus(status.id)}
-                        className="opacity-0 group-hover:opacity-100 text-rose-500 hover:text-rose-600"
-                      >
-                        <X size={14} />
-                      </button>
-                    )}
+              <div className="mt-3 space-y-2 overflow-y-auto pr-1 flex-1 max-h-[60vh]">
+                {sheets.length === 0 && (
+                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-sm text-slate-600 text-center">
+                    No sheets yet. Create your first list to start tracking leads.
                   </div>
+                )}
+                {sheets.map((sheet) => (
+                  <button
+                    key={sheet.id}
+                    onClick={() => setActiveSheetId(sheet.id)}
+                    className={`w-full text-left p-3 rounded-xl border transition flex flex-col gap-1 ${
+                      activeSheet?.id === sheet.id
+                        ? 'border-indigo-200 bg-indigo-50 text-indigo-900 shadow-sm'
+                        : 'border-slate-200 hover:border-indigo-100'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-sm font-semibold">
+                      <span className="line-clamp-1">{sheet.name}</span>
+                      <span className="text-[11px] text-slate-500">{sheet.leads.length} leads</span>
+                    </div>
+                    <p className="text-xs text-slate-500 line-clamp-2">{sheet.description || 'No description added'}</p>
+                    <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                      <Clock size={12} /> {new Date(sheet.createdAt).toLocaleDateString()}
+                      <span>•</span>
+                      {sheet.createdBy || 'Admin'}
+                    </div>
+                    <div className="flex items-center justify-between pt-1 text-[11px] text-slate-500">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSheetEditor({ sheetId: sheet.id, name: sheet.name, description: sheet.description || '' });
+                        }}
+                        className="flex items-center gap-1 hover:text-indigo-600"
+                      >
+                        <Edit3 size={12} /> Rename
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSheetAction('delete');
+                          setSheetToDelete(sheet);
+                        }}
+                        className="flex items-center gap-1 text-rose-500 hover:text-rose-600"
+                      >
+                        <Trash2 size={12} /> Delete
+                      </button>
+                    </div>
+                  </button>
                 ))}
               </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-[260px,minmax(0,1fr)] gap-4 xl:gap-6 items-start">
-        <div className="space-y-4">
-          <div className="bg-slate-900 text-white rounded-2xl p-4 shadow-sm space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Sheet overview</p>
-                <h3 className="text-lg font-semibold leading-tight">
-                  {activeSheet?.name || 'No sheet selected'}
-                </h3>
-                <p className="text-sm text-slate-200/80">
-                  {activeSheet
-                    ? `${activeSheet.leads.length} leads • ${activeSheet.statuses.length} statuses`
-                    : 'Create a sheet to start adding leads'}
-                </p>
-              </div>
-              {activeSheet ? (
-                <div className="text-xs text-slate-200/80 text-right space-y-1">
-                  <div className="flex items-center gap-1 justify-end">
-                    <CalendarDays size={14} className="text-indigo-200" />
-                    <span>{new Date(activeSheet.createdAt).toLocaleDateString()}</span>
-                  </div>
-                  <div>Owner: {activeSheet.createdBy || 'Admin'}</div>
-                </div>
-              ) : (
-                <div className="text-xs text-slate-200/80">Use the form above to add your first list.</div>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => activeSheet && duplicateSheet(activeSheet.id)}
-                disabled={!activeSheet}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-white text-slate-900 text-sm font-semibold px-3 py-2 border border-white/20 shadow-sm disabled:opacity-60"
-              >
-                <Copy size={14} /> Duplicate
-              </button>
-              <button
-                onClick={() => activeSheet && setSheetEditor({ sheetId: activeSheet.id, name: activeSheet.name, description: activeSheet.description || '' })}
-                disabled={!activeSheet}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-white/10 text-white text-sm font-semibold px-3 py-2 border border-white/20 hover:bg-white/20 disabled:opacity-60"
-              >
-                <Edit3 size={14} /> Rename
-              </button>
-              <button
-                onClick={confirmActiveSheetClear}
-                disabled={!activeSheet || !activeSheet.leads.length}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-amber-500/90 text-amber-950 text-sm font-semibold px-3 py-2 border border-amber-200 hover:bg-amber-400 disabled:opacity-60"
-              >
-                <Database size={14} /> Clear leads
-              </button>
-              <button
-                onClick={confirmActiveSheetDelete}
-                disabled={!activeSheet}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-rose-600 text-white text-sm font-semibold px-3 py-2 border border-rose-500 hover:bg-rose-700 disabled:opacity-60"
-              >
-                <Trash2 size={14} /> Delete sheet
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2 text-xs text-slate-200/80">
-              <AlertTriangle size={14} className="text-amber-200" />
-              <span>
-                Duplicate to experiment, clear to reset leads, or delete to remove the entire sheet.
-              </span>
-            </div>
-          </div>
-
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm h-full flex flex-col">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-slate-800">Sheets</h3>
-              <CalendarDays size={16} className="text-slate-400" />
-            </div>
-            <div className="mt-3 space-y-2 overflow-y-auto pr-1 flex-1 max-h-[60vh]">
-              {sheets.length === 0 && (
-                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-sm text-slate-600 text-center">
-                  No sheets yet. Create your first list to start tracking leads.
-                </div>
-              )}
-              {sheets.map((sheet) => (
-                <button
-                  key={sheet.id}
-                  onClick={() => setActiveSheetId(sheet.id)}
-                  className={`w-full text-left p-3 rounded-xl border transition flex flex-col gap-1 ${
-                    activeSheet?.id === sheet.id
-                      ? 'border-indigo-200 bg-indigo-50 text-indigo-900 shadow-sm'
-                      : 'border-slate-200 hover:border-indigo-100'
-                  }`}
-                >
-                  <div className="flex items-center justify-between text-sm font-semibold">
-                    <span className="line-clamp-1">{sheet.name}</span>
-                    <span className="text-[11px] text-slate-500">{sheet.leads.length} leads</span>
-                  </div>
-                  <p className="text-xs text-slate-500 line-clamp-2">{sheet.description || 'No description added'}</p>
-                  <div className="flex items-center gap-2 text-[10px] text-slate-400">
-                    <Clock size={12} /> {new Date(sheet.createdAt).toLocaleDateString()}
-                    <span>•</span>
-                    {sheet.createdBy || 'Admin'}
-                  </div>
-                  <div className="flex items-center justify-between pt-1 text-[11px] text-slate-500">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSheetEditor({ sheetId: sheet.id, name: sheet.name, description: sheet.description || '' });
-                      }}
-                      className="flex items-center gap-1 hover:text-indigo-600"
-                    >
-                      <Edit3 size={12} /> Rename
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSheetAction('delete');
-                        setSheetToDelete(sheet);
-                      }}
-                      className="flex items-center gap-1 text-rose-500 hover:text-rose-600"
-                    >
-                      <Trash2 size={12} /> Delete
-                    </button>
-                  </div>
-                </button>
-              ))}
             </div>
           </div>
         </div>
