@@ -391,6 +391,8 @@ const DriverLeadsPage: React.FC = () => {
 
   const mapStatus = (sheet: LeadSheet, statusId: string) => sheet.statuses.find((s) => s.id === statusId);
 
+  const normalizePhoneForActions = (phone: string) => phone.replace(/\D/g, '');
+
   const latestTouch = (lead: LeadRecord) => lead.updates[0]?.date || lead.createdTime;
   const latestUpdate = (lead: LeadRecord) => lead.updates[0];
 
