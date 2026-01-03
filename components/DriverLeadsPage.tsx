@@ -3,6 +3,7 @@ import {
   CalendarDays,
   Check,
   ClipboardList,
+  ChevronDown,
   Copy,
   Clock,
   AlertTriangle,
@@ -14,7 +15,9 @@ import {
   Activity,
   BarChart3,
   NotebookPen,
+  Phone,
   Plus,
+  UserRound,
   Trash2,
   Upload,
   X
@@ -661,15 +664,25 @@ const DriverLeadsPage: React.FC = () => {
     );
   }, [activeSheet]);
 
+  const statusCounts = useMemo(() => {
+    if (!activeSheet) return [] as (LeadStatus & { count: number })[];
+    return activeSheet.statuses.map((status) => ({
+      ...status,
+      count: activeSheet.leads.filter((lead) => lead.statusId === status.id).length
+    }));
+  }, [activeSheet]);
+
+  const [showAddLeadForm, setShowAddLeadForm] = useState(false);
+
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 lg:grid-cols-[320px,minmax(0,1fr)] gap-4 xl:gap-6 items-start">
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-4">
+    <div className="min-h-screen bg-slate-50 p-2 sm:p-4 space-y-4">
+      <div className="grid grid-cols-1 xl:grid-cols-[340px,minmax(0,1fr)] gap-4 items-start">
+        <aside className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-4">
           <div className="flex items-start justify-between gap-3">
             <div className="space-y-1">
-              <p className="text-xs uppercase tracking-[0.2em] text-indigo-500 font-semibold">Driver Lead Workspace</p>
-              <h1 className="text-xl font-bold text-slate-900">Sheets to organise leads</h1>
-              <p className="text-sm text-slate-500">Create sheets, import XLS/CSV, and keep updates with dated history.</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-indigo-500 font-semibold">Driver Leads</p>
+              <h1 className="text-xl font-bold text-slate-900">Lead lists and positions</h1>
+              <p className="text-sm text-slate-500">Curate location-based lists and move drivers through statuses effortlessly.</p>
             </div>
             <div className="relative">
               <button
@@ -677,12 +690,12 @@ const DriverLeadsPage: React.FC = () => {
                 className="inline-flex items-center gap-2 px-3 py-1.5 text-[12px] rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
                 aria-label={isStatusesOpen ? 'Hide statuses manager' : 'Show statuses manager'}
               >
-                <NotebookPen size={14} /> Statuses
+                <NotebookPen size={14} /> Dropdowns
               </button>
               {isStatusesOpen && (
                 <div className="absolute right-0 mt-2 w-72 rounded-xl border border-slate-200 bg-white shadow-xl p-3 space-y-3 z-20">
                   <div className="flex items-center justify-between text-sm font-semibold text-slate-800">
-                    <span>Statuses</span>
+                    <span>Manage dropdowns</span>
                     <button
                       onClick={() => setIsStatusesOpen(false)}
                       className="p-1 rounded-full hover:bg-slate-100 text-slate-500"
@@ -698,10 +711,7 @@ const DriverLeadsPage: React.FC = () => {
                       placeholder="Add status"
                       className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
                     />
-                    <button
-                      onClick={addStatus}
-                      className="px-3 rounded-lg bg-slate-900 text-white text-sm hover:bg-indigo-700"
-                    >
+                    <button onClick={addStatus} className="px-3 rounded-lg bg-slate-900 text-white text-sm hover:bg-indigo-700">
                       Add
                     </button>
                   </div>
@@ -732,223 +742,226 @@ const DriverLeadsPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-2 gap-3">
-            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-              <div className="flex items-center justify-between text-[11px] uppercase text-slate-500 font-semibold">Total leads</div>
-              <div className="flex items-center gap-2 mt-2 text-xl font-bold text-slate-900">
-                <BarChart3 size={16} className="text-indigo-500" />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="text-[11px] uppercase text-slate-500 font-semibold">Total leads</div>
+              <div className="flex items-center gap-2 mt-2 text-2xl font-bold text-slate-900">
+                <BarChart3 size={18} className="text-indigo-500" />
                 {leadMetrics.total}
               </div>
               <p className="text-[12px] text-slate-500 mt-1">Across {activeSheet?.statuses.length || 0} statuses</p>
             </div>
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-              <div className="flex items-center justify-between text-[11px] uppercase text-amber-600 font-semibold">Waiting</div>
-              <div className="flex items-center gap-2 mt-2 text-xl font-bold text-amber-700">
-                <Clock size={16} />
-                {leadMetrics.waiting}
-              </div>
-              <p className="text-[12px] text-amber-700/80">Keep these moving</p>
-            </div>
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-              <div className="flex items-center justify-between text-[11px] uppercase text-emerald-700 font-semibold">Confirmed</div>
-              <div className="flex items-center gap-2 mt-2 text-xl font-bold text-emerald-700">
-                <Check size={16} />
-                {leadMetrics.confirmed}
-              </div>
-              <p className="text-[12px] text-emerald-700/80">Ready for onboarding</p>
-            </div>
             <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
-              <div className="flex items-center justify-between text-[11px] uppercase text-rose-600 font-semibold">Stale</div>
-              <div className="flex items-center gap-2 mt-2 text-xl font-bold text-rose-700">
-                <Activity size={16} />
+              <div className="text-[11px] uppercase text-rose-600 font-semibold">Stale</div>
+              <div className="flex items-center gap-2 mt-2 text-2xl font-bold text-rose-700">
+                <Activity size={18} />
                 {leadMetrics.stale}
               </div>
               <p className="text-[12px] text-rose-700/80">No update in 7+ days</p>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-3">
-            <div className="border border-slate-200 rounded-xl p-4 space-y-3">
-              <div className="flex items-center gap-2 text-sm text-slate-600 font-semibold">
-                <ClipboardList size={16} /> New sheet details
+          <div className="rounded-2xl border border-slate-200 p-4 bg-slate-50/50 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-800">Lead statuses</h3>
+              <span className="text-xs text-slate-500">{statusCounts.length} dropdowns</span>
+            </div>
+            <div className="space-y-2">
+              {statusCounts.map((status) => (
+                <div key={status.id} className="flex items-center justify-between rounded-xl bg-white border border-slate-200 px-3 py-2">
+                  <span className={`px-2 py-1 rounded-full text-xs font-semibold ${colorMap[status.color || 'slate']}`}>
+                    {status.label}
+                  </span>
+                  <span className="text-xs text-slate-500">{status.count} leads</span>
+                </div>
+              ))}
+              {!statusCounts.length && <p className="text-xs text-slate-500">No statuses configured.</p>}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[11px] uppercase text-slate-500 font-semibold">Lead Lists</p>
+                <p className="text-sm text-slate-600">Organise by city or campaign.</p>
               </div>
+              <button
+                onClick={createSheet}
+                disabled={!sheetForm.name.trim()}
+                className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-white text-sm font-semibold disabled:opacity-50"
+              >
+                <Plus size={14} /> Add new list
+              </button>
+            </div>
+            <div className="space-y-2 max-h-[45vh] overflow-auto pr-1">
+              {sheets.length === 0 && (
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-sm text-slate-600 text-center">
+                  No sheets yet. Start with a city or referral list.
+                </div>
+              )}
+              {sheets.map((sheet) => (
+                <button
+                  key={sheet.id}
+                  onClick={() => setActiveSheetId(sheet.id)}
+                  className={`w-full text-left rounded-xl border px-3 py-3 transition shadow-sm ${
+                    activeSheet?.id === sheet.id ? 'border-slate-300 bg-white' : 'border-slate-200 bg-slate-50 hover:bg-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-between text-sm font-semibold text-slate-900">
+                    <span className="line-clamp-1">{sheet.name}</span>
+                    <span className="text-[11px] text-slate-500">{sheet.leads.length} leads</span>
+                  </div>
+                  <p className="text-xs text-slate-500 line-clamp-2 mt-1">{sheet.description || 'No description added'}</p>
+                  <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500">
+                    <Clock size={12} /> Updated {new Date(sheet.createdAt).toLocaleDateString()}
+                    <span>•</span>
+                    {sheet.createdBy || 'Admin'}
+                  </div>
+                  <div className="mt-2 flex items-center gap-3 text-[11px] text-indigo-600">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSheetEditor({ sheetId: sheet.id, name: sheet.name, description: sheet.description || '' });
+                      }}
+                      className="hover:underline"
+                    >
+                      Edit
+                    </button>
+                    <span className="text-slate-300">|</span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSheetAction('delete');
+                        setSheetToDelete(sheet);
+                      }}
+                      className="text-rose-500 hover:underline"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <div className="grid grid-cols-1 gap-2">
               <input
                 value={sheetForm.name}
                 onChange={(e) => setSheetForm((prev) => ({ ...prev, name: e.target.value }))}
-                placeholder="Sheet title (e.g., Feb WhatsApp Leads)"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                placeholder="List name (e.g., Kochi — January)"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
               />
               <textarea
                 value={sheetForm.description}
                 onChange={(e) => setSheetForm((prev) => ({ ...prev, description: e.target.value }))}
-                placeholder="Short description"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                placeholder="Description"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                 rows={2}
               />
-              <div className="flex justify-end">
-                <button
-                  onClick={createSheet}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl shadow hover:bg-indigo-700 transition disabled:opacity-50"
-                  disabled={!sheetForm.name.trim()}
-                >
-                  <Plus size={16} /> New Sheet
-                </button>
-              </div>
-            </div>
-
-            <div className="border border-slate-200 rounded-xl p-4">
-              <div className="flex items-center gap-2 text-sm text-slate-600 font-semibold mb-3">
-                <Database size={16} /> Quick import / download
-              </div>
-              <label className="w-full flex items-center justify-between gap-3 rounded-lg border-2 border-dashed border-slate-200 px-3 py-3 text-sm text-slate-500 cursor-pointer hover:border-indigo-200 hover:bg-indigo-50">
-                <div className="flex items-center gap-2">
-                  {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-                  <span>{importing ? 'Importing...' : 'Import XLSX / CSV into active sheet'}</span>
-                </div>
-                <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => e.target.files?.[0] && importFile(e.target.files[0])} />
-              </label>
-              <div className="flex flex-col gap-2 mt-2 text-xs text-slate-500">
-                <p>Headers supported: created_time, platform, full_name, phone, city, status, admin, update, note</p>
-                <button
-                  type="button"
-                  onClick={downloadTemplate}
-                  className="self-start inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-[12px] font-semibold hover:border-indigo-200"
-                >
-                  <FileSpreadsheet size={12} /> Download sample CSV
-                </button>
-              </div>
-            </div>
-
-            <div className="border border-slate-200 rounded-2xl p-4 shadow-sm h-full flex flex-col">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-800">Sheets</h3>
-                <CalendarDays size={16} className="text-slate-400" />
-              </div>
-              <div className="mt-3 space-y-2 overflow-y-auto pr-1 flex-1 max-h-[60vh]">
-                {sheets.length === 0 && (
-                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-sm text-slate-600 text-center">
-                    No sheets yet. Create your first list to start tracking leads.
-                  </div>
-                )}
-                {sheets.map((sheet) => (
-                  <button
-                    key={sheet.id}
-                    onClick={() => setActiveSheetId(sheet.id)}
-                    className={`w-full text-left p-3 rounded-xl border transition flex flex-col gap-1 ${
-                      activeSheet?.id === sheet.id
-                        ? 'border-indigo-200 bg-indigo-50 text-indigo-900 shadow-sm'
-                        : 'border-slate-200 hover:border-indigo-100'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between text-sm font-semibold">
-                      <span className="line-clamp-1">{sheet.name}</span>
-                      <span className="text-[11px] text-slate-500">{sheet.leads.length} leads</span>
-                    </div>
-                    <p className="text-xs text-slate-500 line-clamp-2">{sheet.description || 'No description added'}</p>
-                    <div className="flex items-center gap-2 text-[10px] text-slate-400">
-                      <Clock size={12} /> {new Date(sheet.createdAt).toLocaleDateString()}
-                      <span>•</span>
-                      {sheet.createdBy || 'Admin'}
-                    </div>
-                    <div className="flex items-center justify-between pt-1 text-[11px] text-slate-500">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSheetEditor({ sheetId: sheet.id, name: sheet.name, description: sheet.description || '' });
-                        }}
-                        className="flex items-center gap-1 hover:text-indigo-600"
-                      >
-                        <Edit3 size={12} /> Rename
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSheetAction('delete');
-                          setSheetToDelete(sheet);
-                        }}
-                        className="flex items-center gap-1 text-rose-500 hover:text-rose-600"
-                      >
-                        <Trash2 size={12} /> Delete
-                      </button>
-                    </div>
-                  </button>
-                ))}
-              </div>
             </div>
           </div>
-        </div>
 
-        <div className="space-y-4 w-full">
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="text-xs text-slate-500">Active sheet</p>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-xl font-semibold text-slate-900">{activeSheet?.name || 'No sheet selected'}</h3>
-                  {activeSheet && (
-                    <span className="px-2 py-1 rounded-full bg-slate-100 text-[12px] text-slate-600 border border-slate-200">
-                      {activeSheet.leads.length} leads
-                    </span>
-                  )}
-                </div>
+          <div className="rounded-2xl border border-slate-200 p-4 space-y-2 bg-white">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+              <Database size={16} /> Import or download
+            </div>
+            <label className="w-full flex items-center justify-between gap-3 rounded-xl border-2 border-dashed border-slate-200 px-3 py-3 text-sm text-slate-500 cursor-pointer hover:border-indigo-200 hover:bg-indigo-50">
+              <div className="flex items-center gap-2">
+                {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+                <span>{importing ? 'Importing...' : 'Import XLSX / CSV into active list'}</span>
               </div>
-              <div className="flex gap-2 w-full md:w-auto flex-wrap justify-end">
+              <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => e.target.files?.[0] && importFile(e.target.files[0])} />
+            </label>
+            <div className="flex flex-col gap-2 text-xs text-slate-500">
+              <p>Use headers: created_time, platform, full_name, phone, city, status, admin, update, note</p>
+              <button
+                type="button"
+                onClick={downloadTemplate}
+                className="self-start inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-[12px] font-semibold hover:border-indigo-200"
+              >
+                <FileSpreadsheet size={12} /> Download sample CSV
+              </button>
+            </div>
+          </div>
+        </aside>
+
+        <main className="space-y-4 w-full">
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 space-y-3 relative">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <CalendarDays size={14} />
+                  <span>{activeSheet?.name || 'No sheet selected'}</span>
+                  <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[11px] font-semibold">Concept preview</span>
+                </div>
+                <p className="text-sm text-slate-600">{activeSheet?.description || 'Select a list to see driver leads.'}</p>
+              </div>
+              <div className="flex flex-wrap justify-end gap-2">
+                <button
+                  onClick={() => setIsStatusesOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:border-indigo-200"
+                >
+                  Manage dropdowns
+                </button>
+                <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:border-indigo-200 cursor-pointer">
+                  <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => e.target.files?.[0] && importFile(e.target.files[0])} />
+                  <Upload size={14} /> Import
+                </label>
+                <button
+                  onClick={exportActiveSheet}
+                  className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:border-indigo-200 disabled:opacity-50"
+                  disabled={!activeSheet?.leads.length}
+                >
+                  <FileSpreadsheet size={14} /> Export
+                </button>
                 {activeSheet && (
-                  <div className="flex gap-2 flex-wrap">
-                    <button
-                      onClick={() => duplicateSheet(activeSheet.id)}
-                      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 hover:border-indigo-200"
-                      title="Clone this sheet with its statuses and leads"
-                    >
-                      <Copy size={14} /> Duplicate
-                    </button>
-                    <button
-                      onClick={() => setSheetEditor({ sheetId: activeSheet.id, name: activeSheet.name, description: activeSheet.description || '' })}
-                      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 hover:border-indigo-200"
-                    >
-                      <Edit3 size={14} /> Rename
-                    </button>
-                    <button
-                      onClick={() => {
-                        setSheetAction('clear');
-                        setSheetToDelete(activeSheet);
-                      }}
-                      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-amber-200 text-sm text-amber-700 hover:bg-amber-50 disabled:opacity-50"
-                      disabled={!activeSheet.leads.length}
-                    >
-                      <Database size={14} /> Clear leads
-                    </button>
-                    <button
-                      onClick={() => {
-                        setSheetAction('delete');
-                        setSheetToDelete(activeSheet);
-                      }}
-                      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-rose-200 text-sm text-rose-600 hover:bg-rose-50"
-                    >
-                      <Trash2 size={14} /> Delete
-                    </button>
-                    <button
-                      onClick={exportActiveSheet}
-                      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 hover:border-indigo-200"
-                      disabled={!activeSheet.leads.length}
-                    >
-                      <FileSpreadsheet size={14} /> Export
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => duplicateSheet(activeSheet.id)}
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:border-indigo-200"
+                  >
+                    <Copy size={14} /> Duplicate
+                  </button>
                 )}
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-sm text-slate-600 w-full md:w-64">
-                  <Filter size={14} />
+                <button
+                  onClick={() => setShowAddLeadForm((prev) => !prev)}
+                  className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+                >
+                  <Plus size={14} /> Add Lead
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm text-slate-500">
+                <Filter size={16} />
+                <span>{filteredLeads.length} results</span>
+                {isFiltered && (
+                  <button
+                    onClick={() => {
+                      setFilterText('');
+                      setStatusFilter('all');
+                      setSortOption('recent');
+                    }}
+                    className="text-indigo-600 font-semibold"
+                  >
+                    Reset filters
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <div className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 bg-slate-50">
+                  <span className="text-slate-400">
+                    <Clock size={14} />
+                  </span>
                   <input
                     value={filterText}
                     onChange={(e) => setFilterText(e.target.value)}
-                    placeholder="Search name, city, status"
-                    className="flex-1 bg-transparent outline-none"
+                    placeholder="Search name, phone, city, status"
+                    className="w-52 md:w-72 text-sm bg-transparent focus:outline-none"
                   />
                 </div>
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white w-full md:w-48"
+                  className="text-sm rounded-lg border border-slate-200 px-3 py-2 bg-white"
                 >
                   <option value="all">All statuses</option>
                   {activeSheet?.statuses.map((status) => (
@@ -959,309 +972,227 @@ const DriverLeadsPage: React.FC = () => {
                 </select>
                 <select
                   value={sortOption}
-                  onChange={(e) => setSortOption(e.target.value as typeof sortOption)}
-                  className="px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white w-full md:w-40"
+                  onChange={(e) => setSortOption(e.target.value as any)}
+                  className="text-sm rounded-lg border border-slate-200 px-3 py-2 bg-white"
                 >
-                  <option value="recent">Latest touch</option>
-                  <option value="oldest">Oldest first</option>
-                  <option value="status">Group by status</option>
+                  <option value="recent">Recent touch</option>
+                  <option value="oldest">Oldest touch</option>
+                  <option value="status">Status A→Z</option>
                 </select>
-                <label className="hidden md:flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 cursor-pointer hover:border-indigo-200">
-                  <FileSpreadsheet size={14} />
-                  <span>Import</span>
-                  <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => e.target.files?.[0] && importFile(e.target.files[0])} />
-                </label>
               </div>
             </div>
 
-            <div className="mt-4 flex flex-wrap gap-2">
-              {activeSheet?.statuses.map((status) => {
-                const count = activeSheet.leads.filter((lead) => lead.statusId === status.id).length;
-                return (
-                  <button
-                    key={status.id}
-                    onClick={() => setStatusFilter((prev) => (prev === status.id ? 'all' : status.id))}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border transition ${
-                      statusFilter === status.id
-                        ? `${colorMap[status.color || 'slate']} border-transparent`
-                        : 'border-slate-200 text-slate-600 hover:border-indigo-200'
-                    }`}
-                  >
-                    <span>{status.label}</span>
-                    <span className="text-[11px] text-slate-500">{count}</span>
-                  </button>
-                );
-              })}
-              {!!leadMetrics.withNotes && (
-                <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 text-xs font-semibold text-slate-700 border border-slate-200">
-                  <NotebookPen size={12} />
-                  {leadMetrics.withNotes} with updates
-                </span>
+            <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+              <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">{leadMetrics.total} total</span>
+              <span className="px-2 py-1 rounded-full bg-emerald-50 text-emerald-700">{leadMetrics.confirmed} confirmed</span>
+              <span className="px-2 py-1 rounded-full bg-amber-50 text-amber-700">{leadMetrics.waiting} waiting</span>
+              {leadMetrics.withNotes > 0 && (
+                <span className="px-2 py-1 rounded-full bg-indigo-50 text-indigo-700">{leadMetrics.withNotes} with updates</span>
               )}
             </div>
-
-            <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-3">
-              <input
-                value={leadForm.fullName}
-                onChange={(e) => setLeadForm((prev) => ({ ...prev, fullName: e.target.value }))}
-                placeholder="Full name"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              />
-              <input
-                value={leadForm.phone}
-                onChange={(e) => setLeadForm((prev) => ({ ...prev, phone: e.target.value }))}
-                placeholder="Phone"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              />
-              <input
-                value={leadForm.city}
-                onChange={(e) => setLeadForm((prev) => ({ ...prev, city: e.target.value }))}
-                placeholder="City"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              />
-              <input
-                value={leadForm.platform}
-                onChange={(e) => setLeadForm((prev) => ({ ...prev, platform: e.target.value }))}
-                placeholder="Platform"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              />
-              <select
-                value={leadForm.statusId}
-                onChange={(e) => setLeadForm((prev) => ({ ...prev, statusId: e.target.value }))}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              >
-                {activeSheet?.statuses.map((status) => (
-                  <option key={status.id} value={status.id}>
-                    {status.label}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="date"
-                value={leadForm.createdTime}
-                onChange={(e) => setLeadForm((prev) => ({ ...prev, createdTime: e.target.value }))}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              />
-              <input
-                value={leadForm.admin}
-                onChange={(e) => setLeadForm((prev) => ({ ...prev, admin: e.target.value }))}
-                placeholder="Admin"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              />
-              <input
-                value={leadForm.note}
-                onChange={(e) => setLeadForm((prev) => ({ ...prev, note: e.target.value }))}
-                placeholder="Note / Update"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              />
-              <button
-                onClick={addLead}
-                className="w-full flex items-center justify-center gap-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold px-3 py-2 hover:bg-indigo-700"
-              >
-                <Plus size={14} /> Add lead
-              </button>
-            </div>
           </div>
-        </div>
 
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden w-full xl:col-span-2">
-          <div className="overflow-auto w-full">
-            <table className="min-w-full text-left text-sm">
-              <thead className="bg-slate-50 border-b border-slate-200 text-[12px] text-slate-500 uppercase tracking-wider">
-                <tr>
-                  <th className="px-4 py-3">Created</th>
-                  <th className="px-4 py-3">Lead</th>
-                  <th className="px-4 py-3">Phone</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Latest update</th>
-                  <th className="px-4 py-3">Last touch</th>
-                  <th className="px-4 py-3">Note</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-                <tbody>
-                  {filteredLeads.length === 0 && (
-                    <tr>
-                      <td className="px-4 py-6 text-center text-sm text-slate-500" colSpan={8}>
-                        {isFiltered
-                          ? 'No leads match the current filters. Try clearing the search or status filter.'
-                          : 'No leads yet for this sheet. Add manually or import a file to get started.'}
-                      </td>
-                    </tr>
-                  )}
-                {filteredLeads.map((lead) => {
-                  const update = latestUpdate(lead);
-                  const touchDate = latestTouch(lead);
-                  const days = daysSince(touchDate);
-                  const stale = days >= 7;
-                  return (
-                    <tr
-                      key={lead.id}
-                      className={`border-b border-slate-100 hover:bg-slate-50/60 ${stale ? 'bg-amber-50/60' : ''}`}
-                    >
-                      <td className="px-4 py-3 text-slate-700 text-xs">
-                        <div className="font-semibold text-slate-800 text-sm">{lead.createdTime}</div>
-                        <div className="text-[11px] text-slate-500">Platform: {lead.platform || '—'}</div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="font-semibold text-slate-900">{lead.fullName}</div>
-                        <div className="text-[11px] text-slate-500">{lead.city || 'City not set'}</div>
-                      </td>
-                      <td className="px-4 py-3 text-slate-700">{lead.phone || '—'}</td>
-                      <td className="px-4 py-3">
+          {showAddLeadForm && (
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                  <Plus size={16} /> Quick add lead
+                </div>
+                <button onClick={() => setShowAddLeadForm(false)} className="text-slate-500 hover:text-slate-700">
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                <input
+                  value={leadForm.fullName}
+                  onChange={(e) => setLeadForm((prev) => ({ ...prev, fullName: e.target.value }))}
+                  placeholder="Full name"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+                <input
+                  value={leadForm.phone}
+                  onChange={(e) => setLeadForm((prev) => ({ ...prev, phone: e.target.value }))}
+                  placeholder="Phone"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+                <input
+                  value={leadForm.city}
+                  onChange={(e) => setLeadForm((prev) => ({ ...prev, city: e.target.value }))}
+                  placeholder="City"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+                <input
+                  value={leadForm.platform}
+                  onChange={(e) => setLeadForm((prev) => ({ ...prev, platform: e.target.value }))}
+                  placeholder="Platform"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+                <select
+                  value={leadForm.statusId}
+                  onChange={(e) => setLeadForm((prev) => ({ ...prev, statusId: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                >
+                  {activeSheet?.statuses.map((status) => (
+                    <option key={status.id} value={status.id}>
+                      {status.label}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="date"
+                  value={leadForm.createdTime}
+                  onChange={(e) => setLeadForm((prev) => ({ ...prev, createdTime: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+                <input
+                  value={leadForm.admin}
+                  onChange={(e) => setLeadForm((prev) => ({ ...prev, admin: e.target.value }))}
+                  placeholder="Admin"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+                <input
+                  value={leadForm.note}
+                  onChange={(e) => setLeadForm((prev) => ({ ...prev, note: e.target.value }))}
+                  placeholder="Note / Update"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+                <button
+                  onClick={addLead}
+                  className="w-full flex items-center justify-center gap-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold px-3 py-2 hover:bg-indigo-700"
+                >
+                  <Plus size={14} /> Add lead
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-3">
+            {filteredLeads.length === 0 && (
+              <div className="bg-white border border-dashed border-slate-200 rounded-2xl p-6 text-center text-slate-500">
+                {isFiltered
+                  ? 'No leads match the current filters. Clear the search or status dropdown.'
+                  : 'No leads yet for this list. Add manually or import a file to get started.'}
+              </div>
+            )}
+
+            {filteredLeads.map((lead) => {
+              const update = latestUpdate(lead);
+              const touchDate = latestTouch(lead);
+              const days = daysSince(touchDate);
+              const stale = days >= 7;
+              const historyOpen = expandedHistories.has(lead.id);
+
+              return (
+                <div
+                  key={lead.id}
+                  className={`rounded-2xl border shadow-sm bg-white ${stale ? 'border-amber-200 bg-amber-50/50' : 'border-slate-200'}`}
+                >
+                  <div className="flex flex-col gap-3 p-4">
+                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 text-xs text-slate-500">
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${colorMap[mapStatus(activeSheet!, lead.statusId)?.color || 'slate']}`}>
+                            {mapStatus(activeSheet!, lead.statusId)?.label || 'Status'}
+                          </span>
+                          <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">{lead.createdTime}</span>
+                          <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">{lead.city || 'City not set'}</span>
+                        </div>
+                        <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                          {lead.fullName}
+                          <span className="text-xs font-medium text-indigo-600">{lead.platform || '—'}</span>
+                        </h3>
+                        <div className="flex flex-wrap gap-3 text-sm text-slate-600">
+                          <span className="flex items-center gap-1">
+                            <Phone size={14} />
+                            {lead.phone || '—'}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <UserRound size={14} />
+                            {lead.admin || 'Admin'}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <NotebookPen size={14} /> Last touch {touchDate} ({days === 0 ? 'Today' : `${days}d ago`})
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2 justify-end">
                         <select
                           value={lead.statusId}
                           onChange={(e) => updateLeadStatus(lead.id, e.target.value)}
-                          className={`w-full rounded-lg border text-xs font-semibold px-2 py-1 ${
-                            statusFilter === lead.statusId
-                              ? 'border-indigo-200 bg-indigo-50 text-indigo-800'
-                              : 'border-slate-200 bg-white text-slate-800'
-                          }`}
+                          className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
                         >
-                          {activeSheet?.statuses.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.label}
+                          {activeSheet?.statuses.map((status) => (
+                            <option key={status.id} value={status.id}>
+                              {status.label}
                             </option>
                           ))}
                         </select>
-                      </td>
-                      <td className="px-4 py-3 text-slate-700">
-                        {update ? (
-                          <div className="flex flex-col gap-1 text-xs text-slate-600">
-                            <div className="flex items-start gap-2">
-                              <CalendarDays size={14} className="text-slate-400" />
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-semibold text-slate-800">{update.date}</span>
-                                  {lead.updates.length > 1 && (
-                                    <button
-                                      onClick={() => toggleHistory(lead.id)}
-                                      className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600 hover:bg-slate-200"
-                                    >
-                                      {expandedHistories.has(lead.id)
-                                        ? 'Hide previous'
-                                        : `+${lead.updates.length - 1} more`}
-                                    </button>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <span className="text-slate-500">
-                                    {expandedLatestUpdates.has(lead.id) || update.text.length <= 80
-                                      ? update.text
-                                      : `${update.text.slice(0, 80)}...`}
-                                  </span>
-                                  {update.text.length > 80 && (
-                                    <button
-                                      onClick={() => toggleExpandedLatest(lead.id)}
-                                      className="text-[11px] text-indigo-600 font-semibold hover:underline"
-                                    >
-                                      {expandedLatestUpdates.has(lead.id) ? 'Show less' : '...more'}
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                            {expandedHistories.has(lead.id) && lead.updates.slice(1).length > 0 && (
-                              <div className="mt-1 space-y-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
-                                {lead.updates.slice(1).map((previous) => (
-                                  <div key={previous.id} className="flex items-start gap-2">
-                                    <CalendarDays size={12} className="text-slate-400 mt-0.5" />
-                                    <div>
-                                      <div className="font-semibold text-slate-700">{previous.date}</div>
-                                      <div className="text-slate-500">{previous.text}</div>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-xs text-slate-400">No updates</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-slate-700 text-xs">
-                        <div className="flex items-center gap-2">
-                          <Clock size={14} className="text-slate-400" />
-                          <div>
-                            <div className="font-semibold text-slate-800">{touchDate}</div>
-                            <div className="text-[11px] text-slate-500 flex items-center gap-2">
-                              <span>{days === 0 ? 'Today' : `${days}d ago`}</span>
-                              {stale && <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold">Follow up</span>}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-slate-700 max-w-xs">
-                        <div className="line-clamp-2 text-sm">{lead.note || '—'}</div>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() =>
-                              setUpdateEditor({
-                                leadId: lead.id,
-                                text: lead.note || '',
-                                date: new Date().toISOString().slice(0, 10)
-                              })
-                            }
-                            className="p-2 rounded-lg border border-slate-200 text-slate-600 hover:border-indigo-200 hover:text-indigo-600"
-                            title="Add dated update"
-                          >
-                            <Edit3 size={14} />
-                          </button>
-                          <button
-                            onClick={() => setLeadToDelete(lead)}
-                            className="p-2 rounded-lg border border-slate-200 text-rose-500 hover:border-rose-200"
-                            title="Delete lead"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+                        <button
+                          onClick={() => setUpdateEditor({ leadId: lead.id, text: '', date: new Date().toISOString().slice(0, 10) })}
+                          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:border-indigo-200"
+                        >
+                          <Edit3 size={14} /> Add update
+                        </button>
+                        <button
+                          onClick={() => setLeadToDelete(lead)}
+                          className="inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm text-rose-600 hover:bg-rose-50"
+                        >
+                          <Trash2 size={14} /> Delete
+                        </button>
+                      </div>
+                    </div>
 
-      {duplicateWarning && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg p-6">
-            <div className="flex items-center gap-3 text-amber-600 font-semibold mb-2">
-              <AlertTriangle size={18} /> Duplicate lead detected
-            </div>
-            <p className="text-sm text-slate-700">
-              <span className="font-semibold">{duplicateWarning.payload.fullName || 'Unnamed lead'}</span>{' '}
-              {duplicateWarning.payload.phone ? `(${duplicateWarning.payload.phone})` : ''} already exists in{' '}
-              <span className="font-semibold">{activeSheet?.name || 'this sheet'}</span>. Do you want to override the
-              existing record?
-            </p>
-            <div className="mt-3 p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 space-y-1">
-              <div className="font-semibold text-amber-900">Existing lead</div>
-              <div>Name: {duplicateWarning.workingLeads.find((lead) => lead.id === duplicateWarning.existingId)?.fullName || '—'}</div>
-              <div>Phone: {duplicateWarning.workingLeads.find((lead) => lead.id === duplicateWarning.existingId)?.phone || '—'}</div>
-              <div>Status will change to: {mapStatus(activeSheet!, duplicateWarning.payload.statusId)?.label || 'Unknown'}</div>
-            </div>
-            <div className="flex items-center justify-end gap-2 mt-4">
-              <button
-                onClick={cancelDuplicateLead}
-                className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={overrideDuplicateLead}
-                className="px-4 py-2 rounded-lg bg-amber-600 text-white font-semibold hover:bg-amber-700"
-              >
-                <Check size={16} className="inline-block mr-1" /> Override & Save
-              </button>
-            </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                        <p className="text-xs uppercase text-slate-500">Lead</p>
+                        <p className="font-semibold text-slate-900">{lead.fullName}</p>
+                        <p className="text-xs text-slate-500">{lead.city || '—'}</p>
+                      </div>
+                      <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                        <p className="text-xs uppercase text-slate-500">Call</p>
+                        <p className="font-semibold text-slate-900">{lead.phone || '—'}</p>
+                        <p className="text-xs text-slate-500">{lead.platform || 'Platform not set'}</p>
+                      </div>
+                      <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                        <p className="text-xs uppercase text-slate-500">Next action</p>
+                        <p className="font-semibold text-slate-900">{lead.note || update?.text || 'Add update'}</p>
+                        <p className="text-xs text-slate-500">{update ? `Last update on ${update.date}` : 'No updates yet'}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+                        <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">Latest update {update ? update.date : '—'}</span>
+                        {update && <span className="px-2 py-1 rounded-full bg-indigo-50 text-indigo-700">{update.text}</span>}
+                      </div>
+                      <button
+                        onClick={() => toggleHistory(lead.id)}
+                        className="text-sm font-semibold text-indigo-600 flex items-center gap-1"
+                      >
+                        {historyOpen ? 'Hide history' : 'View full history'}
+                        <ChevronDown size={14} className={historyOpen ? 'rotate-180 transition' : 'transition'} />
+                      </button>
+                    </div>
+
+                    {historyOpen && (
+                      <div className="border-t border-slate-100 pt-3 space-y-2 text-sm text-slate-700">
+                        {lead.updates.length === 0 && <p className="text-slate-500">No updates logged yet.</p>}
+                        {lead.updates.map((item) => (
+                          <div key={item.id} className="flex items-start gap-2">
+                            <span className="text-[11px] text-slate-500">{item.date}</span>
+                            <p className="font-medium text-slate-800">{item.text}</p>
+                            <span className="text-[11px] text-slate-400">— {item.author}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        </div>
-      )}
+        </main>
+      </div>
 
       {sheetEditor && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50">
