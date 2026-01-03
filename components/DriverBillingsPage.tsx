@@ -3,6 +3,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { storageService } from '../services/storageService';
 import { DriverSummary, RentalSlab, WeeklyWallet, DailyEntry, Driver, DriverBillingRecord } from '../types';
 import { Users, ChevronDown, FileText, Briefcase, Download, Edit2, Save, X, Calendar, ChevronLeft, ChevronRight, Check, Copy, RotateCcw, Search, Clock, ChevronUp, Lock, AlertTriangle } from 'lucide-react';
+import NetCalculationPopup from './NetCalculationPopup';
 
 const DriverBillingsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
@@ -13,6 +14,20 @@ const DriverBillingsPage: React.FC = () => {
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [billingRecords, setBillingRecords] = useState<DriverBillingRecord[]>([]);
   const [billingApiError, setBillingApiError] = useState(false);
+  const [calcPopup, setCalcPopup] = useState<{
+      metric: 'netPayout' | 'netBalance';
+      netValue: number;
+      values: {
+          collection: number;
+          rent: number;
+          fuel: number;
+          due: number;
+          wallet: number;
+          payout: number;
+      };
+      title?: string;
+      sourceNote?: string;
+  } | null>(null);
   
   // Filter & View State
   const [filterDriver, setFilterDriver] = useState('');
@@ -76,6 +91,26 @@ const DriverBillingsPage: React.FC = () => {
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(val);
+  };
+
+  const openCalcPopup = (driver: DriverSummary, metric: 'netPayout' | 'netBalance') => {
+      setCalcPopup({
+          metric,
+          netValue: metric === 'netPayout' ? driver.netPayout : driver.finalTotal,
+          values: {
+              collection: driver.totalCollection,
+              rent: driver.totalRent,
+              fuel: driver.totalFuel,
+              due: driver.totalDue,
+              wallet: driver.totalWalletWeek,
+              payout: driver.totalPayout
+          },
+          title: `${metric === 'netPayout' ? 'Net Payout' : 'Net Balance'} • ${driver.driver}`,
+          sourceNote:
+              metric === 'netPayout' && driver.netPayoutSource === 'latest-wallet' && driver.netPayoutRange
+                  ? `Using lowest balance till ${driver.netPayoutRange}`
+                  : undefined
+      });
   };
 
   const formatIntegerCurrency = (val: number) => {
@@ -542,6 +577,16 @@ const DriverBillingsPage: React.FC = () => {
 
   return (
     <div className="max-w-[1600px] mx-auto space-y-8 animate-fade-in pb-20">
+       {calcPopup && (
+           <NetCalculationPopup
+               metric={calcPopup.metric}
+               values={calcPopup.values}
+               netValue={calcPopup.netValue}
+               title={calcPopup.title}
+               sourceNote={calcPopup.sourceNote}
+               onClose={() => setCalcPopup(null)}
+           />
+       )}
        <div className="flex items-center space-x-4 mb-2">
           <div className="p-3 bg-indigo-900/10 rounded-xl text-indigo-700 shadow-sm border border-indigo-100">
              <FileText size={28} />
@@ -616,7 +661,11 @@ const DriverBillingsPage: React.FC = () => {
                             <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalFuel)}</td>
                             <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalWalletWeek)}</td>
                             <td className="px-6 py-4 text-right">
-                              <div className="flex flex-col items-end gap-1">
+                              <div
+                                className="flex flex-col items-end gap-1 cursor-pointer"
+                                onClick={() => openCalcPopup(driver, 'netPayout')}
+                                title="View net payout calculation"
+                              >
                                 <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-bold border ${
                                   driver.netPayout < 0
                                     ? 'bg-rose-50 text-rose-700 border-rose-100'
@@ -632,11 +681,15 @@ const DriverBillingsPage: React.FC = () => {
                               </div>
                             </td>
                             <td className="px-6 py-4 text-right">
-                              <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-bold border ${
-                                driver.finalTotal < 0
-                                  ? 'bg-rose-50 text-rose-700 border-rose-100' 
-                                  : 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                              }`}>
+                              <span
+                                onClick={() => openCalcPopup(driver, 'netBalance')}
+                                className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-bold border ${
+                                  driver.finalTotal < 0
+                                    ? 'bg-rose-50 text-rose-700 border-rose-100'
+                                    : 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                                } cursor-pointer`}
+                                title="View net balance calculation"
+                              >
                                 {formatCurrency(driver.finalTotal)}
                               </span>
                           </td>
