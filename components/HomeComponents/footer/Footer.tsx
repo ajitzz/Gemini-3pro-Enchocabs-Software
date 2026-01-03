@@ -1,54 +1,22 @@
-'use client';
-import { useEffect, useRef } from 'react';
-import s from './Footer.module.css';
+import React from 'react';
+import { Link } from 'react-router-dom';
 
-export default function Footer(){
-  const rootRef = useRef<HTMLElement>(null);
-
-  useEffect(() => {
-    const el = rootRef.current;
-    if(!el || !('IntersectionObserver' in window)) return;
-    const revealEls = el.querySelectorAll(`.${s.reveal}`);
-    const io = new IntersectionObserver((entries)=>{
-      entries.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add(s.in); io.unobserve(e.target as Element); }});
-    },{threshold:.12});
-    revealEls.forEach((n)=>io.observe(n));
-    return () => io.disconnect();
-  }, []);
-
+const Footer: React.FC = () => {
   return (
-    <footer ref={rootRef} id="footer" className={`light ${s.footer}`} aria-label="ENCHO Footer">
-      <div className="container">
-        <div className={s.grid}>
-          <div className={`${s.brand} ${s.reveal}`}><div className={s.brandLg}>ENCHO</div></div>
-          <div className={`${s.contacts} ${s.reveal}`}>
-            <div className={s.rows}>
-              <div className={s.label}>Tel:</div><div> +91-6364704396</div>
-              <div className={s.label}>Email:</div><div> <a href="mailto:enchoenterprises@gmail.com">enchoenterprises@gmail.com</a></div>
-              <div className={s.label}>Location:</div><div> Bangalore</div>
-            </div>
-          </div>
-          <div className={`${s.subscribe} ${s.reveal}`}>
-            <h4>SUBSCRIBE</h4>
-            <p>Sign up to receive Autono news and updates.</p>
-            <form className={s.form} onSubmit={(e)=>{e.preventDefault(); alert('Thanks for subscribing!');}}>
-              <label htmlFor="sub-email" className="sr-only">Email</label>
-              <input id="sub-email" type="email" placeholder="Email *" required />
-              <button type="submit">Subscribe</button>
-            </form>
-            <label className={s.check}><input type="checkbox" /> Yes, subscribe me to your newsletter.*</label>
-          </div>
+    <footer className="bg-slate-900 py-10 text-slate-200">
+      <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 className="text-xl font-bold text-white">Encho Cabs</h3>
+          <p className="text-sm text-slate-400">Safe rides, confident staff workflows.</p>
         </div>
-        <div className={s.bottom}>
-          <div>© 2023 by Encho Enterprises</div>
-          <div className={s.social} aria-label="Social links">
-            <a href="#"><i className="fa-brands fa-linkedin-in"/></a>
-            <a href="#"><i className="fa-brands fa-facebook-f"/></a>
-            <a href="#"><i className="fa-brands fa-x-twitter"/></a>
-            <a href="#"><i className="fa-brands fa-instagram"/></a>
-          </div>
+        <div className="flex flex-wrap items-center gap-4 text-sm font-semibold">
+          <Link to="/" className="text-slate-200 transition hover:text-white">Home</Link>
+          <Link to="/staff/login" className="text-slate-200 transition hover:text-white">Staff login</Link>
+          <Link to="/staff/portal" className="text-slate-200 transition hover:text-white">Driver portal</Link>
         </div>
       </div>
     </footer>
   );
-}
+};
+
+export default Footer;
