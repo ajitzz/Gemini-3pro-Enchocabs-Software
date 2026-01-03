@@ -9,6 +9,7 @@ import Numbers from './HomeComponents/numbers/Numbers';
 import Testimonials from './HomeComponents/testimonials/Testimonials';
 import Footer from './HomeComponents/footer/Footer';
 import PartTime from './HomeComponents/PartTime/PartTime';
+
 export default function HomePage() {
   return (
     <main className="min-h-screen bg-neutral-950 px-4 py-8 sm:px-6 lg:px-10">
