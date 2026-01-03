@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation, Outlet } from 'react-router-dom';
 import { LayoutDashboard, Calendar, Wallet, Menu, X, Users, Coffee, Upload, Settings, Briefcase, FileText, Calculator, UserCircle, LogOut, Shield, ClipboardList } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import DailyEntryPage from './components/DailyEntryPage';
@@ -53,7 +53,7 @@ const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode
   return <>{children}</>;
 };
 
-const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const Layout: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const { user, logout } = useAuth();
@@ -185,7 +185,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
              <span>{isSidebarCollapsed ? 'Show navigation' : 'Hide navigation'}</span>
            </button>
          </div>
-         {children}
+         <Outlet />
       </main>
       
       {/* Overlay for mobile menu */}
@@ -216,26 +216,27 @@ const App: React.FC = () => {
               } />
 
               {/* Admin Routes (Wrapped in Layout) */}
-              <Route path="/app/*" element={
+              <Route
+                path="/app"
+                element={
                   <ProtectedRoute allowedRoles={['admin', 'super_admin']}>
-                      <Layout>
-                          <Routes>
-                              <Route path="/app" element={<DashboardPage />} />
-                              <Route path="/app/daily" element={<DailyEntryPage />} />
-                              <Route path="/app/weekly" element={<WeeklyWalletPage />} />
-                              <Route path="/app/registration" element={<RegistrationPage />} />
-                              <Route path="/app/defaults" element={<ManageDefaultsPage />} />
-                              <Route path="/app/leaves" element={<LeavePage />} />
-                              <Route path="/app/settlement" element={<CompanySettlementPage />} />
-                              <Route path="/app/billings" element={<DriverBillingsPage />} />
-                              <Route path="/app/revenue" element={<RevenuePage />} />
-                              <Route path="/app/driver-leads" element={<DriverLeadsPage />} />
-                              <Route path="/app/import" element={<ImportPage />} />
-                              <Route path="/app/admin-access" element={<AdminAccessPage />} />
-                          </Routes>
-                      </Layout>
+                    <Layout />
                   </ProtectedRoute>
-              } />
+                }
+              >
+                <Route index element={<DashboardPage />} />
+                <Route path="daily" element={<DailyEntryPage />} />
+                <Route path="weekly" element={<WeeklyWalletPage />} />
+                <Route path="registration" element={<RegistrationPage />} />
+                <Route path="defaults" element={<ManageDefaultsPage />} />
+                <Route path="leaves" element={<LeavePage />} />
+                <Route path="settlement" element={<CompanySettlementPage />} />
+                <Route path="billings" element={<DriverBillingsPage />} />
+                <Route path="revenue" element={<RevenuePage />} />
+                <Route path="driver-leads" element={<DriverLeadsPage />} />
+                <Route path="import" element={<ImportPage />} />
+                <Route path="admin-access" element={<AdminAccessPage />} />
+              </Route>
           </Routes>
         </BrowserRouter>
     </AuthProvider>
