@@ -5,7 +5,7 @@ export default function Parallax() {
   return (
  <section
       id="parallax"
-      className="relative isolate overflow-hidden bg-neutral-900 py-20 text-neutral-100 sm:py-28"
+      className=" flex flex-col items-center justify-center relative isolate overflow-hidden bg-neutral-900 py-20 text-neutral-100 sm:py-28"
       aria-label="Family Support Parallax"
     >
       <div

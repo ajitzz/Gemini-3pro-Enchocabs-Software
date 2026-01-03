@@ -7,7 +7,7 @@ const sectionStyle = { "--vision-bg": VISION_BG } as CSSProperties;
 export default function Vision() {  return (
   <section
       id="vision"
-      className="relative overflow-hidden bg-[--vision-bg] py-20 text-neutral-100 sm:py-24"
+      className="flex flex-col items-center justify-center relative overflow-hidden bg-[--vision-bg] py-20 text-neutral-100 sm:py-24"
       aria-label="Vision"
       style={sectionStyle}
     >
