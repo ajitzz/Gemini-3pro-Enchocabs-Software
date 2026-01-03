@@ -28,23 +28,23 @@ const scaleIn = {
 
 // ---- Pointer utilities (safe across pointer/mouse/touch) -------------------
 type AnyEvt =
-  | React.PointerEvent<HTMLAnchorElement>
-  | React.MouseEvent<HTMLAnchorElement>
-  | React.TouchEvent<HTMLAnchorElement>;
+  | React.PointerEvent<HTMLElement>
+  | React.MouseEvent<HTMLElement>
+  | React.TouchEvent<HTMLElement>;
 
-function isPointerEvent(e: AnyEvt): e is React.PointerEvent<HTMLAnchorElement> {
+function isPointerEvent(e: AnyEvt): e is React.PointerEvent<HTMLElement> {
   return typeof e === "object" && e !== null && "pointerType" in (e as any);
 }
-function isTouchEvent(e: AnyEvt): e is React.TouchEvent<HTMLAnchorElement> {
+function isTouchEvent(e: AnyEvt): e is React.TouchEvent<HTMLElement> {
   return typeof e === "object" && e !== null && "touches" in (e as any);
 }
-function getEl(e: AnyEvt): HTMLAnchorElement | null {
-  const el = (e as any).currentTarget as HTMLAnchorElement | null | undefined;
+function getEl(e: AnyEvt): HTMLElement | null {
+  const el = (e as any).currentTarget as HTMLElement | null | undefined;
   if (!el) return null;
   if (typeof (el as any).getBoundingClientRect !== "function") return null;
   return el;
 }
-function getRelativePoint(e: AnyEvt, el: HTMLAnchorElement) {
+function getRelativePoint(e: AnyEvt, el: HTMLElement) {
   const rect = el.getBoundingClientRect();
   let clientX = 0;
   let clientY = 0;

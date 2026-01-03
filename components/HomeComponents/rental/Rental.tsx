@@ -1,5 +1,5 @@
-import Collapsible from "@/components/Collapsible/Collapsible";
-import PremiumWhatYouGetCard from "@/components/PremiumWhatYouGetCard/PremiumWhatYouGetCard";
+import Collapsible from "@/components/HomeComponents/Collapsible/Collapsible";
+import PremiumWhatYouGetCard from "@/components/HomeComponents/PremiumWhatYouGetCard/PremiumWhatYouGetCard";
 export default function Rental() {
   const defaultContent = `Our Rental Plan is engineered for drivers who want reliability and simplicity. Pay a fixed, predictable weekly fee that covers the vehicle, scheduled maintenance, and essential support. No hidden fees. No surprises. Whether you’re scaling your hours or optimizing routes, the Rental Plan helps you stay focused on driving and earning—while we handle the rest. Enjoy flexible terms designed to maximize uptime. Get responsive assistance when you need it most. Experience a premium vehicle setup that elevates every ride. Benefit from clear terms, quick onboarding, and continuous support that keeps you moving.`;
   return (

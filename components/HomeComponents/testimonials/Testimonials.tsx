@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { testimonials } from "@/lib/data/testimonials";
-import Image from "next/image";
 /* ---------- Types ---------- */
 export type Testimonial = {
   id: string;
@@ -252,7 +251,7 @@ export default function TestimonialCarousel({
               <article className="flex h-full flex-col justify-between rounded-3xl bg-white p-6 shadow-xl ring-1 ring-black/5">
                 <header className="mb-4 flex items-center gap-4">
                  
-                 <Image src={t.avatar} alt="" className="h-12 w-12 rounded-full object-cover" width={96} height={96} />
+                <img src={t.avatar} alt="" className="h-12 w-12 rounded-full object-cover" width={96} height={96} loading="lazy" />
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <h3 className="truncate text-lg font-semibold text-gray-900">{t.name}</h3>
@@ -368,12 +367,13 @@ export default function TestimonialCarousel({
             </button>
 
             <header className="mb-5 flex items-center gap-4">
-              <Image
+              <img
                 src={modalTestimonial.avatar}
                 alt={modalTestimonial.name}
                 className="h-14 w-14 rounded-full object-cover"
                 width={120}
                 height={120}
+                loading="lazy"
               />
               <div>
                 <p className="text-lg font-semibold text-gray-900">{modalTestimonial.name}</p>
