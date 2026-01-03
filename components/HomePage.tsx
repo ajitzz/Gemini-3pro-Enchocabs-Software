@@ -11,21 +11,19 @@ import Footer from './HomeComponents/footer/Footer';
 import PartTime from './HomeComponents/PartTime/PartTime';
 export default function HomePage() {
   return (
-   <main className="flex min-h-screen justify-center bg-neutral-950 px-4 py-8 sm:px-6 lg:px-10">
-      <div className="w-full max-w-screen-2xl space-y-6">
-        <div className="overflow-hidden rounded-3xl border border-neutral-200/80 bg-white shadow-2xl">
-          <div className="flex flex-col divide-y divide-neutral-200/80">
-            <Hero />
-            <Vision />
-            <Services />
-            <Rental />
-            <PartTime />
-            <Salary />
-            <Parallax />
-            <Numbers />
-            <Testimonials items={[]} autoplay interval={3500} />
-            <Footer />
-          </div>
+  <main className="min-h-screen bg-neutral-950 px-4 py-8 sm:px-6 lg:px-10">
+      <div className="mx-auto flex max-w-screen-2xl flex-col overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-2xl">
+        <div className="flex flex-col divide-y divide-neutral-200">
+          <Hero />
+          <Vision />
+          <Services />
+          <Rental />
+          <PartTime />
+          <Salary />
+          <Parallax />
+          <Numbers />
+          <Testimonials items={[]} autoplay interval={3500} />
+          <Footer />
         </div>
       </div>
     </main>
