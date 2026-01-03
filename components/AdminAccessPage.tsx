@@ -16,7 +16,7 @@ const AdminAccessPage: React.FC = () => {
   useEffect(() => {
     // Security Check
     if (user?.role !== 'super_admin') {
-        navigate('/');
+        navigate('/app');
         return;
     }
     loadData();

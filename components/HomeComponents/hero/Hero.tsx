@@ -1,8 +1,5 @@
 import ExplorePremiumSection from "./ExplorePremiumSection";
-import { Inter, Poppins } from "next/font/google";
 import s from './Hero.module.css';
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
-const poppins = Poppins({ weight: ["600", "700"], subsets: ["latin"], variable: "--font-poppins" });
 
 const HERO_IMAGE = "https://i.ibb.co/35gNhtCp/Chat-GPT-Image-Sep-15-2025-at-04-22-48-AM.png";
 
@@ -10,7 +7,7 @@ export default function Hero() {
   return (
     <section
       id="hero"
-      className={`${inter.variable} ${poppins.variable} relative isolate flex min-h-[80vh] flex-col justify-between overflow-hidden bg-neutral-950 text-white`}
+      className={`relative isolate flex min-h-[80vh] flex-col justify-between overflow-hidden bg-neutral-950 text-white`}
       aria-label="ENCHO Hero"
     >
       <div

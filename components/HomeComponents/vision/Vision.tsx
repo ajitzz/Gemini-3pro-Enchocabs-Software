@@ -1,4 +1,3 @@
-import Image from "next/image";
 import type { CSSProperties } from "react";
 
 const VISION_BG = "#050505";
@@ -37,13 +36,13 @@ export default function Vision() {  return (
          <div className="relative flex justify-center lg:justify-end">
             <div className="relative inline-flex max-w-xl items-center justify-center  bg-[--vision-bg] p-4 shadow-[0_40px_80px_-40px_rgba(0,0,0,0.85)]">
               <div className="overflow-hidden rounded-3xl  ">
-                <Image
+                <img
                   className="h-full w-full  object-cover"
                   src={VISION_IMAGE}
                   alt="Car render"
                   width={720}
                   height={480}
-                  priority={false}
+                  loading="lazy"
                 />
               </div>
             </div>

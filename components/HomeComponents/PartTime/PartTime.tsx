@@ -1,7 +1,6 @@
-import Collapsible from "@/components/Collapsible/Collapsible";
+import Collapsible from "@/components/HomeComponents/Collapsible/Collapsible";
 // import PremiumWhatYouGetCard from "@/components/PremiumWhatYouGetCard/PremiumWhatYouGetCard";
 import s from './PartTime.module.css';
-import Image from "next/image";
 
 export default function PartTime() {
   const defaultContent = `We are launching a student partner program where  students can take a WagonR CNG car on a daily rental and work part-time with Uber. After fuel and basic expenses, each car is expected to generate around ₹3,000–₹5,000 per day fro vehicle, which the students can share among themselves. The program is designed with flexible timings so that driving does not clash with classes, assignments, or exams. We also guide and monitor students for the first week to help them get started and test their performance, and all payments from Uber go directly to the students’ bank accounts, giving them full control over their earnings.`
@@ -28,12 +27,13 @@ export default function PartTime() {
             allowFullScreen
           /> */}
           <div className="relative w-full h-full">
-  <Image
- src="https://i.ibb.co/q32DfMRb/Untitled-design-4.jpg" alt="Untitled-design-4"
-    fill
-    className="object-cover"
-  />
-</div>
+            <img
+              src="https://i.ibb.co/q32DfMRb/Untitled-design-4.jpg"
+              alt="Student driving program"
+              className="absolute inset-0 h-full w-full object-cover"
+              loading="lazy"
+            />
+          </div>
         </div>
 </div>
       
