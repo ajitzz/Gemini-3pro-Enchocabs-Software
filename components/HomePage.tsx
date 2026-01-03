@@ -12,7 +12,7 @@ import PartTime from './HomeComponents/PartTime/PartTime';
 export default function HomePage() {
   return (
   <>
-  
+   <div className="flex flex-col items-center justify-center bg-white py-20 text-neutral-900 sm:py-24">
       <Hero />
       <Vision />
       <Services />
@@ -23,6 +23,7 @@ export default function HomePage() {
       <Numbers />
      <Testimonials items={[]} autoplay interval={3500} />
       <Footer />
+      </div>
     </>
   );
 }
