@@ -22,8 +22,7 @@ export default function Vision() {  return (
             </h2>
             <div className="space-y-5 rounded-3xl border border-white/5 bg-gradient-to-br from-white/5 via-white/0 to-white/5 p-6 text-sm leading-relaxed text-neutral-200 shadow-[0_40px_80px_-40px_rgba(0,0,0,0.75)] sm:text-base">
               <p>
-                I&apos;m a paragraph. Click here to add your own text and edit me. It&apos;s easy. Just click “Edit Text” or double
-                click me to add your own content and make changes to the font.
+               We believe driving should be simple, fair, and rewarding. Our fleet is well-managed, reliable, and always ready to support our drivers. 
               </p>
               <p>
                 Use this space to describe your driver-first approach: accommodation, healthy meals, safety training, reliable
