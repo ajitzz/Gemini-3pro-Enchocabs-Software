@@ -13,7 +13,7 @@ export default function Vision() {  return (
     >
       <div className="pointer-events-none absolute inset-x-0 -top-32 h-32 bg-gradient-to-b from-transparent via-neutral-950/40 to-[--vision-bg]" aria-hidden />
 
-      <div className="container relative">
+      <div className="container relative mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
         <div className="grid gap-12 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-center">
           <div className="space-y-6">
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-sky-300/80">Vision</p>

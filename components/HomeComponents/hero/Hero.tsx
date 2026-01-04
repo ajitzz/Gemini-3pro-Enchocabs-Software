@@ -39,8 +39,8 @@ export default function Hero() {
 
   <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-neutral-950/95 via-neutral-950/60 to-transparent" aria-hidden />
 
-      <div className="container relative flex w-full flex-1 flex-col items-center justify-center gap-10 py-20 text-center sm:py-24">
-         <div className=" h-full releative  container">
+      <div className="container relative mx-auto flex w-full max-w-6xl flex-1 flex-col items-center justify-center gap-10 px-4 py-20 text-center sm:px-6 sm:py-24 lg:px-8">
+         <div className="relative h-full w-full max-w-4xl space-y-6">
   <div className={s.eyebrow}>Taxi Rental • Accommodation • Food • Vehicles</div>
 
 <h1 className={s.h1}>THE FUTURE OF <span className={s.accent}>DRIVING</span> IS HERE</h1>
@@ -66,7 +66,7 @@ export default function Hero() {
         </div>
       </div>
 
-      <div className="container relative flex justify-center pb-12 sm:pb-16">
+      <div className="container relative mx-auto flex justify-center px-4 pb-12 sm:px-6 sm:pb-16 lg:px-8">
         <ExplorePremiumSection label="Our Drivers Earnings" href="/performance" showSecondary={false} />
       </div>
     </section>
