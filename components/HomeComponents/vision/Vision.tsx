@@ -25,7 +25,7 @@ export default function Vision() {  return (
                We believe driving should be simple, fair, and rewarding. Our fleet is well-managed, reliable, and always ready to support our drivers. 
               </p>
               <p>
-                Use this space to describe your driver-first approach: accommodation, healthy meals, safety training, reliable
+                accommodation, healthy meals, training, reliable
                 vehicles, and transparent settlements so drivers can earn more with less stress.
               </p>
             </div>
