@@ -4,7 +4,7 @@ export default function Rental() {
   const defaultContent = `Our Rental Plan is engineered for drivers who want reliability and simplicity. Pay a fixed, predictable weekly fee that covers the vehicle, scheduled maintenance, and essential support. No hidden fees. No surprises. Whether you’re scaling your hours or optimizing routes, the Rental Plan helps you stay focused on driving and earning—while we handle the rest. Enjoy flexible terms designed to maximize uptime. Get responsive assistance when you need it most. Experience a premium vehicle setup that elevates every ride. Benefit from clear terms, quick onboarding, and continuous support that keeps you moving.`;
   return (
  <section id="rental" className=" flex flex-col items-center justify-center bg-white py-20 text-neutral-900 sm:py-24" aria-label="Rental Plan">
-      <div className="container space-y-16">
+      <div className="container mx-auto space-y-16 px-4 sm:px-6 lg:px-8">
         <div className="grid gap-10 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-start">
           <div className="space-y-6">
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-gray-500">Rental Plan</p>

@@ -30,7 +30,7 @@ export default function Services() {
       className="flex flex-col items-center justify-center bg-white py-20 text-neutral-900 sm:py-24"
       aria-label="Services"
     >
-      <div className="container space-y-10">
+      <div className="container mx-auto space-y-10 px-4 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-3xl space-y-4 text-center sm:text-left">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-gray-500">Services</p>
           <h3 className="text-2xl font-semibold text-neutral-900 sm:text-3xl">
