@@ -88,7 +88,7 @@ const WeeklyWalletPage: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState(''); // Explicitly empty
 
   useEffect(() => {
-    loadData();
+    loadDrivers();
     // Removed default date setting
   }, []);
 
@@ -121,15 +121,32 @@ const WeeklyWalletPage: React.FC = () => {
     });
   }, [weekOptions]);
 
-  const loadData = async () => {
-    setLoading(true);
-    const [w, d] = await Promise.all([
-        storageService.getWeeklyWallets(),
-        storageService.getDrivers()
-    ]);
-    setWallets(w.sort((a, b) => new Date(b.weekStartDate).getTime() - new Date(a.weekStartDate).getTime()));
+  const loadDrivers = async () => {
+    const d = await storageService.getDrivers();
     setDrivers(d.filter(driver => !driver.terminationDate));
+  };
+
+  const loadWallets = async (filters: { driver?: string }) => {
+    setLoading(true);
+    const w = await storageService.getWeeklyWallets(filters);
+    setWallets(w.sort((a, b) => new Date(b.weekStartDate).getTime() - new Date(a.weekStartDate).getTime()));
     setLoading(false);
+  };
+
+  const walletFilters = useMemo(() => ({
+    driver: filterDriver || undefined
+  }), [filterDriver]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      loadWallets(walletFilters);
+    }, 300);
+
+    return () => window.clearTimeout(timeout);
+  }, [walletFilters]);
+
+  const refreshWallets = async () => {
+    await loadWallets(walletFilters);
   };
 
   const calculatedWalletWeek = (
@@ -200,7 +217,7 @@ const WeeklyWalletPage: React.FC = () => {
 
     await storageService.saveWeeklyWallet(newWallet);
     resetForm();
-    loadData();
+    refreshWallets();
   };
 
   const handleOverrideConfirm = async () => {
@@ -214,7 +231,7 @@ const WeeklyWalletPage: React.FC = () => {
       await storageService.saveWeeklyWallet(walletToSave);
       setDuplicateWarning(null);
       resetForm();
-      loadData();
+      refreshWallets();
   };
 
   const handleEdit = (wallet: WeeklyWallet) => {
@@ -235,7 +252,7 @@ const WeeklyWalletPage: React.FC = () => {
   const handleDelete = async (id: string) => {
     if (confirm('Delete this weekly record?')) {
       await storageService.deleteWeeklyWallet(id);
-      loadData();
+      refreshWallets();
     }
   };
 

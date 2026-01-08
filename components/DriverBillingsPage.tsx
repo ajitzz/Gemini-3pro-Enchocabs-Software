@@ -49,10 +49,24 @@ const DriverBillingsPage: React.FC = () => {
   
   // UI Feedback
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [lastBillingFilterKey, setLastBillingFilterKey] = useState<string>('');
 
   useEffect(() => {
     loadData();
   }, []);
+
+  const loadBillingRecords = async (filters: { driver?: string }, debounceKey: string) => {
+    try {
+      const billingData = await storageService.getDriverBillings(filters);
+      setBillingRecords(billingData);
+      setBillingApiError(false);
+      setLastBillingFilterKey(debounceKey);
+    } catch (billingErr) {
+      console.warn("Could not load saved billings (endpoint might be missing):", billingErr);
+      setBillingRecords([]);
+      setBillingApiError(true);
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -71,16 +85,7 @@ const DriverBillingsPage: React.FC = () => {
         setDailyEntries(sortedDaily);
         setDrivers(driverData);
 
-        // Attempt to load billings separately to handle 404/500 gracefully during deployment/migration
-        try {
-            const billingData = await storageService.getDriverBillings();
-            setBillingRecords(billingData);
-            setBillingApiError(false);
-        } catch (billingErr) {
-            console.warn("Could not load saved billings (endpoint might be missing):", billingErr);
-            setBillingRecords([]);
-            setBillingApiError(true);
-        }
+        await loadBillingRecords({ driver: filterDriver || undefined }, filterDriver.trim().toLowerCase());
 
     } catch (err) {
         console.error("Error loading billing data:", err);
@@ -116,6 +121,21 @@ const DriverBillingsPage: React.FC = () => {
   const formatIntegerCurrency = (val: number) => {
     return `₹${Math.round(val).toLocaleString('en-IN')}`;
   };
+
+  const billingFilters = useMemo(() => ({
+    driver: filterDriver || undefined
+  }), [filterDriver]);
+
+  useEffect(() => {
+    const debounceKey = filterDriver.trim().toLowerCase();
+    if (debounceKey === lastBillingFilterKey) return;
+
+    const timeout = window.setTimeout(() => {
+      loadBillingRecords(billingFilters, debounceKey);
+    }, 300);
+
+    return () => window.clearTimeout(timeout);
+  }, [billingFilters, filterDriver, lastBillingFilterKey]);
 
   // --- ROBUST DATE HELPERS (UTC STRICT) ---
   const isValidDateStr = (dateStr: any) => {
@@ -1082,4 +1102,3 @@ const DriverBillingsPage: React.FC = () => {
 };
 
 export default DriverBillingsPage;
-

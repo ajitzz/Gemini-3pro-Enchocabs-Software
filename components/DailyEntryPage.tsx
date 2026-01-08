@@ -308,24 +308,45 @@ const DailyEntryPage: React.FC = () => {
   };
   const [formData, setFormData] = useState<Partial<DailyEntry>>(initialFormState);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadEntries = async (filters: { start?: string; end?: string; driver?: string }) => {
     setLoading(true);
-    const [e, d, l, w] = await Promise.all([
-        storageService.getDailyEntries(),
-        storageService.getDrivers(),
-        storageService.getLeaves(), // Fetch leaves
-        storageService.getWeeklyWallets()
+    const e = await storageService.getDailyEntries(filters);
+    setEntries(e.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+    setLoading(false);
+  };
+
+  const loadMeta = async () => {
+    const [d, l, w] = await Promise.all([
+      storageService.getDrivers(),
+      storageService.getLeaves(),
+      storageService.getWeeklyWallets()
     ]);
 
-    setEntries(e.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
     setDrivers(d.filter(driver => !driver.terminationDate));
     setLeaves(l);
     setWeeklyWallets(w);
-    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadMeta();
+  }, []);
+
+  const entryFilters = useMemo(() => ({
+    start: filterDateStart || undefined,
+    end: filterDateEnd || undefined,
+    driver: filterDriver || undefined
+  }), [filterDateStart, filterDateEnd, filterDriver]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      loadEntries(entryFilters);
+    }, 300);
+
+    return () => window.clearTimeout(timeout);
+  }, [entryFilters]);
+
+  const refreshData = async () => {
+    await Promise.all([loadMeta(), loadEntries(entryFilters)]);
   };
 
   const entriesWithAdjustments = useMemo<DisplayDailyEntry[]>(() => {
@@ -457,7 +478,7 @@ const DailyEntryPage: React.FC = () => {
           } else {
             resetFormAfterSave(formData.date);
           }
-          loadData();
+          refreshData();
         } catch (error: any) {
           console.error('Save daily entry failed:', error);
           alert(error?.message || 'Failed to save daily entry. Ensure the driver has only one entry per day.');
@@ -496,7 +517,7 @@ const DailyEntryPage: React.FC = () => {
     } else {
         resetFormAfterSave(entryToSave.date);
     }
-    loadData();
+    refreshData();
   };
 
   const resetFormAfterSave = (preserveDate: string) => {
@@ -531,7 +552,7 @@ const DailyEntryPage: React.FC = () => {
     if (confirm('Are you sure you want to delete this entry?')) {
       try {
         await storageService.deleteDailyEntry(id);
-        loadData();
+        refreshData();
       } catch (error: any) {
         console.error('Delete daily entry failed:', error);
         alert(error?.message || 'Failed to delete the entry. Please try again.');
@@ -1136,4 +1157,3 @@ const DailyEntryPage: React.FC = () => {
 };
 
 export default DailyEntryPage;
-

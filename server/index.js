@@ -5,7 +5,12 @@ const { v4: uuidv4 } = require('uuid');
 const { createHash } = require('crypto');
 const { OAuth2Client } = require('google-auth-library');
 const db = require('./db');
-const { getJSON: getCacheJSON, setJSON: setCacheJSON, deleteKeys: deleteCacheKeys } = require('./cache');
+const {
+  getJSON: getCacheJSON,
+  setJSON: setCacheJSON,
+  deleteKeys: deleteCacheKeys,
+  deleteKeysByPrefix: deleteCacheKeysByPrefix
+} = require('./cache');
 const app = express();
 
 app.use(cors());
@@ -319,6 +324,10 @@ const resetSummaryCache = () => {
 };
 
 const invalidateKeys = async (...keys) => deleteCacheKeys(keys.filter(Boolean));
+const invalidateKeysByPrefix = async (...prefixes) => {
+  const tasks = prefixes.filter(Boolean).map((prefix) => deleteCacheKeysByPrefix(prefix));
+  await Promise.all(tasks);
+};
 
 const computeEtag = (payload) => createHash('sha1').update(JSON.stringify(payload)).digest('hex');
 
@@ -341,12 +350,38 @@ const respondWithCacheHeaders = (req, res, payload, etag, cacheStatus, maxAgeSec
   return res.json(payload);
 };
 
+const normalizeListFilters = (query = {}) => {
+  const start = typeof query.start === 'string' ? toISODate(query.start) : '';
+  const end = typeof query.end === 'string' ? toISODate(query.end) : '';
+  const driver = typeof query.driver === 'string' ? query.driver.trim() : '';
+  const rawPage = typeof query.page === 'string' ? Number.parseInt(query.page, 10) : Number(query.page);
+  const page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : null;
+  return {
+    start,
+    end,
+    driver,
+    page
+  };
+};
+
+const buildListCacheKey = (baseKey, filters) => {
+  const params = new URLSearchParams();
+  if (filters.start) params.set('start', filters.start);
+  if (filters.end) params.set('end', filters.end);
+  if (filters.driver) params.set('driver', filters.driver.toLowerCase());
+  if (filters.page) params.set('page', String(filters.page));
+  const suffix = params.toString();
+  return suffix ? `${baseKey}?${suffix}` : baseKey;
+};
+
+const LIST_PAGE_SIZE = 200;
+
 const invalidateSummaryCache = async () => {
   resetSummaryCache();
   await deleteCacheKeys([SUMMARY_CACHE_KEY]);
 };
 
-const invalidateBillingsCache = async () => deleteCacheKeys([BILLINGS_CACHE_KEY]);
+const invalidateBillingsCache = async () => invalidateKeysByPrefix(BILLINGS_CACHE_KEY);
 
 const invalidateAggregateCaches = async () => {
   await invalidateSummaryCache();
@@ -853,13 +888,36 @@ app.post('/api/auth/google', async (req, res) => {
 
 app.get('/api/driver-billings', async (req, res) => {
   try {
-    const cached = await getCacheJSON(BILLINGS_CACHE_KEY);
-    if (cached?.payload) {
-      const cachedEtag = cached.etag || computeEtag(cached.payload);
-      return respondWithCacheHeaders(req, res, cached.payload, cachedEtag, 'REDIS', BILLINGS_CACHE_TTL_SECONDS);
+    const filters = normalizeListFilters(req.query);
+    const cacheKey = buildListCacheKey(BILLINGS_CACHE_KEY, filters);
+    const cached = await getCacheJSON(cacheKey);
+    const cachedPayload = cached?.payload ?? cached;
+    if (cachedPayload) {
+      const cachedEtag = cached?.etag || computeEtag(cachedPayload);
+      return respondWithCacheHeaders(req, res, cachedPayload, cachedEtag, 'REDIS', BILLINGS_CACHE_TTL_SECONDS);
     }
 
     await syncDriverBillings();
+
+    const conditions = [];
+    const values = [];
+    if (filters.start) {
+      values.push(filters.start);
+      conditions.push(`week_start_date >= $${values.length}`);
+    }
+    if (filters.end) {
+      values.push(filters.end);
+      conditions.push(`week_end_date <= $${values.length}`);
+    }
+    if (filters.driver) {
+      values.push(`%${filters.driver.toLowerCase()}%`);
+      conditions.push(`LOWER(driver_name) LIKE $${values.length}`);
+    }
+
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const limitOffset = filters.page
+      ? `LIMIT ${LIST_PAGE_SIZE} OFFSET ${(filters.page - 1) * LIST_PAGE_SIZE}`
+      : '';
 
     const result = await db.query(`
       SELECT
@@ -871,7 +929,9 @@ app.get('/api/driver-billings', async (req, res) => {
         wallet_overdue as "walletOverdue", adjustments, payout, status,
         generated_at as "generatedAt"
       FROM driver_billings
+      ${whereClause}
       ORDER BY week_start_date DESC, driver_name ASC
+      ${limitOffset}
     `);
     const safeRows = result.rows.map(r => ({
       ...r,
@@ -883,7 +943,7 @@ app.get('/api/driver-billings', async (req, res) => {
     }));
 
     const etag = computeEtag(safeRows);
-    await setCacheJSON(BILLINGS_CACHE_KEY, { payload: safeRows, etag }, BILLINGS_CACHE_TTL_SECONDS);
+    await setCacheJSON(cacheKey, { payload: safeRows, etag }, BILLINGS_CACHE_TTL_SECONDS);
 
     return respondWithCacheHeaders(req, res, safeRows, etag, 'MISS', BILLINGS_CACHE_TTL_SECONDS);
   } catch (err) {
@@ -1139,21 +1199,50 @@ app.get('/api/summary', async (req, res) => {
 // --- DAILY ENTRIES ---
 app.get('/api/daily-entries', async (req, res) => {
   try {
-    const cached = await getCacheJSON(DAILY_ENTRIES_CACHE_KEY);
-    if (cached) {
-      res.set('X-Cache', 'REDIS');
-      return res.json(cached);
+    const filters = normalizeListFilters(req.query);
+    const cacheKey = buildListCacheKey(DAILY_ENTRIES_CACHE_KEY, filters);
+    const cached = await getCacheJSON(cacheKey);
+    const cachedPayload = cached?.payload ?? cached;
+    if (cachedPayload) {
+      const cachedEtag = cached?.etag || computeEtag(cachedPayload);
+      return respondWithCacheHeaders(req, res, cachedPayload, cachedEtag, 'REDIS', DAILY_ENTRIES_CACHE_TTL_SECONDS);
     }
 
-    const result = await db.query(`SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes FROM daily_entries ORDER BY date DESC`);
+    const conditions = [];
+    const values = [];
+    if (filters.start) {
+      values.push(filters.start);
+      conditions.push(`date >= $${values.length}`);
+    }
+    if (filters.end) {
+      values.push(filters.end);
+      conditions.push(`date <= $${values.length}`);
+    }
+    if (filters.driver) {
+      values.push(`%${filters.driver.toLowerCase()}%`);
+      conditions.push(`LOWER(driver) LIKE $${values.length}`);
+    }
+
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const limitOffset = filters.page
+      ? `LIMIT ${LIST_PAGE_SIZE} OFFSET ${(filters.page - 1) * LIST_PAGE_SIZE}`
+      : '';
+
+    const result = await db.query(`
+      SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes
+      FROM daily_entries
+      ${whereClause}
+      ORDER BY date DESC
+      ${limitOffset}
+    `, values);
     const safeRows = result.rows.map(r => ({
       ...r,
       rent: Number(r.rent), collection: Number(r.collection), fuel: Number(r.fuel), due: Number(r.due), payout: Number(r.payout)
     }));
 
-    await setCacheJSON(DAILY_ENTRIES_CACHE_KEY, safeRows, DAILY_ENTRIES_CACHE_TTL_SECONDS);
-    res.set('X-Cache', 'MISS');
-    res.json(safeRows);
+    const etag = computeEtag(safeRows);
+    await setCacheJSON(cacheKey, { payload: safeRows, etag }, DAILY_ENTRIES_CACHE_TTL_SECONDS);
+    return respondWithCacheHeaders(req, res, safeRows, etag, 'MISS', DAILY_ENTRIES_CACHE_TTL_SECONDS);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1185,7 +1274,7 @@ app.post('/api/daily-entries', async (req, res) => {
     const result = await db.query(q, [e.id, isoDate, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, payoutDateISO, e.notes]);
     await syncDriverBillings();
     await invalidateAggregateCaches();
-    await invalidateKeys(DAILY_ENTRIES_CACHE_KEY);
+    await invalidateKeysByPrefix(DAILY_ENTRIES_CACHE_KEY);
     res.json(result.rows[0]);
   } catch (err) {
     if (err.code === '23505') {
@@ -1254,7 +1343,7 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
     await client.query('COMMIT');
     await syncDriverBillings();
     await invalidateAggregateCaches();
-    await invalidateKeys(DAILY_ENTRIES_CACHE_KEY);
+    await invalidateKeysByPrefix(DAILY_ENTRIES_CACHE_KEY);
     res.json({ success: true });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -1272,7 +1361,7 @@ app.delete('/api/daily-entries/:id', async (req, res) => {
     await db.query('DELETE FROM daily_entries WHERE id = $1', [req.params.id]);
     await syncDriverBillings();
     await invalidateAggregateCaches();
-    await invalidateKeys(DAILY_ENTRIES_CACHE_KEY);
+    await invalidateKeysByPrefix(DAILY_ENTRIES_CACHE_KEY);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1280,13 +1369,42 @@ app.delete('/api/daily-entries/:id', async (req, res) => {
 // --- WEEKLY WALLETS ---
 app.get('/api/weekly-wallets', async (req, res) => {
   try {
-    const cached = await getCacheJSON(WEEKLY_WALLETS_CACHE_KEY);
-    if (cached) {
-      res.set('X-Cache', 'REDIS');
-      return res.json(cached);
+    const filters = normalizeListFilters(req.query);
+    const cacheKey = buildListCacheKey(WEEKLY_WALLETS_CACHE_KEY, filters);
+    const cached = await getCacheJSON(cacheKey);
+    const cachedPayload = cached?.payload ?? cached;
+    if (cachedPayload) {
+      const cachedEtag = cached?.etag || computeEtag(cachedPayload);
+      return respondWithCacheHeaders(req, res, cachedPayload, cachedEtag, 'REDIS', WEEKLY_WALLETS_CACHE_TTL_SECONDS);
     }
 
-    const result = await db.query(`SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate", to_char(week_end_date, 'YYYY-MM-DD') as "weekEndDate", earnings, refund, diff, cash, charges, trips, wallet_week as "walletWeek", days_worked_override as "daysWorkedOverride", rent_override as "rentOverride", adjustments, notes FROM weekly_wallets ORDER BY week_start_date DESC`);
+    const conditions = [];
+    const values = [];
+    if (filters.start) {
+      values.push(filters.start);
+      conditions.push(`week_start_date >= $${values.length}`);
+    }
+    if (filters.end) {
+      values.push(filters.end);
+      conditions.push(`week_end_date <= $${values.length}`);
+    }
+    if (filters.driver) {
+      values.push(`%${filters.driver.toLowerCase()}%`);
+      conditions.push(`LOWER(driver) LIKE $${values.length}`);
+    }
+
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const limitOffset = filters.page
+      ? `LIMIT ${LIST_PAGE_SIZE} OFFSET ${(filters.page - 1) * LIST_PAGE_SIZE}`
+      : '';
+
+    const result = await db.query(`
+      SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate", to_char(week_end_date, 'YYYY-MM-DD') as "weekEndDate", earnings, refund, diff, cash, charges, trips, wallet_week as "walletWeek", days_worked_override as "daysWorkedOverride", rent_override as "rentOverride", adjustments, notes
+      FROM weekly_wallets
+      ${whereClause}
+      ORDER BY week_start_date DESC
+      ${limitOffset}
+    `, values);
     const safeRows = result.rows.map(r => ({
       ...r,
       earnings: Number(r.earnings), refund: Number(r.refund), diff: Number(r.diff), cash: Number(r.cash), charges: Number(r.charges), walletWeek: Number(r.walletWeek),
@@ -1294,9 +1412,9 @@ app.get('/api/weekly-wallets', async (req, res) => {
       rentOverride: r.rentOverride !== null ? Number(r.rentOverride) : undefined,
       adjustments: Number(r.adjustments || 0)
     }));
-    await setCacheJSON(WEEKLY_WALLETS_CACHE_KEY, safeRows, WEEKLY_WALLETS_CACHE_TTL_SECONDS);
-    res.set('X-Cache', 'MISS');
-    res.json(safeRows);
+    const etag = computeEtag(safeRows);
+    await setCacheJSON(cacheKey, { payload: safeRows, etag }, WEEKLY_WALLETS_CACHE_TTL_SECONDS);
+    return respondWithCacheHeaders(req, res, safeRows, etag, 'MISS', WEEKLY_WALLETS_CACHE_TTL_SECONDS);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1317,7 +1435,7 @@ app.post('/api/weekly-wallets', async (req, res) => {
     const result = await db.query(q, [w.id, w.driver, startISO, endISO || null, w.earnings, w.refund, w.diff, w.cash, w.charges, w.trips, w.walletWeek, w.daysWorkedOverride ?? null, w.rentOverride ?? null, w.adjustments || 0, w.notes]);
     await syncDriverBillings();
     await invalidateAggregateCaches();
-    await invalidateKeys(WEEKLY_WALLETS_CACHE_KEY);
+    await invalidateKeysByPrefix(WEEKLY_WALLETS_CACHE_KEY);
     res.json(result.rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1327,7 +1445,7 @@ app.delete('/api/weekly-wallets/:id', async (req, res) => {
     await db.query('DELETE FROM weekly_wallets WHERE id = $1', [req.params.id]);
     await syncDriverBillings();
     await invalidateAggregateCaches();
-    await invalidateKeys(WEEKLY_WALLETS_CACHE_KEY);
+    await invalidateKeysByPrefix(WEEKLY_WALLETS_CACHE_KEY);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1680,4 +1798,3 @@ initDb()
   .catch((err) => {
     console.error('Initialization failed:', err);
   });
-

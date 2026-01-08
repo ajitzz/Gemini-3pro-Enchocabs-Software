@@ -63,6 +63,77 @@ const api = {
   }
 };
 
+type ListFilters = {
+  start?: string;
+  end?: string;
+  driver?: string;
+  page?: number;
+};
+
+type CacheOptions = {
+  useCache?: boolean;
+};
+
+const buildListQuery = (filters: ListFilters = {}) => {
+  const params = new URLSearchParams();
+  if (filters.start) params.set('start', filters.start);
+  if (filters.end) params.set('end', filters.end);
+  if (filters.driver) params.set('driver', filters.driver);
+  if (filters.page) params.set('page', String(filters.page));
+  const query = params.toString();
+  return query ? `?${query}` : '';
+};
+
+const createListCache = <T>() => ({
+  cache: new Map<string, T>(),
+  inflight: new Map<string, Promise<T>>()
+});
+
+const dailyEntriesCache = createListCache<DailyEntry[]>();
+const weeklyWalletsCache = createListCache<WeeklyWallet[]>();
+const driverBillingsCache = createListCache<DriverBillingRecord[]>();
+
+const getCachedList = async <T>(
+  endpoint: string,
+  filters: ListFilters,
+  options: CacheOptions,
+  cacheStore: ReturnType<typeof createListCache<T>>
+) => {
+  const query = buildListQuery(filters);
+  const key = `${endpoint}${query}`;
+  const useCache = options.useCache !== false;
+
+  if (useCache) {
+    const cached = cacheStore.cache.get(key);
+    if (cached) return cached;
+
+    const inflight = cacheStore.inflight.get(key);
+    if (inflight) return inflight;
+  }
+
+  const request = api.get(key).then((data: T) => {
+    if (useCache) {
+      cacheStore.cache.set(key, data);
+    }
+    cacheStore.inflight.delete(key);
+    return data;
+  }).catch((error) => {
+    cacheStore.inflight.delete(key);
+    throw error;
+  });
+
+  if (useCache) {
+    cacheStore.inflight.set(key, request);
+  }
+
+  return request;
+};
+
+const clearListCache = <T>(cacheStore: ReturnType<typeof createListCache<T>>) => {
+  cacheStore.cache.clear();
+  cacheStore.inflight.clear();
+};
+
 // Shared helper to keep all driver balance calculations aligned with Driver Portal logic
 export const getDriverBalanceSummaries = async () => {
   const [dailyEntries, weeklyWallets, rentalSlabs, drivers] = await Promise.all([
@@ -274,21 +345,54 @@ const calculateDriverStats = (
 
 export const storageService = {
   // --- Daily Entries ---
-  getDailyEntries: async (): Promise<DailyEntry[]> => api.get('/daily-entries'),
-  saveDailyEntry: async (entry: DailyEntry): Promise<DailyEntry> => api.post('/daily-entries', entry),
-  saveDailyEntriesBulk: async (newEntries: DailyEntry[]): Promise<void> => api.post('/daily-entries/bulk', newEntries),
-  deleteDailyEntry: async (id: string): Promise<void> => api.delete(`/daily-entries/${id}`),
+  getDailyEntries: async (filters: ListFilters = {}, options: CacheOptions = {}): Promise<DailyEntry[]> => (
+    getCachedList('/daily-entries', filters, options, dailyEntriesCache)
+  ),
+  saveDailyEntry: async (entry: DailyEntry): Promise<DailyEntry> => {
+    const saved = await api.post('/daily-entries', entry);
+    clearListCache(dailyEntriesCache);
+    return saved;
+  },
+  saveDailyEntriesBulk: async (newEntries: DailyEntry[]): Promise<void> => {
+    await api.post('/daily-entries/bulk', newEntries);
+    clearListCache(dailyEntriesCache);
+  },
+  deleteDailyEntry: async (id: string): Promise<void> => {
+    await api.delete(`/daily-entries/${id}`);
+    clearListCache(dailyEntriesCache);
+  },
 
   // --- Weekly Wallets ---
-  getWeeklyWallets: async (): Promise<WeeklyWallet[]> => api.get('/weekly-wallets'),
-  saveWeeklyWallet: async (wallet: WeeklyWallet): Promise<WeeklyWallet> => api.post('/weekly-wallets', wallet),
-  saveWeeklyWalletsBulk: async (newWallets: WeeklyWallet[]): Promise<void> => Promise.all(newWallets.map(w => api.post('/weekly-wallets', w))).then(() => {}),
-  deleteWeeklyWallet: async (id: string): Promise<void> => api.delete(`/weekly-wallets/${id}`),
+  getWeeklyWallets: async (filters: ListFilters = {}, options: CacheOptions = {}): Promise<WeeklyWallet[]> => (
+    getCachedList('/weekly-wallets', filters, options, weeklyWalletsCache)
+  ),
+  saveWeeklyWallet: async (wallet: WeeklyWallet): Promise<WeeklyWallet> => {
+    const saved = await api.post('/weekly-wallets', wallet);
+    clearListCache(weeklyWalletsCache);
+    return saved;
+  },
+  saveWeeklyWalletsBulk: async (newWallets: WeeklyWallet[]): Promise<void> => {
+    await Promise.all(newWallets.map(w => api.post('/weekly-wallets', w)));
+    clearListCache(weeklyWalletsCache);
+  },
+  deleteWeeklyWallet: async (id: string): Promise<void> => {
+    await api.delete(`/weekly-wallets/${id}`);
+    clearListCache(weeklyWalletsCache);
+  },
 
   // --- Driver Billings (NEW) ---
-  getDriverBillings: async (): Promise<DriverBillingRecord[]> => api.get('/driver-billings'),
-  saveDriverBilling: async (billing: DriverBillingRecord): Promise<DriverBillingRecord> => api.post('/driver-billings', billing),
-  deleteDriverBilling: async (id: string): Promise<void> => api.delete(`/driver-billings/${id}`),
+  getDriverBillings: async (filters: ListFilters = {}, options: CacheOptions = {}): Promise<DriverBillingRecord[]> => (
+    getCachedList('/driver-billings', filters, options, driverBillingsCache)
+  ),
+  saveDriverBilling: async (billing: DriverBillingRecord): Promise<DriverBillingRecord> => {
+    const saved = await api.post('/driver-billings', billing);
+    clearListCache(driverBillingsCache);
+    return saved;
+  },
+  deleteDriverBilling: async (id: string): Promise<void> => {
+    await api.delete(`/driver-billings/${id}`);
+    clearListCache(driverBillingsCache);
+  },
 
   // --- Drivers ---
   getDrivers: async (): Promise<Driver[]> => api.get('/drivers'),
@@ -447,4 +551,3 @@ export const storageService = {
     return { driverSummaries, global };
   }
 };
-
