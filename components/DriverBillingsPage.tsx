@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { storageService } from '../services/storageService';
-import { DriverSummary, RentalSlab, WeeklyWallet, DailyEntry, Driver, DriverBillingRecord } from '../types';
+import { DriverSummary, RentalSlab, WeeklyWallet, DailyEntry, Driver, DriverBillingRecord, DriverBillingSummary } from '../types';
 import { Users, ChevronDown, FileText, Briefcase, Download, Edit2, Save, X, Calendar, ChevronLeft, ChevronRight, Check, Copy, RotateCcw, Search, Clock, ChevronUp, Lock, AlertTriangle } from 'lucide-react';
 import NetCalculationPopup from './NetCalculationPopup';
 
@@ -14,6 +14,17 @@ const DriverBillingsPage: React.FC = () => {
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [billingRecords, setBillingRecords] = useState<DriverBillingRecord[]>([]);
   const [billingApiError, setBillingApiError] = useState(false);
+  const [billingTotals, setBillingTotals] = useState<DriverBillingSummary>({
+    daysWorked: 0,
+    trips: 0,
+    rentTotal: 0,
+    collection: 0,
+    due: 0,
+    fuel: 0,
+    wallet: 0,
+    walletOverdue: 0,
+    payout: 0
+  });
   const [calcPopup, setCalcPopup] = useState<{
       metric: 'netPayout' | 'netBalance';
       netValue: number;
@@ -386,8 +397,8 @@ const DriverBillingsPage: React.FC = () => {
       return calculateWalletWeek(bill);
   };
 
-  const billingTotals = useMemo(() => {
-      const totals = displayedBills.reduce((acc, bill) => {
+  const calculateBillingTotals = (bills: any[]): DriverBillingSummary => {
+      const totals = bills.reduce((acc, bill) => {
           acc.daysWorked += bill.daysWorked || 0;
           acc.trips += bill.trips || 0;
           acc.rentTotal += bill.rentTotal || 0;
@@ -421,7 +432,24 @@ const DriverBillingsPage: React.FC = () => {
           walletOverdue: Math.round(totals.walletOverdue),
           payout: Math.round(totals.payout)
       };
-  }, [displayedBills]);
+  };
+
+  useEffect(() => {
+      const loadBillingTotals = async () => {
+          try {
+              const summary = await storageService.getDriverBillingSummary({
+                  weekStart: currentWeekIndex === -1 ? undefined : currentWeekKey,
+                  driver: filterDriver || undefined
+              });
+              setBillingTotals(summary);
+          } catch (err) {
+              console.warn('Falling back to client billing totals:', err);
+              setBillingTotals(calculateBillingTotals(displayedBills));
+          }
+      };
+
+      loadBillingTotals();
+  }, [currentWeekIndex, currentWeekKey, filterDriver, displayedBills]);
 
   const goToPreviousWeek = () => { if (currentWeekIndex !== -1 && currentWeekIndex < availableWeeks.length - 1) setCurrentWeekIndex(prev => prev + 1); };
   const goToNextWeek = () => { if (currentWeekIndex !== -1 && currentWeekIndex > 0) setCurrentWeekIndex(prev => prev - 1); };

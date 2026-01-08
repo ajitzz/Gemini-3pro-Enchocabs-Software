@@ -948,6 +948,61 @@ app.get('/api/driver-billings', async (req, res) => {
   }
 });
 
+app.get('/api/billings/summary', async (req, res) => {
+  const { weekStart, driver } = req.query || {};
+  try {
+    await syncDriverBillings();
+
+    const where = [];
+    const params = [];
+    if (weekStart) {
+      params.push(weekStart);
+      where.push(`week_start_date = $${params.length}`);
+    }
+    if (driver) {
+      params.push(`%${driver}%`);
+      where.push(`driver_name ILIKE $${params.length}`);
+    }
+    const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const result = await db.query(
+      `
+      SELECT
+        COALESCE(SUM(days_worked), 0) as "daysWorked",
+        COALESCE(SUM(trips), 0) as "trips",
+        COALESCE(SUM(rent_total), 0) as "rentTotal",
+        COALESCE(SUM(collection), 0) as "collection",
+        COALESCE(SUM(due), 0) as "due",
+        COALESCE(SUM(fuel), 0) as "fuel",
+        COALESCE(SUM(wallet), 0) as "wallet",
+        COALESCE(SUM(wallet_overdue), 0) as "walletOverdue",
+        COALESCE(SUM(payout), 0) as "payout"
+      FROM driver_billings
+      ${whereClause}
+      `,
+      params
+    );
+
+    const row = result.rows[0] || {};
+    const payload = {
+      daysWorked: Number(row.daysWorked) || 0,
+      trips: Number(row.trips) || 0,
+      rentTotal: Number(row.rentTotal) || 0,
+      collection: Number(row.collection) || 0,
+      due: Number(row.due) || 0,
+      fuel: Number(row.fuel) || 0,
+      wallet: Number(row.wallet) || 0,
+      walletOverdue: Number(row.walletOverdue) || 0,
+      payout: Number(row.payout) || 0
+    };
+
+    res.json(payload);
+  } catch (err) {
+    console.error("Error fetching billings summary:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/driver-billings', async (req, res) => {
   const b = req.body;
   const dueValue = b.due !== undefined && b.due !== null ? b.due : 0;
