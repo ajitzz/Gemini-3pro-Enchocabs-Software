@@ -318,10 +318,6 @@ const DailyEntryPage: React.FC = () => {
     setCurrentPageIndex(0);
   }, [filterDateStart, filterDateEnd, filterDriver]);
 
-  useEffect(() => {
-    loadEntries();
-  }, [currentPageIndex, filterDateStart, filterDateEnd, filterDriver]);
-
   const loadBaseData = async () => {
     setLoading(true);
     const [d, l, w] = await Promise.all([
@@ -333,11 +329,8 @@ const DailyEntryPage: React.FC = () => {
     setDrivers(d.filter(driver => !driver.terminationDate));
     setLeaves(l);
     setWeeklyWallets(w);
+    setLoading(false);
   };
-
-  useEffect(() => {
-    loadMeta();
-  }, []);
 
   const entryFilters = useMemo(() => ({
     start: filterDateStart || undefined,
@@ -351,20 +344,20 @@ const DailyEntryPage: React.FC = () => {
     }, 300);
 
     return () => window.clearTimeout(timeout);
-  }, [entryFilters]);
+  }, [entryFilters, currentPageIndex]);
 
   const refreshData = async () => {
-    await Promise.all([loadMeta(), loadEntries(entryFilters)]);
+    await Promise.all([loadBaseData(), loadEntries(entryFilters)]);
   };
 
-  const loadEntries = async () => {
+  const loadEntries = async (filters = entryFilters) => {
     setLoading(true);
     const e = await storageService.getDailyEntries({
       limit: pageSize,
       offset: currentPageIndex * pageSize,
-      startDate: filterDateStart || undefined,
-      endDate: filterDateEnd || undefined,
-      driver: filterDriver || undefined
+      startDate: filters.start,
+      endDate: filters.end,
+      driver: filters.driver
     });
     setEntries(e);
     setHasNextPage(e.length === pageSize);

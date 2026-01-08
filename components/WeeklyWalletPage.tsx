@@ -92,7 +92,7 @@ const WeeklyWalletPage: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState(''); // Explicitly empty
 
   useEffect(() => {
-    loadDrivers();
+    loadData();
     // Removed default date setting
   }, []);
 
@@ -159,14 +159,14 @@ const WeeklyWalletPage: React.FC = () => {
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
-      loadWallets(walletFilters);
+      loadWallets();
     }, 300);
 
     return () => window.clearTimeout(timeout);
   }, [walletFilters]);
 
   const refreshWallets = async () => {
-    await loadWallets(walletFilters);
+    await loadWallets();
   };
 
   const calculatedWalletWeek = (
