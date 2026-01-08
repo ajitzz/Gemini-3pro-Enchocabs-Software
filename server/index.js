@@ -52,6 +52,15 @@ const startKeepAlive = () => {
 
 // --- DATE HELPERS ---
 const normalizeDriver = (name = '') => name.toLowerCase().trim();
+const parsePositiveInt = (value) => {
+  if (value === undefined || value === null || value === '') return undefined;
+  const num = Number(value);
+  if (!Number.isFinite(num)) return undefined;
+  const intVal = Math.floor(num);
+  return intVal >= 0 ? intVal : undefined;
+};
+
+const buildLikeFilter = (value) => `%${String(value).trim()}%`;
 const toISODate = (rawVal) => {
   if (!rawVal) return '';
 
@@ -853,15 +862,43 @@ app.post('/api/auth/google', async (req, res) => {
 
 app.get('/api/driver-billings', async (req, res) => {
   try {
-    const cached = await getCacheJSON(BILLINGS_CACHE_KEY);
-    if (cached?.payload) {
-      const cachedEtag = cached.etag || computeEtag(cached.payload);
-      return respondWithCacheHeaders(req, res, cached.payload, cachedEtag, 'REDIS', BILLINGS_CACHE_TTL_SECONDS);
+    const { weekStart, weekEnd, driver, limit, offset } = req.query;
+    const parsedLimit = parsePositiveInt(limit);
+    const parsedOffset = parsePositiveInt(offset);
+    const weekStartISO = weekStart ? toISODate(weekStart) : '';
+    const weekEndISO = weekEnd ? toISODate(weekEnd) : '';
+
+    if (weekStart && !weekStartISO) return res.status(400).json({ error: 'Invalid weekStart date format' });
+    if (weekEnd && !weekEndISO) return res.status(400).json({ error: 'Invalid weekEnd date format' });
+
+    const hasFilters = Boolean(weekStartISO || weekEndISO || driver || parsedLimit !== undefined || parsedOffset !== undefined);
+
+    if (!hasFilters) {
+      const cached = await getCacheJSON(BILLINGS_CACHE_KEY);
+      if (cached?.payload) {
+        const cachedEtag = cached.etag || computeEtag(cached.payload);
+        return respondWithCacheHeaders(req, res, cached.payload, cachedEtag, 'REDIS', BILLINGS_CACHE_TTL_SECONDS);
+      }
     }
 
     await syncDriverBillings();
 
-    const result = await db.query(`
+    const conditions = [];
+    const values = [];
+    if (weekStartISO) {
+      values.push(weekStartISO);
+      conditions.push(`week_start_date >= $${values.length}`);
+    }
+    if (weekEndISO) {
+      values.push(weekEndISO);
+      conditions.push(`week_end_date <= $${values.length}`);
+    }
+    if (driver) {
+      values.push(buildLikeFilter(driver));
+      conditions.push(`LOWER(driver_name) LIKE LOWER($${values.length})`);
+    }
+
+    let query = `
       SELECT
         id, driver_id as "driverId", driver_name as "driverName", qr_code as "qrCode",
         to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate",
@@ -871,8 +908,24 @@ app.get('/api/driver-billings', async (req, res) => {
         wallet_overdue as "walletOverdue", adjustments, payout, status,
         generated_at as "generatedAt"
       FROM driver_billings
-      ORDER BY week_start_date DESC, driver_name ASC
-    `);
+    `;
+
+    if (conditions.length > 0) {
+      query += ` WHERE ${conditions.join(' AND ')}`;
+    }
+
+    query += ` ORDER BY week_start_date DESC, driver_name ASC`;
+
+    if (parsedLimit !== undefined) {
+      values.push(parsedLimit);
+      query += ` LIMIT $${values.length}`;
+    }
+    if (parsedOffset !== undefined) {
+      values.push(parsedOffset);
+      query += ` OFFSET $${values.length}`;
+    }
+
+    const result = await db.query(query, values);
     const safeRows = result.rows.map(r => ({
       ...r,
       daysWorked: Number(r.daysWorked), trips: Number(r.trips),
@@ -882,10 +935,13 @@ app.get('/api/driver-billings', async (req, res) => {
       adjustments: Number(r.adjustments), payout: Number(r.payout)
     }));
 
-    const etag = computeEtag(safeRows);
-    await setCacheJSON(BILLINGS_CACHE_KEY, { payload: safeRows, etag }, BILLINGS_CACHE_TTL_SECONDS);
+    if (!hasFilters) {
+      const etag = computeEtag(safeRows);
+      await setCacheJSON(BILLINGS_CACHE_KEY, { payload: safeRows, etag }, BILLINGS_CACHE_TTL_SECONDS);
+      return respondWithCacheHeaders(req, res, safeRows, etag, 'MISS', BILLINGS_CACHE_TTL_SECONDS);
+    }
 
-    return respondWithCacheHeaders(req, res, safeRows, etag, 'MISS', BILLINGS_CACHE_TTL_SECONDS);
+    res.json(safeRows);
   } catch (err) {
     console.error("Error fetching billings:", err);
     res.status(500).json({ error: err.message });
@@ -1139,20 +1195,64 @@ app.get('/api/summary', async (req, res) => {
 // --- DAILY ENTRIES ---
 app.get('/api/daily-entries', async (req, res) => {
   try {
-    const cached = await getCacheJSON(DAILY_ENTRIES_CACHE_KEY);
-    if (cached) {
-      res.set('X-Cache', 'REDIS');
-      return res.json(cached);
+    const { startDate, endDate, driver, limit, offset } = req.query;
+    const parsedLimit = parsePositiveInt(limit);
+    const parsedOffset = parsePositiveInt(offset);
+    const startISO = startDate ? toISODate(startDate) : '';
+    const endISO = endDate ? toISODate(endDate) : '';
+
+    if (startDate && !startISO) return res.status(400).json({ error: 'Invalid startDate format' });
+    if (endDate && !endISO) return res.status(400).json({ error: 'Invalid endDate format' });
+
+    const hasFilters = Boolean(startISO || endISO || driver || parsedLimit !== undefined || parsedOffset !== undefined);
+
+    if (!hasFilters) {
+      const cached = await getCacheJSON(DAILY_ENTRIES_CACHE_KEY);
+      if (cached) {
+        res.set('X-Cache', 'REDIS');
+        return res.json(cached);
+      }
     }
 
-    const result = await db.query(`SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes FROM daily_entries ORDER BY date DESC`);
+    const conditions = [];
+    const values = [];
+    if (startISO) {
+      values.push(startISO);
+      conditions.push(`date >= $${values.length}`);
+    }
+    if (endISO) {
+      values.push(endISO);
+      conditions.push(`date <= $${values.length}`);
+    }
+    if (driver) {
+      values.push(buildLikeFilter(driver));
+      conditions.push(`LOWER(driver) LIKE LOWER($${values.length})`);
+    }
+
+    let query = `SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes FROM daily_entries`;
+    if (conditions.length > 0) {
+      query += ` WHERE ${conditions.join(' AND ')}`;
+    }
+    query += ` ORDER BY date DESC`;
+    if (parsedLimit !== undefined) {
+      values.push(parsedLimit);
+      query += ` LIMIT $${values.length}`;
+    }
+    if (parsedOffset !== undefined) {
+      values.push(parsedOffset);
+      query += ` OFFSET $${values.length}`;
+    }
+
+    const result = await db.query(query, values);
     const safeRows = result.rows.map(r => ({
       ...r,
       rent: Number(r.rent), collection: Number(r.collection), fuel: Number(r.fuel), due: Number(r.due), payout: Number(r.payout)
     }));
 
-    await setCacheJSON(DAILY_ENTRIES_CACHE_KEY, safeRows, DAILY_ENTRIES_CACHE_TTL_SECONDS);
-    res.set('X-Cache', 'MISS');
+    if (!hasFilters) {
+      await setCacheJSON(DAILY_ENTRIES_CACHE_KEY, safeRows, DAILY_ENTRIES_CACHE_TTL_SECONDS);
+      res.set('X-Cache', 'MISS');
+    }
     res.json(safeRows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1280,13 +1380,66 @@ app.delete('/api/daily-entries/:id', async (req, res) => {
 // --- WEEKLY WALLETS ---
 app.get('/api/weekly-wallets', async (req, res) => {
   try {
-    const cached = await getCacheJSON(WEEKLY_WALLETS_CACHE_KEY);
-    if (cached) {
-      res.set('X-Cache', 'REDIS');
-      return res.json(cached);
+    const { startDate, endDate, driver, limit, offset, distinctWeeks } = req.query;
+    if (distinctWeeks === 'true') {
+      const result = await db.query(`
+        SELECT DISTINCT
+          to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate",
+          to_char(week_end_date, 'YYYY-MM-DD') as "weekEndDate"
+        FROM weekly_wallets
+        ORDER BY week_start_date DESC
+      `);
+      return res.json(result.rows);
     }
 
-    const result = await db.query(`SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate", to_char(week_end_date, 'YYYY-MM-DD') as "weekEndDate", earnings, refund, diff, cash, charges, trips, wallet_week as "walletWeek", days_worked_override as "daysWorkedOverride", rent_override as "rentOverride", adjustments, notes FROM weekly_wallets ORDER BY week_start_date DESC`);
+    const parsedLimit = parsePositiveInt(limit);
+    const parsedOffset = parsePositiveInt(offset);
+    const startISO = startDate ? toISODate(startDate) : '';
+    const endISO = endDate ? toISODate(endDate) : '';
+
+    if (startDate && !startISO) return res.status(400).json({ error: 'Invalid startDate format' });
+    if (endDate && !endISO) return res.status(400).json({ error: 'Invalid endDate format' });
+
+    const hasFilters = Boolean(startISO || endISO || driver || parsedLimit !== undefined || parsedOffset !== undefined);
+
+    if (!hasFilters) {
+      const cached = await getCacheJSON(WEEKLY_WALLETS_CACHE_KEY);
+      if (cached) {
+        res.set('X-Cache', 'REDIS');
+        return res.json(cached);
+      }
+    }
+
+    const conditions = [];
+    const values = [];
+    if (startISO) {
+      values.push(startISO);
+      conditions.push(`week_start_date >= $${values.length}`);
+    }
+    if (endISO) {
+      values.push(endISO);
+      conditions.push(`week_end_date <= $${values.length}`);
+    }
+    if (driver) {
+      values.push(buildLikeFilter(driver));
+      conditions.push(`LOWER(driver) LIKE LOWER($${values.length})`);
+    }
+
+    let query = `SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate", to_char(week_end_date, 'YYYY-MM-DD') as "weekEndDate", earnings, refund, diff, cash, charges, trips, wallet_week as "walletWeek", days_worked_override as "daysWorkedOverride", rent_override as "rentOverride", adjustments, notes FROM weekly_wallets`;
+    if (conditions.length > 0) {
+      query += ` WHERE ${conditions.join(' AND ')}`;
+    }
+    query += ` ORDER BY week_start_date DESC`;
+    if (parsedLimit !== undefined) {
+      values.push(parsedLimit);
+      query += ` LIMIT $${values.length}`;
+    }
+    if (parsedOffset !== undefined) {
+      values.push(parsedOffset);
+      query += ` OFFSET $${values.length}`;
+    }
+
+    const result = await db.query(query, values);
     const safeRows = result.rows.map(r => ({
       ...r,
       earnings: Number(r.earnings), refund: Number(r.refund), diff: Number(r.diff), cash: Number(r.cash), charges: Number(r.charges), walletWeek: Number(r.walletWeek),
@@ -1294,8 +1447,10 @@ app.get('/api/weekly-wallets', async (req, res) => {
       rentOverride: r.rentOverride !== null ? Number(r.rentOverride) : undefined,
       adjustments: Number(r.adjustments || 0)
     }));
-    await setCacheJSON(WEEKLY_WALLETS_CACHE_KEY, safeRows, WEEKLY_WALLETS_CACHE_TTL_SECONDS);
-    res.set('X-Cache', 'MISS');
+    if (!hasFilters) {
+      await setCacheJSON(WEEKLY_WALLETS_CACHE_KEY, safeRows, WEEKLY_WALLETS_CACHE_TTL_SECONDS);
+      res.set('X-Cache', 'MISS');
+    }
     res.json(safeRows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1455,7 +1610,45 @@ app.post('/api/rental-slabs/:type', async (req, res) => {
 // --- COMPANY SUMMARIES ---
 app.get('/api/company-summaries', async (req, res) => {
   try {
-    const summaries = await db.query(`SELECT id, to_char(start_date, 'YYYY-MM-DD') as "startDate", to_char(end_date, 'YYYY-MM-DD') as "endDate", file_name as "fileName", imported_at as "importedAt", note FROM company_summaries`);
+    const { startDate, endDate, limit, offset, fileName } = req.query;
+    const parsedLimit = parsePositiveInt(limit);
+    const parsedOffset = parsePositiveInt(offset);
+    const startISO = startDate ? toISODate(startDate) : '';
+    const endISO = endDate ? toISODate(endDate) : '';
+
+    if (startDate && !startISO) return res.status(400).json({ error: 'Invalid startDate format' });
+    if (endDate && !endISO) return res.status(400).json({ error: 'Invalid endDate format' });
+
+    const conditions = [];
+    const values = [];
+    if (startISO) {
+      values.push(startISO);
+      conditions.push(`start_date >= $${values.length}`);
+    }
+    if (endISO) {
+      values.push(endISO);
+      conditions.push(`end_date <= $${values.length}`);
+    }
+    if (fileName) {
+      values.push(String(fileName).trim());
+      conditions.push(`LOWER(file_name) = LOWER($${values.length})`);
+    }
+
+    let query = `SELECT id, to_char(start_date, 'YYYY-MM-DD') as "startDate", to_char(end_date, 'YYYY-MM-DD') as "endDate", file_name as "fileName", imported_at as "importedAt", note FROM company_summaries`;
+    if (conditions.length > 0) {
+      query += ` WHERE ${conditions.join(' AND ')}`;
+    }
+    query += ` ORDER BY start_date DESC`;
+    if (parsedLimit !== undefined) {
+      values.push(parsedLimit);
+      query += ` LIMIT $${values.length}`;
+    }
+    if (parsedOffset !== undefined) {
+      values.push(parsedOffset);
+      query += ` OFFSET $${values.length}`;
+    }
+
+    const summaries = await db.query(query, values);
     const fullData = await Promise.all(summaries.rows.map(async (s) => {
       try {
           const rows = await db.query(`
@@ -1680,4 +1873,3 @@ initDb()
   .catch((err) => {
     console.error('Initialization failed:', err);
   });
-
