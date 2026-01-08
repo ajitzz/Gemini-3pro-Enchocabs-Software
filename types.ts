@@ -57,6 +57,18 @@ export interface DriverBillingRecord {
   generatedAt: string;
 }
 
+export interface DriverBillingSummary {
+  daysWorked: number;
+  trips: number;
+  rentTotal: number;
+  collection: number;
+  due: number;
+  fuel: number;
+  wallet: number;
+  walletOverdue: number;
+  payout: number;
+}
+
 export interface Driver {
   id: string;
   name: string;
@@ -231,4 +243,3 @@ export interface AuthUser {
   photoURL?: string;
   driverId?: string;
 }
-
