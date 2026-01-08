@@ -92,7 +92,7 @@ const WeeklyWalletPage: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState(''); // Explicitly empty
 
   useEffect(() => {
-    loadData();
+    loadDrivers();
     // Removed default date setting
   }, []);
 
@@ -151,6 +151,22 @@ const WeeklyWalletPage: React.FC = () => {
     setWallets(w);
     setHasNextPage(w.length === pageSize);
     setLoading(false);
+  };
+
+  const walletFilters = useMemo(() => ({
+    driver: filterDriver || undefined
+  }), [filterDriver]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      loadWallets(walletFilters);
+    }, 300);
+
+    return () => window.clearTimeout(timeout);
+  }, [walletFilters]);
+
+  const refreshWallets = async () => {
+    await loadWallets(walletFilters);
   };
 
   const calculatedWalletWeek = (
@@ -221,7 +237,7 @@ const WeeklyWalletPage: React.FC = () => {
 
     await storageService.saveWeeklyWallet(newWallet);
     resetForm();
-    loadData();
+    refreshWallets();
   };
 
   const handleOverrideConfirm = async () => {
@@ -235,7 +251,7 @@ const WeeklyWalletPage: React.FC = () => {
       await storageService.saveWeeklyWallet(walletToSave);
       setDuplicateWarning(null);
       resetForm();
-      loadData();
+      refreshWallets();
   };
 
   const handleEdit = (wallet: WeeklyWallet) => {
@@ -256,7 +272,7 @@ const WeeklyWalletPage: React.FC = () => {
   const handleDelete = async (id: string) => {
     if (confirm('Delete this weekly record?')) {
       await storageService.deleteWeeklyWallet(id);
-      loadData();
+      refreshWallets();
     }
   };
 
