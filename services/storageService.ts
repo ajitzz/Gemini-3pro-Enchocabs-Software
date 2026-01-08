@@ -1,5 +1,5 @@
 
-import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping, ManagerAccess, AdminAccess, DriverBillingRecord, CashMode } from '../types';
+import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping, ManagerAccess, AdminAccess, DriverBillingRecord, DriverBillingSummary, CashMode } from '../types';
 
 // logic: Use local proxy in dev (npm run dev), use Render URL in production (Vercel)
 const isLocal = ((import.meta as any).env && (import.meta as any).env.DEV) || 
@@ -63,75 +63,14 @@ const api = {
   }
 };
 
-type ListFilters = {
-  start?: string;
-  end?: string;
-  driver?: string;
-  page?: number;
-};
-
-type CacheOptions = {
-  useCache?: boolean;
-};
-
-const buildListQuery = (filters: ListFilters = {}) => {
-  const params = new URLSearchParams();
-  if (filters.start) params.set('start', filters.start);
-  if (filters.end) params.set('end', filters.end);
-  if (filters.driver) params.set('driver', filters.driver);
-  if (filters.page) params.set('page', String(filters.page));
-  const query = params.toString();
-  return query ? `?${query}` : '';
-};
-
-const createListCache = <T>() => ({
-  cache: new Map<string, T>(),
-  inflight: new Map<string, Promise<T>>()
-});
-
-const dailyEntriesCache = createListCache<DailyEntry[]>();
-const weeklyWalletsCache = createListCache<WeeklyWallet[]>();
-const driverBillingsCache = createListCache<DriverBillingRecord[]>();
-
-const getCachedList = async <T>(
-  endpoint: string,
-  filters: ListFilters,
-  options: CacheOptions,
-  cacheStore: ReturnType<typeof createListCache<T>>
-) => {
-  const query = buildListQuery(filters);
-  const key = `${endpoint}${query}`;
-  const useCache = options.useCache !== false;
-
-  if (useCache) {
-    const cached = cacheStore.cache.get(key);
-    if (cached) return cached;
-
-    const inflight = cacheStore.inflight.get(key);
-    if (inflight) return inflight;
-  }
-
-  const request = api.get(key).then((data: T) => {
-    if (useCache) {
-      cacheStore.cache.set(key, data);
-    }
-    cacheStore.inflight.delete(key);
-    return data;
-  }).catch((error) => {
-    cacheStore.inflight.delete(key);
-    throw error;
+const buildQuery = (params: Record<string, string | number | undefined>) => {
+  const searchParams = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === '') return;
+    searchParams.set(key, String(value));
   });
-
-  if (useCache) {
-    cacheStore.inflight.set(key, request);
-  }
-
-  return request;
-};
-
-const clearListCache = <T>(cacheStore: ReturnType<typeof createListCache<T>>) => {
-  cacheStore.cache.clear();
-  cacheStore.inflight.clear();
+  const query = searchParams.toString();
+  return query ? `?${query}` : '';
 };
 
 // Shared helper to keep all driver balance calculations aligned with Driver Portal logic
@@ -345,53 +284,30 @@ const calculateDriverStats = (
 
 export const storageService = {
   // --- Daily Entries ---
-  getDailyEntries: async (filters: ListFilters = {}, options: CacheOptions = {}): Promise<DailyEntry[]> => (
-    getCachedList('/daily-entries', filters, options, dailyEntriesCache)
-  ),
-  saveDailyEntry: async (entry: DailyEntry): Promise<DailyEntry> => {
-    const saved = await api.post('/daily-entries', entry);
-    clearListCache(dailyEntriesCache);
-    return saved;
-  },
-  saveDailyEntriesBulk: async (newEntries: DailyEntry[]): Promise<void> => {
-    await api.post('/daily-entries/bulk', newEntries);
-    clearListCache(dailyEntriesCache);
-  },
-  deleteDailyEntry: async (id: string): Promise<void> => {
-    await api.delete(`/daily-entries/${id}`);
-    clearListCache(dailyEntriesCache);
-  },
+  getDailyEntries: async (params: { limit?: number; offset?: number; startDate?: string; endDate?: string; driver?: string } = {}): Promise<DailyEntry[]> =>
+    api.get(`/daily-entries${buildQuery(params)}`),
+  saveDailyEntry: async (entry: DailyEntry): Promise<DailyEntry> => api.post('/daily-entries', entry),
+  saveDailyEntriesBulk: async (newEntries: DailyEntry[]): Promise<void> => api.post('/daily-entries/bulk', newEntries),
+  deleteDailyEntry: async (id: string): Promise<void> => api.delete(`/daily-entries/${id}`),
 
   // --- Weekly Wallets ---
-  getWeeklyWallets: async (filters: ListFilters = {}, options: CacheOptions = {}): Promise<WeeklyWallet[]> => (
-    getCachedList('/weekly-wallets', filters, options, weeklyWalletsCache)
-  ),
-  saveWeeklyWallet: async (wallet: WeeklyWallet): Promise<WeeklyWallet> => {
-    const saved = await api.post('/weekly-wallets', wallet);
-    clearListCache(weeklyWalletsCache);
-    return saved;
-  },
-  saveWeeklyWalletsBulk: async (newWallets: WeeklyWallet[]): Promise<void> => {
-    await Promise.all(newWallets.map(w => api.post('/weekly-wallets', w)));
-    clearListCache(weeklyWalletsCache);
-  },
-  deleteWeeklyWallet: async (id: string): Promise<void> => {
-    await api.delete(`/weekly-wallets/${id}`);
-    clearListCache(weeklyWalletsCache);
-  },
+  getWeeklyWallets: async (params: { limit?: number; offset?: number; startDate?: string; endDate?: string; driver?: string; distinctWeeks?: boolean } = {}): Promise<WeeklyWallet[]> =>
+    api.get(`/weekly-wallets${buildQuery(params)}`),
+  saveWeeklyWallet: async (wallet: WeeklyWallet): Promise<WeeklyWallet> => api.post('/weekly-wallets', wallet),
+  saveWeeklyWalletsBulk: async (newWallets: WeeklyWallet[]): Promise<void> => Promise.all(newWallets.map(w => api.post('/weekly-wallets', w))).then(() => {}),
+  deleteWeeklyWallet: async (id: string): Promise<void> => api.delete(`/weekly-wallets/${id}`),
 
   // --- Driver Billings (NEW) ---
-  getDriverBillings: async (filters: ListFilters = {}, options: CacheOptions = {}): Promise<DriverBillingRecord[]> => (
-    getCachedList('/driver-billings', filters, options, driverBillingsCache)
-  ),
-  saveDriverBilling: async (billing: DriverBillingRecord): Promise<DriverBillingRecord> => {
-    const saved = await api.post('/driver-billings', billing);
-    clearListCache(driverBillingsCache);
-    return saved;
-  },
-  deleteDriverBilling: async (id: string): Promise<void> => {
-    await api.delete(`/driver-billings/${id}`);
-    clearListCache(driverBillingsCache);
+  getDriverBillings: async (params: { limit?: number; offset?: number; weekStart?: string; weekEnd?: string; driver?: string } = {}): Promise<DriverBillingRecord[]> =>
+    api.get(`/driver-billings${buildQuery(params)}`),
+  saveDriverBilling: async (billing: DriverBillingRecord): Promise<DriverBillingRecord> => api.post('/driver-billings', billing),
+  deleteDriverBilling: async (id: string): Promise<void> => api.delete(`/driver-billings/${id}`),
+  getDriverBillingSummary: async (params: { weekStart?: string; driver?: string } = {}): Promise<DriverBillingSummary> => {
+    const query = new URLSearchParams();
+    if (params.weekStart) query.set('weekStart', params.weekStart);
+    if (params.driver) query.set('driver', params.driver);
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    return api.get(`/billings/summary${suffix}`);
   },
 
   // --- Drivers ---
@@ -503,7 +419,8 @@ export const storageService = {
   saveHeaderMappings: async (mappings: HeaderMapping[]): Promise<void> => api.post('/header-mappings', mappings),
 
   // --- Company Summaries ---
-  getCompanySummaries: async (): Promise<CompanyWeeklySummary[]> => api.get('/company-summaries'),
+  getCompanySummaries: async (params: { limit?: number; offset?: number; startDate?: string; endDate?: string; fileName?: string } = {}): Promise<CompanyWeeklySummary[]> =>
+    api.get(`/company-summaries${buildQuery(params)}`),
   saveCompanySummary: async (summary: CompanyWeeklySummary): Promise<CompanyWeeklySummary> => api.post('/company-summaries', summary),
   deleteCompanySummary: async (id: string): Promise<void> => api.delete(`/company-summaries/${id}`),
 

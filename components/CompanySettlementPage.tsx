@@ -28,6 +28,11 @@ const CompanySettlementPage: React.FC = () => {
   const [currentWeekNote, setCurrentWeekNote] = useState('');
   const [processingSummary, setProcessingSummary] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [historyStartDate, setHistoryStartDate] = useState('');
+  const [historyEndDate, setHistoryEndDate] = useState('');
+  const [historyPageIndex, setHistoryPageIndex] = useState(0);
+  const [hasNextHistoryPage, setHasNextHistoryPage] = useState(false);
+  const historyPageSize = 6;
   
   // New: Single Date Selection Logic - Empty by default
   const [selectedDate, setSelectedDate] = useState(''); 
@@ -50,20 +55,46 @@ const CompanySettlementPage: React.FC = () => {
     loadData();
   }, []);
 
+  useEffect(() => {
+    setHistoryPageIndex(0);
+  }, [historyStartDate, historyEndDate]);
+
+  useEffect(() => {
+    loadSummaries();
+  }, [historyStartDate, historyEndDate, historyPageIndex]);
+
   const loadData = async () => {
     setLoading(true);
     setLoadError(null);
     try {
-        const [slabData, summaryData, mappingData] = await Promise.all([
+        const [slabData, mappingData] = await Promise.all([
             storageService.getCompanyRentalSlabs(), 
-            storageService.getCompanySummaries(),
             storageService.getHeaderMappings()
         ]);
         setSlabs(slabData.sort((a, b) => a.minTrips - b.minTrips));
-        setSummaries(summaryData.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()));
         setHeaderMappings(mappingData);
     } catch (err: any) {
         console.error("Failed to load company settlement data:", err);
+        setLoadError(err.message || "Failed to load data. Please check database connection.");
+    } finally {
+        setLoading(false);
+    }
+  };
+
+  const loadSummaries = async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+        const summaryData = await storageService.getCompanySummaries({
+          limit: historyPageSize,
+          offset: historyPageIndex * historyPageSize,
+          startDate: historyStartDate || undefined,
+          endDate: historyEndDate || undefined
+        });
+        setSummaries(summaryData.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()));
+        setHasNextHistoryPage(summaryData.length === historyPageSize);
+    } catch (err: any) {
+        console.error("Failed to load company settlement history:", err);
         setLoadError(err.message || "Failed to load data. Please check database connection.");
     } finally {
         setLoading(false);
@@ -92,15 +123,30 @@ const CompanySettlementPage: React.FC = () => {
       const label = `${startLabel} – ${endLabel}`;
       
       setComputedWeek({ start, end, label });
-      
-      // Check for duplication
-      const exists = summaries.some(s => s.startDate === start);
-      setWeekExists(exists);
-      if (exists) {
-          setErrors(["Week range already imported. Duplicates not allowed."]);
-      } else {
-          setErrors([]);
-      }
+      setWeekExists(false);
+      setErrors([]);
+  };
+
+  useEffect(() => {
+    checkWeekExists();
+  }, [computedWeek.start, computedWeek.end]);
+
+  const checkWeekExists = async () => {
+    if (!computedWeek.start || !computedWeek.end) return;
+    try {
+        const existing = await storageService.getCompanySummaries({
+          startDate: computedWeek.start,
+          endDate: computedWeek.end,
+          limit: 1
+        });
+        const exists = existing.length > 0;
+        setWeekExists(exists);
+        if (exists) {
+            setErrors(["Week range already imported. Duplicates not allowed."]);
+        }
+    } catch (err) {
+        console.error("Failed to validate week existence:", err);
+    }
   };
 
   // --- HISTORY ACTIONS ---
@@ -155,14 +201,14 @@ const CompanySettlementPage: React.FC = () => {
       await storageService.saveCompanySummary(updatedSummary);
       setSelectedSummary(updatedSummary); // Update view
       setIsEditingSummary(false);
-      loadData(); // Refresh list
+      loadSummaries(); // Refresh list
       alert("Changes saved successfully.");
   };
 
   const handleDeleteSummary = async (id: string, label: string) => {
       if (confirm(`Are you sure you want to permanently delete the settlement record for ${label}? This cannot be undone.`)) {
           await storageService.deleteCompanySummary(id);
-          loadData();
+          loadSummaries();
       }
   };
 
@@ -245,9 +291,12 @@ const CompanySettlementPage: React.FC = () => {
       }
 
       // Check File Name Duplication
-      const duplicateFile = summaries.find(s => s.fileName === currentWeekFile.name);
-      if (duplicateFile) {
-           setPopupMessage(`A file named "${currentWeekFile.name}" was already imported on ${new Date(duplicateFile.importedAt).toLocaleDateString()}. Duplicate files might cause confusion.`);
+      const duplicateFiles = await storageService.getCompanySummaries({
+        fileName: currentWeekFile.name,
+        limit: 1
+      });
+      if (duplicateFiles.length > 0) {
+           setPopupMessage(`A file named "${currentWeekFile.name}" was already imported on ${new Date(duplicateFiles[0].importedAt).toLocaleDateString()}. Duplicate files might cause confusion.`);
            setPopupType('DUPLICATE_FILE');
            return;
       }
@@ -555,7 +604,7 @@ const CompanySettlementPage: React.FC = () => {
           fileInputRef.current.value = '';
       }
 
-      loadData();
+      loadSummaries();
       alert("Weekly Summary Imported Successfully!");
   };
 
@@ -842,6 +891,43 @@ const CompanySettlementPage: React.FC = () => {
           {/* History Section */}
           <div className="mt-12">
               <h4 className="text-lg font-bold text-slate-700 mb-4 px-2">History</h4>
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 px-2 mb-4">
+                  <div className="flex items-center gap-2 flex-wrap">
+                      <Calendar size={16} className="text-slate-400" />
+                      <input
+                        type="date"
+                        value={historyStartDate}
+                        onChange={(e) => setHistoryStartDate(e.target.value)}
+                        className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <span className="text-slate-300">-</span>
+                      <input
+                        type="date"
+                        value={historyEndDate}
+                        onChange={(e) => setHistoryEndDate(e.target.value)}
+                        className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                  </div>
+                  <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setHistoryPageIndex(prev => Math.max(0, prev - 1))}
+                        disabled={historyPageIndex === 0}
+                        className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold disabled:opacity-50 hover:border-indigo-200 hover:text-indigo-600 transition-colors"
+                      >
+                        Prev Page
+                      </button>
+                      <span className="text-xs text-slate-500 font-semibold">
+                        Page {summaries.length === 0 ? 0 : historyPageIndex + 1}
+                      </span>
+                      <button
+                        onClick={() => hasNextHistoryPage && setHistoryPageIndex(prev => prev + 1)}
+                        disabled={!hasNextHistoryPage}
+                        className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold disabled:opacity-50 hover:border-indigo-200 hover:text-indigo-600 transition-colors"
+                      >
+                        Next Page
+                      </button>
+                  </div>
+              </div>
               <div className="space-y-4">
                   {summaries.length === 0 && <p className="text-slate-400 px-2">No history yet.</p>}
                   {summaries.map(s => {

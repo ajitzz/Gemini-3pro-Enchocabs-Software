@@ -27,11 +27,15 @@ const InputField = ({ label, name, type = "text", value, onChange, placeholder, 
 const WeeklyWalletPage: React.FC = () => {
   const [wallets, setWallets] = useState<WeeklyWallet[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [weekRanges, setWeekRanges] = useState<{ weekStartDate: string; weekEndDate: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [filterDriver, setFilterDriver] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [currentWeekIndex, setCurrentWeekIndex] = useState<number>(-1);
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const pageSize = 50;
   
   // Duplicate Warning State
   const [duplicateWarning, setDuplicateWarning] = useState<{ active: boolean, existingId: string, payload: WeeklyWallet } | null>(null);
@@ -93,21 +97,15 @@ const WeeklyWalletPage: React.FC = () => {
   }, []);
 
   const weekOptions = useMemo(() => {
-    const weekMap = new Map<string, { start: string; end: string }>();
-    wallets.forEach(w => {
-      if (!weekMap.has(w.weekStartDate)) {
-        weekMap.set(w.weekStartDate, { start: w.weekStartDate, end: w.weekEndDate });
-      }
-    });
-
-    return Array.from(weekMap.values())
-      .sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime())
+    return [...weekRanges]
+      .sort((a, b) => new Date(b.weekStartDate).getTime() - new Date(a.weekStartDate).getTime())
       .map((week, index) => ({
-        ...week,
+        start: week.weekStartDate,
+        end: week.weekEndDate,
         index,
-        label: formatWeekRange(week.start, week.end)
+        label: formatWeekRange(week.weekStartDate, week.weekEndDate)
       }));
-  }, [wallets]);
+  }, [weekRanges]);
 
   useEffect(() => {
     if (weekOptions.length === 0) {
@@ -121,15 +119,37 @@ const WeeklyWalletPage: React.FC = () => {
     });
   }, [weekOptions]);
 
-  const loadDrivers = async () => {
-    const d = await storageService.getDrivers();
+  useEffect(() => {
+    setCurrentPageIndex(0);
+  }, [currentWeekIndex, filterDriver]);
+
+  useEffect(() => {
+    loadWallets();
+  }, [currentWeekIndex, filterDriver, currentPageIndex]);
+
+  const loadData = async () => {
+    setLoading(true);
+    const [d, weeks] = await Promise.all([
+        storageService.getDrivers(),
+        storageService.getWeeklyWallets({ distinctWeeks: true })
+    ]);
     setDrivers(d.filter(driver => !driver.terminationDate));
+    setWeekRanges(weeks as { weekStartDate: string; weekEndDate: string }[]);
+    setLoading(false);
   };
 
-  const loadWallets = async (filters: { driver?: string }) => {
+  const loadWallets = async () => {
     setLoading(true);
-    const w = await storageService.getWeeklyWallets(filters);
-    setWallets(w.sort((a, b) => new Date(b.weekStartDate).getTime() - new Date(a.weekStartDate).getTime()));
+    const selectedWeek = currentWeekIndex >= 0 ? weekOptions[currentWeekIndex] : null;
+    const w = await storageService.getWeeklyWallets({
+      limit: pageSize,
+      offset: currentPageIndex * pageSize,
+      startDate: selectedWeek?.start,
+      endDate: selectedWeek?.end,
+      driver: filterDriver || undefined
+    });
+    setWallets(w);
+    setHasNextPage(w.length === pageSize);
     setLoading(false);
   };
 
@@ -258,13 +278,7 @@ const WeeklyWalletPage: React.FC = () => {
 
   const selectedWeek = currentWeekIndex >= 0 ? weekOptions[currentWeekIndex] : null;
 
-  const weekFilteredWallets = selectedWeek
-    ? wallets.filter(w => w.weekStartDate === selectedWeek.start)
-    : wallets;
-
-  const filteredWallets = weekFilteredWallets.filter(w =>
-    filterDriver === '' || w.driver.toLowerCase().includes(filterDriver.toLowerCase())
-  );
+  const filteredWallets = wallets;
 
   const toNumber = (value: number | string | null | undefined) => {
     const num = Number(value);
@@ -592,15 +606,36 @@ const WeeklyWalletPage: React.FC = () => {
             </button>
           </div>
 
-          <div className="relative group w-full max-w-md">
-            <input
-              type="text"
-              placeholder="Search driver in selected week..."
-              value={filterDriver}
-              onChange={(e) => setFilterDriver(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
-            />
-            <Search size={18} className="absolute left-3.5 top-3.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+          <div className="flex flex-col md:flex-row items-center gap-4 w-full">
+            <div className="relative group w-full max-w-md">
+              <input
+                type="text"
+                placeholder="Search driver in selected week..."
+                value={filterDriver}
+                onChange={(e) => setFilterDriver(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
+              />
+              <Search size={18} className="absolute left-3.5 top-3.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPageIndex(prev => Math.max(0, prev - 1))}
+                disabled={currentPageIndex === 0}
+                className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold disabled:opacity-50 hover:border-indigo-200 hover:text-indigo-600 transition-colors"
+              >
+                Prev Page
+              </button>
+              <span className="text-xs text-slate-500 font-semibold">
+                Page {filteredWallets.length === 0 ? 0 : currentPageIndex + 1}
+              </span>
+              <button
+                onClick={() => hasNextPage && setCurrentPageIndex(prev => prev + 1)}
+                disabled={!hasNextPage}
+                className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold disabled:opacity-50 hover:border-indigo-200 hover:text-indigo-600 transition-colors"
+              >
+                Next Page
+              </button>
+            </div>
           </div>
         </div>
 

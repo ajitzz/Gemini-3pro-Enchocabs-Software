@@ -287,6 +287,8 @@ const DailyEntryPage: React.FC = () => {
 
   // Pagination State
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const pageSize = 50;
 
   // Duplicate Warning State
   const [duplicateWarning, setDuplicateWarning] = useState<{ active: boolean, existingId: string, payload: DailyEntry } | null>(null);
@@ -308,18 +310,24 @@ const DailyEntryPage: React.FC = () => {
   };
   const [formData, setFormData] = useState<Partial<DailyEntry>>(initialFormState);
 
-  const loadEntries = async (filters: { start?: string; end?: string; driver?: string }) => {
-    setLoading(true);
-    const e = await storageService.getDailyEntries(filters);
-    setEntries(e.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-    setLoading(false);
-  };
+  useEffect(() => {
+    loadBaseData();
+  }, []);
 
-  const loadMeta = async () => {
+  useEffect(() => {
+    setCurrentPageIndex(0);
+  }, [filterDateStart, filterDateEnd, filterDriver]);
+
+  useEffect(() => {
+    loadEntries();
+  }, [currentPageIndex, filterDateStart, filterDateEnd, filterDriver]);
+
+  const loadBaseData = async () => {
+    setLoading(true);
     const [d, l, w] = await Promise.all([
-      storageService.getDrivers(),
-      storageService.getLeaves(),
-      storageService.getWeeklyWallets()
+        storageService.getDrivers(),
+        storageService.getLeaves(), // Fetch leaves
+        storageService.getWeeklyWallets()
     ]);
 
     setDrivers(d.filter(driver => !driver.terminationDate));
@@ -347,6 +355,20 @@ const DailyEntryPage: React.FC = () => {
 
   const refreshData = async () => {
     await Promise.all([loadMeta(), loadEntries(entryFilters)]);
+  };
+
+  const loadEntries = async () => {
+    setLoading(true);
+    const e = await storageService.getDailyEntries({
+      limit: pageSize,
+      offset: currentPageIndex * pageSize,
+      startDate: filterDateStart || undefined,
+      endDate: filterDateEnd || undefined,
+      driver: filterDriver || undefined
+    });
+    setEntries(e);
+    setHasNextPage(e.length === pageSize);
+    setLoading(false);
   };
 
   const entriesWithAdjustments = useMemo<DisplayDailyEntry[]>(() => {
@@ -390,9 +412,9 @@ const DailyEntryPage: React.FC = () => {
   }, [entries, weeklyWallets]);
 
   const enteredDrivers = useMemo(() => {
-      const uniqueNames = new Set(entriesWithAdjustments.map(e => e.driver));
+      const uniqueNames = new Set(drivers.map(d => d.name));
       return Array.from(uniqueNames).sort();
-  }, [entriesWithAdjustments]);
+  }, [drivers]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -642,18 +664,10 @@ const DailyEntryPage: React.FC = () => {
       return `${day}-${month}-${year}`;
   };
 
-  // Filter Logic: Global Dates AND Column Specific Filters
+  // Filter Logic: Column Filters (date/driver already applied server-side)
   const filteredEntries = useMemo(() => {
     return entriesWithAdjustments.filter(entry => {
-        // 1. Global Date Range Filter
-        const matchStart = filterDateStart === '' || entry.date >= filterDateStart;
-        const matchEnd = filterDateEnd === '' || entry.date <= filterDateEnd;
-        if (!matchStart || !matchEnd) return false;
-
-        // 2. Global Driver Filter
-        if (filterDriver && entry.driver !== filterDriver) return false;
-
-        // 3. Column Specific Filters (OR logic within column, AND logic across columns)
+        // Column Specific Filters (OR logic within column, AND logic across columns)
         for (const [key, val] of Object.entries(columnFilters)) {
             const selectedValues = val as string[];
             if (selectedValues.length === 0) continue; // No filter active for this column
@@ -669,94 +683,21 @@ const DailyEntryPage: React.FC = () => {
 
         return true;
     });
-  }, [entriesWithAdjustments, filterDateStart, filterDateEnd, filterDriver, columnFilters]);
+  }, [entriesWithAdjustments, columnFilters]);
 
-  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const displayedEntries = filteredEntries;
 
-  const getWeekStartDate = (dateStr: string) => {
-      const date = new Date(dateStr);
-      const day = date.getDay();
-      const diffToMonday = day === 0 ? 6 : day - 1;
-      date.setDate(date.getDate() - diffToMonday);
-      return date;
-  };
-
-  const paginatedPages = useMemo(() => {
-      if (filteredEntries.length === 0) return [] as any[];
-
-      const sorted = [...filteredEntries].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      const pages: any[] = [];
-      let currentPage: any = null;
-
-      sorted.forEach(entry => {
-          const entryDate = new Date(entry.date);
-          const entryMonth = entryDate.getMonth();
-          const entryYear = entryDate.getFullYear();
-          const weekStart = getWeekStartDate(entry.date);
-          const weekStartMonth = weekStart.getMonth();
-          const weekStartYear = weekStart.getFullYear();
-
-          if (!currentPage) {
-              currentPage = {
-                  month: entryMonth,
-                  year: entryYear,
-                  entries: [],
-                  startDate: entry.date,
-                  endDate: entry.date,
-                  hasSpillover: false
-              };
-          }
-
-          const belongsToCurrentMonth = entryMonth === currentPage.month && entryYear === currentPage.year;
-          const continuesCurrentWeek = weekStartMonth === currentPage.month && weekStartYear === currentPage.year;
-
-          if (belongsToCurrentMonth || continuesCurrentWeek) {
-              currentPage.entries.push(entry);
-              currentPage.endDate = entry.date;
-              if (!belongsToCurrentMonth && continuesCurrentWeek) {
-                  currentPage.hasSpillover = true;
-              }
-          } else {
-              pages.push({
-                  ...currentPage,
-                  entries: [...currentPage.entries].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
-                  label: `${monthNames[currentPage.month]} ${currentPage.year}${currentPage.hasSpillover ? ' (week overlap)' : ''}`
-              });
-
-              currentPage = {
-                  month: entryMonth,
-                  year: entryYear,
-                  entries: [entry],
-                  startDate: entry.date,
-                  endDate: entry.date,
-                  hasSpillover: false
-              };
-          }
+  const currentPageLabel = displayedEntries.length > 0 ? `Page ${currentPageIndex + 1}` : 'No data';
+  const currentPageRange = useMemo(() => {
+      if (displayedEntries.length === 0) return '';
+      let minDate = displayedEntries[0].date;
+      let maxDate = displayedEntries[0].date;
+      displayedEntries.forEach(entry => {
+          if (entry.date < minDate) minDate = entry.date;
+          if (entry.date > maxDate) maxDate = entry.date;
       });
-
-      if (currentPage) {
-          pages.push({
-              ...currentPage,
-              entries: [...currentPage.entries].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
-              label: `${monthNames[currentPage.month]} ${currentPage.year}${currentPage.hasSpillover ? ' (week overlap)' : ''}`
-          });
-      }
-
-      return pages;
-  }, [filteredEntries]);
-
-  useEffect(() => {
-      if (paginatedPages.length === 0) {
-          setCurrentPageIndex(0);
-      } else {
-          setCurrentPageIndex(paginatedPages.length - 1);
-      }
-  }, [paginatedPages.length]);
-
-  const displayedEntries = paginatedPages[currentPageIndex]?.entries || [];
-  const currentPageMeta = paginatedPages[currentPageIndex];
-  const currentPageLabel = currentPageMeta ? currentPageMeta.label : 'No data';
-  const currentPageRange = currentPageMeta ? `${formatDate(currentPageMeta.startDate)} – ${formatDate(currentPageMeta.endDate)}` : '';
+      return `${formatDate(maxDate)} – ${formatDate(minDate)}`;
+  }, [displayedEntries]);
 
   const totals = useMemo(() => {
       const sumField = (key: keyof DailyEntry) =>
@@ -781,7 +722,8 @@ const DailyEntryPage: React.FC = () => {
   };
 
   const goToNextPage = () => {
-      setCurrentPageIndex(prev => Math.min(paginatedPages.length - 1, prev + 1));
+      if (!hasNextPage) return;
+      setCurrentPageIndex(prev => prev + 1);
   };
 
   // Determine if any filter is active
@@ -1004,24 +946,21 @@ const DailyEntryPage: React.FC = () => {
                 <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Records Window</p>
                 <p className="text-sm font-bold text-slate-800">{currentPageLabel}</p>
                 {currentPageRange && <p className="text-xs text-slate-400">{currentPageRange}</p>}
-                {currentPageMeta?.hasSpillover && (
-                    <p className="text-[11px] text-amber-600 font-semibold">Includes next month dates to complete the week.</p>
-                )}
             </div>
             <div className="flex items-center gap-2">
                 <button
                   onClick={goToPreviousPage}
-                  disabled={currentPageIndex === 0 || paginatedPages.length === 0}
+                  disabled={currentPageIndex === 0}
                   className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold disabled:opacity-50 hover:border-indigo-200 hover:text-indigo-600 transition-colors"
                 >
                     Prev
                 </button>
                 <span className="text-xs text-slate-500 font-semibold">
-                    Page {paginatedPages.length === 0 ? 0 : currentPageIndex + 1} of {paginatedPages.length}
+                    Page {displayedEntries.length === 0 ? 0 : currentPageIndex + 1}
                 </span>
                 <button
                   onClick={goToNextPage}
-                  disabled={paginatedPages.length === 0 || currentPageIndex >= paginatedPages.length - 1}
+                  disabled={!hasNextPage}
                   className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold disabled:opacity-50 hover:border-indigo-200 hover:text-indigo-600 transition-colors"
                 >
                     Next
