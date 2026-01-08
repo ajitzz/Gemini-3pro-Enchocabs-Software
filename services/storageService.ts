@@ -63,7 +63,7 @@ const api = {
   }
 };
 
-const buildQuery = (params: Record<string, string | number | undefined>) => {
+const buildQuery = (params: Record<string, string | number | boolean | undefined>) => {
   const searchParams = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
     if (value === undefined || value === '') return;

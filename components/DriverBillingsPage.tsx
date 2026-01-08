@@ -66,12 +66,17 @@ const DriverBillingsPage: React.FC = () => {
     loadData();
   }, []);
 
-  const loadBillingRecords = async (filters: { driver?: string }, debounceKey: string) => {
+  const loadBillingRecords = async (
+    filters: { driver?: string; weekStart?: string; weekEnd?: string },
+    debounceKey?: string
+  ) => {
     try {
       const billingData = await storageService.getDriverBillings(filters);
       setBillingRecords(billingData);
       setBillingApiError(false);
-      setLastBillingFilterKey(debounceKey);
+      if (debounceKey !== undefined) {
+        setLastBillingFilterKey(debounceKey);
+      }
     } catch (billingErr) {
       console.warn("Could not load saved billings (endpoint might be missing):", billingErr);
       setBillingRecords([]);
@@ -102,34 +107,6 @@ const DriverBillingsPage: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    loadBillingRecords();
-  }, [currentWeekIndex, filterDriver, weeklyWallets, dailyEntries]);
-
-  const loadBillingRecords = async () => {
-    try {
-        if (currentWeekIndex !== -1 && availableWeeks.length === 0) {
-            setBillingRecords([]);
-            return;
-        }
-        const currentWeekKey = currentWeekIndex === -1 ? undefined : availableWeeks[currentWeekIndex];
-        const params = currentWeekKey
-            ? {
-                weekStart: currentWeekKey,
-                weekEnd: getWeekRange(currentWeekKey).end,
-                driver: filterDriver || undefined
-            }
-            : {};
-        const billingData = await storageService.getDriverBillings(params);
-        setBillingRecords(billingData);
-        setBillingApiError(false);
-    } catch (billingErr) {
-        console.warn("Could not load saved billings (endpoint might be missing):", billingErr);
-        setBillingRecords([]);
-        setBillingApiError(true);
-    }
-  };
-
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(val);
   };
@@ -157,21 +134,6 @@ const DriverBillingsPage: React.FC = () => {
   const formatIntegerCurrency = (val: number) => {
     return `₹${Math.round(val).toLocaleString('en-IN')}`;
   };
-
-  const billingFilters = useMemo(() => ({
-    driver: filterDriver || undefined
-  }), [filterDriver]);
-
-  useEffect(() => {
-    const debounceKey = filterDriver.trim().toLowerCase();
-    if (debounceKey === lastBillingFilterKey) return;
-
-    const timeout = window.setTimeout(() => {
-      loadBillingRecords(billingFilters, debounceKey);
-    }, 300);
-
-    return () => window.clearTimeout(timeout);
-  }, [billingFilters, filterDriver, lastBillingFilterKey]);
 
   // --- ROBUST DATE HELPERS (UTC STRICT) ---
   const isValidDateStr = (dateStr: any) => {
@@ -345,6 +307,35 @@ const DriverBillingsPage: React.FC = () => {
       });
       return [{ index: -1, label: "All Time (Aggregate)" }, ...opts];
   }, [availableWeeks]);
+
+  const billingFilters = useMemo(() => {
+    if (currentWeekIndex !== -1 && availableWeeks.length === 0) {
+      return null;
+    }
+    const currentWeekKey = currentWeekIndex === -1 ? undefined : availableWeeks[currentWeekIndex];
+    return currentWeekKey
+      ? {
+          weekStart: currentWeekKey,
+          weekEnd: getWeekRange(currentWeekKey).end,
+          driver: filterDriver || undefined
+        }
+      : { driver: filterDriver || undefined };
+  }, [availableWeeks, currentWeekIndex, filterDriver]);
+
+  useEffect(() => {
+    if (!billingFilters) {
+      setBillingRecords([]);
+      return;
+    }
+    const debounceKey = filterDriver.trim().toLowerCase();
+    if (debounceKey === lastBillingFilterKey) return;
+
+    const timeout = window.setTimeout(() => {
+      loadBillingRecords(billingFilters, debounceKey);
+    }, 300);
+
+    return () => window.clearTimeout(timeout);
+  }, [billingFilters, filterDriver, lastBillingFilterKey]);
 
   const currentWeekKey = availableWeeks[currentWeekIndex];
   
