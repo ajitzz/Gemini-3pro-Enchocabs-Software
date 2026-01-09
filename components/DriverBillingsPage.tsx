@@ -60,7 +60,7 @@ const DriverBillingsPage: React.FC = () => {
   
   // UI Feedback
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [lastBillingFilterKey, setLastBillingFilterKey] = useState<string>('');
+  const [lastBillingFilterKey, setLastBillingFilterKey] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -327,7 +327,7 @@ const DriverBillingsPage: React.FC = () => {
       setBillingRecords([]);
       return;
     }
-    const debounceKey = filterDriver.trim().toLowerCase();
+    const debounceKey = JSON.stringify(billingFilters);
     if (debounceKey === lastBillingFilterKey) return;
 
     const timeout = window.setTimeout(() => {
