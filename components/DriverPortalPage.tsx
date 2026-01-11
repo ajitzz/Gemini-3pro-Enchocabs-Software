@@ -312,12 +312,13 @@ const DriverPortalPage: React.FC = () => {
               const driversToLoad = [targetDriver.name, ...teamMembers.map(member => member.name)].filter(Boolean);
               const uniqueDrivers = Array.from(new Set(driversToLoad));
 
-              const [dailySets, weeklySets] = await Promise.all([
-                  Promise.all(uniqueDrivers.map(name => storageService.getDailyEntriesForDriver(name))),
-                  Promise.all(uniqueDrivers.map(name => storageService.getWeeklyWalletsForDriver(name)))
+              const driverSet = new Set(uniqueDrivers);
+              const [dailyEntries, weeklyWallets] = await Promise.all([
+                  storageService.getDailyEntries(),
+                  storageService.getWeeklyWallets()
               ]);
-              allDaily = dailySets.flat();
-              allWeekly = weeklySets.flat();
+              allDaily = dailyEntries.filter(entry => driverSet.has(entry.driver));
+              allWeekly = weeklyWallets.filter(wallet => driverSet.has(wallet.driver));
           }
 
           setGlobalDaily(allDaily);
