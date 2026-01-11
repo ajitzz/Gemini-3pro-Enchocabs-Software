@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { Driver, LeaveRecord, ManagerAccess } from '../types';
 import { storageService } from '../services/storageService';
-import { UserPlus, Edit2, Clock, FileText, X, AlertTriangle, ShieldCheck, Users, CheckSquare, Square, AlertOctagon, Utensils, Loader2, Trash2, Archive, RefreshCcw, FileDown } from 'lucide-react';
+import { UserPlus, Edit2, Clock, FileText, X, AlertTriangle, ShieldCheck, Users, CheckSquare, Square, AlertOctagon, Utensils, Loader2, Trash2, Archive, RefreshCcw, FileDown, Mail } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
 const InputField = ({ label, value, onChange, placeholder, type = "text", required = false, className = "" }: any) => (
