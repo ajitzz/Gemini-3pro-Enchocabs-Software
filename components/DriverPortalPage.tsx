@@ -1268,30 +1268,28 @@ const DriverPortalPage: React.FC = () => {
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
-                    {hasFoodAccess ? (
+                    {hasFoodAccess && (
                         <div className="relative overflow-hidden rounded-2xl border border-amber-200/70 bg-gradient-to-br from-white via-amber-50 to-amber-100 px-4 py-3 shadow-sm">
                             <div className="absolute inset-y-0 right-0 w-10 bg-amber-200/50 blur-2xl" aria-hidden="true" />
                             <div className="relative flex items-center gap-3">
                                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isFoodTicketActive ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
                                     <Utensils size={18} />
                                 </div>
-                                <div className="min-w-[120px]">
+                                <div className="min-w-[110px]">
                                     <p className="text-[9px] font-bold uppercase tracking-[0.3em] text-slate-400">Food Ticket</p>
                                     <p className="text-sm font-extrabold text-slate-900 flex items-center gap-1">
                                         Access <Ticket size={14} className="text-amber-500" />
                                     </p>
-                                    <p className="text-[10px] text-slate-500 font-semibold">{foodTicketDate}</p>
                                     <span className={`mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border ${isFoodTicketActive ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
                                         {isFoodTicketActive ? 'Active' : 'Payment Due'}
                                     </span>
                                 </div>
                             </div>
                         </div>
-                    ) : (
-                        <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 border border-indigo-100">
-                            <UserCircle size={24} />
-                        </div>
                     )}
+                    <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 border border-indigo-100">
+                        <UserCircle size={24} />
+                    </div>
                 </div>
            </div>
 
