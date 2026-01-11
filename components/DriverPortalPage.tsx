@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { storageService } from '../services/storageService';
 import { CashMode, DailyEntry, WeeklyWallet, Driver, RentalSlab } from '../types';
@@ -108,6 +108,13 @@ const DriverPortalPage: React.FC = () => {
 
       return `${startDay} ${startMonth}–${endDay} ${endMonth}`;
   };
+
+  const foodTicketDate = useMemo(() => {
+      const now = new Date();
+      const datePart = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+      const dayPart = now.toLocaleDateString('en-GB', { weekday: 'short' });
+      return `${datePart} (${dayPart})`;
+  }, []);
 
   const latestPayout = useMemo(() => {
       if (!rawDaily.length) return null;
@@ -348,6 +355,74 @@ const DriverPortalPage: React.FC = () => {
           setInitError(err.message || "Failed to load portal data. Check connection.");
       }
   };
+
+  const refreshPortalData = useCallback(async () => {
+      if (!user || !viewingAsDriver) return;
+      try {
+          const isAdminUser = user.role === 'admin' || user.role === 'super_admin';
+          const [drivers, dailyEntries, weeklyWallets] = await Promise.all([
+              storageService.getDrivers(),
+              storageService.getDailyEntriesFresh(),
+              storageService.getWeeklyWalletsFresh()
+          ]);
+
+          if (isAdminUser) {
+              setDriversList(drivers.sort((a, b) => a.name.localeCompare(b.name)));
+          }
+
+          const updatedDriver = drivers.find(d => d.id === viewingAsDriver.id);
+          if (updatedDriver) {
+              setViewingAsDriver(updatedDriver);
+              if (primaryDriver && primaryDriver.id === updatedDriver.id) {
+                  setPrimaryDriver(updatedDriver);
+              }
+          }
+
+          let allDaily = dailyEntries;
+          let allWeekly = weeklyWallets;
+
+          if (!isAdminUser) {
+              const driversToLoad = [primaryDriver?.name, ...myTeam.map(member => member.name)].filter(Boolean) as string[];
+              const driverSet = new Set(driversToLoad);
+              allDaily = dailyEntries.filter(entry => driverSet.has(entry.driver));
+              allWeekly = weeklyWallets.filter(wallet => driverSet.has(wallet.driver));
+          }
+
+          setGlobalDaily(allDaily);
+          setGlobalWeekly(allWeekly);
+
+          const activeName = updatedDriver?.name || viewingAsDriver.name;
+          setRawDaily(allDaily.filter(d => d.driver === activeName).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+          setRawWeekly(allWeekly.filter(w => w.driver === activeName).sort((a,b) => new Date(b.weekStartDate).getTime() - new Date(a.weekStartDate).getTime()));
+
+          if (myTeam.length > 0) {
+              const balances: Record<string, number> = {};
+              myTeam.forEach(member => {
+                  const stats = storageService.calculateDriverStats(member.name, allDaily, allWeekly, rentalSlabs);
+                  balances[member.id] = stats.netPayout;
+              });
+              setTeamBalances(balances);
+          }
+      } catch (err) {
+          console.error('Failed to refresh portal data', err);
+      }
+  }, [myTeam, primaryDriver, rentalSlabs, user, viewingAsDriver]);
+
+  useEffect(() => {
+      if (!user || !viewingAsDriver) return;
+      let isMounted = true;
+      const poll = async () => {
+          if (!isMounted) return;
+          await refreshPortalData();
+      };
+
+      poll();
+      const interval = window.setInterval(poll, 15000);
+      return () => {
+          isMounted = false;
+          window.clearInterval(interval);
+      };
+  }, [refreshPortalData, user, viewingAsDriver]);
 
   const switchToDriverView = (targetDriver: Driver, allDaily: DailyEntry[], allWeekly: WeeklyWallet[]) => {
       setViewingAsDriver(targetDriver);

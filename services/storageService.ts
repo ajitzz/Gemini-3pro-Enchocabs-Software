@@ -334,12 +334,14 @@ const calculateDriverStats = (
 export const storageService = {
   // --- Daily Entries ---
   getDailyEntries: async (): Promise<DailyEntry[]> => api.get('/daily-entries'),
+  getDailyEntriesFresh: async (): Promise<DailyEntry[]> => api.get(`/daily-entries?fresh=${Date.now()}`),
   saveDailyEntry: async (entry: DailyEntry): Promise<DailyEntry> => api.post('/daily-entries', entry),
   saveDailyEntriesBulk: async (newEntries: DailyEntry[]): Promise<void> => api.post('/daily-entries/bulk', newEntries),
   deleteDailyEntry: async (id: string): Promise<void> => api.delete(`/daily-entries/${id}`),
 
   // --- Weekly Wallets ---
   getWeeklyWallets: async (): Promise<WeeklyWallet[]> => api.get('/weekly-wallets'),
+  getWeeklyWalletsFresh: async (): Promise<WeeklyWallet[]> => api.get(`/weekly-wallets?fresh=${Date.now()}`),
   saveWeeklyWallet: async (wallet: WeeklyWallet): Promise<WeeklyWallet> => api.post('/weekly-wallets', wallet),
   saveWeeklyWalletsBulk: async (newWallets: WeeklyWallet[]): Promise<void> => Promise.all(newWallets.map(w => api.post('/weekly-wallets', w))).then(() => {}),
   deleteWeeklyWallet: async (id: string): Promise<void> => api.delete(`/weekly-wallets/${id}`),
@@ -506,4 +508,3 @@ export const storageService = {
     return { driverSummaries, global };
   }
 };
-
