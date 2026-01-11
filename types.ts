@@ -72,6 +72,7 @@ export interface Driver {
   defaultRent?: number; // Default daily rent amount
   notes?: string;
   isManager?: boolean; // New: Manager Role Flag
+  foodOption?: boolean; // Food access enabled
 }
 
 export interface ManagerAccess {
@@ -231,4 +232,3 @@ export interface AuthUser {
   photoURL?: string;
   driverId?: string;
 }
-

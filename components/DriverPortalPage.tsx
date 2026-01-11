@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { storageService } from '../services/storageService';
 import { CashMode, DailyEntry, WeeklyWallet, Driver, RentalSlab } from '../types';
@@ -7,7 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   Download, Calendar, Wallet, FileText, ChevronRight, LogOut, 
   UserCircle, TrendingUp, TrendingDown, DollarSign, MapPin, 
-  CheckCircle, AlertCircle, Eye, X, ShieldCheck, Users, ArrowLeft, Lock, ArrowRight, Gauge, BarChart3, ChevronDown, Copy, AlertTriangle, ArrowUpRight, Clock
+  CheckCircle, AlertCircle, Eye, X, ShieldCheck, Users, ArrowLeft, Lock, ArrowRight, Gauge, BarChart3, ChevronDown, Copy, AlertTriangle, ArrowUpRight, Clock, Ticket, Utensils
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import NetCalculationPopup from './NetCalculationPopup';
@@ -108,6 +108,13 @@ const DriverPortalPage: React.FC = () => {
 
       return `${startDay} ${startMonth}–${endDay} ${endMonth}`;
   };
+
+  const foodTicketDate = useMemo(() => {
+      const now = new Date();
+      const datePart = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+      const dayPart = now.toLocaleDateString('en-GB', { weekday: 'short' });
+      return `${datePart} (${dayPart})`;
+  }, []);
 
   const latestPayout = useMemo(() => {
       if (!rawDaily.length) return null;
@@ -348,6 +355,74 @@ const DriverPortalPage: React.FC = () => {
           setInitError(err.message || "Failed to load portal data. Check connection.");
       }
   };
+
+  const refreshPortalData = useCallback(async () => {
+      if (!user || !viewingAsDriver) return;
+      try {
+          const isAdminUser = user.role === 'admin' || user.role === 'super_admin';
+          const [drivers, dailyEntries, weeklyWallets] = await Promise.all([
+              storageService.getDrivers(),
+              storageService.getDailyEntriesFresh(),
+              storageService.getWeeklyWalletsFresh()
+          ]);
+
+          if (isAdminUser) {
+              setDriversList(drivers.sort((a, b) => a.name.localeCompare(b.name)));
+          }
+
+          const updatedDriver = drivers.find(d => d.id === viewingAsDriver.id);
+          if (updatedDriver) {
+              setViewingAsDriver(updatedDriver);
+              if (primaryDriver && primaryDriver.id === updatedDriver.id) {
+                  setPrimaryDriver(updatedDriver);
+              }
+          }
+
+          let allDaily = dailyEntries;
+          let allWeekly = weeklyWallets;
+
+          if (!isAdminUser) {
+              const driversToLoad = [primaryDriver?.name, ...myTeam.map(member => member.name)].filter(Boolean) as string[];
+              const driverSet = new Set(driversToLoad);
+              allDaily = dailyEntries.filter(entry => driverSet.has(entry.driver));
+              allWeekly = weeklyWallets.filter(wallet => driverSet.has(wallet.driver));
+          }
+
+          setGlobalDaily(allDaily);
+          setGlobalWeekly(allWeekly);
+
+          const activeName = updatedDriver?.name || viewingAsDriver.name;
+          setRawDaily(allDaily.filter(d => d.driver === activeName).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+          setRawWeekly(allWeekly.filter(w => w.driver === activeName).sort((a,b) => new Date(b.weekStartDate).getTime() - new Date(a.weekStartDate).getTime()));
+
+          if (myTeam.length > 0) {
+              const balances: Record<string, number> = {};
+              myTeam.forEach(member => {
+                  const stats = storageService.calculateDriverStats(member.name, allDaily, allWeekly, rentalSlabs);
+                  balances[member.id] = stats.netPayout;
+              });
+              setTeamBalances(balances);
+          }
+      } catch (err) {
+          console.error('Failed to refresh portal data', err);
+      }
+  }, [myTeam, primaryDriver, rentalSlabs, user, viewingAsDriver]);
+
+  useEffect(() => {
+      if (!user || !viewingAsDriver) return;
+      let isMounted = true;
+      const poll = async () => {
+          if (!isMounted) return;
+          await refreshPortalData();
+      };
+
+      poll();
+      const interval = window.setInterval(poll, 15000);
+      return () => {
+          isMounted = false;
+          window.clearInterval(interval);
+      };
+  }, [refreshPortalData, user, viewingAsDriver]);
 
   const switchToDriverView = (targetDriver: Driver, allDaily: DailyEntry[], allWeekly: WeeklyWallet[]) => {
       setViewingAsDriver(targetDriver);
@@ -590,6 +665,10 @@ const DriverPortalPage: React.FC = () => {
       };
   }, [driverStats]);
 
+  const netBalance = driverStats?.finalTotal ?? 0;
+  const hasFoodAccess = user?.role === 'driver' && Boolean(viewingAsDriver?.foodOption);
+  const isFoodTicketActive = netBalance >= 0;
+
   // --- 3. AGGREGATED STATS (Month/Prev Month/Year) ---
     const aggregatedStats = useMemo(() => {
         if (!viewingAsDriver || (rawDaily.length === 0 && rawWeekly.length === 0)) {
@@ -820,7 +899,6 @@ const DriverPortalPage: React.FC = () => {
   // --- 4. DYNAMIC CARD DATA ---
     const topCards = useMemo(() => {
         const latestBill = billingData[0];
-        const netBalance = driverStats?.finalTotal ?? 0;
 
         // OVERVIEW: Weekly snapshot with consolidated style
         if (activeTab === 'home') {
@@ -1189,8 +1267,31 @@ const DriverPortalPage: React.FC = () => {
                         </button>
                     </p>
                 </div>
-                <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 border border-indigo-100">
-                    <UserCircle size={24} />
+                <div className="flex items-center gap-3">
+                    {hasFoodAccess ? (
+                        <div className="relative overflow-hidden rounded-2xl border border-amber-200/70 bg-gradient-to-br from-white via-amber-50 to-amber-100 px-4 py-3 shadow-sm">
+                            <div className="absolute inset-y-0 right-0 w-10 bg-amber-200/50 blur-2xl" aria-hidden="true" />
+                            <div className="relative flex items-center gap-3">
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isFoodTicketActive ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
+                                    <Utensils size={18} />
+                                </div>
+                                <div className="min-w-[120px]">
+                                    <p className="text-[9px] font-bold uppercase tracking-[0.3em] text-slate-400">Food Ticket</p>
+                                    <p className="text-sm font-extrabold text-slate-900 flex items-center gap-1">
+                                        Access <Ticket size={14} className="text-amber-500" />
+                                    </p>
+                                    <p className="text-[10px] text-slate-500 font-semibold">{foodTicketDate}</p>
+                                    <span className={`mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border ${isFoodTicketActive ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
+                                        {isFoodTicketActive ? 'Active' : 'Payment Due'}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 border border-indigo-100">
+                            <UserCircle size={24} />
+                        </div>
+                    )}
                 </div>
            </div>
 

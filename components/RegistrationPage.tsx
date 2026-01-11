@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { Driver, LeaveRecord, ManagerAccess } from '../types';
 import { storageService } from '../services/storageService';
-import { UserPlus, Edit2, Clock, FileText, X, AlertTriangle, ShieldCheck, Users, CheckSquare, Square, AlertOctagon, Mail, Loader2, Trash2, Archive, RefreshCcw, FileDown } from 'lucide-react';
+import { UserPlus, Edit2, Clock, FileText, X, AlertTriangle, ShieldCheck, Users, CheckSquare, Square, AlertOctagon, Utensils, Loader2, Trash2, Archive, RefreshCcw, FileDown, Mail } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
 const InputField = ({ label, value, onChange, placeholder, type = "text", required = false, className = "" }: any) => (
@@ -38,6 +38,7 @@ const RegistrationPage: React.FC = () => {
     currentShift: 'Day',
     notes: '',
     isManager: false,
+    foodOption: false,
     email: ''
   });
   const [isDriverFormOpen, setIsDriverFormOpen] = useState(false);
@@ -182,7 +183,8 @@ const RegistrationPage: React.FC = () => {
          status: 'Active',
          currentShift: 'Day', // Default
          notes: driverForm.notes,
-         isManager: driverForm.isManager || false
+         isManager: driverForm.isManager || false,
+         foodOption: driverForm.foodOption || false
        };
     }
 
@@ -191,7 +193,7 @@ const RegistrationPage: React.FC = () => {
         await storageService.saveDriver(newDriver);
         setIsDriverFormOpen(false);
         setEditingDriverId(null);
-        setDriverForm({ joinDate: new Date().toISOString().split('T')[0], deposit: 0, status: 'Active', qrCode: '', vehicle: '', currentShift: 'Day', notes: '', isManager: false, email: '' });
+        setDriverForm({ joinDate: new Date().toISOString().split('T')[0], deposit: 0, status: 'Active', qrCode: '', vehicle: '', currentShift: 'Day', notes: '', isManager: false, foodOption: false, email: '' });
         loadData();
     } catch (error: any) {
         alert(`Failed to save driver: ${error.message}\n\nPlease check your database connection.`);
@@ -341,7 +343,7 @@ const RegistrationPage: React.FC = () => {
             <button 
                onClick={() => {
                  setIsDriverFormOpen(!isDriverFormOpen);
-                 if(!isDriverFormOpen) setDriverForm({ joinDate: new Date().toISOString().split('T')[0], deposit: 0, status: 'Active', qrCode: '', vehicle: '', currentShift: 'Day', notes: '', isManager: false, email: '' });
+                 if(!isDriverFormOpen) setDriverForm({ joinDate: new Date().toISOString().split('T')[0], deposit: 0, status: 'Active', qrCode: '', vehicle: '', currentShift: 'Day', notes: '', isManager: false, foodOption: false, email: '' });
                  setEditingDriverId(null);
                }} 
                className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
@@ -424,6 +426,34 @@ const RegistrationPage: React.FC = () => {
                         {driverForm.isManager && !editingDriverId && (
                             <span className="text-xs text-slate-400 italic">(Save first to assign team)</span>
                         )}
+                    </div>
+                 </div>
+              </div>
+
+              {/* FOOD ACCESS CONFIGURATION */}
+              <div className="lg:col-span-3 bg-amber-50 rounded-xl p-5 border border-amber-100 mt-2">
+                 <div className="flex justify-between items-center">
+                    <div>
+                        <h5 className="font-bold text-amber-900 flex items-center gap-2">
+                            <Utensils size={18}/> Food Access
+                        </h5>
+                        <p className="text-xs text-amber-700 mt-1">
+                            Enable food entitlement for this driver.
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <div className="relative">
+                                <input
+                                    type="checkbox"
+                                    checked={driverForm.foodOption || false}
+                                    onChange={e => setDriverForm({ ...driverForm, foodOption: e.target.checked })}
+                                    className="sr-only peer"
+                                />
+                                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                            </div>
+                            <span className="text-sm font-bold text-slate-700">Food Option</span>
+                        </label>
                     </div>
                  </div>
               </div>

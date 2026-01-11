@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS drivers (
   current_shift TEXT DEFAULT 'Day',
   default_rent NUMERIC DEFAULT 0,
   notes TEXT,
-  is_manager BOOLEAN DEFAULT FALSE
+  is_manager BOOLEAN DEFAULT FALSE,
+  food_option BOOLEAN DEFAULT FALSE
 );
 
 -- 3. Daily Entries Table (Daily Logs)
@@ -194,4 +195,3 @@ CREATE TABLE IF NOT EXISTS system_flags (
   flag_value TEXT,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
