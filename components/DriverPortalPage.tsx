@@ -7,7 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   Download, Calendar, Wallet, FileText, ChevronRight, LogOut, 
   UserCircle, TrendingUp, TrendingDown, DollarSign, MapPin, 
-  CheckCircle, AlertCircle, Eye, X, ShieldCheck, Users, ArrowLeft, Lock, ArrowRight, Gauge, BarChart3, ChevronDown, Copy, AlertTriangle, ArrowUpRight, Clock
+  CheckCircle, AlertCircle, Eye, X, ShieldCheck, Users, ArrowLeft, Lock, ArrowRight, Gauge, BarChart3, ChevronDown, Copy, AlertTriangle, ArrowUpRight, Clock, Ticket, Utensils
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import NetCalculationPopup from './NetCalculationPopup';
@@ -590,6 +590,10 @@ const DriverPortalPage: React.FC = () => {
       };
   }, [driverStats]);
 
+  const netBalance = driverStats?.finalTotal ?? 0;
+  const hasFoodAccess = user?.role === 'driver' && Boolean(viewingAsDriver?.foodOption);
+  const isFoodTicketActive = netBalance >= 0;
+
   // --- 3. AGGREGATED STATS (Month/Prev Month/Year) ---
     const aggregatedStats = useMemo(() => {
         if (!viewingAsDriver || (rawDaily.length === 0 && rawWeekly.length === 0)) {
@@ -820,7 +824,6 @@ const DriverPortalPage: React.FC = () => {
   // --- 4. DYNAMIC CARD DATA ---
     const topCards = useMemo(() => {
         const latestBill = billingData[0];
-        const netBalance = driverStats?.finalTotal ?? 0;
 
         // OVERVIEW: Weekly snapshot with consolidated style
         if (activeTab === 'home') {
@@ -1189,8 +1192,29 @@ const DriverPortalPage: React.FC = () => {
                         </button>
                     </p>
                 </div>
-                <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 border border-indigo-100">
-                    <UserCircle size={24} />
+                <div className="flex items-center gap-3">
+                    {hasFoodAccess && (
+                        <div className="relative overflow-hidden rounded-2xl border border-amber-200/70 bg-gradient-to-br from-white via-amber-50 to-amber-100 px-4 py-3 shadow-sm">
+                            <div className="absolute inset-y-0 right-0 w-10 bg-amber-200/50 blur-2xl" aria-hidden="true" />
+                            <div className="relative flex items-center gap-3">
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isFoodTicketActive ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
+                                    <Utensils size={18} />
+                                </div>
+                                <div className="min-w-[110px]">
+                                    <p className="text-[9px] font-bold uppercase tracking-[0.3em] text-slate-400">Food Ticket</p>
+                                    <p className="text-sm font-extrabold text-slate-900 flex items-center gap-1">
+                                        Access <Ticket size={14} className="text-amber-500" />
+                                    </p>
+                                    <span className={`mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border ${isFoodTicketActive ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
+                                        {isFoodTicketActive ? 'Active' : 'Payment Due'}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 border border-indigo-100">
+                        <UserCircle size={24} />
+                    </div>
                 </div>
            </div>
 

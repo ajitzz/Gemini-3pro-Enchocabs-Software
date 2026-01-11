@@ -379,9 +379,12 @@ const initDb = async () => {
         current_shift TEXT DEFAULT 'Day',
         default_rent NUMERIC DEFAULT 0,
         notes TEXT,
-        is_manager BOOLEAN DEFAULT FALSE
+        is_manager BOOLEAN DEFAULT FALSE,
+        food_option BOOLEAN DEFAULT FALSE
       );
     `);
+
+    await db.query(`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS food_option BOOLEAN DEFAULT FALSE;`);
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS daily_entries (
@@ -941,7 +944,7 @@ app.get('/api/drivers', async (req, res) => {
       return res.json(cached);
     }
 
-    const result = await db.query(`SELECT id, name, mobile, email, to_char(join_date, 'YYYY-MM-DD') as "joinDate", to_char(termination_date, 'YYYY-MM-DD') as "terminationDate", deposit, qr_code as "qrCode", vehicle, status, current_shift as "currentShift", default_rent as "defaultRent", notes, is_manager as "isManager" FROM drivers ORDER BY name`);
+    const result = await db.query(`SELECT id, name, mobile, email, to_char(join_date, 'YYYY-MM-DD') as "joinDate", to_char(termination_date, 'YYYY-MM-DD') as "terminationDate", deposit, qr_code as "qrCode", vehicle, status, current_shift as "currentShift", default_rent as "defaultRent", notes, is_manager as "isManager", food_option as "foodOption" FROM drivers ORDER BY name`);
     await setCacheJSON(DRIVERS_CACHE_KEY, result.rows, DRIVERS_CACHE_TTL_SECONDS);
 
     res.set('X-Cache', 'MISS');
@@ -1008,15 +1011,15 @@ app.post('/api/drivers', async (req, res) => {
     }
 
     const q = `
-      INSERT INTO drivers (id, name, mobile, email, join_date, termination_date, deposit, qr_code, vehicle, status, current_shift, default_rent, notes, is_manager)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      INSERT INTO drivers (id, name, mobile, email, join_date, termination_date, deposit, qr_code, vehicle, status, current_shift, default_rent, notes, is_manager, food_option)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       ON CONFLICT (id) DO UPDATE SET
-        name=$2, mobile=$3, email=$4, join_date=$5, termination_date=$6, deposit=$7, qr_code=$8, vehicle=$9, status=$10, current_shift=$11, default_rent=$12, notes=$13, is_manager=$14
+        name=$2, mobile=$3, email=$4, join_date=$5, termination_date=$6, deposit=$7, qr_code=$8, vehicle=$9, status=$10, current_shift=$11, default_rent=$12, notes=$13, is_manager=$14, food_option=$15
       RETURNING *;
     `;
     const result = await client.query(q, [
       idToUse, nameToSave, mobileToSave, d.email, d.joinDate, d.terminationDate || null, 
-      d.deposit, qrToSave, d.vehicle, d.status, d.currentShift, d.defaultRent, d.notes, d.isManager
+      d.deposit, qrToSave, d.vehicle, d.status, d.currentShift, d.defaultRent, d.notes, d.isManager, d.foodOption ?? false
     ]);
 
     await client.query('COMMIT');
@@ -1690,4 +1693,3 @@ initDb()
   .catch((err) => {
     console.error('Initialization failed:', err);
   });
-
