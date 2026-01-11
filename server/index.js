@@ -295,6 +295,10 @@ const DAILY_ENTRIES_CACHE_KEY = 'daily-entries:all';
 const WEEKLY_WALLETS_CACHE_KEY = 'weekly-wallets:all';
 const ASSETS_CACHE_KEY = 'assets:all';
 const rentalSlabCacheKey = (type) => `rental-slabs:${type}`;
+const dailyEntriesCacheKey = (driver) =>
+  driver ? `daily-entries:driver:${normalizeDriver(driver)}` : DAILY_ENTRIES_CACHE_KEY;
+const weeklyWalletsCacheKey = (driver) =>
+  driver ? `weekly-wallets:driver:${normalizeDriver(driver)}` : WEEKLY_WALLETS_CACHE_KEY;
 const systemFlagCacheKey = (key) => `system-flag:${key}`;
 
 const SUMMARY_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.SUMMARY_CACHE_TTL_SECONDS || 120, 120);
@@ -1202,6 +1206,7 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
     await client.query('BEGIN');
     const keyToId = new Map();
     const qrCodes = [...new Set(entries.map(e => (e.qrCode || '').trim()).filter(Boolean))];
+    const driversTouched = new Set();
     let qrToDriver = {};
     if (qrCodes.length > 0) {
       const qrRes = await client.query(`SELECT qr_code, name FROM drivers WHERE qr_code = ANY($1::text[])`, [qrCodes]);
@@ -1210,6 +1215,9 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
 
     for (const e of entries) {
       const canonicalDriver = (e.qrCode && qrToDriver[String(e.qrCode).trim()]) ? qrToDriver[String(e.qrCode).trim()] : e.driver;
+      if (canonicalDriver) {
+        driversTouched.add(canonicalDriver);
+      }
       const isoDate = toISODate(e.date);
       if (!isoDate) throw new Error(`Invalid date format for entry ${e.id || e.date}`);
       const driverKey = normalizeDriver(canonicalDriver);
@@ -1269,6 +1277,7 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
 
 app.delete('/api/daily-entries/:id', async (req, res) => {
   try {
+    const existing = await db.query('SELECT driver FROM daily_entries WHERE id = $1', [req.params.id]);
     await db.query('DELETE FROM daily_entries WHERE id = $1', [req.params.id]);
     await syncDriverBillings();
     await invalidateAggregateCaches();
@@ -1324,6 +1333,7 @@ app.post('/api/weekly-wallets', async (req, res) => {
 
 app.delete('/api/weekly-wallets/:id', async (req, res) => {
   try {
+    const existing = await db.query('SELECT driver FROM weekly_wallets WHERE id = $1', [req.params.id]);
     await db.query('DELETE FROM weekly_wallets WHERE id = $1', [req.params.id]);
     await syncDriverBillings();
     await invalidateAggregateCaches();

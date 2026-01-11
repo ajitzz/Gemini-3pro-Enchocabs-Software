@@ -260,17 +260,12 @@ const DriverPortalPage: React.FC = () => {
   const initializePortal = async () => {
       setInitError(null);
       try {
-          const [allDrivers, allDaily, allWeekly, slabs] = await Promise.all([
+          const [allDrivers, slabs] = await Promise.all([
               storageService.getDrivers(),
-              storageService.getDailyEntries(),
-              storageService.getWeeklyWallets(),
               storageService.getDriverRentalSlabs()
           ]);
           const sortedSlabs = slabs.sort((a, b) => a.minTrips - b.minTrips);
           setRentalSlabs(sortedSlabs);
-
-          setGlobalDaily(allDaily);
-          setGlobalWeekly(allWeekly);
 
           if (user?.role === 'admin' || user?.role === 'super_admin') {
               setDriversList(allDrivers.sort((a, b) => a.name.localeCompare(b.name)));
@@ -287,36 +282,66 @@ const DriverPortalPage: React.FC = () => {
               }
           }
 
-          if (targetDriver) {
-              setPrimaryDriver(targetDriver);
-              if (targetDriver.isManager) {
-                  const accessList = await storageService.getManagerAccess();
-                  const myAccess = accessList.find(a => a.managerId === targetDriver!.id);
-                  if (myAccess && myAccess.childDriverIds.length > 0) {
-                      const teamMembers = allDrivers.filter(d => myAccess.childDriverIds.includes(d.id));
-                      setMyTeam(teamMembers);
-
-                      // USE CENTRALIZED LOGIC FOR TEAM BALANCES
-                      const balances: Record<string, number> = {};
-                      teamMembers.forEach(member => {
-                          const stats = storageService.calculateDriverStats(member.name, allDaily, allWeekly, sortedSlabs);
-                          balances[member.id] = stats.netPayout;
-                      });
-                      setTeamBalances(balances);
-
-                      const cashModes: Record<string, CashMode> = {};
-                      await Promise.all(teamMembers.map(async member => {
-                          const mode = await storageService.getDriverCashMode(member.id);
-                          cashModes[member.id] = mode;
-                      }));
-                      setTeamCashModes(cashModes);
-                  }
-              }
-              switchToDriverView(targetDriver, allDaily, allWeekly);
-              refreshCashMode(targetDriver.id, true);
-          } else {
+          if (!targetDriver) {
               setInitError("No driver profile found linked to this account.");
+              return;
           }
+
+          const isAdminUser = user?.role === 'admin' || user?.role === 'super_admin';
+          let allDaily: DailyEntry[] = [];
+          let allWeekly: WeeklyWallet[] = [];
+
+          if (isAdminUser) {
+              [allDaily, allWeekly] = await Promise.all([
+                  storageService.getDailyEntries(),
+                  storageService.getWeeklyWallets()
+              ]);
+          }
+
+          let teamMembers: Driver[] = [];
+          if (targetDriver.isManager) {
+              const accessList = await storageService.getManagerAccess();
+              const myAccess = accessList.find(a => a.managerId === targetDriver!.id);
+              if (myAccess && myAccess.childDriverIds.length > 0) {
+                  teamMembers = allDrivers.filter(d => myAccess.childDriverIds.includes(d.id));
+                  setMyTeam(teamMembers);
+              }
+          }
+
+          if (!isAdminUser) {
+              const driversToLoad = [targetDriver.name, ...teamMembers.map(member => member.name)].filter(Boolean);
+              const uniqueDrivers = Array.from(new Set(driversToLoad));
+
+              const [dailySets, weeklySets] = await Promise.all([
+                  Promise.all(uniqueDrivers.map(name => storageService.getDailyEntriesForDriver(name))),
+                  Promise.all(uniqueDrivers.map(name => storageService.getWeeklyWalletsForDriver(name)))
+              ]);
+              allDaily = dailySets.flat();
+              allWeekly = weeklySets.flat();
+          }
+
+          setGlobalDaily(allDaily);
+          setGlobalWeekly(allWeekly);
+
+          if (teamMembers.length > 0) {
+              const balances: Record<string, number> = {};
+              teamMembers.forEach(member => {
+                  const stats = storageService.calculateDriverStats(member.name, allDaily, allWeekly, sortedSlabs);
+                  balances[member.id] = stats.netPayout;
+              });
+              setTeamBalances(balances);
+
+              const cashModes: Record<string, CashMode> = {};
+              await Promise.all(teamMembers.map(async member => {
+                  const mode = await storageService.getDriverCashMode(member.id);
+                  cashModes[member.id] = mode;
+              }));
+              setTeamCashModes(cashModes);
+          }
+
+          setPrimaryDriver(targetDriver);
+          switchToDriverView(targetDriver, allDaily, allWeekly);
+          refreshCashMode(targetDriver.id, true);
       } catch (err: any) {
           console.error("Portal Initialization Error:", err);
           setInitError(err.message || "Failed to load portal data. Check connection.");

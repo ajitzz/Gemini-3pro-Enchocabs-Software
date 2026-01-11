@@ -16,21 +16,76 @@ const getApiBase = () => {
 
 const API_BASE = getApiBase();
 
+const CACHE_TTL_MS = 30_000;
+const responseCache = new Map<string, { timestamp: number; payload: any }>();
+const inflightRequests = new Map<string, Promise<any>>();
+
+const getCacheKey = (endpoint: string) => endpoint;
+const isFresh = (entry: { timestamp: number }) => Date.now() - entry.timestamp < CACHE_TTL_MS;
+
+const getCachePrefixes = (endpoint: string) => {
+  const base = endpoint.split('?')[0];
+  const segments = base.split('/').filter(Boolean);
+  const prefixes = new Set<string>();
+
+  if (!segments.length) return prefixes;
+
+  prefixes.add(`/${segments[0]}`);
+  if (segments.length > 1) {
+    prefixes.add(`/${segments[0]}/${segments[1]}`);
+  }
+  prefixes.add(base);
+  prefixes.add('/summary');
+  return prefixes;
+};
+
+const invalidateCache = (endpoint: string) => {
+  const prefixes = getCachePrefixes(endpoint);
+  prefixes.forEach((prefix) => {
+    for (const key of responseCache.keys()) {
+      if (key === prefix || key.startsWith(`${prefix}/`) || key.startsWith(`${prefix}?`)) {
+        responseCache.delete(key);
+      }
+    }
+    inflightRequests.delete(prefix);
+  });
+};
+
 const api = {
   get: async (endpoint: string) => {
-    try {
-      const response = await fetch(`${API_BASE}${endpoint}`);
-      if (!response.ok) {
-        const text = await response.text();
-        let msg = `API Error ${response.status}: ${response.statusText}`;
-        try { const json = JSON.parse(text); if(json.error) msg = json.error; } catch(e) {}
-        throw new Error(msg);
-      }
-      return response.json();
-    } catch (error: any) {
-      console.error(`API GET Error (${endpoint}):`, error);
-      throw new Error(error.message);
+    const key = getCacheKey(endpoint);
+    const cached = responseCache.get(key);
+    if (cached && isFresh(cached)) {
+      return cached.payload;
     }
+
+    const inflight = inflightRequests.get(key);
+    if (inflight) {
+      return inflight;
+    }
+
+    const request = (async () => {
+      try {
+        const response = await fetch(`${API_BASE}${endpoint}`);
+        if (!response.ok) {
+          const text = await response.text();
+          let msg = `API Error ${response.status}: ${response.statusText}`;
+          try { const json = JSON.parse(text); if(json.error) msg = json.error; } catch(e) {}
+          throw new Error(msg);
+        }
+        const payload = await response.json();
+        responseCache.set(key, { timestamp: Date.now(), payload });
+        return payload;
+      } catch (error: any) {
+        console.error(`API GET Error (${endpoint}):`, error);
+        throw new Error(error.message);
+      } finally {
+        inflightRequests.delete(key);
+      }
+    })();
+
+    inflightRequests.set(key, request);
+    return request;
   },
   post: async (endpoint: string, data: any) => {
     try {
@@ -45,7 +100,9 @@ const api = {
         try { const json = JSON.parse(text); if(json.error) msg = json.error; } catch(e) {}
         throw new Error(msg);
       }
-      return response.json();
+      const payload = await response.json();
+      invalidateCache(endpoint);
+      return payload;
     } catch (error: any) {
       console.error(`API POST Error (${endpoint}):`, error);
       throw new Error(error.message);
@@ -55,7 +112,9 @@ const api = {
     try {
       const response = await fetch(`${API_BASE}${endpoint}`, { method: 'DELETE' });
       if (!response.ok) throw new Error(`API Error ${response.status}`);
-      return response.json();
+      const payload = await response.json();
+      invalidateCache(endpoint);
+      return payload;
     } catch (error: any) {
       console.error(`API DELETE Error (${endpoint}):`, error);
       throw new Error(error.message);
