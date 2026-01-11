@@ -334,16 +334,12 @@ const calculateDriverStats = (
 export const storageService = {
   // --- Daily Entries ---
   getDailyEntries: async (): Promise<DailyEntry[]> => api.get('/daily-entries'),
-  getDailyEntriesForDriver: async (driver: string): Promise<DailyEntry[]> =>
-    driver ? api.get(`/daily-entries?driver=${encodeURIComponent(driver)}`) : api.get('/daily-entries'),
   saveDailyEntry: async (entry: DailyEntry): Promise<DailyEntry> => api.post('/daily-entries', entry),
   saveDailyEntriesBulk: async (newEntries: DailyEntry[]): Promise<void> => api.post('/daily-entries/bulk', newEntries),
   deleteDailyEntry: async (id: string): Promise<void> => api.delete(`/daily-entries/${id}`),
 
   // --- Weekly Wallets ---
   getWeeklyWallets: async (): Promise<WeeklyWallet[]> => api.get('/weekly-wallets'),
-  getWeeklyWalletsForDriver: async (driver: string): Promise<WeeklyWallet[]> =>
-    driver ? api.get(`/weekly-wallets?driver=${encodeURIComponent(driver)}`) : api.get('/weekly-wallets'),
   saveWeeklyWallet: async (wallet: WeeklyWallet): Promise<WeeklyWallet> => api.post('/weekly-wallets', wallet),
   saveWeeklyWalletsBulk: async (newWallets: WeeklyWallet[]): Promise<void> => Promise.all(newWallets.map(w => api.post('/weekly-wallets', w))).then(() => {}),
   deleteWeeklyWallet: async (id: string): Promise<void> => api.delete(`/weekly-wallets/${id}`),
@@ -510,3 +506,4 @@ export const storageService = {
     return { driverSummaries, global };
   }
 };
+

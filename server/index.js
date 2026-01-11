@@ -1143,31 +1143,19 @@ app.get('/api/summary', async (req, res) => {
 // --- DAILY ENTRIES ---
 app.get('/api/daily-entries', async (req, res) => {
   try {
-    const driverParam = (req.query.driver || '').toString().trim();
-    const driverKey = driverParam ? normalizeDriver(driverParam) : '';
-    const cacheKey = dailyEntriesCacheKey(driverParam);
-    const cached = await getCacheJSON(cacheKey);
+    const cached = await getCacheJSON(DAILY_ENTRIES_CACHE_KEY);
     if (cached) {
       res.set('X-Cache', 'REDIS');
       return res.json(cached);
     }
 
-    const query = driverKey
-      ? {
-          text: `SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes FROM daily_entries WHERE LOWER(driver) = $1 ORDER BY date DESC`,
-          values: [driverKey],
-        }
-      : {
-          text: `SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes FROM daily_entries ORDER BY date DESC`,
-          values: [],
-        };
-    const result = await db.query(query);
+    const result = await db.query(`SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes FROM daily_entries ORDER BY date DESC`);
     const safeRows = result.rows.map(r => ({
       ...r,
       rent: Number(r.rent), collection: Number(r.collection), fuel: Number(r.fuel), due: Number(r.due), payout: Number(r.payout)
     }));
 
-    await setCacheJSON(cacheKey, safeRows, DAILY_ENTRIES_CACHE_TTL_SECONDS);
+    await setCacheJSON(DAILY_ENTRIES_CACHE_KEY, safeRows, DAILY_ENTRIES_CACHE_TTL_SECONDS);
     res.set('X-Cache', 'MISS');
     res.json(safeRows);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -1201,10 +1189,7 @@ app.post('/api/daily-entries', async (req, res) => {
     const result = await db.query(q, [e.id, isoDate, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, payoutDateISO, e.notes]);
     await syncDriverBillings();
     await invalidateAggregateCaches();
-    await invalidateKeys(
-      DAILY_ENTRIES_CACHE_KEY,
-      dailyEntriesCacheKey(e.driver)
-    );
+    await invalidateKeys(DAILY_ENTRIES_CACHE_KEY);
     res.json(result.rows[0]);
   } catch (err) {
     if (err.code === '23505') {
@@ -1277,11 +1262,7 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
     await client.query('COMMIT');
     await syncDriverBillings();
     await invalidateAggregateCaches();
-    const driversToInvalidate = Array.from(driversTouched);
-    await invalidateKeys(
-      DAILY_ENTRIES_CACHE_KEY,
-      ...driversToInvalidate.map(dailyEntriesCacheKey)
-    );
+    await invalidateKeys(DAILY_ENTRIES_CACHE_KEY);
     res.json({ success: true });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -1300,11 +1281,7 @@ app.delete('/api/daily-entries/:id', async (req, res) => {
     await db.query('DELETE FROM daily_entries WHERE id = $1', [req.params.id]);
     await syncDriverBillings();
     await invalidateAggregateCaches();
-    const driverName = existing.rows[0]?.driver;
-    await invalidateKeys(
-      DAILY_ENTRIES_CACHE_KEY,
-      dailyEntriesCacheKey(driverName)
-    );
+    await invalidateKeys(DAILY_ENTRIES_CACHE_KEY);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1312,25 +1289,13 @@ app.delete('/api/daily-entries/:id', async (req, res) => {
 // --- WEEKLY WALLETS ---
 app.get('/api/weekly-wallets', async (req, res) => {
   try {
-    const driverParam = (req.query.driver || '').toString().trim();
-    const driverKey = driverParam ? normalizeDriver(driverParam) : '';
-    const cacheKey = weeklyWalletsCacheKey(driverParam);
-    const cached = await getCacheJSON(cacheKey);
+    const cached = await getCacheJSON(WEEKLY_WALLETS_CACHE_KEY);
     if (cached) {
       res.set('X-Cache', 'REDIS');
       return res.json(cached);
     }
 
-    const query = driverKey
-      ? {
-          text: `SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate", to_char(week_end_date, 'YYYY-MM-DD') as "weekEndDate", earnings, refund, diff, cash, charges, trips, wallet_week as "walletWeek", days_worked_override as "daysWorkedOverride", rent_override as "rentOverride", adjustments, notes FROM weekly_wallets WHERE LOWER(driver) = $1 ORDER BY week_start_date DESC`,
-          values: [driverKey],
-        }
-      : {
-          text: `SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate", to_char(week_end_date, 'YYYY-MM-DD') as "weekEndDate", earnings, refund, diff, cash, charges, trips, wallet_week as "walletWeek", days_worked_override as "daysWorkedOverride", rent_override as "rentOverride", adjustments, notes FROM weekly_wallets ORDER BY week_start_date DESC`,
-          values: [],
-        };
-    const result = await db.query(query);
+    const result = await db.query(`SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate", to_char(week_end_date, 'YYYY-MM-DD') as "weekEndDate", earnings, refund, diff, cash, charges, trips, wallet_week as "walletWeek", days_worked_override as "daysWorkedOverride", rent_override as "rentOverride", adjustments, notes FROM weekly_wallets ORDER BY week_start_date DESC`);
     const safeRows = result.rows.map(r => ({
       ...r,
       earnings: Number(r.earnings), refund: Number(r.refund), diff: Number(r.diff), cash: Number(r.cash), charges: Number(r.charges), walletWeek: Number(r.walletWeek),
@@ -1338,7 +1303,7 @@ app.get('/api/weekly-wallets', async (req, res) => {
       rentOverride: r.rentOverride !== null ? Number(r.rentOverride) : undefined,
       adjustments: Number(r.adjustments || 0)
     }));
-    await setCacheJSON(cacheKey, safeRows, WEEKLY_WALLETS_CACHE_TTL_SECONDS);
+    await setCacheJSON(WEEKLY_WALLETS_CACHE_KEY, safeRows, WEEKLY_WALLETS_CACHE_TTL_SECONDS);
     res.set('X-Cache', 'MISS');
     res.json(safeRows);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -1361,10 +1326,7 @@ app.post('/api/weekly-wallets', async (req, res) => {
     const result = await db.query(q, [w.id, w.driver, startISO, endISO || null, w.earnings, w.refund, w.diff, w.cash, w.charges, w.trips, w.walletWeek, w.daysWorkedOverride ?? null, w.rentOverride ?? null, w.adjustments || 0, w.notes]);
     await syncDriverBillings();
     await invalidateAggregateCaches();
-    await invalidateKeys(
-      WEEKLY_WALLETS_CACHE_KEY,
-      weeklyWalletsCacheKey(w.driver)
-    );
+    await invalidateKeys(WEEKLY_WALLETS_CACHE_KEY);
     res.json(result.rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1375,11 +1337,7 @@ app.delete('/api/weekly-wallets/:id', async (req, res) => {
     await db.query('DELETE FROM weekly_wallets WHERE id = $1', [req.params.id]);
     await syncDriverBillings();
     await invalidateAggregateCaches();
-    const driverName = existing.rows[0]?.driver;
-    await invalidateKeys(
-      WEEKLY_WALLETS_CACHE_KEY,
-      weeklyWalletsCacheKey(driverName)
-    );
+    await invalidateKeys(WEEKLY_WALLETS_CACHE_KEY);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1732,3 +1690,4 @@ initDb()
   .catch((err) => {
     console.error('Initialization failed:', err);
   });
+
