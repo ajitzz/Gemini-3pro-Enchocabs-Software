@@ -1,5 +1,5 @@
 
-import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping, ManagerAccess, AdminAccess, DriverBillingRecord, DriverBillingSummary, CashMode } from '../types';
+import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping, ManagerAccess, AdminAccess, DriverBillingRecord, CashMode } from '../types';
 
 // logic: Use local proxy in dev (npm run dev), use Render URL in production (Vercel)
 const isLocal = ((import.meta as any).env && (import.meta as any).env.DEV) || 
@@ -61,16 +61,6 @@ const api = {
       throw new Error(error.message);
     }
   }
-};
-
-const buildQuery = (params: Record<string, string | number | boolean | undefined>) => {
-  const searchParams = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    if (value === undefined || value === '') return;
-    searchParams.set(key, String(value));
-  });
-  const query = searchParams.toString();
-  return query ? `?${query}` : '';
 };
 
 // Shared helper to keep all driver balance calculations aligned with Driver Portal logic
@@ -284,31 +274,21 @@ const calculateDriverStats = (
 
 export const storageService = {
   // --- Daily Entries ---
-  getDailyEntries: async (params: { limit?: number; offset?: number; startDate?: string; endDate?: string; driver?: string } = {}): Promise<DailyEntry[]> =>
-    api.get(`/daily-entries${buildQuery(params)}`),
+  getDailyEntries: async (): Promise<DailyEntry[]> => api.get('/daily-entries'),
   saveDailyEntry: async (entry: DailyEntry): Promise<DailyEntry> => api.post('/daily-entries', entry),
   saveDailyEntriesBulk: async (newEntries: DailyEntry[]): Promise<void> => api.post('/daily-entries/bulk', newEntries),
   deleteDailyEntry: async (id: string): Promise<void> => api.delete(`/daily-entries/${id}`),
 
   // --- Weekly Wallets ---
-  getWeeklyWallets: async (params: { limit?: number; offset?: number; startDate?: string; endDate?: string; driver?: string; distinctWeeks?: boolean } = {}): Promise<WeeklyWallet[]> =>
-    api.get(`/weekly-wallets${buildQuery(params)}`),
+  getWeeklyWallets: async (): Promise<WeeklyWallet[]> => api.get('/weekly-wallets'),
   saveWeeklyWallet: async (wallet: WeeklyWallet): Promise<WeeklyWallet> => api.post('/weekly-wallets', wallet),
   saveWeeklyWalletsBulk: async (newWallets: WeeklyWallet[]): Promise<void> => Promise.all(newWallets.map(w => api.post('/weekly-wallets', w))).then(() => {}),
   deleteWeeklyWallet: async (id: string): Promise<void> => api.delete(`/weekly-wallets/${id}`),
 
   // --- Driver Billings (NEW) ---
-  getDriverBillings: async (params: { limit?: number; offset?: number; weekStart?: string; weekEnd?: string; driver?: string } = {}): Promise<DriverBillingRecord[]> =>
-    api.get(`/driver-billings${buildQuery(params)}`),
+  getDriverBillings: async (): Promise<DriverBillingRecord[]> => api.get('/driver-billings'),
   saveDriverBilling: async (billing: DriverBillingRecord): Promise<DriverBillingRecord> => api.post('/driver-billings', billing),
   deleteDriverBilling: async (id: string): Promise<void> => api.delete(`/driver-billings/${id}`),
-  getDriverBillingSummary: async (params: { weekStart?: string; driver?: string } = {}): Promise<DriverBillingSummary> => {
-    const query = new URLSearchParams();
-    if (params.weekStart) query.set('weekStart', params.weekStart);
-    if (params.driver) query.set('driver', params.driver);
-    const suffix = query.toString() ? `?${query.toString()}` : '';
-    return api.get(`/billings/summary${suffix}`);
-  },
 
   // --- Drivers ---
   getDrivers: async (): Promise<Driver[]> => api.get('/drivers'),
@@ -419,8 +399,7 @@ export const storageService = {
   saveHeaderMappings: async (mappings: HeaderMapping[]): Promise<void> => api.post('/header-mappings', mappings),
 
   // --- Company Summaries ---
-  getCompanySummaries: async (params: { limit?: number; offset?: number; startDate?: string; endDate?: string; fileName?: string } = {}): Promise<CompanyWeeklySummary[]> =>
-    api.get(`/company-summaries${buildQuery(params)}`),
+  getCompanySummaries: async (): Promise<CompanyWeeklySummary[]> => api.get('/company-summaries'),
   saveCompanySummary: async (summary: CompanyWeeklySummary): Promise<CompanyWeeklySummary> => api.post('/company-summaries', summary),
   deleteCompanySummary: async (id: string): Promise<void> => api.delete(`/company-summaries/${id}`),
 
@@ -468,3 +447,4 @@ export const storageService = {
     return { driverSummaries, global };
   }
 };
+

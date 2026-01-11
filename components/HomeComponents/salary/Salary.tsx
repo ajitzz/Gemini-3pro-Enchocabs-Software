@@ -5,7 +5,7 @@ export default function Salary() {
 
   return (
     <section id="salary" className={`flex flex-col items-center justify-center bg-white py-20 text-neutral-900 sm:py-24 ${s.section}` } aria-label="Salary Plan">
-      <div className={`container mx-auto px-4 sm:px-6 lg:px-8 ${s.grid}`}>
+      <div className={`container ${s.grid}`}>
         <div className={s.frame}>
           {/* <iframe
             src="https://www.youtube.com/shorts/4BiAYfkFkyI"

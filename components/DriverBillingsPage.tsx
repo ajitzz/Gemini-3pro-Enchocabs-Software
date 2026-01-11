@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { storageService } from '../services/storageService';
-import { DriverSummary, RentalSlab, WeeklyWallet, DailyEntry, Driver, DriverBillingRecord, DriverBillingSummary } from '../types';
+import { DriverSummary, RentalSlab, WeeklyWallet, DailyEntry, Driver, DriverBillingRecord } from '../types';
 import { Users, ChevronDown, FileText, Briefcase, Download, Edit2, Save, X, Calendar, ChevronLeft, ChevronRight, Check, Copy, RotateCcw, Search, Clock, ChevronUp, Lock, AlertTriangle } from 'lucide-react';
 import NetCalculationPopup from './NetCalculationPopup';
 
@@ -14,17 +14,6 @@ const DriverBillingsPage: React.FC = () => {
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [billingRecords, setBillingRecords] = useState<DriverBillingRecord[]>([]);
   const [billingApiError, setBillingApiError] = useState(false);
-  const [billingTotals, setBillingTotals] = useState<DriverBillingSummary>({
-    daysWorked: 0,
-    trips: 0,
-    rentTotal: 0,
-    collection: 0,
-    due: 0,
-    fuel: 0,
-    wallet: 0,
-    walletOverdue: 0,
-    payout: 0
-  });
   const [calcPopup, setCalcPopup] = useState<{
       metric: 'netPayout' | 'netBalance';
       netValue: number;
@@ -60,29 +49,10 @@ const DriverBillingsPage: React.FC = () => {
   
   // UI Feedback
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [lastBillingFilterKey, setLastBillingFilterKey] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
   }, []);
-
-  const loadBillingRecords = async (
-    filters: { driver?: string; weekStart?: string; weekEnd?: string },
-    debounceKey?: string
-  ) => {
-    try {
-      const billingData = await storageService.getDriverBillings(filters);
-      setBillingRecords(billingData);
-      setBillingApiError(false);
-      if (debounceKey !== undefined) {
-        setLastBillingFilterKey(debounceKey);
-      }
-    } catch (billingErr) {
-      console.warn("Could not load saved billings (endpoint might be missing):", billingErr);
-      setBillingRecords([]);
-      setBillingApiError(true);
-    }
-  };
 
   const loadData = async () => {
     setLoading(true);
@@ -100,6 +70,18 @@ const DriverBillingsPage: React.FC = () => {
         setWeeklyWallets(loadedWeeklyWallets);
         setDailyEntries(sortedDaily);
         setDrivers(driverData);
+
+        // Attempt to load billings separately to handle 404/500 gracefully during deployment/migration
+        try {
+            const billingData = await storageService.getDriverBillings();
+            setBillingRecords(billingData);
+            setBillingApiError(false);
+        } catch (billingErr) {
+            console.warn("Could not load saved billings (endpoint might be missing):", billingErr);
+            setBillingRecords([]);
+            setBillingApiError(true);
+        }
+
     } catch (err) {
         console.error("Error loading billing data:", err);
     } finally {
@@ -282,60 +264,20 @@ const DriverBillingsPage: React.FC = () => {
 
   // --- FILTERS ---
   const availableWeeks = useMemo(() => {
-      const weeks = new Set<string>();
-      weeklyWallets.forEach(w => {
-          const weekKey = getMondayISO(w.weekStartDate);
-          if (weekKey) weeks.add(weekKey);
-      });
-      dailyEntries.forEach(d => {
-          const range = getWeekRange(d.date);
-          if (range.start) weeks.add(range.start);
-      });
-      return Array.from(weeks).sort((a, b) => b.localeCompare(a));
-  }, [weeklyWallets, dailyEntries]);
+      const weeks = Array.from(new Set(allBills.map(b => b.weekKey))) as string[];
+      return weeks.sort((a, b) => b.localeCompare(a));
+  }, [allBills]);
 
   const weekOptions = useMemo(() => {
       const opts = availableWeeks.map((weekKey, index) => {
-           const range = getWeekRange(weekKey);
-           const label = range.start && range.end
-               ? `${toDisplayDate(range.start)} to ${toDisplayDate(range.end)}`
-               : toDisplayDate(weekKey as string);
+           const bill = allBills.find(b => b.weekKey === weekKey);
            return { 
                index: index, 
-               label
+               label: bill ? bill.weekRange : toDisplayDate(weekKey as string)
            };
       });
       return [{ index: -1, label: "All Time (Aggregate)" }, ...opts];
-  }, [availableWeeks]);
-
-  const billingFilters = useMemo(() => {
-    if (currentWeekIndex !== -1 && availableWeeks.length === 0) {
-      return null;
-    }
-    const currentWeekKey = currentWeekIndex === -1 ? undefined : availableWeeks[currentWeekIndex];
-    return currentWeekKey
-      ? {
-          weekStart: currentWeekKey,
-          weekEnd: getWeekRange(currentWeekKey).end,
-          driver: filterDriver || undefined
-        }
-      : { driver: filterDriver || undefined };
-  }, [availableWeeks, currentWeekIndex, filterDriver]);
-
-  useEffect(() => {
-    if (!billingFilters) {
-      setBillingRecords([]);
-      return;
-    }
-    const debounceKey = JSON.stringify(billingFilters);
-    if (debounceKey === lastBillingFilterKey) return;
-
-    const timeout = window.setTimeout(() => {
-      loadBillingRecords(billingFilters, debounceKey);
-    }, 300);
-
-    return () => window.clearTimeout(timeout);
-  }, [billingFilters, filterDriver, lastBillingFilterKey]);
+  }, [availableWeeks, allBills]);
 
   const currentWeekKey = availableWeeks[currentWeekIndex];
   
@@ -417,8 +359,8 @@ const DriverBillingsPage: React.FC = () => {
       return calculateWalletWeek(bill);
   };
 
-  const calculateBillingTotals = (bills: any[]): DriverBillingSummary => {
-      const totals = bills.reduce((acc, bill) => {
+  const billingTotals = useMemo(() => {
+      const totals = displayedBills.reduce((acc, bill) => {
           acc.daysWorked += bill.daysWorked || 0;
           acc.trips += bill.trips || 0;
           acc.rentTotal += bill.rentTotal || 0;
@@ -452,24 +394,7 @@ const DriverBillingsPage: React.FC = () => {
           walletOverdue: Math.round(totals.walletOverdue),
           payout: Math.round(totals.payout)
       };
-  };
-
-  useEffect(() => {
-      const loadBillingTotals = async () => {
-          try {
-              const summary = await storageService.getDriverBillingSummary({
-                  weekStart: currentWeekIndex === -1 ? undefined : currentWeekKey,
-                  driver: filterDriver || undefined
-              });
-              setBillingTotals(summary);
-          } catch (err) {
-              console.warn('Falling back to client billing totals:', err);
-              setBillingTotals(calculateBillingTotals(displayedBills));
-          }
-      };
-
-      loadBillingTotals();
-  }, [currentWeekIndex, currentWeekKey, filterDriver, displayedBills]);
+  }, [displayedBills]);
 
   const goToPreviousWeek = () => { if (currentWeekIndex !== -1 && currentWeekIndex < availableWeeks.length - 1) setCurrentWeekIndex(prev => prev + 1); };
   const goToNextWeek = () => { if (currentWeekIndex !== -1 && currentWeekIndex > 0) setCurrentWeekIndex(prev => prev - 1); };
@@ -1157,3 +1082,4 @@ const DriverBillingsPage: React.FC = () => {
 };
 
 export default DriverBillingsPage;
+
