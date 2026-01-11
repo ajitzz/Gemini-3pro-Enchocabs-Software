@@ -103,30 +103,8 @@ const deleteKeys = async (keys = []) => {
   await activeClient.del(keys);
 };
 
-const deleteKeysByPrefix = async (prefix) => {
-  const activeClient = await ensureClient();
-  if (!activeClient || !prefix) return;
-  const scanPattern = `${prefix}*`;
-  let cursor = '0';
-  const keysToDelete = [];
-
-  do {
-    const reply = await activeClient.scan(cursor, { MATCH: scanPattern, COUNT: 200 });
-    cursor = reply.cursor || reply[0];
-    const keys = reply.keys || reply[1] || [];
-    if (keys.length > 0) {
-      keysToDelete.push(...keys);
-    }
-  } while (cursor !== '0');
-
-  if (keysToDelete.length > 0) {
-    await activeClient.del(keysToDelete);
-  }
-};
-
 module.exports = {
   getJSON,
   setJSON,
   deleteKeys,
-  deleteKeysByPrefix,
 };
