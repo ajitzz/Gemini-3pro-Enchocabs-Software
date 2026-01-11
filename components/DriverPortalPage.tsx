@@ -1279,7 +1279,7 @@ const DriverPortalPage: React.FC = () => {
                                     <p className="text-[9px] font-bold uppercase tracking-[0.3em] text-slate-400">Food Ticket</p>
                                     
                                     <p className="text-sm font-extrabold text-slate-900 flex items-center gap-1">
-                                       <span className={`mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border ${isFoodTicketActive ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
+                                       <span className={`mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border text-sm ${isFoodTicketActive ? ' font-extrabold  bg-emerald-50 text-emerald-700 border-emerald-200' : ' font-extrabold bg-rose-50 text-rose-700 border-rose-200'}`}>
                                         {isFoodTicketActive ? 'Active' : 'Payment Due'}
                                     </span> <Ticket size={14} className="text-amber-500" />
                                     </p>
