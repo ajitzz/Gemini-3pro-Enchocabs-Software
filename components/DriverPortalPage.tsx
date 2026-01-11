@@ -1277,6 +1277,7 @@ const DriverPortalPage: React.FC = () => {
                                 </div>
                                 <div className="min-w-[110px]">
                                     <p className="text-[9px] font-bold uppercase tracking-[0.3em] text-slate-400">Food Ticket</p>
+                                    <p className="text-[11px] font-semibold text-slate-500 mt-1">{foodTicketDate}</p>
                                     <p className="text-sm font-extrabold text-slate-900 flex items-center gap-1">
                                         Access <Ticket size={14} className="text-amber-500" />
                                     </p>
@@ -1287,9 +1288,11 @@ const DriverPortalPage: React.FC = () => {
                             </div>
                         </div>
                     )}
-                    <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 border border-indigo-100">
-                        <UserCircle size={24} />
-                    </div>
+                    {!hasFoodAccess && (
+                        <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 border border-indigo-100">
+                            <UserCircle size={24} />
+                        </div>
+                    )}
                 </div>
            </div>
 
