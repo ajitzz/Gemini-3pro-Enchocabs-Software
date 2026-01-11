@@ -29,20 +29,8 @@ const DashboardPage: React.FC = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const { summaries: calculatedSummaries } = await storageService.getDriverBalanceSummaries();
-
-      const globalSummary: GlobalSummary = {
-        totalCollection: calculatedSummaries.reduce((sum, d) => sum + d.totalCollection, 0),
-        totalRent: calculatedSummaries.reduce((sum, d) => sum + d.totalRent, 0),
-        totalFuel: calculatedSummaries.reduce((sum, d) => sum + d.totalFuel, 0),
-        totalDue: calculatedSummaries.reduce((sum, d) => sum + d.totalDue, 0),
-        totalPayout: calculatedSummaries.reduce((sum, d) => sum + d.totalPayout, 0),
-        totalWalletWeek: calculatedSummaries.reduce((sum, d) => sum + d.totalWalletWeek, 0),
-        pendingFromDrivers: calculatedSummaries.filter((d) => d.finalTotal < 0).reduce((sum, d) => sum + Math.abs(d.finalTotal), 0),
-        payableToDrivers: calculatedSummaries.filter((d) => d.finalTotal > 0).reduce((sum, d) => sum + d.finalTotal, 0),
-      };
-
-      setSummaries(calculatedSummaries);
+      const { driverSummaries, global: globalSummary } = await storageService.getSummary();
+      setSummaries(driverSummaries);
       setGlobal(globalSummary);
     } finally {
       setLoading(false);

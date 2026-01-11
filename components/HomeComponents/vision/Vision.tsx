@@ -13,7 +13,7 @@ export default function Vision() {  return (
     >
       <div className="pointer-events-none absolute inset-x-0 -top-32 h-32 bg-gradient-to-b from-transparent via-neutral-950/40 to-[--vision-bg]" aria-hidden />
 
-      <div className="container relative mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+      <div className="container relative">
         <div className="grid gap-12 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-center">
           <div className="space-y-6">
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-sky-300/80">Vision</p>
@@ -22,10 +22,11 @@ export default function Vision() {  return (
             </h2>
             <div className="space-y-5 rounded-3xl border border-white/5 bg-gradient-to-br from-white/5 via-white/0 to-white/5 p-6 text-sm leading-relaxed text-neutral-200 shadow-[0_40px_80px_-40px_rgba(0,0,0,0.75)] sm:text-base">
               <p>
-               We believe driving should be simple, fair, and rewarding. Our fleet is well-managed, reliable, and always ready to support our drivers. 
+                I&apos;m a paragraph. Click here to add your own text and edit me. It&apos;s easy. Just click “Edit Text” or double
+                click me to add your own content and make changes to the font.
               </p>
               <p>
-                accommodation, healthy meals, training, reliable
+                Use this space to describe your driver-first approach: accommodation, healthy meals, safety training, reliable
                 vehicles, and transparent settlements so drivers can earn more with less stress.
               </p>
             </div>
