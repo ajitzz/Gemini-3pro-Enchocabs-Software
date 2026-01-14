@@ -570,7 +570,7 @@ const DailyEntryPage: React.FC = () => {
   // Helper to check if driver is on leave for the selected form date
   const isDriverOnLeave = (driverId: string) => {
     if (!formData.date) return false;
-    const selectedDate = formData.date;
+    const dateStr = formData.date;
 
     return leaves.some(leave => {
         if (leave.driverId !== driverId) return false;
@@ -593,6 +593,33 @@ const DailyEntryPage: React.FC = () => {
         .map(entry => entry.driver)
     );
   }, [entries, formData.date, editingId]);
+
+  const missingDailyDriversForDate = useMemo(() => {
+    if (!formData.date) return [] as Driver[];
+    return drivers
+      .filter(driver => !existingDriversForDate.has(driver.name))
+      .filter(driver => !isDriverOnLeave(driver.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [drivers, existingDriversForDate, formData.date, leaves]);
+
+  const missingWeeklyWalletsForWeek = useMemo(() => {
+    if (!formData.date) return [] as { driver: string; weekStart: string; weekEnd: string }[];
+    const { start, end } = getWeekRangeForDate(formData.date);
+    const driversWithEntries = new Set(
+      entriesWithAdjustments
+        .filter(entry => entry.date >= start && entry.date <= end)
+        .map(entry => entry.driver)
+    );
+    const driversWithWallets = new Set(
+      weeklyWallets
+        .filter(wallet => wallet.weekStartDate === start && wallet.weekEndDate === end)
+        .map(wallet => wallet.driver)
+    );
+    return Array.from(driversWithEntries)
+      .filter(driverName => !driversWithWallets.has(driverName))
+      .sort((a, b) => a.localeCompare(b))
+      .map(driver => ({ driver, weekStart: start, weekEnd: end }));
+  }, [entriesWithAdjustments, weeklyWallets, formData.date]);
 
   const availableDrivers = useMemo(() => {
     return drivers.filter(driver => {
