@@ -606,39 +606,6 @@ const DailyEntryPage: React.FC = () => {
     });
   }, [drivers, existingDriversForDate, formData.date, formData.driver, leaves]);
 
-  const missingDailyDriversForDate = useMemo(() => {
-    if (!formData.date) return [] as Driver[];
-    const existingDrivers = existingDriversForDate;
-
-    return drivers.filter(driver => {
-      const isSelected = formData.driver === driver.name;
-      const alreadyEntered = existingDrivers.has(driver.name);
-      const onLeave = isDriverOnLeave(driver.id);
-
-      if (onLeave) return false;
-      if (alreadyEntered && !isSelected) return false;
-      return !alreadyEntered;
-    });
-  }, [drivers, existingDriversForDate, formData.date, formData.driver, leaves]);
-
-  const missingWeeklyWalletsForWeek = useMemo(() => {
-    if (!formData.date) return [] as { driver: string; weekStart: string; weekEnd: string }[];
-    const { start, end } = getWeekRangeForDate(formData.date);
-    const dailyInWeek = entries.filter(entry => entry.date >= start && entry.date <= end);
-    const driversWithDaily = new Set(dailyInWeek.map(entry => entry.driver));
-
-    return Array.from(driversWithDaily)
-      .filter(driverName => {
-        return !weeklyWallets.some(wallet =>
-          wallet.driver === driverName &&
-          wallet.weekStartDate === start &&
-          wallet.weekEndDate === end
-        );
-      })
-      .map(driverName => ({ driver: driverName, weekStart: start, weekEnd: end }))
-      .sort((a, b) => a.driver.localeCompare(b.driver));
-  }, [entries, weeklyWallets, formData.date]);
-
   const handleColumnFilterChange = (key: string, values: string[]) => {
     setColumnFilters(prev => ({
       ...prev,
