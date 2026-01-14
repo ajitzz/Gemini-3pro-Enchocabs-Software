@@ -557,6 +557,27 @@ const DailyEntryPage: React.FC = () => {
     });
   };
 
+  const existingDriversForDate = useMemo(() => {
+    if (!formData.date) return new Set<string>();
+    return new Set(
+      entries
+        .filter(entry => entry.date === formData.date && entry.id !== editingId)
+        .map(entry => entry.driver)
+    );
+  }, [entries, formData.date, editingId]);
+
+  const availableDrivers = useMemo(() => {
+    return drivers.filter(driver => {
+      const isSelected = formData.driver === driver.name;
+      const alreadyEntered = formData.date ? existingDriversForDate.has(driver.name) : false;
+      const onLeave = isDriverOnLeave(driver.id);
+
+      if (alreadyEntered && !isSelected) return false;
+      if (onLeave && !isSelected) return false;
+      return true;
+    });
+  }, [drivers, existingDriversForDate, formData.date, formData.driver, leaves]);
+
   const handleColumnFilterChange = (key: string, values: string[]) => {
     setColumnFilters(prev => ({
       ...prev,
@@ -820,9 +841,8 @@ const DailyEntryPage: React.FC = () => {
             <div className="relative">
               <select required name="driver" value={formData.driver} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none appearance-none cursor-pointer">
                   <option value="">-- Select Driver --</option>
-                  {drivers.map(d => {
+                  {availableDrivers.map(d => {
                       const onLeave = isDriverOnLeave(d.id);
-                      if (onLeave && formData.driver !== d.name) return null;
                       return (
                         <option key={d.id} value={d.name}>
                             {d.name} {onLeave ? '(On Leave)' : ''}
@@ -1136,4 +1156,3 @@ const DailyEntryPage: React.FC = () => {
 };
 
 export default DailyEntryPage;
-
