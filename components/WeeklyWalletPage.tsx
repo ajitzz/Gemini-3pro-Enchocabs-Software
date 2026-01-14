@@ -1,6 +1,6 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { WeeklyWallet, Driver } from '../types';
+import { WeeklyWallet, Driver, DailyEntry } from '../types';
 import { storageService } from '../services/storageService';
 import { Plus, Trash2, Search, Edit2, X, ChevronDown, Wallet, TrendingUp, TrendingDown, Calendar, ArrowRight, AlertOctagon, FileDown, ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -28,6 +28,7 @@ const WeeklyWalletPage: React.FC = () => {
   const RECENT_WEEKS = 12;
   const [wallets, setWallets] = useState<WeeklyWallet[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [dailyEntries, setDailyEntries] = useState<DailyEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [filterDriver, setFilterDriver] = useState('');
@@ -38,39 +39,38 @@ const WeeklyWalletPage: React.FC = () => {
   // Duplicate Warning State
   const [duplicateWarning, setDuplicateWarning] = useState<{ active: boolean, existingId: string, payload: WeeklyWallet } | null>(null);
 
-  // Helper to get Monday of the week for a given date
-  const getMonday = (d: Date) => {
-    d = new Date(d);
-    const day = d.getDay(),
-      diff = d.getDate() - day + (day === 0 ? -6 : 1);
-    return new Date(d.setDate(diff));
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return '-';
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return dateStr;
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}-${month}-${year}`;
   };
 
-  const getWeekRange = (dateStr: string) => {
-      if (!dateStr) return { start: '', end: '', label: '' };
-      const d = new Date(dateStr);
-      const monday = getMonday(d);
-      const sunday = new Date(monday);
-      sunday.setDate(monday.getDate() + 6);
-      
-      const startISO = monday.toISOString().split('T')[0];
-      const endISO = sunday.toISOString().split('T')[0];
-      
-      // Label in DD-MM-YYYY format
-      const startLabel = startISO.split('-').reverse().join('-');
-      const endLabel = endISO.split('-').reverse().join('-');
-      
-      return {
-          start: startISO,
-          end: endISO,
-          label: `${startLabel} to ${endLabel}`
-      };
+  const getWeekStartDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const day = date.getDay();
+    const diffToMonday = day === 0 ? 6 : day - 1;
+    date.setDate(date.getDate() - diffToMonday);
+    return date;
   };
 
-  // Format Date Range for Display
+  const getWeekRangeForDate = (dateStr: string) => {
+    if (!dateStr) return { start: '', end: '' };
+    const start = getWeekStartDate(dateStr);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    return {
+      start: start.toISOString().split('T')[0],
+      end: end.toISOString().split('T')[0]
+    };
+  };
+
   const formatWeekRange = (start: string, end: string) => {
-      if(!start || !end) return '';
-      return `${start.split('-').reverse().join('-')} - ${end.split('-').reverse().join('-')}`;
+    if (!start || !end) return '';
+    return `${formatDate(start)} - ${formatDate(end)}`;
   };
 
   const initialFormState: Partial<WeeklyWallet> = {
@@ -119,6 +119,26 @@ const WeeklyWalletPage: React.FC = () => {
       }));
   }, [wallets]);
 
+  const missingWeeklyWalletsForWeek = useMemo(() => {
+    if (!selectedDate) return [] as { driver: string; weekStart: string; weekEnd: string }[];
+    const { start, end } = getWeekRangeForDate(selectedDate);
+    if (!start || !end) return [];
+    const driversWithEntries = new Set(
+      dailyEntries
+        .filter(entry => entry.date >= start && entry.date <= end)
+        .map(entry => entry.driver)
+    );
+    const driversWithWallets = new Set(
+      wallets
+        .filter(wallet => wallet.weekStartDate === start && wallet.weekEndDate === end)
+        .map(wallet => wallet.driver)
+    );
+    return Array.from(driversWithEntries)
+      .filter(driverName => !driversWithWallets.has(driverName))
+      .sort((a, b) => a.localeCompare(b))
+      .map(driver => ({ driver, weekStart: start, weekEnd: end }));
+  }, [dailyEntries, wallets, selectedDate]);
+
   useEffect(() => {
     if (weekOptions.length === 0) {
       setCurrentWeekIndex(-1);
@@ -133,13 +153,14 @@ const WeeklyWalletPage: React.FC = () => {
 
   const loadData = async () => {
     setLoading(true);
-    const weeklyParams = showFullHistory ? undefined : { from: recentFromDate };
-    const [w, d] = await Promise.all([
-        storageService.getWeeklyWallets(weeklyParams),
-        storageService.getDrivers()
+    const [w, d, daily] = await Promise.all([
+      storageService.getWeeklyWallets(),
+      storageService.getDrivers(),
+      storageService.getDailyEntries()
     ]);
     setWallets(w.sort((a, b) => new Date(b.weekStartDate).getTime() - new Date(a.weekStartDate).getTime()));
     setDrivers(d.filter(driver => !driver.terminationDate));
+    setDailyEntries(daily);
     setLoading(false);
   };
 
@@ -163,7 +184,7 @@ const WeeklyWalletPage: React.FC = () => {
       const dateVal = e.target.value;
       setSelectedDate(dateVal);
       if (dateVal) {
-          const range = getWeekRange(dateVal);
+          const range = getWeekRangeForDate(dateVal);
           setFormData(prev => ({ ...prev, weekStartDate: range.start, weekEndDate: range.end }));
       } else {
           setFormData(prev => ({ ...prev, weekStartDate: '', weekEndDate: '' }));
@@ -186,7 +207,7 @@ const WeeklyWalletPage: React.FC = () => {
     }
     if (!formData.driver) return;
 
-    const range = getWeekRange(selectedDate);
+    const range = getWeekRangeForDate(selectedDate);
     
     // Check for Duplicate
     const duplicate = wallets.find(w => 
@@ -260,6 +281,7 @@ const WeeklyWalletPage: React.FC = () => {
     }
   };
 
+  const selectedWeekRange = useMemo(() => getWeekRangeForDate(selectedDate), [selectedDate]);
   const selectedWeek = currentWeekIndex >= 0 ? weekOptions[currentWeekIndex] : null;
 
   const weekFilteredWallets = selectedWeek
@@ -438,12 +460,43 @@ const WeeklyWalletPage: React.FC = () => {
                        />
                        <div className="bg-indigo-50 px-3 py-2 rounded-lg border border-indigo-100 min-w-[140px] text-center">
                           <span className="text-[10px] text-indigo-400 font-bold uppercase block">Week Range</span>
-                          <span className="text-xs text-indigo-700 font-bold">{getWeekRange(selectedDate).label || 'Select Date'}</span>
+                          <span className="text-xs text-indigo-700 font-bold">
+                            {selectedWeekRange.start ? `${formatDate(selectedWeekRange.start)} to ${formatDate(selectedWeekRange.end)}` : 'Select Date'}
+                          </span>
                        </div>
                     </div>
                  </div>
                  <div className="lg:col-span-2">
                     <InputField label="Trips Count" name="trips" type="number" value={formData.trips} onChange={handleInputChange} className="bg-slate-50 border-0 ring-1 ring-slate-200" />
+                 </div>
+              </div>
+
+              <div className="mb-8 bg-indigo-50/60 border border-indigo-100 rounded-2xl p-4">
+                 <div className="flex flex-col gap-3">
+                    <div>
+                       <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-1">Missing Weekly Wallets</h4>
+                       <p className="text-[11px] text-slate-500">
+                         {selectedDate
+                           ? `Week: ${formatDate(selectedWeekRange.start)} – ${formatDate(selectedWeekRange.end)}`
+                           : 'Select a date to see missing weekly wallets.'}
+                       </p>
+                    </div>
+                    {selectedDate && missingWeeklyWalletsForWeek.length > 0 ? (
+                      <ul className="flex flex-col gap-2">
+                        {missingWeeklyWalletsForWeek.map(item => (
+                          <li key={`${item.driver}-${item.weekStart}`} className="flex flex-wrap items-center justify-between gap-2 bg-white border border-indigo-100 rounded-xl px-3 py-2 text-xs text-slate-700">
+                            <span className="font-semibold">{item.driver}</span>
+                            <span className="text-[11px] text-slate-500">
+                              {formatDate(item.weekStart)} – {formatDate(item.weekEnd)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-xs text-slate-400">
+                        {selectedDate ? 'No missing weekly wallets for this week.' : 'No date selected.'}
+                      </p>
+                    )}
                  </div>
               </div>
 
@@ -523,7 +576,7 @@ const WeeklyWalletPage: React.FC = () => {
                   </div>
                   <div className="p-6">
                       <p className="text-slate-600 font-medium leading-relaxed mb-4">
-                          Driver <strong>{duplicateWarning.payload.driver}</strong> already has a wallet entry for the week starting <strong>{duplicateWarning.payload.weekStartDate.split('-').reverse().join('-')}</strong>.
+                          Driver <strong>{duplicateWarning.payload.driver}</strong> already has a wallet entry for the week starting <strong>{formatDate(duplicateWarning.payload.weekStartDate)}</strong>.
                       </p>
                       <div className="flex gap-3">
                           <button 
