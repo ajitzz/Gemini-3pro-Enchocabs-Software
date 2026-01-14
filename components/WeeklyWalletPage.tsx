@@ -25,6 +25,7 @@ const InputField = ({ label, name, type = "text", value, onChange, placeholder, 
 );
 
 const WeeklyWalletPage: React.FC = () => {
+  const RECENT_WEEKS = 12;
   const [wallets, setWallets] = useState<WeeklyWallet[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [dailyEntries, setDailyEntries] = useState<DailyEntry[]>([]);
@@ -33,6 +34,7 @@ const WeeklyWalletPage: React.FC = () => {
   const [filterDriver, setFilterDriver] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [currentWeekIndex, setCurrentWeekIndex] = useState<number>(-1);
+  const [showFullHistory, setShowFullHistory] = useState(false);
   
   // Duplicate Warning State
   const [duplicateWarning, setDuplicateWarning] = useState<{ active: boolean, existingId: string, payload: WeeklyWallet } | null>(null);
@@ -90,7 +92,15 @@ const WeeklyWalletPage: React.FC = () => {
   useEffect(() => {
     loadData();
     // Removed default date setting
-  }, []);
+  }, [showFullHistory]);
+
+  const getISODateWeeksAgo = (weeks: number) => {
+    const date = new Date();
+    date.setDate(date.getDate() - weeks * 7);
+    return date.toISOString().slice(0, 10);
+  };
+
+  const recentFromDate = showFullHistory ? '' : getISODateWeeksAgo(RECENT_WEEKS);
 
   const weekOptions = useMemo(() => {
     const weekMap = new Map<string, { start: string; end: string }>();
@@ -152,6 +162,16 @@ const WeeklyWalletPage: React.FC = () => {
     setDrivers(d.filter(driver => !driver.terminationDate));
     setDailyEntries(daily);
     setLoading(false);
+  };
+
+  const upsertWallet = (wallet: WeeklyWallet) => {
+    setWallets(prev => {
+      const next = prev.filter(item => item.id !== wallet.id);
+      if (!showFullHistory && recentFromDate && wallet.weekStartDate < recentFromDate) {
+        return next;
+      }
+      return [wallet, ...next].sort((a, b) => new Date(b.weekStartDate).getTime() - new Date(a.weekStartDate).getTime());
+    });
   };
 
   const calculatedWalletWeek = (
@@ -220,9 +240,9 @@ const WeeklyWalletPage: React.FC = () => {
         return;
     }
 
-    await storageService.saveWeeklyWallet(newWallet);
+    const savedWallet = await storageService.saveWeeklyWallet(newWallet);
     resetForm();
-    loadData();
+    upsertWallet({ ...newWallet, ...savedWallet });
   };
 
   const handleOverrideConfirm = async () => {
@@ -233,10 +253,10 @@ const WeeklyWalletPage: React.FC = () => {
           id: duplicateWarning.existingId // Overwrite existing ID
       };
 
-      await storageService.saveWeeklyWallet(walletToSave);
+      const savedWallet = await storageService.saveWeeklyWallet(walletToSave);
       setDuplicateWarning(null);
       resetForm();
-      loadData();
+      upsertWallet({ ...walletToSave, ...savedWallet });
   };
 
   const handleEdit = (wallet: WeeklyWallet) => {
@@ -257,7 +277,7 @@ const WeeklyWalletPage: React.FC = () => {
   const handleDelete = async (id: string) => {
     if (confirm('Delete this weekly record?')) {
       await storageService.deleteWeeklyWallet(id);
-      loadData();
+      setWallets(prev => prev.filter(wallet => wallet.id !== id));
     }
   };
 
@@ -638,6 +658,18 @@ const WeeklyWalletPage: React.FC = () => {
               className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
             />
             <Search size={18} className="absolute left-3.5 top-3.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+          </div>
+
+          <div className="flex flex-col items-center gap-2 text-center">
+            <button
+              onClick={() => setShowFullHistory(prev => !prev)}
+              className="text-xs font-bold text-indigo-600 bg-indigo-50 px-4 py-2 rounded-lg hover:bg-indigo-100 transition-colors"
+            >
+              {showFullHistory ? `Show last ${RECENT_WEEKS} weeks` : 'Load full history'}
+            </button>
+            {!showFullHistory && recentFromDate && (
+              <span className="text-[11px] text-slate-400">Since {recentFromDate.split('-').reverse().join('-')}</span>
+            )}
           </div>
         </div>
 
