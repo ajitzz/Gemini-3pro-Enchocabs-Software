@@ -101,8 +101,8 @@ const LeavePage: React.FC = () => {
           const start = leave.startDate;
           
           if (leave.actualReturnDate) {
-              // They are back on actualReturnDate, so they are unavailable strictly BEFORE that date
-              return targetDate >= start && targetDate < leave.actualReturnDate;
+              // They are back after actualReturnDate, so they are unavailable through that date
+              return targetDate >= start && targetDate <= leave.actualReturnDate;
           } else {
               // Still away, unavailable up to planned end (inclusive)
               return targetDate >= start && targetDate <= leave.endDate;

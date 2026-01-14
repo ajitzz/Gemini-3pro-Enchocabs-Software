@@ -600,7 +600,7 @@ const DailyEntryPage: React.FC = () => {
         const start = leave.startDate;
         
         if (leave.actualReturnDate) {
-            return dateStr >= start && dateStr < leave.actualReturnDate;
+            return dateStr >= start && dateStr <= leave.actualReturnDate;
         } else {
             return dateStr >= start && dateStr <= leave.endDate;
         }
