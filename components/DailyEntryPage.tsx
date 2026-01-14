@@ -539,10 +539,36 @@ const DailyEntryPage: React.FC = () => {
     }
   };
 
-  // Helper to check if driver is on leave for the selected form date
-  const isDriverOnLeave = (driverId: string) => {
-    if (!formData.date) return false;
-    const selectedDate = formData.date;
+  // Strict DD-MM-YYYY formatter
+  const formatDate = (dateStr: string) => {
+      if (!dateStr) return '-';
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}-${month}-${year}`;
+  };
+
+  const getWeekStartDate = (dateStr: string) => {
+      const date = new Date(dateStr);
+      const day = date.getDay();
+      const diffToMonday = day === 0 ? 6 : day - 1;
+      date.setDate(date.getDate() - diffToMonday);
+      return date;
+  };
+
+  const getWeekRangeForDate = (dateStr: string) => {
+      const start = getWeekStartDate(dateStr);
+      const end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      const startISO = start.toISOString().split('T')[0];
+      const endISO = end.toISOString().split('T')[0];
+      return { start: startISO, end: endISO };
+  };
+
+  const isDriverOnLeaveOnDate = (driverId: string, selectedDate: string) => {
+    if (!selectedDate) return false;
 
     return leaves.some(leave => {
         if (leave.driverId !== driverId) return false;
@@ -556,6 +582,92 @@ const DailyEntryPage: React.FC = () => {
         }
     });
   };
+
+  // Helper to check if driver is on leave for the selected form date
+  const isDriverOnLeave = (driverId: string) => {
+    if (!formData.date) return false;
+    return isDriverOnLeaveOnDate(driverId, formData.date);
+  };
+
+  const existingDriversForDate = useMemo(() => {
+    if (!formData.date) return new Set<string>();
+    return new Set(
+      entries
+        .filter(entry => entry.date === formData.date && entry.id !== editingId)
+        .map(entry => entry.driver)
+    );
+  }, [entries, formData.date, editingId]);
+
+  const availableDrivers = useMemo(() => {
+    return drivers.filter(driver => {
+      const isSelected = formData.driver === driver.name;
+      const alreadyEntered = formData.date ? existingDriversForDate.has(driver.name) : false;
+      const onLeave = isDriverOnLeave(driver.id);
+
+      if (alreadyEntered && !isSelected) return false;
+      if (onLeave && !isSelected) return false;
+      return true;
+    });
+  }, [drivers, existingDriversForDate, formData.date, formData.driver, leaves]);
+
+  const missingDailyByDate = useMemo<{ date: string; drivers: Driver[] }[]>(() => {
+    const dates = new Set(entries.map(entry => entry.date));
+    if (formData.date) {
+      dates.add(formData.date);
+    }
+
+    const sortedDates = Array.from(dates).sort((a, b) => b.localeCompare(a));
+
+    return sortedDates
+      .map(date => {
+        const activeDrivers = drivers.filter(driver => !isDriverOnLeaveOnDate(driver.id, date));
+        const existingDrivers = new Set(
+          entries.filter(entry => entry.date === date).map(entry => entry.driver)
+        );
+        const missingDrivers = activeDrivers.filter(driver => !existingDrivers.has(driver.name));
+
+        return {
+          date,
+          drivers: missingDrivers
+        };
+      })
+      .filter(group => group.drivers.length > 0);
+  }, [entries, drivers, leaves, formData.date]);
+
+  const missingWeeklyWallets = useMemo<{ driver: string; weekStart: string; weekEnd: string }[]>(() => {
+    const weekMap = new Map<string, { start: string; end: string; drivers: Set<string> }>();
+
+    entries.forEach(entry => {
+      const { start, end } = getWeekRangeForDate(entry.date);
+      const key = `${start}|${end}`;
+      if (!weekMap.has(key)) {
+        weekMap.set(key, { start, end, drivers: new Set() });
+      }
+      weekMap.get(key)?.drivers.add(entry.driver);
+    });
+
+    const missing: { driver: string; weekStart: string; weekEnd: string }[] = [];
+
+    weekMap.forEach(({ start, end, drivers: driverSet }) => {
+      driverSet.forEach(driverName => {
+        const hasWallet = weeklyWallets.some(wallet =>
+          wallet.driver === driverName &&
+          wallet.weekStartDate === start &&
+          wallet.weekEndDate === end
+        );
+        if (!hasWallet) {
+          missing.push({ driver: driverName, weekStart: start, weekEnd: end });
+        }
+      });
+    });
+
+    return missing.sort((a, b) => {
+      if (a.weekStart !== b.weekStart) {
+        return b.weekStart.localeCompare(a.weekStart);
+      }
+      return a.driver.localeCompare(b.driver);
+    });
+  }, [entries, weeklyWallets]);
 
   const handleColumnFilterChange = (key: string, values: string[]) => {
     setColumnFilters(prev => ({
@@ -610,17 +722,6 @@ const DailyEntryPage: React.FC = () => {
     downloadCSV(headers, rows, `daily-entries-${driverLabel}-${timestamp}`);
   };
 
-  // Strict DD-MM-YYYY formatter
-  const formatDate = (dateStr: string) => {
-      if (!dateStr) return '-';
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return dateStr;
-      const day = String(d.getDate()).padStart(2, '0');
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const year = d.getFullYear();
-      return `${day}-${month}-${year}`;
-  };
-
   // Filter Logic: Global Dates AND Column Specific Filters
   const filteredEntries = useMemo(() => {
     return entriesWithAdjustments.filter(entry => {
@@ -651,14 +752,6 @@ const DailyEntryPage: React.FC = () => {
   }, [entriesWithAdjustments, filterDateStart, filterDateEnd, filterDriver, columnFilters]);
 
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-  const getWeekStartDate = (dateStr: string) => {
-      const date = new Date(dateStr);
-      const day = date.getDay();
-      const diffToMonday = day === 0 ? 6 : day - 1;
-      date.setDate(date.getDate() - diffToMonday);
-      return date;
-  };
 
   const paginatedPages = useMemo(() => {
       if (filteredEntries.length === 0) return [] as any[];
@@ -820,9 +913,8 @@ const DailyEntryPage: React.FC = () => {
             <div className="relative">
               <select required name="driver" value={formData.driver} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none appearance-none cursor-pointer">
                   <option value="">-- Select Driver --</option>
-                  {drivers.map(d => {
+                  {availableDrivers.map(d => {
                       const onLeave = isDriverOnLeave(d.id);
-                      if (onLeave && formData.driver !== d.name) return null;
                       return (
                         <option key={d.id} value={d.name}>
                             {d.name} {onLeave ? '(On Leave)' : ''}
@@ -844,6 +936,59 @@ const DailyEntryPage: React.FC = () => {
                 <option value="Night">Night</option>
               </select>
               <ChevronDown className="absolute right-4 top-3 text-slate-400 pointer-events-none" size={16} />
+            </div>
+          </div>
+
+          <div className="lg:col-span-4 bg-indigo-50/60 border border-indigo-100 rounded-2xl p-4">
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div className="flex-1">
+                <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-2">Missing Daily Entries</h4>
+                <p className="text-[11px] text-slate-500 mb-2">
+                  {missingDailyByDate.length > 0
+                    ? 'Review any dates with missing driver entries.'
+                    : 'No missing daily entries detected.'}
+                </p>
+                {missingDailyByDate.length > 0 ? (
+                  <ul className="flex flex-col gap-3 max-h-48 overflow-y-auto pr-2">
+                    {missingDailyByDate.map(group => (
+                      <li key={group.date} className="bg-white border border-indigo-100 rounded-xl px-3 py-2 text-xs text-slate-700">
+                        <div className="font-semibold text-slate-600 mb-2">Date: {formatDate(group.date)}</div>
+                        <div className="flex flex-wrap gap-2">
+                          {group.drivers.map(driver => (
+                            <span key={driver.id} className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full text-[11px] font-semibold">
+                              {driver.name}
+                            </span>
+                          ))}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-slate-400">No missing daily entries detected.</p>
+                )}
+              </div>
+              <div className="flex-1">
+                <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-2">Missing Weekly Wallets</h4>
+                <p className="text-[11px] text-slate-500 mb-2">
+                  {missingWeeklyWallets.length > 0
+                    ? 'Review weeks with daily entries but no wallet record.'
+                    : 'No missing weekly wallets detected.'}
+                </p>
+                {missingWeeklyWallets.length > 0 ? (
+                  <ul className="flex flex-col gap-2 max-h-48 overflow-y-auto pr-2">
+                    {missingWeeklyWallets.map(item => (
+                      <li key={`${item.driver}-${item.weekStart}`} className="flex flex-wrap items-center justify-between gap-2 bg-white border border-indigo-100 rounded-xl px-3 py-2 text-xs text-slate-700">
+                        <span className="font-semibold">{item.driver}</span>
+                        <span className="text-[11px] text-slate-500">
+                          {formatDate(item.weekStart)} – {formatDate(item.weekEnd)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-slate-400">No missing weekly wallets detected.</p>
+                )}
+              </div>
             </div>
           </div>
           
@@ -1136,4 +1281,3 @@ const DailyEntryPage: React.FC = () => {
 };
 
 export default DailyEntryPage;
-
