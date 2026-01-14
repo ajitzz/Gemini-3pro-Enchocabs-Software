@@ -345,6 +345,24 @@ const respondWithCacheHeaders = (req, res, payload, etag, cacheStatus, maxAgeSec
   return res.json(payload);
 };
 
+const parseQueryDate = (raw, label) => {
+  if (!raw) return null;
+  const iso = toISODate(raw);
+  if (!iso) {
+    throw new Error(`Invalid ${label} date format`);
+  }
+  return iso;
+};
+
+const parseQueryLimit = (raw, max = 5000) => {
+  if (!raw) return null;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return Math.min(Math.floor(value), max);
+};
+
+const hasQueryParams = (query = {}) => Object.keys(query).length > 0;
+
 const invalidateSummaryCache = async () => {
   resetSummaryCache();
   await deleteCacheKeys([SUMMARY_CACHE_KEY]);
@@ -1060,7 +1078,12 @@ app.post('/api/driver-billings', async (req, res) => {
     await syncDriverBillings();
     await invalidateBillingsCache();
     res.json(result.rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    if (err.message && err.message.startsWith('Invalid')) {
+      return res.status(400).json({ error: err.message });
+    }
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.delete('/api/driver-billings/:id', async (req, res) => {
@@ -1069,7 +1092,12 @@ app.delete('/api/driver-billings/:id', async (req, res) => {
     await syncDriverBillings();
     await invalidateBillingsCache();
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    if (err.message && err.message.startsWith('Invalid')) {
+      return res.status(400).json({ error: err.message });
+    }
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // --- DRIVERS ---
@@ -1086,7 +1114,12 @@ app.get('/api/drivers', async (req, res) => {
 
     res.set('X-Cache', 'MISS');
     res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    if (err.message && err.message.startsWith('Invalid')) {
+      return res.status(400).json({ error: err.message });
+    }
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post('/api/drivers', async (req, res) => {
@@ -1283,22 +1316,64 @@ app.get('/api/summary', async (req, res) => {
 // --- DAILY ENTRIES ---
 app.get('/api/daily-entries', async (req, res) => {
   try {
-    const cached = await getCacheJSON(DAILY_ENTRIES_CACHE_KEY);
-    if (cached) {
-      res.set('X-Cache', 'REDIS');
-      return res.json(cached);
+    const hasQuery = hasQueryParams(req.query);
+    if (!hasQuery) {
+      const cached = await getCacheJSON(DAILY_ENTRIES_CACHE_KEY);
+      if (cached) {
+        res.set('X-Cache', 'REDIS');
+        return res.json(cached);
+      }
     }
 
-    const result = await db.query(`SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes FROM daily_entries ORDER BY date DESC`);
+    const values = [];
+    const filters = [];
+    const driverFilter = req.query.driver ? normalizeDriver(req.query.driver) : null;
+    if (driverFilter) {
+      values.push(driverFilter);
+      filters.push(`LOWER(driver) = $${values.length}`);
+    }
+
+    const fromDate = parseQueryDate(req.query.from, 'from');
+    if (fromDate) {
+      values.push(fromDate);
+      filters.push(`date >= $${values.length}`);
+    }
+
+    const toDate = parseQueryDate(req.query.to, 'to');
+    if (toDate) {
+      values.push(toDate);
+      filters.push(`date <= $${values.length}`);
+    }
+
+    const limit = parseQueryLimit(req.query.limit);
+    const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+    const limitClause = limit ? `LIMIT $${values.length + 1}` : '';
+    if (limit) values.push(limit);
+
+    const result = await db.query(
+      `SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes
+       FROM daily_entries
+       ${whereClause}
+       ORDER BY date DESC
+       ${limitClause}`,
+      values
+    );
     const safeRows = result.rows.map(r => ({
       ...r,
       rent: Number(r.rent), collection: Number(r.collection), fuel: Number(r.fuel), due: Number(r.due), payout: Number(r.payout)
     }));
 
-    await setCacheJSON(DAILY_ENTRIES_CACHE_KEY, safeRows, DAILY_ENTRIES_CACHE_TTL_SECONDS);
-    res.set('X-Cache', 'MISS');
+    if (!hasQuery) {
+      await setCacheJSON(DAILY_ENTRIES_CACHE_KEY, safeRows, DAILY_ENTRIES_CACHE_TTL_SECONDS);
+      res.set('X-Cache', 'MISS');
+    }
     res.json(safeRows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    if (err.message && err.message.startsWith('Invalid')) {
+      return res.status(400).json({ error: err.message });
+    }
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post('/api/daily-entries', async (req, res) => {
@@ -1489,19 +1564,59 @@ app.delete('/api/daily-entries/:id', async (req, res) => {
     await invalidateAggregateCaches();
     await invalidateKeys(DAILY_ENTRIES_CACHE_KEY);
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    if (err.message && err.message.startsWith('Invalid')) {
+      return res.status(400).json({ error: err.message });
+    }
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // --- WEEKLY WALLETS ---
 app.get('/api/weekly-wallets', async (req, res) => {
   try {
-    const cached = await getCacheJSON(WEEKLY_WALLETS_CACHE_KEY);
-    if (cached) {
-      res.set('X-Cache', 'REDIS');
-      return res.json(cached);
+    const hasQuery = hasQueryParams(req.query);
+    if (!hasQuery) {
+      const cached = await getCacheJSON(WEEKLY_WALLETS_CACHE_KEY);
+      if (cached) {
+        res.set('X-Cache', 'REDIS');
+        return res.json(cached);
+      }
     }
 
-    const result = await db.query(`SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate", to_char(week_end_date, 'YYYY-MM-DD') as "weekEndDate", earnings, refund, diff, cash, charges, trips, wallet_week as "walletWeek", days_worked_override as "daysWorkedOverride", rent_override as "rentOverride", adjustments, notes FROM weekly_wallets ORDER BY week_start_date DESC`);
+    const values = [];
+    const filters = [];
+    const driverFilter = req.query.driver ? normalizeDriver(req.query.driver) : null;
+    if (driverFilter) {
+      values.push(driverFilter);
+      filters.push(`LOWER(driver) = $${values.length}`);
+    }
+
+    const fromDate = parseQueryDate(req.query.from, 'from');
+    if (fromDate) {
+      values.push(fromDate);
+      filters.push(`week_start_date >= $${values.length}`);
+    }
+
+    const toDate = parseQueryDate(req.query.to, 'to');
+    if (toDate) {
+      values.push(toDate);
+      filters.push(`week_start_date <= $${values.length}`);
+    }
+
+    const limit = parseQueryLimit(req.query.limit);
+    const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+    const limitClause = limit ? `LIMIT $${values.length + 1}` : '';
+    if (limit) values.push(limit);
+
+    const result = await db.query(
+      `SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate", to_char(week_end_date, 'YYYY-MM-DD') as "weekEndDate", earnings, refund, diff, cash, charges, trips, wallet_week as "walletWeek", days_worked_override as "daysWorkedOverride", rent_override as "rentOverride", adjustments, notes
+       FROM weekly_wallets
+       ${whereClause}
+       ORDER BY week_start_date DESC
+       ${limitClause}`,
+      values
+    );
     const safeRows = result.rows.map(r => ({
       ...r,
       earnings: Number(r.earnings), refund: Number(r.refund), diff: Number(r.diff), cash: Number(r.cash), charges: Number(r.charges), walletWeek: Number(r.walletWeek),
@@ -1509,10 +1624,18 @@ app.get('/api/weekly-wallets', async (req, res) => {
       rentOverride: r.rentOverride !== null ? Number(r.rentOverride) : undefined,
       adjustments: Number(r.adjustments || 0)
     }));
-    await setCacheJSON(WEEKLY_WALLETS_CACHE_KEY, safeRows, WEEKLY_WALLETS_CACHE_TTL_SECONDS);
-    res.set('X-Cache', 'MISS');
+
+    if (!hasQuery) {
+      await setCacheJSON(WEEKLY_WALLETS_CACHE_KEY, safeRows, WEEKLY_WALLETS_CACHE_TTL_SECONDS);
+      res.set('X-Cache', 'MISS');
+    }
     res.json(safeRows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    if (err.message && err.message.startsWith('Invalid')) {
+      return res.status(400).json({ error: err.message });
+    }
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post('/api/weekly-wallets', async (req, res) => {

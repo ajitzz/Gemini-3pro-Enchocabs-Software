@@ -266,6 +266,7 @@ const ColumnFilter: React.FC<ColumnFilterProps> = ({ columnKey, data, activeFilt
 
 
 const DailyEntryPage: React.FC = () => {
+  const RECENT_DAYS = 60;
   const [entries, setEntries] = useState<DailyEntry[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [leaves, setLeaves] = useState<LeaveRecord[]>([]); // Added Leaves state
@@ -276,6 +277,7 @@ const DailyEntryPage: React.FC = () => {
   
   // UI State for optional fields
   const [showOptionalFields, setShowOptionalFields] = useState(false);
+  const [showFullHistory, setShowFullHistory] = useState(false);
 
   // Global Filters
   const [filterDateStart, setFilterDateStart] = useState('');
@@ -308,14 +310,23 @@ const DailyEntryPage: React.FC = () => {
   };
   const [formData, setFormData] = useState<Partial<DailyEntry>>(initialFormState);
 
+  const getISODateDaysAgo = (days: number) => {
+    const date = new Date();
+    date.setDate(date.getDate() - days);
+    return date.toISOString().slice(0, 10);
+  };
+
+  const recentFromDate = showFullHistory ? '' : getISODateDaysAgo(RECENT_DAYS);
+
   useEffect(() => {
     loadData();
-  }, []);
+  }, [showFullHistory]);
 
   const loadData = async () => {
     setLoading(true);
+    const dailyParams = showFullHistory ? undefined : { from: recentFromDate };
     const [e, d, l, w] = await Promise.all([
-        storageService.getDailyEntries(),
+        storageService.getDailyEntries(dailyParams),
         storageService.getDrivers(),
         storageService.getLeaves(), // Fetch leaves
         storageService.getWeeklyWallets()
@@ -326,6 +337,16 @@ const DailyEntryPage: React.FC = () => {
     setLeaves(l);
     setWeeklyWallets(w);
     setLoading(false);
+  };
+
+  const upsertEntry = (entry: DailyEntry) => {
+    setEntries(prev => {
+      const next = prev.filter(item => item.id !== entry.id);
+      if (!showFullHistory && recentFromDate && entry.date < recentFromDate) {
+        return next;
+      }
+      return [entry, ...next].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    });
   };
 
   const entriesWithAdjustments = useMemo<DisplayDailyEntry[]>(() => {
@@ -450,14 +471,14 @@ const DailyEntryPage: React.FC = () => {
         }
 
         try {
-          await storageService.saveDailyEntry(newEntry);
+          const savedEntry = await storageService.saveDailyEntry(newEntry);
 
           if (editingId) {
             resetForm();
           } else {
             resetFormAfterSave(formData.date);
           }
-          loadData();
+          upsertEntry({ ...newEntry, ...savedEntry });
         } catch (error: any) {
           console.error('Save daily entry failed:', error);
           alert(error?.message || 'Failed to save daily entry. Ensure the driver has only one entry per day.');
@@ -480,10 +501,12 @@ const DailyEntryPage: React.FC = () => {
     // So we should delete A to avoid duplicates, and update B.
     if (editingId && editingId !== duplicateWarning.existingId) {
        await storageService.deleteDailyEntry(editingId);
+       setEntries(prev => prev.filter(entry => entry.id !== editingId));
     }
 
     try {
-      await storageService.saveDailyEntry(entryToSave);
+      const savedEntry = await storageService.saveDailyEntry(entryToSave);
+      upsertEntry({ ...entryToSave, ...savedEntry });
     } catch (error: any) {
       console.error('Duplicate override failed:', error);
       alert(error?.message || 'Unable to override the existing entry.');
@@ -496,7 +519,6 @@ const DailyEntryPage: React.FC = () => {
     } else {
         resetFormAfterSave(entryToSave.date);
     }
-    loadData();
   };
 
   const resetFormAfterSave = (preserveDate: string) => {
@@ -531,7 +553,7 @@ const DailyEntryPage: React.FC = () => {
     if (confirm('Are you sure you want to delete this entry?')) {
       try {
         await storageService.deleteDailyEntry(id);
-        loadData();
+        setEntries(prev => prev.filter(entry => entry.id !== id));
       } catch (error: any) {
         console.error('Delete daily entry failed:', error);
         alert(error?.message || 'Failed to delete the entry. Please try again.');
@@ -1074,6 +1096,19 @@ const DailyEntryPage: React.FC = () => {
                   onChange={e => setFilterDateEnd(e.target.value)} 
                   className="bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
                 />
+             </div>
+
+             <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-400 uppercase">History</span>
+                <button
+                  onClick={() => setShowFullHistory(prev => !prev)}
+                  className="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-2 rounded-lg hover:bg-indigo-100 transition-colors"
+                >
+                  {showFullHistory ? `Show last ${RECENT_DAYS} days` : 'Load full history'}
+                </button>
+                {!showFullHistory && recentFromDate && (
+                  <span className="text-[11px] text-slate-400">Since {formatDate(recentFromDate)}</span>
+                )}
              </div>
         </div>
       </div>
