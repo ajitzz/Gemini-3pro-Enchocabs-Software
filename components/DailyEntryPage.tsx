@@ -539,6 +539,34 @@ const DailyEntryPage: React.FC = () => {
     }
   };
 
+  // Strict DD-MM-YYYY formatter
+  const formatDate = (dateStr: string) => {
+      if (!dateStr) return '-';
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}-${month}-${year}`;
+  };
+
+  const getWeekStartDate = (dateStr: string) => {
+      const date = new Date(dateStr);
+      const day = date.getDay();
+      const diffToMonday = day === 0 ? 6 : day - 1;
+      date.setDate(date.getDate() - diffToMonday);
+      return date;
+  };
+
+  const getWeekRangeForDate = (dateStr: string) => {
+      const start = getWeekStartDate(dateStr);
+      const end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      const startISO = start.toISOString().split('T')[0];
+      const endISO = end.toISOString().split('T')[0];
+      return { start: startISO, end: endISO };
+  };
+
   // Helper to check if driver is on leave for the selected form date
   const isDriverOnLeave = (driverId: string) => {
     if (!formData.date) return false;
@@ -631,17 +659,6 @@ const DailyEntryPage: React.FC = () => {
     downloadCSV(headers, rows, `daily-entries-${driverLabel}-${timestamp}`);
   };
 
-  // Strict DD-MM-YYYY formatter
-  const formatDate = (dateStr: string) => {
-      if (!dateStr) return '-';
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return dateStr;
-      const day = String(d.getDate()).padStart(2, '0');
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const year = d.getFullYear();
-      return `${day}-${month}-${year}`;
-  };
-
   // Filter Logic: Global Dates AND Column Specific Filters
   const filteredEntries = useMemo(() => {
     return entriesWithAdjustments.filter(entry => {
@@ -672,14 +689,6 @@ const DailyEntryPage: React.FC = () => {
   }, [entriesWithAdjustments, filterDateStart, filterDateEnd, filterDriver, columnFilters]);
 
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-  const getWeekStartDate = (dateStr: string) => {
-      const date = new Date(dateStr);
-      const day = date.getDay();
-      const diffToMonday = day === 0 ? 6 : day - 1;
-      date.setDate(date.getDate() - diffToMonday);
-      return date;
-  };
 
   const paginatedPages = useMemo(() => {
       if (filteredEntries.length === 0) return [] as any[];
@@ -864,6 +873,52 @@ const DailyEntryPage: React.FC = () => {
                 <option value="Night">Night</option>
               </select>
               <ChevronDown className="absolute right-4 top-3 text-slate-400 pointer-events-none" size={16} />
+            </div>
+          </div>
+
+          <div className="lg:col-span-4 bg-indigo-50/60 border border-indigo-100 rounded-2xl p-4">
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div className="flex-1">
+                <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-2">Missing Daily Entries</h4>
+                <p className="text-[11px] text-slate-500 mb-2">
+                  {formData.date ? `Date: ${formatDate(formData.date)}` : 'Select a date to see missing daily entries.'}
+                </p>
+                {formData.date && missingDailyDriversForDate.length > 0 ? (
+                  <ul className="flex flex-wrap gap-2">
+                    {missingDailyDriversForDate.map(driver => (
+                      <li key={driver.id} className="px-3 py-1 bg-white border border-indigo-100 rounded-full text-xs font-semibold text-slate-700">
+                        {driver.name}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-slate-400">
+                    {formData.date ? 'No missing daily entries for this date.' : 'No date selected.'}
+                  </p>
+                )}
+              </div>
+              <div className="flex-1">
+                <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-2">Missing Weekly Wallets</h4>
+                <p className="text-[11px] text-slate-500 mb-2">
+                  {formData.date ? `Week: ${formatDate(getWeekRangeForDate(formData.date).start)} – ${formatDate(getWeekRangeForDate(formData.date).end)}` : 'Select a date to see missing weekly wallets.'}
+                </p>
+                {formData.date && missingWeeklyWalletsForWeek.length > 0 ? (
+                  <ul className="flex flex-col gap-2">
+                    {missingWeeklyWalletsForWeek.map(item => (
+                      <li key={`${item.driver}-${item.weekStart}`} className="flex flex-wrap items-center justify-between gap-2 bg-white border border-indigo-100 rounded-xl px-3 py-2 text-xs text-slate-700">
+                        <span className="font-semibold">{item.driver}</span>
+                        <span className="text-[11px] text-slate-500">
+                          {formatDate(item.weekStart)} – {formatDate(item.weekEnd)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-slate-400">
+                    {formData.date ? 'No missing weekly wallets for this week.' : 'No date selected.'}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
           
