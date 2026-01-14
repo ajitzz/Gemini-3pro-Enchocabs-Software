@@ -612,6 +612,90 @@ const defaultDriverRentalSlabs = [
   { minTrips: 65, maxTrips: 69, rentAmount: 700 },
   { minTrips: 70, maxTrips: null, rentAmount: 550 },
 ];
+
+const normalizeWalletRow = (row) => {
+  const start = getMondayISO(row.week_start_date);
+  if (!start) return null;
+  const resolvedEnd = toISODate(row.week_end_date) || getSundayISO(start);
+  return {
+    ...row,
+    week_start_date: start,
+    week_end_date: resolvedEnd,
+    earnings: Number(row.earnings) || 0,
+    refund: Number(row.refund) || 0,
+    diff: Number(row.diff) || 0,
+    cash: Number(row.cash) || 0,
+    charges: Number(row.charges) || 0,
+    trips: Number(row.trips) || 0,
+    wallet_week: Number(row.wallet_week) || 0,
+    rent_override: row.rent_override !== null ? Number(row.rent_override) : null,
+    adjustments: Number(row.adjustments || 0),
+    days_worked_override: row.days_worked_override !== null ? Number(row.days_worked_override) : null
+  };
+};
+
+const normalizeDailyRow = (row) => ({
+  ...row,
+  collection: Number(row.collection) || 0,
+  fuel: Number(row.fuel) || 0,
+  due: Number(row.due) || 0
+});
+
+const buildBillingRecord = ({ wallet, entries, driverInfo, driverRentalSlabs }) => {
+  if (!wallet || entries.length === 0) return null;
+
+  const driverName = wallet?.driver || entries[0]?.driver;
+  if (!driverName) return null;
+
+  const daysWorkedCalculated = entries.filter((e) => {
+    const shift = (e.shift || '').toLowerCase().trim();
+    return !['leave', 'off', 'absent', 'holiday'].includes(shift);
+  }).length;
+  const daysWorked = wallet && wallet.days_worked_override !== null && wallet.days_worked_override !== undefined
+    ? Number(wallet.days_worked_override)
+    : daysWorkedCalculated;
+
+  const trips = wallet ? wallet.trips : 0;
+  const slab = driverRentalSlabs.find((s) => trips >= s.minTrips && (s.maxTrips === null || trips <= s.maxTrips));
+
+  let rentPerDay = 0;
+  if (wallet && wallet.rent_override !== null && wallet.rent_override !== undefined) {
+    rentPerDay = wallet.rent_override;
+  } else if (slab) {
+    rentPerDay = slab.rentAmount;
+  }
+
+  const rentTotal = rentPerDay * daysWorked;
+  const collection = entries.reduce((sum, e) => sum + e.collection, 0);
+  const baseDue = entries.reduce((sum, e) => sum + e.due, 0);
+  const fuel = entries.reduce((sum, e) => sum + e.fuel, 0);
+  const walletAmount = wallet ? calculateWalletWeek(wallet) : 0;
+  const adjustments = wallet ? Number(wallet.adjustments || 0) : 0;
+  const dueWithAdjustments = baseDue + adjustments;
+
+  const payout = collection - rentTotal - fuel + dueWithAdjustments + walletAmount;
+
+  return {
+    driver_id: driverInfo.id || null,
+    driver_name: driverName,
+    qr_code: driverInfo.qrCode || wallet?.qr_code || entries[0]?.qr_code || null,
+    week_start_date: wallet?.week_start_date || getMondayISO(entries[0]?.date),
+    week_end_date: wallet?.week_end_date || getSundayISO(wallet?.week_start_date || getMondayISO(entries[0]?.date)),
+    days_worked: daysWorked,
+    trips,
+    rent_per_day: rentPerDay,
+    rent_total: rentTotal,
+    collection,
+    due: dueWithAdjustments,
+    fuel,
+    wallet: walletAmount,
+    wallet_overdue: dueWithAdjustments,
+    adjustments,
+    payout,
+    status: 'Finalized'
+  };
+};
+
 const calculateDriverBillings = async () => {
   const [slabRes, walletRes, dailyRes, driverRes] = await Promise.all([
     db.query("SELECT min_trips as \"minTrips\", max_trips as \"maxTrips\", rent_amount as \"rentAmount\" FROM rental_slabs WHERE slab_type = 'driver' ORDER BY min_trips"),
@@ -633,26 +717,11 @@ const driverRentalSlabs = rentalSlabs.length > 0 ? rentalSlabs : defaultDriverRe
 
   const walletMap = new Map();
   walletRes.rows.forEach((w) => {
-    const start = getMondayISO(w.week_start_date);
-    if (!start) return;
-    const driverKey = normalizeDriver(w.driver);
-    const key = `${start}__${driverKey}`;
-    const resolvedEnd = toISODate(w.week_end_date) || getSundayISO(start);
-    walletMap.set(key, {
-      ...w,
-      week_start_date: start,
-      week_end_date: resolvedEnd,
-      earnings: Number(w.earnings) || 0,
-      refund: Number(w.refund) || 0,
-      diff: Number(w.diff) || 0,
-      cash: Number(w.cash) || 0,
-      charges: Number(w.charges) || 0,
-      trips: Number(w.trips) || 0,
-      wallet_week: Number(w.wallet_week) || 0,
-      rent_override: w.rent_override !== null ? Number(w.rent_override) : null,
-      adjustments: Number(w.adjustments || 0),
-      days_worked_override: w.days_worked_override !== null ? Number(w.days_worked_override) : null
-    });
+    const normalized = normalizeWalletRow(w);
+    if (!normalized) return;
+    const driverKey = normalizeDriver(normalized.driver);
+    const key = `${normalized.week_start_date}__${driverKey}`;
+    walletMap.set(key, normalized);
   });
 
   const dailyGroups = new Map();
@@ -662,12 +731,7 @@ const driverRentalSlabs = rentalSlabs.length > 0 ? rentalSlabs : defaultDriverRe
     const driverKey = normalizeDriver(d.driver);
     const key = `${start}__${driverKey}`;
     const group = dailyGroups.get(key) || [];
-    group.push({
-      ...d,
-      collection: Number(d.collection) || 0,
-      fuel: Number(d.fuel) || 0,
-      due: Number(d.due) || 0
-    });
+    group.push(normalizeDailyRow(d));
     dailyGroups.set(key, group);
   });
 
@@ -677,68 +741,141 @@ const driverRentalSlabs = rentalSlabs.length > 0 ? rentalSlabs : defaultDriverRe
   allKeys.forEach((key) => {
     const wallet = walletMap.get(key);
     const entries = dailyGroups.get(key) || [];
-        // Only generate a billing record when both weekly wallet data and daily entries exist for the week
-    if (!wallet || entries.length === 0) return;
-
     const driverName = wallet?.driver || entries[0]?.driver;
     if (!driverName) return;
 
     const driverInfo = driverIndex.get(normalizeDriver(driverName)) || {};
-    const weekStart = wallet?.week_start_date || getMondayISO(entries[0]?.date);
-    if (!weekStart) return;
-    const weekEnd = wallet?.week_end_date || getSundayISO(weekStart);
-
-    const daysWorkedCalculated = entries.filter((e) => {
-      const shift = (e.shift || '').toLowerCase().trim();
-      return !['leave', 'off', 'absent', 'holiday'].includes(shift);
-    }).length;
-    const daysWorked = wallet && wallet.days_worked_override !== null && wallet.days_worked_override !== undefined
-      ? Number(wallet.days_worked_override)
-      : daysWorkedCalculated;
-
-    const trips = wallet ? wallet.trips : 0;
-const slab = driverRentalSlabs.find((s) => trips >= s.minTrips && (s.maxTrips === null || trips <= s.maxTrips));
-
-    let rentPerDay = 0;
-
-    if (wallet && wallet.rent_override !== null && wallet.rent_override !== undefined) {
-      rentPerDay = wallet.rent_override;
-    } else if (slab) {
-      rentPerDay = slab.rentAmount;
-    }
-
-    const rentTotal = rentPerDay * daysWorked;
-    const collection = entries.reduce((sum, e) => sum + e.collection, 0);
-    const baseDue = entries.reduce((sum, e) => sum + e.due, 0);
-    const fuel = entries.reduce((sum, e) => sum + e.fuel, 0);
-    const walletAmount = wallet ? calculateWalletWeek(wallet) : 0;
-    const adjustments = wallet ? Number(wallet.adjustments || 0) : 0;
-    const dueWithAdjustments = baseDue + adjustments;
-
-    const payout = collection - rentTotal - fuel + dueWithAdjustments + walletAmount;
-
-    billings.push({
-      driver_id: driverInfo.id || null,
-      driver_name: driverName,
-      qr_code: driverInfo.qrCode || wallet?.qr_code || entries[0]?.qr_code || null,
-      week_start_date: weekStart,
-      week_end_date: weekEnd,
-      days_worked: daysWorked,
-      trips,
-      rent_per_day: rentPerDay,
-      rent_total: rentTotal,
-      collection,
-      due: dueWithAdjustments,
-      fuel,
-      wallet: walletAmount,
-      wallet_overdue: dueWithAdjustments,
-      adjustments,
-      payout,
-      status: 'Finalized'
+    const record = buildBillingRecord({
+      wallet,
+      entries,
+      driverInfo,
+      driverRentalSlabs
     });
+
+    if (record) {
+      billings.push(record);
+    }
   });
 
   return billings;
+};
+
+const fetchDriverBillingForWeek = async ({ driverName, weekStart }) => {
+  if (!driverName || !weekStart) return null;
+
+  const weekEnd = getSundayISO(weekStart);
+  if (!weekEnd) return null;
+
+  const [slabRes, walletRes, dailyRes, driverRes] = await Promise.all([
+    db.query("SELECT min_trips as \"minTrips\", max_trips as \"maxTrips\", rent_amount as \"rentAmount\" FROM rental_slabs WHERE slab_type = 'driver' ORDER BY min_trips"),
+    db.query(
+      `SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as week_start_date, to_char(week_end_date, 'YYYY-MM-DD') as week_end_date, earnings, refund, diff, cash, charges, trips, wallet_week, rent_override, days_worked_override, adjustments, notes
+       FROM weekly_wallets
+       WHERE lower(driver) = lower($1)
+         AND week_start_date <= $2::date
+         AND (week_end_date IS NULL OR week_end_date >= $2::date)`,
+      [driverName, weekStart]
+    ),
+    db.query(
+      `SELECT id, to_char(date, 'YYYY-MM-DD') as date, driver, shift, qr_code, collection, fuel, due
+       FROM daily_entries
+       WHERE lower(driver) = lower($1)
+         AND date BETWEEN $2::date AND $3::date`,
+      [driverName, weekStart, weekEnd]
+    ),
+    db.query("SELECT id, name, qr_code FROM drivers WHERE lower(name) = lower($1) LIMIT 1", [driverName])
+  ]);
+
+  const rentalSlabs = slabRes.rows.map((r) => ({
+    minTrips: Number(r.minTrips),
+    maxTrips: r.maxTrips === null ? null : Number(r.maxTrips),
+    rentAmount: Number(r.rentAmount)
+  }));
+  const driverRentalSlabs = rentalSlabs.length > 0 ? rentalSlabs : defaultDriverRentalSlabs;
+
+  const normalizedWallets = walletRes.rows.map(normalizeWalletRow).filter(Boolean);
+  const wallet = normalizedWallets.find((w) => w.week_start_date === weekStart) || normalizedWallets[0];
+  const entries = dailyRes.rows.map(normalizeDailyRow);
+
+  const driverInfoRow = driverRes.rows[0] || {};
+  const driverInfo = {
+    id: driverInfoRow.id || null,
+    qrCode: driverInfoRow.qr_code || null
+  };
+
+  return buildBillingRecord({
+    wallet,
+    entries,
+    driverInfo,
+    driverRentalSlabs
+  });
+};
+
+const syncDriverBillingForWeek = async ({ driverName, weekStart }) => {
+  if (!driverName || !weekStart) return;
+
+  const billing = await fetchDriverBillingForWeek({ driverName, weekStart });
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    if (!billing) {
+      await client.query(
+        'DELETE FROM driver_billings WHERE lower(driver_name) = lower($1) AND week_start_date = $2::date',
+        [driverName, weekStart]
+      );
+      await client.query('COMMIT');
+      await invalidateBillingsCache();
+      return;
+    }
+
+    const existing = await client.query(
+      'SELECT id FROM driver_billings WHERE lower(driver_name) = lower($1) AND week_start_date = $2::date LIMIT 1',
+      [billing.driver_name, billing.week_start_date]
+    );
+    const idToUse = existing.rows[0]?.id || uuidv4();
+
+    await client.query(
+      `INSERT INTO driver_billings (
+        id, driver_id, driver_name, qr_code, week_start_date, week_end_date,
+        days_worked, trips, rent_per_day, rent_total, collection, due, fuel,
+        wallet, wallet_overdue, adjustments, payout, status, generated_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6,
+        $7, $8, $9, $10, $11, $12, $13,
+        $14, $15, $16, $17, $18, NOW()
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        driver_id = $2, driver_name = $3, qr_code = $4,
+        week_start_date = $5, week_end_date = $6,
+        days_worked = $7, trips = $8, rent_per_day = $9, rent_total = $10,
+        collection = $11, due = $12, fuel = $13, wallet = $14, wallet_overdue = $15,
+        adjustments = $16, payout = $17, status = $18, generated_at = NOW();
+      `,
+      [
+        idToUse, billing.driver_id, billing.driver_name, billing.qr_code, billing.week_start_date, billing.week_end_date,
+        billing.days_worked, billing.trips, billing.rent_per_day, billing.rent_total, billing.collection, billing.due, billing.fuel,
+        billing.wallet, billing.wallet_overdue, billing.adjustments, billing.payout, billing.status
+      ]
+    );
+
+    await client.query(
+      `UPDATE daily_entries
+       SET rent = $1
+       WHERE lower(driver) = lower($2)
+         AND date >= $3 AND date <= $4
+         AND rent > 0`,
+      [billing.rent_per_day, billing.driver_name, billing.week_start_date, billing.week_end_date]
+    );
+
+    await client.query('COMMIT');
+    await invalidateBillingsCache();
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 };
 
 const syncDriverBillings = async () => {
@@ -1173,6 +1310,11 @@ app.post('/api/daily-entries', async (req, res) => {
     const payoutDateISO = e.payoutDate ? toISODate(e.payoutDate) : null;
     if (e.payoutDate && !payoutDateISO) return res.status(400).json({ error: 'Invalid payout date format' });
 
+    const existingEntry = e.id
+      ? await db.query(`SELECT driver, to_char(date, 'YYYY-MM-DD') as date FROM daily_entries WHERE id = $1`, [e.id])
+      : { rows: [] };
+    const previousEntry = existingEntry.rows[0];
+
     const normalizedDriver = normalizeDriver(e.driver);
     const duplicateCheck = await db.query(
       `SELECT id FROM daily_entries WHERE date = $1 AND LOWER(driver) = $2 AND ($3::uuid IS NULL OR id <> $3)`
@@ -1190,7 +1332,21 @@ app.post('/api/daily-entries', async (req, res) => {
       RETURNING *;
     `;
     const result = await db.query(q, [e.id, isoDate, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, payoutDateISO, e.notes]);
-    await syncDriverBillings();
+
+    const newWeekStart = getMondayISO(isoDate);
+    if (newWeekStart) {
+      await syncDriverBillingForWeek({ driverName: e.driver, weekStart: newWeekStart });
+    }
+
+    if (previousEntry?.driver && previousEntry?.date) {
+      const prevWeekStart = getMondayISO(previousEntry.date);
+      const prevDriverKey = normalizeDriver(previousEntry.driver);
+      const newDriverKey = normalizeDriver(e.driver);
+      if (prevWeekStart && (prevWeekStart !== newWeekStart || prevDriverKey !== newDriverKey)) {
+        await syncDriverBillingForWeek({ driverName: previousEntry.driver, weekStart: prevWeekStart });
+      }
+    }
+
     await invalidateAggregateCaches();
     await invalidateKeys(DAILY_ENTRIES_CACHE_KEY);
     res.json(result.rows[0]);
@@ -1208,12 +1364,25 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
   try {
     await client.query('BEGIN');
     const keyToId = new Map();
+    const existingEntryMap = new Map();
+    const trackedEntries = [];
     const qrCodes = [...new Set(entries.map(e => (e.qrCode || '').trim()).filter(Boolean))];
     const driversTouched = new Set();
     let qrToDriver = {};
     if (qrCodes.length > 0) {
       const qrRes = await client.query(`SELECT qr_code, name FROM drivers WHERE qr_code = ANY($1::text[])`, [qrCodes]);
       qrRes.rows.forEach(r => { qrToDriver[String(r.qr_code || '').trim()] = r.name; });
+    }
+
+    const incomingIds = entries.map((e) => e.id).filter(Boolean);
+    if (incomingIds.length > 0) {
+      const existingRes = await client.query(
+        `SELECT id, driver, to_char(date, 'YYYY-MM-DD') as date FROM daily_entries WHERE id = ANY($1::uuid[])`,
+        [incomingIds]
+      );
+      existingRes.rows.forEach((row) => {
+        existingEntryMap.set(row.id, row);
+      });
     }
 
     for (const e of entries) {
@@ -1223,6 +1392,7 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
       }
       const isoDate = toISODate(e.date);
       if (!isoDate) throw new Error(`Invalid date format for entry ${e.id || e.date}`);
+      trackedEntries.push({ id: e.id || null, driver: canonicalDriver, date: isoDate });
       const driverKey = normalizeDriver(canonicalDriver);
       const key = `${driverKey}|${isoDate}`;
       const incomingId = e.id || null;
@@ -1263,7 +1433,34 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
     }
 
     await client.query('COMMIT');
-    await syncDriverBillings();
+    const syncTargets = new Map();
+    const addSyncTarget = (driverName, dateStr) => {
+      if (!driverName || !dateStr) return;
+      const weekStart = getMondayISO(dateStr);
+      if (!weekStart) return;
+      const key = `${normalizeDriver(driverName)}__${weekStart}`;
+      if (!syncTargets.has(key)) {
+        syncTargets.set(key, { driverName, weekStart });
+      }
+    };
+
+    trackedEntries.forEach((entry) => {
+      addSyncTarget(entry.driver, entry.date);
+      const previous = entry.id ? existingEntryMap.get(entry.id) : null;
+      if (previous) {
+        const prevWeekStart = getMondayISO(previous.date);
+        const newWeekStart = getMondayISO(entry.date);
+        const prevDriverKey = normalizeDriver(previous.driver);
+        const newDriverKey = normalizeDriver(entry.driver);
+        if (prevWeekStart && (prevWeekStart !== newWeekStart || prevDriverKey !== newDriverKey)) {
+          addSyncTarget(previous.driver, previous.date);
+        }
+      }
+    });
+
+    for (const target of syncTargets.values()) {
+      await syncDriverBillingForWeek(target);
+    }
     await invalidateAggregateCaches();
     await invalidateKeys(DAILY_ENTRIES_CACHE_KEY);
     res.json({ success: true });
@@ -1280,9 +1477,15 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
 
 app.delete('/api/daily-entries/:id', async (req, res) => {
   try {
-    const existing = await db.query('SELECT driver FROM daily_entries WHERE id = $1', [req.params.id]);
+    const existing = await db.query(`SELECT driver, to_char(date, 'YYYY-MM-DD') as date FROM daily_entries WHERE id = $1`, [req.params.id]);
     await db.query('DELETE FROM daily_entries WHERE id = $1', [req.params.id]);
-    await syncDriverBillings();
+    const previous = existing.rows[0];
+    if (previous?.driver && previous?.date) {
+      const weekStart = getMondayISO(previous.date);
+      if (weekStart) {
+        await syncDriverBillingForWeek({ driverName: previous.driver, weekStart });
+      }
+    }
     await invalidateAggregateCaches();
     await invalidateKeys(DAILY_ENTRIES_CACHE_KEY);
     res.json({ success: true });
@@ -1319,6 +1522,11 @@ app.post('/api/weekly-wallets', async (req, res) => {
     const endISO = toISODate(w.weekEndDate || (startISO ? getSundayISO(startISO) : ''));
     if (!startISO) return res.status(400).json({ error: 'Invalid week start date' });
 
+    const existingWallet = w.id
+      ? await db.query(`SELECT driver, to_char(week_start_date, 'YYYY-MM-DD') as week_start_date FROM weekly_wallets WHERE id = $1`, [w.id])
+      : { rows: [] };
+    const previousWallet = existingWallet.rows[0];
+
     const q = `
       INSERT INTO weekly_wallets (id, driver, week_start_date, week_end_date, earnings, refund, diff, cash, charges, trips, wallet_week, days_worked_override, rent_override, adjustments, notes)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
@@ -1327,7 +1535,21 @@ app.post('/api/weekly-wallets', async (req, res) => {
       RETURNING *;
     `;
     const result = await db.query(q, [w.id, w.driver, startISO, endISO || null, w.earnings, w.refund, w.diff, w.cash, w.charges, w.trips, w.walletWeek, w.daysWorkedOverride ?? null, w.rentOverride ?? null, w.adjustments || 0, w.notes]);
-    await syncDriverBillings();
+
+    const newWeekStart = getMondayISO(startISO);
+    if (newWeekStart) {
+      await syncDriverBillingForWeek({ driverName: w.driver, weekStart: newWeekStart });
+    }
+
+    if (previousWallet?.driver && previousWallet?.week_start_date) {
+      const prevWeekStart = getMondayISO(previousWallet.week_start_date);
+      const prevDriverKey = normalizeDriver(previousWallet.driver);
+      const newDriverKey = normalizeDriver(w.driver);
+      if (prevWeekStart && (prevWeekStart !== newWeekStart || prevDriverKey !== newDriverKey)) {
+        await syncDriverBillingForWeek({ driverName: previousWallet.driver, weekStart: prevWeekStart });
+      }
+    }
+
     await invalidateAggregateCaches();
     await invalidateKeys(WEEKLY_WALLETS_CACHE_KEY);
     res.json(result.rows[0]);
@@ -1336,9 +1558,15 @@ app.post('/api/weekly-wallets', async (req, res) => {
 
 app.delete('/api/weekly-wallets/:id', async (req, res) => {
   try {
-    const existing = await db.query('SELECT driver FROM weekly_wallets WHERE id = $1', [req.params.id]);
+    const existing = await db.query(`SELECT driver, to_char(week_start_date, 'YYYY-MM-DD') as week_start_date FROM weekly_wallets WHERE id = $1`, [req.params.id]);
     await db.query('DELETE FROM weekly_wallets WHERE id = $1', [req.params.id]);
-    await syncDriverBillings();
+    const previous = existing.rows[0];
+    if (previous?.driver && previous?.week_start_date) {
+      const weekStart = getMondayISO(previous.week_start_date);
+      if (weekStart) {
+        await syncDriverBillingForWeek({ driverName: previous.driver, weekStart });
+      }
+    }
     await invalidateAggregateCaches();
     await invalidateKeys(WEEKLY_WALLETS_CACHE_KEY);
     res.json({ success: true });
