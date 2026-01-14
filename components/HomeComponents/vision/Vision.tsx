@@ -20,18 +20,19 @@ export default function Vision() {  return (
             <h2 className="text-3xl font-semibold text-white sm:text-4xl">
               We’re Changing the Way the World Thinks About <span className="text-gray-400">DRIVING</span>
             </h2>
-            <div className="space-y-5 rounded-3xl border border-white/5 bg-gradient-to-br from-white/5 via-white/0 to-white/5 p-6 text-sm leading-relaxed text-neutral-200 shadow-[0_40px_80px_-40px_rgba(0,0,0,0.75)] sm:text-base">
-              <p>
-                I&apos;m a paragraph. Click here to add your own text and edit me. It&apos;s easy. Just click “Edit Text” or double
-                click me to add your own content and make changes to the font.
-              </p>
-              <p>
-                Use this space to describe your driver-first approach: accommodation, healthy meals, safety training, reliable
-                vehicles, and transparent settlements so drivers can earn more with less stress.
-              </p>
-            </div>
+                 <div className="space-y-5 rounded-3xl border border-white/5 bg-gradient-to-br from-white/5 via-white/0 to-white/5 p-6 text-sm leading-relaxed text-neutral-200 shadow-[0_40px_80px_-40px_rgba(0,0,0,0.75)] sm:text-base">
+  <p>
+    Driving shouldn’t feel like a struggle — it should feel like progress. We’re building a taxi service where drivers come
+    first: fair earnings, transparent trips, and real support that helps you stay on the road with confidence.
+  </p>
+  <p>
+    Expect reliable vehicles, safety guidance, and a smooth work experience from start to finish — with clear settlements,
+    flexible driving, and respect at every step. Join a platform designed to help you earn more with less stress.
+  </p>
+</div>
           </div>
-        
+
+       
 
          <div className="relative flex justify-center lg:justify-end">
             <div className="relative inline-flex max-w-xl items-center justify-center  bg-[--vision-bg] p-4 shadow-[0_40px_80px_-40px_rgba(0,0,0,0.85)]">
