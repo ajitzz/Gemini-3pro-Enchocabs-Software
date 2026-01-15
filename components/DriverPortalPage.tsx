@@ -335,7 +335,7 @@ const DriverPortalPage: React.FC = () => {
               const balances: Record<string, number> = {};
               teamMembers.forEach(member => {
                   const stats = storageService.calculateDriverStats(member.name, allDaily, allWeekly, sortedSlabs);
-                  balances[member.id] = stats.netPayout;
+                  balances[member.id] = stats.finalTotal;
               });
               setTeamBalances(balances);
 
@@ -399,7 +399,7 @@ const DriverPortalPage: React.FC = () => {
               const balances: Record<string, number> = {};
               myTeam.forEach(member => {
                   const stats = storageService.calculateDriverStats(member.name, allDaily, allWeekly, rentalSlabs);
-                  balances[member.id] = stats.netPayout;
+                  balances[member.id] = stats.finalTotal;
               });
               setTeamBalances(balances);
           }
@@ -1507,7 +1507,7 @@ const DriverPortalPage: React.FC = () => {
                                                           </button>
                                                       </div>
                                                       <p className="text-[11px] text-indigo-200 font-medium">
-                                                          Balance: <span className={bal < 0 ? "text-rose-300 font-bold" : "text-emerald-300 font-bold"}>{formatCurrency(bal)}</span>
+                                                          Net Balance: <span className={bal < 0 ? "text-rose-300 font-bold" : "text-emerald-300 font-bold"}>{formatCurrency(bal)}</span>
                                                       </p>
                                                       <div className="flex flex-col text-[11px] text-indigo-100 font-medium">
                                                           <span className="truncate">📞 {member.mobile}</span>
