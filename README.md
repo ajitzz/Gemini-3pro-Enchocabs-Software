@@ -36,3 +36,7 @@ The API already exposes a lightweight `/health` endpoint that responds with `200
 3. (Optional) Keep the existing `KEEP_ALIVE_URL` pointing at the same `/health` URL if you want Render dynos to stay warm in addition to external monitoring.
 
 This approach keeps checks fast and side-effect free while giving you early warning if deployments go down.
+
+## Driver billing refresh behavior
+
+The `GET /api/driver-billings` endpoint now serves cached results immediately and only performs a full recomputation when explicitly requested. If you need to refresh billings on-demand, call the endpoint with `?refresh=true` or set `SYNC_BILLINGS_ON_READ=true` in the server environment to enable recomputation on cache misses. This prevents expensive billing syncs from slowing down every page load while still allowing manual refreshes when needed.

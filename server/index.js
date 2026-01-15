@@ -342,10 +342,22 @@ const summaryCache = {
   expiresAt: 0,
 };
 
+const billingsCache = {
+  data: null,
+  etag: null,
+  expiresAt: 0,
+};
+
 const resetSummaryCache = () => {
   summaryCache.data = null;
   summaryCache.etag = null;
   summaryCache.expiresAt = 0;
+};
+
+const resetBillingsCache = () => {
+  billingsCache.data = null;
+  billingsCache.etag = null;
+  billingsCache.expiresAt = 0;
 };
 
 const invalidateKeys = async (...keys) => deleteCacheKeys(keys.filter(Boolean));
@@ -394,7 +406,10 @@ const invalidateSummaryCache = async () => {
   await deleteCacheKeys([SUMMARY_CACHE_KEY]);
 };
 
-const invalidateBillingsCache = async () => deleteCacheKeys([BILLINGS_CACHE_KEY]);
+const invalidateBillingsCache = async () => {
+  resetBillingsCache();
+  await deleteCacheKeys([BILLINGS_CACHE_KEY]);
+};
 
 const invalidateAggregateCaches = async () => {
   await invalidateSummaryCache();
@@ -1040,14 +1055,29 @@ app.post('/api/auth/google', async (req, res) => {
 
 
 app.get('/api/driver-billings', async (req, res) => {
+  const now = Date.now();
+  if (billingsCache.data && billingsCache.expiresAt <= now) {
+    resetBillingsCache();
+  }
+  if (billingsCache.data && billingsCache.expiresAt > now) {
+    return respondWithCacheHeaders(req, res, billingsCache.data, billingsCache.etag, 'MEM', BILLINGS_CACHE_TTL_SECONDS);
+  }
+
   try {
     const cached = await getCacheJSON(BILLINGS_CACHE_KEY);
     if (cached?.payload) {
       const cachedEtag = cached.etag || computeEtag(cached.payload);
+      billingsCache.data = cached.payload;
+      billingsCache.etag = cachedEtag;
+      billingsCache.expiresAt = now + BILLINGS_CACHE_TTL_SECONDS * 1000;
       return respondWithCacheHeaders(req, res, cached.payload, cachedEtag, 'REDIS', BILLINGS_CACHE_TTL_SECONDS);
     }
 
-    await syncDriverBillings();
+    const shouldRefresh = String(req.query.refresh || '').toLowerCase() === 'true'
+      || String(process.env.SYNC_BILLINGS_ON_READ || '').toLowerCase() === 'true';
+    if (shouldRefresh) {
+      await syncDriverBillings();
+    }
 
     const result = await db.query(`
       SELECT
@@ -1071,6 +1101,9 @@ app.get('/api/driver-billings', async (req, res) => {
     }));
 
     const etag = computeEtag(safeRows);
+    billingsCache.data = safeRows;
+    billingsCache.etag = etag;
+    billingsCache.expiresAt = Date.now() + BILLINGS_CACHE_TTL_SECONDS * 1000;
     await setCacheJSON(BILLINGS_CACHE_KEY, { payload: safeRows, etag }, BILLINGS_CACHE_TTL_SECONDS);
 
     return respondWithCacheHeaders(req, res, safeRows, etag, 'MISS', BILLINGS_CACHE_TTL_SECONDS);
