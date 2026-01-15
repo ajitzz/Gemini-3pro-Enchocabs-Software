@@ -117,6 +117,31 @@ const getSundayISO = (mondayStr) => {
   return d.toISOString().slice(0, 10);
 };
 
+const buildDriverBuckets = (dailyEntries, weeklyWallets) => {
+  const buckets = new Map();
+
+  const ensureBucket = (name) => {
+    const normalized = normalizeDriver(name);
+    if (!normalized) return null;
+    if (!buckets.has(normalized)) {
+      buckets.set(normalized, { name: name?.trim() || normalized, daily: [], wallets: [] });
+    }
+    return buckets.get(normalized);
+  };
+
+  dailyEntries.forEach((entry) => {
+    const bucket = ensureBucket(entry.driver);
+    if (bucket) bucket.daily.push(entry);
+  });
+
+  weeklyWallets.forEach((wallet) => {
+    const bucket = ensureBucket(wallet.driver);
+    if (bucket) bucket.wallets.push(wallet);
+  });
+
+  return buckets;
+};
+
 // --- AGGREGATION HELPERS (SERVER-SIDE DASHBOARD SUMMARY) ---
 const formatWeekRange = (startDate, endDate) => {
   const start = new Date(`${startDate}T00:00:00Z`);
@@ -141,9 +166,10 @@ const calculateWalletWeek = (wallet) => {
   return earnings + refund - (diff + cash + charges);
 };
 
-const calculateDriverStatsServer = (driverName, allDaily, allWallets, sortedSlabs) => {
-  const driverWallets = allWallets.filter((w) => normalizeDriver(w.driver) === normalizeDriver(driverName));
-  const driverDaily = allDaily.filter((d) => normalizeDriver(d.driver) === normalizeDriver(driverName));
+const calculateDriverStatsServer = (driverName, driverDaily, driverWallets, sortedSlabs) => {
+  if (!driverName) {
+    return null;
+  }
 
   let totalCollection = 0;
   let totalRent = 0;
@@ -1278,14 +1304,11 @@ app.get('/api/summary', async (req, res) => {
     }));
     const sortedSlabs = (rentalSlabs.length ? rentalSlabs : defaultDriverRentalSlabs).sort((a, b) => a.minTrips - b.minTrips);
 
-    const drivers = Array.from(new Set([
-      ...dailyEntries.map((d) => d.driver).filter(Boolean),
-      ...weeklyWallets.map((w) => w.driver).filter(Boolean)
-    ])).sort();
-
-    const driverSummaries = drivers.map((driver) =>
-      calculateDriverStatsServer(driver, dailyEntries, weeklyWallets, sortedSlabs)
-    );
+    const driverBuckets = buildDriverBuckets(dailyEntries, weeklyWallets);
+    const driverSummaries = Array.from(driverBuckets.values())
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(({ name, daily, wallets }) => calculateDriverStatsServer(name, daily, wallets, sortedSlabs))
+      .filter(Boolean);
 
     const global = {
       totalCollection: driverSummaries.reduce((sum, d) => sum + d.totalCollection, 0),

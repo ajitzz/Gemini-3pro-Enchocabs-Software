@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS daily_entries (
 
 -- Strict: only one entry per driver per date (case-insensitive on driver name)
 CREATE UNIQUE INDEX IF NOT EXISTS daily_entries_driver_date_key ON daily_entries (LOWER(driver), date);
+CREATE INDEX IF NOT EXISTS daily_entries_date_idx ON daily_entries (date);
+CREATE INDEX IF NOT EXISTS daily_entries_driver_idx ON daily_entries (LOWER(driver));
 
 -- 4. Weekly Wallets Table (Calculations & Manual Overrides)
 CREATE TABLE IF NOT EXISTS weekly_wallets (
@@ -59,6 +61,9 @@ CREATE TABLE IF NOT EXISTS weekly_wallets (
   adjustments NUMERIC DEFAULT 0,
   notes TEXT
 );
+
+CREATE INDEX IF NOT EXISTS weekly_wallets_start_date_idx ON weekly_wallets (week_start_date);
+CREATE INDEX IF NOT EXISTS weekly_wallets_driver_idx ON weekly_wallets (LOWER(driver));
 
 -- 5. Driver Billings Table (Finalized/Saved Bills)
 CREATE TABLE IF NOT EXISTS driver_billings (
