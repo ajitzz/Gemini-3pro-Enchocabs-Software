@@ -542,6 +542,33 @@ const DriverPortalPage: React.FC = () => {
       return dateString.split('-').reverse().join('-');
   };
 
+  const toISODate = (date: Date) => date.toISOString().slice(0, 10);
+
+  const getWalletOverlapRatio = (
+      weekStart: string,
+      weekEnd: string,
+      rangeStart: string,
+      rangeEnd: string
+  ) => {
+      const dayMs = 24 * 60 * 60 * 1000;
+      const toUtc = (value: string) => new Date(`${value}T00:00:00Z`).getTime();
+
+      const weekStartMs = toUtc(weekStart);
+      const weekEndMs = toUtc(weekEnd);
+      const rangeStartMs = toUtc(rangeStart);
+      const rangeEndMs = toUtc(rangeEnd);
+
+      const overlapStart = Math.max(weekStartMs, rangeStartMs);
+      const overlapEnd = Math.min(weekEndMs, rangeEndMs);
+
+      if (overlapEnd < overlapStart || weekEndMs < weekStartMs) return 0;
+
+      const overlapDays = Math.floor((overlapEnd - overlapStart) / dayMs) + 1;
+      const totalDays = Math.floor((weekEndMs - weekStartMs) / dayMs) + 1;
+
+      return totalDays > 0 ? overlapDays / totalDays : 0;
+  };
+
   const calculateWalletWeek = (wallet: WeeklyWallet) => {
       const earnings = Number(wallet.earnings) || 0;
       const refund = Number(wallet.refund) || 0;
@@ -551,6 +578,12 @@ const DriverPortalPage: React.FC = () => {
 
       return earnings + refund - (diff + cash + charges);
   };
+
+  const calculateWalletForRange = (
+      wallet: WeeklyWallet,
+      rangeStart: string,
+      rangeEnd: string
+  ) => calculateWalletWeek(wallet) * getWalletOverlapRatio(wallet.weekStartDate, wallet.weekEndDate, rangeStart, rangeEnd);
 
   // --- 1. BILLING CALCULATION ENGINE ---
   const billingData = useMemo(() => {
@@ -706,8 +739,8 @@ const DriverPortalPage: React.FC = () => {
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
 
-        const monthStart = new Date(currentYear, currentMonth, 1);
-        const monthEnd = new Date(currentYear, currentMonth + 1, 0);
+        const monthStart = new Date(Date.UTC(currentYear, currentMonth, 1));
+        const monthEnd = new Date(Date.UTC(currentYear, currentMonth + 1, 0));
 
         let monthCollection = 0;
         let monthRent = 0;
@@ -772,7 +805,9 @@ const DriverPortalPage: React.FC = () => {
 
         const monthEarningsTotal = currentMonthWeeks.reduce((sum, w) => sum + (w.earnings || 0), 0);
         const monthEarningRanges = currentMonthWeeks.map(w => `${formatDate(w.weekStartDate)} - ${formatDate(w.weekEndDate)}`);
-        monthWallet = currentMonthWeeks.reduce((sum, w) => sum + calculateWalletWeek(w), 0);
+        const monthRangeStart = toISODate(monthStart);
+        const monthRangeEnd = toISODate(monthEnd);
+        monthWallet = currentMonthWeeks.reduce((sum, w) => sum + calculateWalletForRange(w, monthRangeStart, monthRangeEnd), 0);
 
         const monthDaily = rawDaily.filter(entry => {
             const d = new Date(entry.date);
@@ -854,8 +889,10 @@ const DriverPortalPage: React.FC = () => {
                 rangePayout += (entry.payout || 0);
             });
 
-            rangeWallet = rangeWeekly.reduce((sum, week) => sum + calculateWalletWeek(week), 0);
             rangeEarnings = rangeWeekly.reduce((sum, week) => sum + (week.earnings || 0), 0);
+            const rangeStartISO = toISODate(rangeStartDate);
+            const rangeEndISO = toISODate(rangeEndDate);
+            rangeWallet = rangeWeekly.reduce((sum, week) => sum + calculateWalletForRange(week, rangeStartISO, rangeEndISO), 0);
         }
 
         // Latest Week Details
