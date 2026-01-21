@@ -197,6 +197,20 @@ const DriverPortalPage: React.FC = () => {
       });
   }, [dailyWithAdjustments, fromDate, toDate]);
 
+  const filteredWeekly = useMemo(() => {
+      const start = fromDate ? new Date(`${fromDate}T00:00:00`).getTime() : null;
+      const end = toDate ? new Date(`${toDate}T23:59:59`).getTime() : null;
+
+      return rawWeekly.filter(week => {
+          const weekStart = new Date(week.weekStartDate).getTime();
+          const weekEnd = new Date(week.weekEndDate).getTime();
+
+          if (start !== null && weekEnd < start) return false;
+          if (end !== null && weekStart > end) return false;
+          return true;
+      });
+  }, [fromDate, rawWeekly, toDate]);
+
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
   useEffect(() => {
@@ -631,25 +645,46 @@ const DriverPortalPage: React.FC = () => {
   }, [viewingAsDriver, rawDaily, rawWeekly, rentalSlabs]);
 
   const openCalculationPopup = (metric: 'netPayout' | 'netBalance') => {
-      if (!driverStats) return;
+      if (!viewingAsDriver) return;
+
+      const activeStats = isDateFilterActive
+          ? storageService.calculateDriverStats(viewingAsDriver.name, filteredDaily, filteredWeekly, rentalSlabs)
+          : driverStats;
+
+      if (!activeStats) return;
+
+      const filterStart = fromDate ? new Date(`${fromDate}T00:00:00`) : null;
+      const filterEnd = toDate ? new Date(`${toDate}T23:59:59`) : null;
+      const dailyDates = filteredDaily.map(entry => new Date(entry.date));
+      const weeklyStarts = filteredWeekly.map(week => new Date(week.weekStartDate));
+      const weeklyEnds = filteredWeekly.map(week => new Date(week.weekEndDate));
+      const rangeStart = filterStart ?? (dailyDates.length || weeklyStarts.length
+          ? [...dailyDates, ...weeklyStarts].reduce((min, date) => (date < min ? date : min))
+          : undefined);
+      const rangeEnd = filterEnd ?? (dailyDates.length || weeklyEnds.length
+          ? [...dailyDates, ...weeklyEnds].reduce((max, date) => (date > max ? date : max))
+          : undefined);
+      const rangeLabel = isDateFilterActive ? formatShortRange(rangeStart, rangeEnd) : undefined;
 
       setCalcPopup({
           metric,
           values: {
-              collection: driverStats.totalCollection,
-              rent: driverStats.totalRent,
-              fuel: driverStats.totalFuel,
-              due: driverStats.totalDue,
-              wallet: driverStats.totalWalletWeek,
-              payout: driverStats.totalPayout
+              collection: activeStats.totalCollection,
+              rent: activeStats.totalRent,
+              fuel: activeStats.totalFuel,
+              due: activeStats.totalDue,
+              wallet: activeStats.totalWalletWeek,
+              payout: activeStats.totalPayout
           },
-          netValue: metric === 'netPayout' ? driverStats.netPayout : driverStats.finalTotal,
+          netValue: metric === 'netPayout' ? activeStats.netPayout : activeStats.finalTotal,
           title: `${metric === 'netPayout' ? 'Net Payout' : 'Net Balance'}${viewingAsDriver ? ` • ${viewingAsDriver.name}` : ''}`,
-          sourceNote: metric === 'netPayout'
-              ? (driverStats.netPayoutSource === 'latest-wallet' && driverStats.netPayoutRange
-                  ? `Using the latest wallet window (${driverStats.netPayoutRange}) to stay conservative.`
-                  : 'Using overall balance across all recorded activity.')
-              : 'Overall balance across all recorded activity.'
+          sourceNote: isDateFilterActive
+              ? `Using filtered activity${rangeLabel ? ` (${rangeLabel})` : ''}.`
+              : metric === 'netPayout'
+                  ? (activeStats.netPayoutSource === 'latest-wallet' && activeStats.netPayoutRange
+                      ? `Using the latest wallet window (${activeStats.netPayoutRange}) to stay conservative.`
+                      : 'Using overall balance across all recorded activity.')
+                  : 'Overall balance across all recorded activity.'
       });
   };
 
