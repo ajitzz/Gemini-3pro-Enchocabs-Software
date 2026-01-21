@@ -189,6 +189,31 @@ const DriverPortalPage: React.FC = () => {
       });
   }, [dailyWithAdjustments, fromDate, toDate]);
 
+  const weeklyWalletByEntryId = useMemo(() => {
+      const map = new Map<string, WeeklyWallet>();
+      if (!dailyWithAdjustments.length || !rawWeekly.length) {
+          return map;
+      }
+
+      rawWeekly.forEach(wallet => {
+          const relevantDaily = dailyWithAdjustments.filter(entry =>
+              entry.driver === wallet.driver &&
+              entry.date >= wallet.weekStartDate &&
+              entry.date <= wallet.weekEndDate
+          );
+
+          if (!relevantDaily.length) return;
+
+          const latestEntry = relevantDaily.reduce((latest, entry) => (
+              entry.date > latest.date ? entry : latest
+          ), relevantDaily[0]);
+
+          map.set(latestEntry.id, wallet);
+      });
+
+      return map;
+  }, [dailyWithAdjustments, rawWeekly]);
+
   const filteredWeekly = useMemo(() => {
       const start = fromDate ? new Date(`${fromDate}T00:00:00`).getTime() : null;
       const end = toDate ? new Date(`${toDate}T23:59:59`).getTime() : null;
@@ -1736,7 +1761,7 @@ const DriverPortalPage: React.FC = () => {
                                           </span>
                                       </div>
 
-                                      <div className="grid grid-cols-3 gap-2 text-[10px] text-slate-500 bg-slate-50/50 p-2 rounded-lg">
+                                      <div className="grid grid-cols-4 gap-2 text-[10px] text-slate-500 bg-slate-50/50 p-2 rounded-lg">
                                           <div>
                                               <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Rent</span>
                                               {formatCurrency(entry.rent)}
@@ -1747,7 +1772,7 @@ const DriverPortalPage: React.FC = () => {
                                           </div>
                                           <div>
                                               <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Due</span>
-                                              <div className="flex flex-col items-end gap-0.5">
+                                              <div className="flex flex-col items-start gap-0.5">
                                                   <span className={adjustedDue !== 0 ? (adjustedDue > 0 ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold') : ''}>
                                                       {adjustedDue > 0 ? '+' : ''}{adjustedDue}
                                                   </span>
@@ -1757,6 +1782,27 @@ const DriverPortalPage: React.FC = () => {
                                                       </span>
                                                   ) : null}
                                               </div>
+                                          </div>
+                                          <div>
+                                              {(() => {
+                                                  const weeklyWallet = weeklyWalletByEntryId.get(entry.id);
+                                                  if (!weeklyWallet) return null;
+                                                  const walletAmount = calculateWalletWeek(weeklyWallet);
+                                                  const walletColor = walletAmount === 0
+                                                      ? ''
+                                                      : walletAmount > 0
+                                                          ? 'text-emerald-600 font-bold'
+                                                          : 'text-rose-600 font-bold';
+
+                                                  return (
+                                                      <>
+                                                          <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Wallet</span>
+                                                          <span className={walletColor}>
+                                                              {formatCurrency(walletAmount)}
+                                                          </span>
+                                                      </>
+                                                  );
+                                              })()}
                                           </div>
                                       </div>
                                   </div>
