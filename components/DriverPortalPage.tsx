@@ -581,6 +581,15 @@ const DriverPortalPage: React.FC = () => {
       return dateString.split('-').reverse().join('-');
   };
 
+  const getAdjustedDue = useCallback((entry: DailyEntry | PortalDailyEntry) => {
+      const adjusted = (entry as PortalDailyEntry).adjustedDue;
+      if (typeof adjusted === 'number') {
+          return adjusted;
+      }
+
+      return entry.due;
+  }, []);
+
   const calculateWalletWeek = (wallet: WeeklyWallet) => {
       const earnings = Number(wallet.earnings) || 0;
       const refund = Number(wallet.refund) || 0;
@@ -599,7 +608,7 @@ const DriverPortalPage: React.FC = () => {
        const startDate = new Date(wallet.weekStartDate);
        const endDate = new Date(wallet.weekEndDate);
        
-       const relevantDaily = rawDaily.filter(d => {
+       const relevantDaily = dailyWithAdjustments.filter(d => {
           const entryDate = new Date(d.date);
           return entryDate >= startDate && entryDate <= endDate;
        });
@@ -627,7 +636,7 @@ const DriverPortalPage: React.FC = () => {
 
        const collection = relevantDaily.reduce((sum, d) => sum + d.collection, 0);
        const fuel = relevantDaily.reduce((sum, d) => sum + d.fuel, 0);
-       const overdue = relevantDaily.reduce((sum, d) => sum + d.due, 0);
+       const overdue = relevantDaily.reduce((sum, d) => sum + getAdjustedDue(d), 0);
        const walletAmount = calculateWalletWeek(wallet);
        const grossEarnings = wallet.earnings || 0; 
 
@@ -661,7 +670,7 @@ const DriverPortalPage: React.FC = () => {
            isAdjusted: !!slab || (wallet.rentOverride !== undefined && wallet.rentOverride !== null)
        };
     });
-  }, [rawWeekly, rawDaily, rentalSlabs, viewingAsDriver]);
+  }, [dailyWithAdjustments, rawWeekly, rentalSlabs, viewingAsDriver]);
 
   // --- 2. BALANCE CALCULATION ---
   const driverStats = useMemo(() => {
@@ -778,7 +787,7 @@ const DriverPortalPage: React.FC = () => {
         let yearCollection = 0;
         let monthTrips = 0;
 
-        rawDaily.forEach(entry => {
+        dailyWithAdjustments.forEach(entry => {
             const d = new Date(entry.date);
             const eYear = d.getFullYear();
             const eMonth = d.getMonth();
@@ -792,7 +801,7 @@ const DriverPortalPage: React.FC = () => {
                     monthRent += entry.rent;
                     monthFuel += entry.fuel;
                     monthPayout += (entry.payout || 0);
-                    totalDues += entry.due;
+                    totalDues += getAdjustedDue(entry);
                 }
             }
 
@@ -908,7 +917,7 @@ const DriverPortalPage: React.FC = () => {
             rangeDaily.forEach(entry => {
                 rangeCollection += entry.collection;
                 rangeRent += entry.rent;
-                rangeDues += entry.due;
+                rangeDues += getAdjustedDue(entry);
                 rangeFuel += entry.fuel;
                 rangePayout += (entry.payout || 0);
             });
@@ -953,7 +962,7 @@ const DriverPortalPage: React.FC = () => {
             rangeWalletWeeksLabel,
             rangeSummary,
         };
-    }, [filteredDaily, fromDate, isDateFilterActive, rawDaily, rawWeekly, rentalSlabs, toDate, viewingAsDriver]);
+    }, [dailyWithAdjustments, filteredDaily, fromDate, getAdjustedDue, isDateFilterActive, rawDaily, rawWeekly, rentalSlabs, toDate, viewingAsDriver]);
 
   // --- 4. DYNAMIC CARD DATA ---
     const topCards = useMemo(() => {
@@ -1102,7 +1111,7 @@ const DriverPortalPage: React.FC = () => {
           <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #334155;">${formatCurrency(d.rent)}</td>
           <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #16a34a;">${formatCurrency(d.collection)}</td>
           <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #dc2626;">${formatCurrency(d.fuel)}</td>
-          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #334155;">${formatCurrency(d.due)}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #334155;">${formatCurrency(getAdjustedDue(d))}</td>
         </tr>
       `).join('');
 
@@ -1733,7 +1742,7 @@ const DriverPortalPage: React.FC = () => {
                           <div className="p-8 text-center text-slate-400 text-sm">No daily records found for the selected dates.</div>
                       ) : (
                           filteredDaily.map(entry => {
-                              const adjustedDue = entry.adjustedDue ?? entry.due;
+                                      const adjustedDue = getAdjustedDue(entry);
 
                               return (
                                   <div key={entry.id} className="p-4 hover:bg-slate-50 transition-colors">
