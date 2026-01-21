@@ -723,8 +723,6 @@ const DriverPortalPage: React.FC = () => {
             const eYear = d.getFullYear();
             const eMonth = d.getMonth();
 
-            totalDues += entry.due;
-
             // Current Year
             if (eYear === currentYear) {
                 yearCollection += entry.collection;
@@ -734,6 +732,7 @@ const DriverPortalPage: React.FC = () => {
                     monthRent += entry.rent;
                     monthFuel += entry.fuel;
                     monthPayout += (entry.payout || 0);
+                    totalDues += entry.due;
                 }
             }
 
