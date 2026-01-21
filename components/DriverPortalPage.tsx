@@ -76,7 +76,15 @@ const DriverPortalPage: React.FC = () => {
   const activeTabMeta = tabOptions.find(tab => tab.key === activeTab) || tabOptions[0];
   const ActiveTabIcon = activeTabMeta.icon;
 
-  const isDateFilterActive = useMemo(() => Boolean(fromDate || toDate), [fromDate, toDate]);
+  const isDateFilterActive = useMemo(() => {
+      if (fromDate && toDate) {
+          const start = new Date(fromDate);
+          const end = new Date(toDate);
+          return start.getTime() !== end.getTime();
+      }
+
+      return Boolean(fromDate || toDate);
+  }, [fromDate, toDate]);
 
   const formatShortRange = (startDate?: Date, endDate?: Date) => {
       if (!startDate || !endDate) return undefined;
@@ -639,22 +647,11 @@ const DriverPortalPage: React.FC = () => {
   const openCalculationPopup = (metric: 'netPayout' | 'netBalance') => {
       if (!viewingAsDriver) return;
 
-      const filteredValues = {
-          collection: filteredDaily.reduce((sum, entry) => sum + entry.collection, 0),
-          rent: filteredDaily.reduce((sum, entry) => sum + entry.rent, 0),
-          fuel: filteredDaily.reduce((sum, entry) => sum + entry.fuel, 0),
-          due: filteredDaily.reduce((sum, entry) => sum + (entry.adjustedDue ?? entry.due), 0),
-          wallet: filteredWeekly.reduce((sum, week) => sum + calculateWalletWeek(week), 0),
-          payout: filteredDaily.reduce((sum, entry) => sum + (entry.payout || 0), 0)
-      };
-
-      const filteredNetValue = filteredValues.collection - filteredValues.rent - filteredValues.fuel + filteredValues.due + filteredValues.wallet - filteredValues.payout;
-
       const activeStats = isDateFilterActive
           ? storageService.calculateDriverStats(viewingAsDriver.name, filteredDaily, filteredWeekly, rentalSlabs)
           : driverStats;
 
-      if (!activeStats && !isDateFilterActive) return;
+      if (!activeStats) return;
 
       const filterStart = fromDate ? new Date(`${fromDate}T00:00:00`) : null;
       const filterEnd = toDate ? new Date(`${toDate}T23:59:59`) : null;
@@ -671,26 +668,20 @@ const DriverPortalPage: React.FC = () => {
 
       setCalcPopup({
           metric,
-          values: isDateFilterActive
-              ? filteredValues
-              : {
-                  collection: activeStats?.totalCollection ?? 0,
-                  rent: activeStats?.totalRent ?? 0,
-                  fuel: activeStats?.totalFuel ?? 0,
-                  due: activeStats?.totalDue ?? 0,
-                  wallet: activeStats?.totalWalletWeek ?? 0,
-                  payout: activeStats?.totalPayout ?? 0
-              },
-          netValue: isDateFilterActive
-              ? filteredNetValue
-              : metric === 'netPayout'
-                  ? activeStats?.netPayout ?? 0
-                  : activeStats?.finalTotal ?? 0,
+          values: {
+              collection: activeStats.totalCollection,
+              rent: activeStats.totalRent,
+              fuel: activeStats.totalFuel,
+              due: activeStats.totalDue,
+              wallet: activeStats.totalWalletWeek,
+              payout: activeStats.totalPayout
+          },
+          netValue: metric === 'netPayout' ? activeStats.netPayout : activeStats.finalTotal,
           title: `${metric === 'netPayout' ? 'Net Payout' : 'Net Balance'}${viewingAsDriver ? ` • ${viewingAsDriver.name}` : ''}`,
           sourceNote: isDateFilterActive
               ? `Using filtered activity${rangeLabel ? ` (${rangeLabel})` : ''}.`
               : metric === 'netPayout'
-                  ? (activeStats?.netPayoutSource === 'latest-wallet' && activeStats?.netPayoutRange
+                  ? (activeStats.netPayoutSource === 'latest-wallet' && activeStats.netPayoutRange
                       ? `Using the latest wallet window (${activeStats.netPayoutRange}) to stay conservative.`
                       : 'Using overall balance across all recorded activity.')
                   : 'Overall balance across all recorded activity.'
