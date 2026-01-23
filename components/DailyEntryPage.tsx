@@ -1153,7 +1153,8 @@ const DailyEntryPage: React.FC = () => {
                 </th>
                 <th className="px-6 py-4 font-semibold tracking-wider min-w-[180px]">
                     <div className="flex items-center gap-1">
-                        <span>Driver /</span>
+                        <ColumnFilter columnKey="driver" label="Driver" data={entriesWithAdjustments} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} />
+                        <span className="text-slate-300">/</span>
                         <ColumnFilter columnKey="qrCode" label="QR" data={entriesWithAdjustments} activeFilters={columnFilters} onFilterChange={handleColumnFilterChange} />
                     </div>
                 </th>
