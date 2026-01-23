@@ -299,6 +299,7 @@ const DriverBillingsPage: React.FC = () => {
                   rentTotal: 0,
                   collection: 0,
                   due: 0,
+                  adjustments: 0,
                   fuel: 0,
                   wallet: 0,
                   walletOverdue: 0,
@@ -320,6 +321,7 @@ const DriverBillingsPage: React.FC = () => {
               entry.rentTotal += (bill.rentTotal || 0);
               entry.collection += (bill.collection || 0);
               entry.due += dueVal;
+              entry.adjustments += (bill.appliedAdjustment || 0);
               entry.fuel += (bill.fuel || 0);
               entry.wallet += (bill.wallet || 0);
               entry.walletOverdue += ovr;
@@ -328,7 +330,8 @@ const DriverBillingsPage: React.FC = () => {
 
           return Array.from(aggMap.values()).map(e => ({
               ...e,
-              rentPerDay: e.daysWorked > 0 ? e.rentTotal / e.daysWorked : 0
+              rentPerDay: e.daysWorked > 0 ? e.rentTotal / e.daysWorked : 0,
+              appliedAdjustment: e.adjustments
           }));
       }
 
@@ -366,6 +369,7 @@ const DriverBillingsPage: React.FC = () => {
           acc.rentTotal += bill.rentTotal || 0;
           acc.collection += bill.collection || 0;
           acc.due += bill.due || 0;
+          acc.adjustments += bill.appliedAdjustment || 0;
           acc.fuel += bill.fuel || 0;
           acc.wallet += deriveWalletWeek(bill);
           acc.walletOverdue += bill.walletOverdue || 0;
@@ -377,6 +381,7 @@ const DriverBillingsPage: React.FC = () => {
           rentTotal: 0,
           collection: 0,
           due: 0,
+          adjustments: 0,
           fuel: 0,
           wallet: 0,
           walletOverdue: 0,
@@ -389,6 +394,7 @@ const DriverBillingsPage: React.FC = () => {
           rentTotal: Math.round(totals.rentTotal),
           collection: Math.round(totals.collection),
           due: Math.round(totals.due),
+          adjustments: Math.round(totals.adjustments),
           fuel: Math.round(totals.fuel),
           wallet: Math.round(totals.wallet),
           walletOverdue: Math.round(totals.walletOverdue),
@@ -719,6 +725,7 @@ const DriverBillingsPage: React.FC = () => {
                           <td className="px-6 py-3 text-right text-rose-600">-{formatIntegerCurrency(billingTotals.rentTotal)}</td>
                           <td className="px-6 py-3 text-right text-emerald-600">+{formatIntegerCurrency(billingTotals.collection)}</td>
                           <td className="px-6 py-3 text-right">{formatIntegerCurrency(billingTotals.due)}</td>
+                          <td className="px-6 py-3 text-right text-indigo-600">+{formatIntegerCurrency(billingTotals.adjustments)}</td>
                           <td className="px-6 py-3 text-right text-rose-500">-{formatIntegerCurrency(billingTotals.fuel)}</td>
                           <td className="px-6 py-3 text-right text-indigo-600">+{formatIntegerCurrency(billingTotals.wallet)}</td>
                           <td className="px-6 py-3 text-right">{formatIntegerCurrency(billingTotals.walletOverdue)}</td>
@@ -835,6 +842,7 @@ const DriverBillingsPage: React.FC = () => {
                              <th className="px-6 py-4 text-right">RENT TOTAL</th>
                              <th className="px-6 py-4 text-right">COLLECTION</th>
                              <th className="px-6 py-4 text-right">DUE</th>
+                             <th className="px-6 py-4 text-right">ADJUSTMENT</th>
                              <th className="px-6 py-4 text-right">FUEL</th>
                              <th className="px-6 py-4 text-right">WALLET</th>
                              <th className="px-6 py-4 text-right">WALLET OVERDUE</th>
@@ -844,7 +852,7 @@ const DriverBillingsPage: React.FC = () => {
                        </thead>
                        <tbody className="divide-y divide-slate-100">
                           {displayedBills.length === 0 ? (
-                             <tr><td colSpan={13} className="p-12 text-center text-slate-400">No billings found for this week.</td></tr>
+                             <tr><td colSpan={14} className="p-12 text-center text-slate-400">No billings found for this week.</td></tr>
                           ) : (
                              displayedBills.map((bill) => (
                                 <React.Fragment key={bill.id}>
@@ -878,6 +886,16 @@ const DriverBillingsPage: React.FC = () => {
                                    <td className="px-6 py-4 text-right font-bold text-emerald-600">+{formatCurrency(bill.collection)}</td>
                                    <td className="px-6 py-4 text-right text-slate-600">
                                        <span>{formatCurrency(bill.due)}</span>
+                                   </td>
+                                   <td className="px-6 py-4 text-right">
+                                      {bill.appliedAdjustment ? (
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-700 border border-indigo-100">
+                                          <span className="text-[9px] uppercase tracking-wide text-indigo-400">Adj</span>
+                                          +{formatCurrency(bill.appliedAdjustment)}
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-300">—</span>
+                                      )}
                                    </td>
                                    <td className="px-6 py-4 text-right text-rose-500">-{formatCurrency(bill.fuel)}</td>
                                    <td className="px-6 py-4 text-right text-indigo-600">
@@ -926,7 +944,7 @@ const DriverBillingsPage: React.FC = () => {
                                 </tr>
                                 {expandedBillIds.has(bill.id) && (
                                   <tr key={`${bill.id}-expanded`}>
-                                      <td colSpan={13} className="px-6 py-4 bg-slate-50/50 shadow-inner">
+                                      <td colSpan={14} className="px-6 py-4 bg-slate-50/50 shadow-inner">
                                           <div className="text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Daily Breakdown for {bill.driver}</div>
                                           <table className="w-full text-xs bg-white rounded-lg border border-slate-200 overflow-hidden">
                                               <thead className="bg-slate-100 text-slate-500 font-semibold">
@@ -1082,4 +1100,3 @@ const DriverBillingsPage: React.FC = () => {
 };
 
 export default DriverBillingsPage;
-
