@@ -1761,7 +1761,7 @@ const DriverPortalPage: React.FC = () => {
                                           </span>
                                       </div>
 
-                                      <div className="grid grid-cols-4 gap-2 text-[10px] text-slate-500 bg-slate-50/50 p-2 rounded-lg">
+                                      <div className="grid grid-cols-5 gap-2 text-[10px] text-slate-500 bg-slate-50/50 p-2 rounded-lg">
                                           <div>
                                               <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Rent</span>
                                               {formatCurrency(entry.rent)}
@@ -1803,6 +1803,17 @@ const DriverPortalPage: React.FC = () => {
                                                       </>
                                                   );
                                               })()}
+                                          </div>
+                                          <div>
+                                              <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Payout</span>
+                                              <div className="flex flex-col items-start gap-0.5">
+                                                  <span className="text-slate-600 font-semibold">
+                                                      {typeof entry.payout === 'number' ? formatCurrency(entry.payout) : '—'}
+                                                  </span>
+                                                  <span className="text-[9px] text-slate-400">
+                                                      {entry.payoutDate ? formatDate(entry.payoutDate) : '—'}
+                                                  </span>
+                                              </div>
                                           </div>
                                       </div>
                                   </div>
