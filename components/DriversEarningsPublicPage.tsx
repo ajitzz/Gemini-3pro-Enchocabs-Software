@@ -176,193 +176,197 @@ const DriversEarningsPublicPage: React.FC = () => {
   }
 
   return (
-    <div className="space-y-12 px-4 sm:px-6 lg:px-10 max-w-7xl mx-auto">
-      <section className="relative overflow-hidden rounded-[32px] bg-slate-950 text-white p-6 sm:p-8 lg:p-12 shadow-[0_45px_120px_-60px_rgba(15,23,42,0.7)]">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.4),_transparent_60%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,_rgba(14,165,233,0.3),_transparent_55%)]" />
-        <div className="absolute -right-12 top-10 h-40 w-40 rounded-full bg-indigo-500/20 blur-3xl" />
-        <div className="absolute -left-14 bottom-12 h-48 w-48 rounded-full bg-sky-400/20 blur-3xl" />
-        <div className="relative z-10 grid gap-10 lg:grid-cols-[1.15fr_0.85fr] items-start">
-          <div className="space-y-6 max-w-2xl">
-            <div className="inline-flex items-center gap-2 bg-white/10 px-4 py-2 rounded-full text-[11px] uppercase tracking-[0.3em] text-indigo-200">
-              <Sparkles size={14} /> Public Driver Earnings
+    <div className="min-h-screen bg-slate-50">
+      <div className="mx-auto w-full space-y-10 px-5 py-8 sm:px-8 sm:py-10 lg:px-[8vw] lg:py-[8vh]">
+        <section className="relative overflow-hidden rounded-[28px] sm:rounded-[32px] lg:rounded-[36px] bg-slate-950 text-white p-6 sm:p-8 lg:p-12 shadow-[0_45px_120px_-60px_rgba(15,23,42,0.7)]">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.4),_transparent_60%)]" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,_rgba(14,165,233,0.3),_transparent_55%)]" />
+          <div className="absolute -right-14 top-6 h-40 w-40 rounded-full bg-indigo-500/20 blur-3xl" />
+          <div className="absolute -left-16 bottom-10 h-44 w-44 rounded-full bg-sky-400/20 blur-3xl" />
+          <div className="relative z-10 grid gap-10 lg:grid-cols-[1.1fr_0.9fr] items-start">
+            <div className="space-y-6">
+              <div className="inline-flex items-center gap-2 bg-white/10 px-4 py-2 rounded-full text-[11px] uppercase tracking-[0.3em] text-indigo-200">
+                <Sparkles size={14} /> Public Driver Earnings
+              </div>
+              <div className="space-y-4">
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold leading-tight">
+                  Reimagined earnings clarity for every active Encho Cabs driver.
+                </h1>
+                <p className="text-slate-300 text-sm sm:text-base max-w-xl">
+                  Stay aligned on weekly wallet trends, month-on-month totals, and personalized highlights designed to
+                  read beautifully on mobile and desktop.
+                </p>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="bg-white/10 border border-white/10 rounded-2xl px-5 py-4">
+                  <p className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Monthly Earnings</p>
+                  <p className="text-2xl font-semibold mt-2">{formatCurrency(summary.totalMonthly)}</p>
+                </div>
+                <div className="bg-white/10 border border-white/10 rounded-2xl px-5 py-4">
+                  <p className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Latest Week Total</p>
+                  <p className="text-2xl font-semibold mt-2">{formatCurrency(summary.totalWeekly)}</p>
+                </div>
+                <div className="bg-white/10 border border-white/10 rounded-2xl px-5 py-4">
+                  <p className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Active Drivers</p>
+                  <p className="text-2xl font-semibold mt-2">{summary.activeDrivers}</p>
+                </div>
+              </div>
             </div>
             <div className="space-y-4">
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold leading-tight">
-                Real-time earnings insight for every active Encho Cabs driver.
-              </h1>
-              <p className="text-slate-300 text-sm sm:text-base max-w-xl">
-                Track weekly wallet movements, month-on-month totals, and personal performance snapshots. Built for
-                mobile clarity and desktop depth.
-              </p>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div className="bg-white/10 border border-white/10 rounded-2xl px-5 py-4">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Monthly Earnings</p>
-                <p className="text-2xl font-semibold mt-2">{formatCurrency(summary.totalMonthly)}</p>
-              </div>
-              <div className="bg-white/10 border border-white/10 rounded-2xl px-5 py-4">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Latest Week Total</p>
-                <p className="text-2xl font-semibold mt-2">{formatCurrency(summary.totalWeekly)}</p>
-              </div>
-              <div className="bg-white/10 border border-white/10 rounded-2xl px-5 py-4">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Active Drivers</p>
-                <p className="text-2xl font-semibold mt-2">{summary.activeDrivers}</p>
-              </div>
-            </div>
-          </div>
-          <div className="space-y-4">
-            {summary.topEarner && (
-              <div className="bg-white/10 border border-white/10 rounded-3xl p-6 flex flex-col gap-4">
-                <div>
-                  <p className="text-[11px] uppercase tracking-[0.2em] text-indigo-200">Top Earner</p>
-                  <h2 className="text-2xl font-semibold mt-3 break-words">{summary.topEarner.name}</h2>
-                  <p className="text-slate-300 text-sm mt-1">Current month earnings</p>
+              {summary.topEarner && (
+                <div className="bg-white/10 border border-white/10 rounded-3xl p-6 flex flex-col gap-4">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-indigo-200">Top Earner</p>
+                    <h2 className="text-2xl font-semibold mt-3 break-words">{summary.topEarner.name}</h2>
+                    <p className="text-slate-300 text-sm mt-1">Current month earnings</p>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-3xl font-semibold">{formatCurrency(summary.topEarner.currentMonth)}</span>
+                    <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-200">
+                      <ArrowUpRight size={20} />
+                    </div>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-3xl font-semibold">{formatCurrency(summary.topEarner.currentMonth)}</span>
-                  <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-200">
-                    <ArrowUpRight size={20} />
+              )}
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+                <div className="rounded-3xl border border-white/10 bg-white/5 p-5 flex items-center gap-4">
+                  <div className="h-12 w-12 rounded-2xl bg-white/10 flex items-center justify-center text-indigo-100">
+                    <BadgeIndianRupee size={20} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-indigo-100">Avg monthly / driver</p>
+                    <p className="text-lg font-semibold">{formatCurrency(summary.averageMonthly)}</p>
+                  </div>
+                </div>
+                <div className="rounded-3xl border border-white/10 bg-white/5 p-5 flex items-center gap-4">
+                  <div className="h-12 w-12 rounded-2xl bg-white/10 flex items-center justify-center text-indigo-100">
+                    <TrendingUp size={20} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-indigo-100">Best recent week</p>
+                    <p className="text-lg font-semibold break-words">
+                      {summary.bestWeek.name ? `${summary.bestWeek.name} · ${formatCurrency(summary.bestWeek.amount)}` : '-'}
+                    </p>
+                  </div>
+                </div>
+                <div className="rounded-3xl border border-white/10 bg-white/5 p-5 flex items-center gap-4">
+                  <div className="h-12 w-12 rounded-2xl bg-white/10 flex items-center justify-center text-indigo-100">
+                    <Users size={20} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-indigo-100">Drivers tracked</p>
+                    <p className="text-lg font-semibold">{summary.activeDrivers}</p>
                   </div>
                 </div>
               </div>
-            )}
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
-              <div className="rounded-3xl border border-white/10 bg-white/5 p-5 flex items-center gap-4">
-                <div className="h-12 w-12 rounded-2xl bg-white/10 flex items-center justify-center text-indigo-100">
-                  <BadgeIndianRupee size={20} />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[11px] uppercase tracking-[0.2em] text-indigo-100">Avg monthly / driver</p>
-                  <p className="text-lg font-semibold">{formatCurrency(summary.averageMonthly)}</p>
-                </div>
-              </div>
-              <div className="rounded-3xl border border-white/10 bg-white/5 p-5 flex items-center gap-4">
-                <div className="h-12 w-12 rounded-2xl bg-white/10 flex items-center justify-center text-indigo-100">
-                  <TrendingUp size={20} />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[11px] uppercase tracking-[0.2em] text-indigo-100">Best recent week</p>
-                  <p className="text-lg font-semibold break-words">
-                    {summary.bestWeek.name ? `${summary.bestWeek.name} · ${formatCurrency(summary.bestWeek.amount)}` : '-'}
-                  </p>
-                </div>
-              </div>
-              <div className="rounded-3xl border border-white/10 bg-white/5 p-5 flex items-center gap-4">
-                <div className="h-12 w-12 rounded-2xl bg-white/10 flex items-center justify-center text-indigo-100">
-                  <Users size={20} />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[11px] uppercase tracking-[0.2em] text-indigo-100">Drivers tracked</p>
-                  <p className="text-lg font-semibold">{summary.activeDrivers}</p>
-                </div>
-              </div>
             </div>
           </div>
-        </div>
-      </section>
-
-      <section className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-        {driverEarnings.map(driver => (
-          <div
-            key={driver.name}
-            className="bg-white border border-slate-200/70 rounded-[28px] shadow-[0_24px_60px_-35px_rgba(15,23,42,0.35)] p-6 flex flex-col gap-6"
-          >
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="flex items-center gap-4 min-w-0">
-                <div className="h-12 w-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm font-semibold">
-                  {getInitials(driver.name)}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Driver</p>
-                  <h3 className="text-xl font-semibold text-slate-900 mt-1 break-words">{driver.name}</h3>
-                  <p className="text-xs text-slate-400 mt-1">Total earnings: {formatCurrency(driver.totalEarned)}</p>
-                </div>
-              </div>
-              <div className="sm:text-right">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">This Month</p>
-                <p className="text-lg font-semibold text-indigo-600 mt-2">{formatCurrency(driver.currentMonth)}</p>
-              </div>
-            </div>
-
-            <div className="grid gap-4 xl:grid-cols-2">
-              <div className="rounded-2xl border border-slate-200 p-4 bg-slate-50">
-                <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-widest">
-                  <Calendar size={14} /> Monthly breakdown
-                </div>
-                <div className="mt-3 space-y-2">
-                  {driver.monthly.map(month => (
-                    <div key={month.label} className="flex items-center justify-between text-sm gap-2">
-                      <span className="text-slate-500">{month.label}</span>
-                      <span className="font-semibold text-slate-900 whitespace-nowrap">{formatCurrency(month.amount)}</span>
-                    </div>
-                  ))}
-                  {!driver.monthly.length && <p className="text-xs text-slate-400">No monthly data yet</p>}
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 p-4 bg-slate-50">
-                <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-widest">
-                  <Wallet size={14} /> Weekly breakdown
-                </div>
-                <div className="mt-3 space-y-2">
-                  {driver.weekly.map(week => (
-                    <div key={week.label} className="flex items-center justify-between text-sm gap-2">
-                      <span className="text-slate-500">{week.label}</span>
-                      <span className="font-semibold text-slate-900 whitespace-nowrap">{formatCurrency(week.amount)}</span>
-                    </div>
-                  ))}
-                  {!driver.weekly.length && <p className="text-xs text-slate-400">No weekly data yet</p>}
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-white p-4">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-widest">
-                <Clock size={14} /> Micro analysis
-              </div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-xl bg-slate-50 p-3">
-                  <p className="text-xs text-slate-400 uppercase tracking-widest">Weekly avg</p>
-                  <p className="text-lg font-semibold text-slate-900 mt-1">{formatCurrency(driver.weeklyAverage)}</p>
-                </div>
-                <div className="rounded-xl bg-slate-50 p-3">
-                  <p className="text-xs text-slate-400 uppercase tracking-widest">Monthly avg</p>
-                  <p className="text-lg font-semibold text-slate-900 mt-1">{formatCurrency(driver.monthlyAverage)}</p>
-                </div>
-                <div className="rounded-xl bg-slate-50 p-3">
-                  <p className="text-xs text-slate-400 uppercase tracking-widest">Highest week</p>
-                  <p className="text-sm font-semibold text-slate-900 mt-1">
-                    {driver.highestWeek.label ? `${driver.highestWeek.label} · ${formatCurrency(driver.highestWeek.amount)}` : '-'}
-                  </p>
-                </div>
-                <div className="rounded-xl bg-slate-50 p-3">
-                  <p className="text-xs text-slate-400 uppercase tracking-widest">Highest month</p>
-                  <p className="text-sm font-semibold text-slate-900 mt-1">
-                    {driver.highestMonthEntry.label
-                      ? `${driver.highestMonthEntry.label} · ${formatCurrency(driver.highestMonthEntry.amount)}`
-                      : '-'}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-4 border-t border-slate-200 flex items-center justify-between text-sm text-slate-500">
-              <span>Latest weekly wallet earnings</span>
-              <span className="inline-flex items-center gap-1 text-indigo-500 font-semibold">
-                View details <ChevronRight size={16} />
-              </span>
-            </div>
-          </div>
-        ))}
-      </section>
-
-      {driverEarnings.length === 0 && (
-        <section className="text-center py-16 text-slate-500">
-          <p className="text-lg font-semibold">No weekly wallet earnings available yet.</p>
-          <p className="text-sm mt-2">Add weekly wallet entries to highlight driver earnings on this public page.</p>
         </section>
-      )}
+
+        <section className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+          {driverEarnings.map(driver => (
+            <div
+              key={driver.name}
+              className="bg-white border border-slate-200/70 rounded-[30px] shadow-[0_24px_60px_-35px_rgba(15,23,42,0.35)] p-6 flex flex-col gap-6"
+            >
+              <div className="flex flex-col gap-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-4 min-w-0">
+                    <div className="h-12 w-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm font-semibold">
+                      {getInitials(driver.name)}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Driver</p>
+                      <h3 className="text-xl font-semibold text-slate-900 mt-1 break-words">{driver.name}</h3>
+                      <p className="text-xs text-slate-400 mt-1">Total earnings: {formatCurrency(driver.totalEarned)}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">This Month</p>
+                    <p className="text-lg font-semibold text-indigo-600 mt-2">{formatCurrency(driver.currentMonth)}</p>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-slate-200 p-4 bg-slate-50">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-widest">
+                      <Calendar size={14} /> Monthly breakdown
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {driver.monthly.map(month => (
+                        <div key={month.label} className="flex items-center justify-between text-sm gap-2">
+                          <span className="text-slate-500">{month.label}</span>
+                          <span className="font-semibold text-slate-900 whitespace-nowrap">{formatCurrency(month.amount)}</span>
+                        </div>
+                      ))}
+                      {!driver.monthly.length && <p className="text-xs text-slate-400">No monthly data yet</p>}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 p-4 bg-slate-50">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-widest">
+                      <Wallet size={14} /> Weekly breakdown
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {driver.weekly.map(week => (
+                        <div key={week.label} className="flex items-center justify-between text-sm gap-2">
+                          <span className="text-slate-500">{week.label}</span>
+                          <span className="font-semibold text-slate-900 whitespace-nowrap">{formatCurrency(week.amount)}</span>
+                        </div>
+                      ))}
+                      {!driver.weekly.length && <p className="text-xs text-slate-400">No weekly data yet</p>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-widest">
+                  <Clock size={14} /> Micro analysis
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl bg-slate-50 p-3">
+                    <p className="text-xs text-slate-400 uppercase tracking-widest">Weekly avg</p>
+                    <p className="text-lg font-semibold text-slate-900 mt-1">{formatCurrency(driver.weeklyAverage)}</p>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3">
+                    <p className="text-xs text-slate-400 uppercase tracking-widest">Monthly avg</p>
+                    <p className="text-lg font-semibold text-slate-900 mt-1">{formatCurrency(driver.monthlyAverage)}</p>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3">
+                    <p className="text-xs text-slate-400 uppercase tracking-widest">Highest week</p>
+                    <p className="text-sm font-semibold text-slate-900 mt-1">
+                      {driver.highestWeek.label ? `${driver.highestWeek.label} · ${formatCurrency(driver.highestWeek.amount)}` : '-'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3">
+                    <p className="text-xs text-slate-400 uppercase tracking-widest">Highest month</p>
+                    <p className="text-sm font-semibold text-slate-900 mt-1">
+                      {driver.highestMonthEntry.label
+                        ? `${driver.highestMonthEntry.label} · ${formatCurrency(driver.highestMonthEntry.amount)}`
+                        : '-'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-slate-200 flex items-center justify-between text-sm text-slate-500">
+                <span>Latest weekly wallet earnings</span>
+                <span className="inline-flex items-center gap-1 text-indigo-500 font-semibold">
+                  View details <ChevronRight size={16} />
+                </span>
+              </div>
+            </div>
+          ))}
+        </section>
+
+        {driverEarnings.length === 0 && (
+          <section className="text-center py-16 text-slate-500">
+            <p className="text-lg font-semibold">No weekly wallet earnings available yet.</p>
+            <p className="text-sm mt-2">Add weekly wallet entries to highlight driver earnings on this public page.</p>
+          </section>
+        )}
+      </div>
     </div>
   );
 };
