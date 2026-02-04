@@ -177,15 +177,15 @@ const DriversEarningsPublicPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto w-full space-y-12 px-[8vw] py-[8vh]">
-        <section className="relative overflow-hidden rounded-[36px] bg-slate-950 text-white p-6 sm:p-8 lg:p-12 shadow-[0_45px_120px_-60px_rgba(15,23,42,0.7)]">
+      <div className="mx-auto w-full max-w-[1440px] space-y-10 px-[3vw] py-[3vh]">
+        <section className="relative overflow-hidden rounded-[28px] sm:rounded-[36px] bg-slate-950 text-white shadow-[0_45px_120px_-60px_rgba(15,23,42,0.7)]">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.4),_transparent_60%)]" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,_rgba(14,165,233,0.3),_transparent_55%)]" />
-          <div className="absolute -right-14 top-6 h-40 w-40 rounded-full bg-indigo-500/20 blur-3xl" />
-          <div className="absolute -left-16 bottom-10 h-44 w-44 rounded-full bg-sky-400/20 blur-3xl" />
-          <div className="relative z-10 grid gap-10 lg:grid-cols-[1.1fr_0.9fr] items-start">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,_rgba(14,165,233,0.35),_transparent_55%)]" />
+          <div className="absolute -right-10 top-6 h-36 w-36 rounded-full bg-indigo-500/25 blur-3xl" />
+          <div className="absolute -left-10 bottom-8 h-40 w-40 rounded-full bg-sky-400/25 blur-3xl" />
+          <div className="relative z-10 grid gap-10 px-6 py-8 sm:px-10 sm:py-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
             <div className="space-y-6">
-              <div className="inline-flex items-center gap-2 bg-white/10 px-4 py-2 rounded-full text-[11px] uppercase tracking-[0.3em] text-indigo-200">
+              <div className="inline-flex items-center gap-2 bg-white/10 px-4 py-2 rounded-full text-[10px] sm:text-[11px] uppercase tracking-[0.28em] text-indigo-200">
                 <Sparkles size={14} /> Public Driver Earnings
               </div>
               <div className="space-y-4">
@@ -267,7 +267,7 @@ const DriversEarningsPublicPage: React.FC = () => {
           {driverEarnings.map(driver => (
             <div
               key={driver.name}
-              className="bg-white border border-slate-200/70 rounded-[30px] shadow-[0_24px_60px_-35px_rgba(15,23,42,0.35)] p-6 flex flex-col gap-6"
+              className="bg-white border border-slate-200/70 rounded-[26px] shadow-[0_24px_60px_-35px_rgba(15,23,42,0.35)] p-5 sm:p-6 flex flex-col gap-6"
             >
               <div className="flex flex-col gap-5">
                 <div className="flex items-start justify-between gap-4">
@@ -289,7 +289,7 @@ const DriversEarningsPublicPage: React.FC = () => {
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="rounded-2xl border border-slate-200 p-4 bg-slate-50">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-widest">
+                    <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-widest">
                       <Calendar size={14} /> Monthly breakdown
                     </div>
                     <div className="mt-3 space-y-2">
@@ -304,7 +304,7 @@ const DriversEarningsPublicPage: React.FC = () => {
                   </div>
 
                   <div className="rounded-2xl border border-slate-200 p-4 bg-slate-50">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-widest">
+                    <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-widest">
                       <Wallet size={14} /> Weekly breakdown
                     </div>
                     <div className="mt-3 space-y-2">
@@ -321,7 +321,7 @@ const DriversEarningsPublicPage: React.FC = () => {
               </div>
 
               <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-widest">
+                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-widest">
                   <Clock size={14} /> Micro analysis
                 </div>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -350,7 +350,7 @@ const DriversEarningsPublicPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-slate-200 flex items-center justify-between text-sm text-slate-500">
+              <div className="pt-4 border-t border-slate-200 flex flex-col gap-2 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
                 <span>Latest weekly wallet earnings</span>
                 <span className="inline-flex items-center gap-1 text-indigo-500 font-semibold">
                   View details <ChevronRight size={16} />
