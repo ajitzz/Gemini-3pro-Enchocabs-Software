@@ -1,5 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { TrendingUp, Calendar, Wallet, ChevronRight, Sparkles, ArrowUpRight } from 'lucide-react';
+import {
+  TrendingUp,
+  Calendar,
+  Wallet,
+  ChevronRight,
+  Sparkles,
+  ArrowUpRight,
+  BadgeIndianRupee,
+  Users,
+  Clock
+} from 'lucide-react';
 import { storageService } from '../services/storageService';
 import { Driver, WeeklyWallet } from '../types';
 
@@ -18,6 +28,14 @@ const formatWeekRange = (start: string, end: string) => {
 
 const formatMonthLabel = (dateStr: string) =>
   new Date(dateStr).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+
+const getInitials = (name: string) =>
+  name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part[0]?.toUpperCase())
+    .join('');
 
 const DriversEarningsPublicPage: React.FC = () => {
   const [wallets, setWallets] = useState<WeeklyWallet[]>([]);
@@ -78,6 +96,23 @@ const DriversEarningsPublicPage: React.FC = () => {
           amount: Number(wallet.earnings) || 0
         }));
 
+        const totalEarned = driverWallets.reduce((acc, wallet) => acc + (Number(wallet.earnings) || 0), 0);
+        const weeklyAverage = driverWallets.length ? totalEarned / driverWallets.length : 0;
+        const monthlyAverage = monthlyMap.size
+          ? Array.from(monthlyMap.values()).reduce((acc, amount) => acc + amount, 0) / monthlyMap.size
+          : 0;
+        const highestWeek = driverWallets.reduce((max, wallet) => {
+          const amount = Number(wallet.earnings) || 0;
+          return amount > max.amount
+            ? { label: formatWeekRange(wallet.weekStartDate, wallet.weekEndDate), amount }
+            : max;
+        }, { label: '', amount: 0 });
+        const highestMonthEntry = Array.from(monthlyMap.entries()).reduce(
+          (max, [monthKey, amount]) =>
+            amount > max.amount ? { label: formatMonthLabel(`${monthKey}-01`), amount } : max,
+          { label: '', amount: 0 }
+        );
+
         const currentMonthKey = new Date().toISOString().slice(0, 7);
         const currentMonth = monthlyMap.get(currentMonthKey) || 0;
         const recentWeek = weekly[0]?.amount || 0;
@@ -87,7 +122,12 @@ const DriversEarningsPublicPage: React.FC = () => {
           currentMonth,
           recentWeek,
           monthly,
-          weekly
+          weekly,
+          totalEarned,
+          weeklyAverage,
+          monthlyAverage,
+          highestWeek,
+          highestMonthEntry
         };
       })
       .filter(driver => driver.monthly.length || driver.weekly.length)
@@ -98,10 +138,18 @@ const DriversEarningsPublicPage: React.FC = () => {
     const totalMonthly = driverEarnings.reduce((acc, driver) => acc + driver.currentMonth, 0);
     const totalWeekly = driverEarnings.reduce((acc, driver) => acc + driver.recentWeek, 0);
     const topEarner = driverEarnings[0];
+    const bestWeek = driverEarnings.reduce(
+      (max, driver) => (driver.recentWeek > max.amount ? { amount: driver.recentWeek, name: driver.name } : max),
+      { amount: 0, name: '' }
+    );
+    const averageMonthly = driverEarnings.length ? totalMonthly / driverEarnings.length : 0;
     return {
       totalMonthly,
       totalWeekly,
-      topEarner
+      topEarner,
+      bestWeek,
+      averageMonthly,
+      activeDrivers: driverEarnings.length
     };
   }, [driverEarnings]);
 
@@ -129,56 +177,101 @@ const DriversEarningsPublicPage: React.FC = () => {
 
   return (
     <div className="space-y-12">
-      <section className="relative overflow-hidden rounded-3xl bg-slate-900 text-white p-10 md:p-14 shadow-2xl">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.35),_transparent_60%)]" />
-        <div className="relative z-10 flex flex-col lg:flex-row gap-10 items-start justify-between">
+      <section className="relative overflow-hidden rounded-[32px] bg-slate-950 text-white p-10 md:p-14 shadow-[0_45px_120px_-60px_rgba(15,23,42,0.7)]">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.4),_transparent_55%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,_rgba(14,165,233,0.35),_transparent_55%)]" />
+        <div className="relative z-10 grid gap-10 lg:grid-cols-[1.1fr_0.9fr] items-start">
           <div className="space-y-6 max-w-2xl">
-            <div className="inline-flex items-center gap-2 bg-white/10 px-3 py-1 rounded-full text-xs uppercase tracking-[0.2em] text-indigo-200">
+            <div className="inline-flex items-center gap-2 bg-white/10 px-4 py-2 rounded-full text-xs uppercase tracking-[0.2em] text-indigo-200">
               <Sparkles size={14} /> Public Driver Earnings
             </div>
             <h1 className="text-3xl md:text-4xl lg:text-5xl font-semibold leading-tight">
-              Transparent weekly and monthly earnings for every active driver.
+              Weekly and monthly earnings, micro-tracked for every active driver.
             </h1>
             <p className="text-slate-300 text-sm md:text-base">
-              This page showcases real weekly wallet earnings so new drivers can understand their potential income at Encho Cabs. Review weekly performance and monthly totals in one modern dashboard.
+              Transparent wallet data helps future drivers understand earning patterns at Encho Cabs. Scan weekly
+              movements, monthly totals, and performance cadence in one focused dashboard.
             </p>
-            <div className="flex flex-wrap gap-4">
-              <div className="bg-white/10 border border-white/10 rounded-2xl px-5 py-4 min-w-[160px]">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="bg-white/10 border border-white/10 rounded-2xl px-5 py-4">
                 <p className="text-xs uppercase tracking-widest text-slate-300">Monthly Earnings</p>
                 <p className="text-2xl font-semibold mt-2">{formatCurrency(summary.totalMonthly)}</p>
               </div>
-              <div className="bg-white/10 border border-white/10 rounded-2xl px-5 py-4 min-w-[160px]">
+              <div className="bg-white/10 border border-white/10 rounded-2xl px-5 py-4">
                 <p className="text-xs uppercase tracking-widest text-slate-300">Latest Week Total</p>
                 <p className="text-2xl font-semibold mt-2">{formatCurrency(summary.totalWeekly)}</p>
               </div>
+              <div className="bg-white/10 border border-white/10 rounded-2xl px-5 py-4">
+                <p className="text-xs uppercase tracking-widest text-slate-300">Active Drivers</p>
+                <p className="text-2xl font-semibold mt-2">{summary.activeDrivers}</p>
+              </div>
             </div>
           </div>
-          {summary.topEarner && (
-            <div className="bg-white/10 border border-white/10 rounded-3xl p-6 w-full max-w-sm">
-              <p className="text-xs uppercase tracking-widest text-indigo-200">Top Earner</p>
-              <h2 className="text-2xl font-semibold mt-3">{summary.topEarner.name}</h2>
-              <p className="text-slate-300 text-sm mt-1">Current month earnings</p>
-              <div className="flex items-center justify-between mt-5">
-                <span className="text-3xl font-semibold">{formatCurrency(summary.topEarner.currentMonth)}</span>
-                <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-200">
-                  <ArrowUpRight size={20} />
+          <div className="space-y-4">
+            {summary.topEarner && (
+              <div className="bg-white/10 border border-white/10 rounded-3xl p-6">
+                <p className="text-xs uppercase tracking-widest text-indigo-200">Top Earner</p>
+                <h2 className="text-2xl font-semibold mt-3">{summary.topEarner.name}</h2>
+                <p className="text-slate-300 text-sm mt-1">Current month earnings</p>
+                <div className="flex items-center justify-between mt-5">
+                  <span className="text-3xl font-semibold">{formatCurrency(summary.topEarner.currentMonth)}</span>
+                  <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-200">
+                    <ArrowUpRight size={20} />
+                  </div>
                 </div>
               </div>
-              <div className="mt-4 text-xs text-slate-400 flex items-center gap-2">
-                <TrendingUp size={14} /> Weekly earnings are updated from the wallet reports.
+            )}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+              <div className="rounded-3xl border border-white/10 bg-white/5 p-5 flex items-center gap-4">
+                <div className="h-12 w-12 rounded-2xl bg-white/10 flex items-center justify-center text-indigo-100">
+                  <BadgeIndianRupee size={20} />
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-widest text-indigo-100">Avg monthly / driver</p>
+                  <p className="text-lg font-semibold">{formatCurrency(summary.averageMonthly)}</p>
+                </div>
+              </div>
+              <div className="rounded-3xl border border-white/10 bg-white/5 p-5 flex items-center gap-4">
+                <div className="h-12 w-12 rounded-2xl bg-white/10 flex items-center justify-center text-indigo-100">
+                  <TrendingUp size={20} />
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-widest text-indigo-100">Best recent week</p>
+                  <p className="text-lg font-semibold">
+                    {summary.bestWeek.name ? `${summary.bestWeek.name} · ${formatCurrency(summary.bestWeek.amount)}` : '-'}
+                  </p>
+                </div>
+              </div>
+              <div className="rounded-3xl border border-white/10 bg-white/5 p-5 flex items-center gap-4">
+                <div className="h-12 w-12 rounded-2xl bg-white/10 flex items-center justify-center text-indigo-100">
+                  <Users size={20} />
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-widest text-indigo-100">Drivers tracked</p>
+                  <p className="text-lg font-semibold">{summary.activeDrivers}</p>
+                </div>
               </div>
             </div>
-          )}
+          </div>
         </div>
       </section>
 
       <section className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
         {driverEarnings.map(driver => (
-          <div key={driver.name} className="bg-white border border-slate-200 rounded-3xl shadow-[0_20px_60px_-35px_rgba(15,23,42,0.3)] p-6 flex flex-col gap-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-widest text-slate-400">Driver</p>
-                <h3 className="text-xl font-semibold text-slate-900 mt-2">{driver.name}</h3>
+          <div
+            key={driver.name}
+            className="bg-white border border-slate-200/70 rounded-[28px] shadow-[0_24px_60px_-35px_rgba(15,23,42,0.35)] p-6 flex flex-col gap-6"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="h-12 w-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm font-semibold">
+                  {getInitials(driver.name)}
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-widest text-slate-400">Driver</p>
+                  <h3 className="text-xl font-semibold text-slate-900 mt-1">{driver.name}</h3>
+                  <p className="text-xs text-slate-400 mt-1">Total earnings: {formatCurrency(driver.totalEarned)}</p>
+                </div>
               </div>
               <div className="text-right">
                 <p className="text-xs uppercase tracking-widest text-slate-400">This Month</p>
@@ -186,10 +279,10 @@ const DriversEarningsPublicPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 xl:grid-cols-2">
               <div className="rounded-2xl border border-slate-200 p-4 bg-slate-50">
                 <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-widest">
-                  <Calendar size={14} /> Monthly
+                  <Calendar size={14} /> Monthly breakdown
                 </div>
                 <div className="mt-3 space-y-2">
                   {driver.monthly.map(month => (
@@ -204,7 +297,7 @@ const DriversEarningsPublicPage: React.FC = () => {
 
               <div className="rounded-2xl border border-slate-200 p-4 bg-slate-50">
                 <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-widest">
-                  <Wallet size={14} /> Weekly
+                  <Wallet size={14} /> Weekly breakdown
                 </div>
                 <div className="mt-3 space-y-2">
                   {driver.weekly.map(week => (
@@ -218,9 +311,41 @@ const DriversEarningsPublicPage: React.FC = () => {
               </div>
             </div>
 
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-widest">
+                <Clock size={14} /> Micro analysis
+              </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <p className="text-xs text-slate-400 uppercase tracking-widest">Weekly avg</p>
+                  <p className="text-lg font-semibold text-slate-900 mt-1">{formatCurrency(driver.weeklyAverage)}</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <p className="text-xs text-slate-400 uppercase tracking-widest">Monthly avg</p>
+                  <p className="text-lg font-semibold text-slate-900 mt-1">{formatCurrency(driver.monthlyAverage)}</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <p className="text-xs text-slate-400 uppercase tracking-widest">Highest week</p>
+                  <p className="text-sm font-semibold text-slate-900 mt-1">
+                    {driver.highestWeek.label ? `${driver.highestWeek.label} · ${formatCurrency(driver.highestWeek.amount)}` : '-'}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <p className="text-xs text-slate-400 uppercase tracking-widest">Highest month</p>
+                  <p className="text-sm font-semibold text-slate-900 mt-1">
+                    {driver.highestMonthEntry.label
+                      ? `${driver.highestMonthEntry.label} · ${formatCurrency(driver.highestMonthEntry.amount)}`
+                      : '-'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <div className="pt-4 border-t border-slate-200 flex items-center justify-between text-sm text-slate-500">
               <span>Latest weekly wallet earnings</span>
-              <span className="inline-flex items-center gap-1 text-indigo-500 font-semibold">View details <ChevronRight size={16} /></span>
+              <span className="inline-flex items-center gap-1 text-indigo-500 font-semibold">
+                View details <ChevronRight size={16} />
+              </span>
             </div>
           </div>
         ))}
