@@ -176,13 +176,13 @@ const DriversEarningsPublicPage: React.FC = () => {
   }
 
   return (
-    <div className="space-y-12 px-4 sm:px-6 lg:px-10 xl:px-16 max-w-7xl mx-auto">
-      <section className="relative overflow-hidden rounded-[32px] bg-slate-950 text-white p-8 sm:p-10 md:p-14 shadow-[0_45px_120px_-60px_rgba(15,23,42,0.7)]">
+    <div className="space-y-12">
+      <section className="relative overflow-hidden rounded-[32px] bg-slate-950 text-white p-10 md:p-14 shadow-[0_45px_120px_-60px_rgba(15,23,42,0.7)]">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.4),_transparent_55%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,_rgba(14,165,233,0.35),_transparent_55%)]" />
         <div className="relative z-10 grid gap-10 lg:grid-cols-[1.1fr_0.9fr] items-start">
           <div className="space-y-6 max-w-2xl">
-            <div className="inline-flex items-center gap-2 bg-white/10 px-4 py-2 rounded-full text-[0.65rem] uppercase tracking-[0.28em] text-indigo-200">
+            <div className="inline-flex items-center gap-2 bg-white/10 px-4 py-2 rounded-full text-xs uppercase tracking-[0.2em] text-indigo-200">
               <Sparkles size={14} /> Public Driver Earnings
             </div>
             <h1 className="text-3xl md:text-4xl lg:text-5xl font-semibold leading-tight">
@@ -192,25 +192,25 @@ const DriversEarningsPublicPage: React.FC = () => {
               Transparent wallet data helps future drivers understand earning patterns at Encho Cabs. Scan weekly
               movements, monthly totals, and performance cadence in one focused dashboard.
             </p>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <div className="bg-white/10 border border-white/10 rounded-2xl px-5 py-4 backdrop-blur">
-                <p className="text-[0.6rem] uppercase tracking-[0.3em] text-slate-300">Monthly Earnings</p>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="bg-white/10 border border-white/10 rounded-2xl px-5 py-4">
+                <p className="text-xs uppercase tracking-widest text-slate-300">Monthly Earnings</p>
                 <p className="text-2xl font-semibold mt-2">{formatCurrency(summary.totalMonthly)}</p>
               </div>
-              <div className="bg-white/10 border border-white/10 rounded-2xl px-5 py-4 backdrop-blur">
-                <p className="text-[0.6rem] uppercase tracking-[0.3em] text-slate-300">Latest Week Total</p>
+              <div className="bg-white/10 border border-white/10 rounded-2xl px-5 py-4">
+                <p className="text-xs uppercase tracking-widest text-slate-300">Latest Week Total</p>
                 <p className="text-2xl font-semibold mt-2">{formatCurrency(summary.totalWeekly)}</p>
               </div>
-              <div className="bg-white/10 border border-white/10 rounded-2xl px-5 py-4 backdrop-blur">
-                <p className="text-[0.6rem] uppercase tracking-[0.3em] text-slate-300">Active Drivers</p>
+              <div className="bg-white/10 border border-white/10 rounded-2xl px-5 py-4">
+                <p className="text-xs uppercase tracking-widest text-slate-300">Active Drivers</p>
                 <p className="text-2xl font-semibold mt-2">{summary.activeDrivers}</p>
               </div>
             </div>
           </div>
           <div className="space-y-4">
             {summary.topEarner && (
-              <div className="bg-white/10 border border-white/10 rounded-3xl p-6 backdrop-blur">
-                <p className="text-[0.6rem] uppercase tracking-[0.3em] text-indigo-200">Top Earner</p>
+              <div className="bg-white/10 border border-white/10 rounded-3xl p-6">
+                <p className="text-xs uppercase tracking-widest text-indigo-200">Top Earner</p>
                 <h2 className="text-2xl font-semibold mt-3">{summary.topEarner.name}</h2>
                 <p className="text-slate-300 text-sm mt-1">Current month earnings</p>
                 <div className="flex items-center justify-between mt-5">
@@ -227,7 +227,7 @@ const DriversEarningsPublicPage: React.FC = () => {
                   <BadgeIndianRupee size={20} />
                 </div>
                 <div>
-                  <p className="text-[0.6rem] uppercase tracking-[0.3em] text-indigo-100">Avg monthly / driver</p>
+                  <p className="text-xs uppercase tracking-widest text-indigo-100">Avg monthly / driver</p>
                   <p className="text-lg font-semibold">{formatCurrency(summary.averageMonthly)}</p>
                 </div>
               </div>
@@ -236,7 +236,7 @@ const DriversEarningsPublicPage: React.FC = () => {
                   <TrendingUp size={20} />
                 </div>
                 <div>
-                  <p className="text-[0.6rem] uppercase tracking-[0.3em] text-indigo-100">Best recent week</p>
+                  <p className="text-xs uppercase tracking-widest text-indigo-100">Best recent week</p>
                   <p className="text-lg font-semibold">
                     {summary.bestWeek.name ? `${summary.bestWeek.name} · ${formatCurrency(summary.bestWeek.amount)}` : '-'}
                   </p>
@@ -247,7 +247,7 @@ const DriversEarningsPublicPage: React.FC = () => {
                   <Users size={20} />
                 </div>
                 <div>
-                  <p className="text-[0.6rem] uppercase tracking-[0.3em] text-indigo-100">Drivers tracked</p>
+                  <p className="text-xs uppercase tracking-widest text-indigo-100">Drivers tracked</p>
                   <p className="text-lg font-semibold">{summary.activeDrivers}</p>
                 </div>
               </div>
@@ -260,28 +260,28 @@ const DriversEarningsPublicPage: React.FC = () => {
         {driverEarnings.map(driver => (
           <div
             key={driver.name}
-            className="bg-white/90 border border-slate-200/70 rounded-[28px] shadow-[0_24px_60px_-35px_rgba(15,23,42,0.35)] p-6 flex flex-col gap-6 backdrop-blur"
+            className="bg-white border border-slate-200/70 rounded-[28px] shadow-[0_24px_60px_-35px_rgba(15,23,42,0.35)] p-6 flex flex-col gap-6"
           >
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-4">
                 <div className="h-12 w-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm font-semibold">
                   {getInitials(driver.name)}
                 </div>
                 <div>
-                  <p className="text-[0.6rem] uppercase tracking-[0.3em] text-slate-400">Driver</p>
+                  <p className="text-xs uppercase tracking-widest text-slate-400">Driver</p>
                   <h3 className="text-xl font-semibold text-slate-900 mt-1">{driver.name}</h3>
                   <p className="text-xs text-slate-400 mt-1">Total earnings: {formatCurrency(driver.totalEarned)}</p>
                 </div>
               </div>
-              <div className="sm:text-right">
-                <p className="text-[0.6rem] uppercase tracking-[0.3em] text-slate-400">This Month</p>
+              <div className="text-right">
+                <p className="text-xs uppercase tracking-widest text-slate-400">This Month</p>
                 <p className="text-lg font-semibold text-indigo-600 mt-2">{formatCurrency(driver.currentMonth)}</p>
               </div>
             </div>
 
             <div className="grid gap-4 xl:grid-cols-2">
               <div className="rounded-2xl border border-slate-200 p-4 bg-slate-50">
-                <div className="flex items-center gap-2 text-[0.6rem] font-semibold text-slate-500 uppercase tracking-[0.3em]">
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-widest">
                   <Calendar size={14} /> Monthly breakdown
                 </div>
                 <div className="mt-3 space-y-2">
@@ -296,7 +296,7 @@ const DriversEarningsPublicPage: React.FC = () => {
               </div>
 
               <div className="rounded-2xl border border-slate-200 p-4 bg-slate-50">
-                <div className="flex items-center gap-2 text-[0.6rem] font-semibold text-slate-500 uppercase tracking-[0.3em]">
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-widest">
                   <Wallet size={14} /> Weekly breakdown
                 </div>
                 <div className="mt-3 space-y-2">
@@ -312,26 +312,26 @@ const DriversEarningsPublicPage: React.FC = () => {
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
-              <div className="flex items-center gap-2 text-[0.6rem] font-semibold text-slate-500 uppercase tracking-[0.3em]">
+              <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-widest">
                 <Clock size={14} /> Micro analysis
               </div>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-xl bg-slate-50 p-3">
-                  <p className="text-[0.6rem] text-slate-400 uppercase tracking-[0.3em]">Weekly avg</p>
+                  <p className="text-xs text-slate-400 uppercase tracking-widest">Weekly avg</p>
                   <p className="text-lg font-semibold text-slate-900 mt-1">{formatCurrency(driver.weeklyAverage)}</p>
                 </div>
                 <div className="rounded-xl bg-slate-50 p-3">
-                  <p className="text-[0.6rem] text-slate-400 uppercase tracking-[0.3em]">Monthly avg</p>
+                  <p className="text-xs text-slate-400 uppercase tracking-widest">Monthly avg</p>
                   <p className="text-lg font-semibold text-slate-900 mt-1">{formatCurrency(driver.monthlyAverage)}</p>
                 </div>
                 <div className="rounded-xl bg-slate-50 p-3">
-                  <p className="text-[0.6rem] text-slate-400 uppercase tracking-[0.3em]">Highest week</p>
+                  <p className="text-xs text-slate-400 uppercase tracking-widest">Highest week</p>
                   <p className="text-sm font-semibold text-slate-900 mt-1">
                     {driver.highestWeek.label ? `${driver.highestWeek.label} · ${formatCurrency(driver.highestWeek.amount)}` : '-'}
                   </p>
                 </div>
                 <div className="rounded-xl bg-slate-50 p-3">
-                  <p className="text-[0.6rem] text-slate-400 uppercase tracking-[0.3em]">Highest month</p>
+                  <p className="text-xs text-slate-400 uppercase tracking-widest">Highest month</p>
                   <p className="text-sm font-semibold text-slate-900 mt-1">
                     {driver.highestMonthEntry.label
                       ? `${driver.highestMonthEntry.label} · ${formatCurrency(driver.highestMonthEntry.amount)}`
@@ -341,7 +341,7 @@ const DriversEarningsPublicPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="pt-4 border-t border-slate-200 flex flex-col gap-2 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+            <div className="pt-4 border-t border-slate-200 flex items-center justify-between text-sm text-slate-500">
               <span>Latest weekly wallet earnings</span>
               <span className="inline-flex items-center gap-1 text-indigo-500 font-semibold">
                 View details <ChevronRight size={16} />
