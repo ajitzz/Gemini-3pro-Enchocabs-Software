@@ -17,6 +17,7 @@ import LoginPage from './components/LoginPage';
 import AdminAccessPage from './components/AdminAccessPage';
 import DriverLeadsPage from './components/DriverLeadsPage';
 import HomePage from './components/HomePage';
+import DriversEarningsPublicPage from './components/DriversEarningsPublicPage';
 
 // --- PROTECTED ROUTE WRAPPER ---
 const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode, allowedRoles: string[] }) => {
@@ -206,6 +207,7 @@ const App: React.FC = () => {
         <BrowserRouter>
           <Routes>
               <Route path="/" element={<HomePage />} />
+              <Route path="/drivers-earnings" element={<DriversEarningsPublicPage />} />
               <Route path="/staff" element={<LoginPage />} />
               <Route path="/login" element={<Navigate to="/staff" replace />} />
 
