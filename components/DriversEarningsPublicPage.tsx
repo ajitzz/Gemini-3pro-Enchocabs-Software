@@ -177,8 +177,8 @@ const DriversEarningsPublicPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto w-full space-y-10 px-5 py-8 sm:px-8 sm:py-10 lg:px-[8vw] lg:py-[8vh]">
-        <section className="relative overflow-hidden rounded-[28px] sm:rounded-[32px] lg:rounded-[36px] bg-slate-950 text-white p-6 sm:p-8 lg:p-12 shadow-[0_45px_120px_-60px_rgba(15,23,42,0.7)]">
+      <div className="mx-auto w-full space-y-12 px-[8vw] py-[8vh]">
+        <section className="relative overflow-hidden rounded-[36px] bg-slate-950 text-white p-6 sm:p-8 lg:p-12 shadow-[0_45px_120px_-60px_rgba(15,23,42,0.7)]">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.4),_transparent_60%)]" />
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,_rgba(14,165,233,0.3),_transparent_55%)]" />
           <div className="absolute -right-14 top-6 h-40 w-40 rounded-full bg-indigo-500/20 blur-3xl" />
