@@ -23,6 +23,23 @@ View your app in AI Studio: https://ai.studio/apps/drive/1uujoGkL20G_JOEUoqiymNN
 
 If you enable caching, set `REDIS_URL` (or `UPSTASH_REDIS_URL`) to the raw connection string, **not** a `redis-cli -u ...` command. Managed Redis providers such as Redis Cloud/RedisLabs typically require TLS; use a `rediss://` URL for those hosts. Example: `REDIS_URL=rediss://default:<password>@<host>:<port>`. On Vercel, add this exact `rediss://` value as a project environment variable so the server connects over TLS.
 
+### Session + bot config cache (Upstash Redis)
+
+The API caches authenticated session payloads and bot configuration in Redis to reduce round trips under load. Configure TTLs with:
+
+- `SESSION_CACHE_TTL_SECONDS` (default: 6 hours)
+- `BOT_CONFIG_CACHE_TTL_SECONDS` (default: 10 minutes)
+- `BOT_CONFIG_JSON` (optional JSON string used as a fallback when the cache is empty)
+
+### Throttle control (Upstash QStash)
+
+To offload heavy billing refresh work, you can enqueue refresh jobs in QStash:
+
+- `QSTASH_TOKEN` (or `UPSTASH_QSTASH_TOKEN`) - required to publish.
+- `QSTASH_DRIVER_BILLINGS_REFRESH_URL` - public URL for `POST /api/driver-billings/refresh`.
+- `QSTASH_REFRESH_TOKEN` - optional shared secret sent as `X-Refresh-Token` to protect the refresh endpoint.
+- `QSTASH_REFRESH_DEDUPLICATION_ID` - optional deduplication key (default: `driver-billings-refresh`).
+
 ## Keep the Render service warm (optional)
 
 If you are deploying to Render's free tier and want to reduce cold-start delays, set a `KEEP_ALIVE_URL` environment variable to the deployed URL you want pinged (for example, `https://<your-app>.onrender.com/health`). The server will ping this URL on startup and then every 14 minutes by default (configure with `KEEP_ALIVE_INTERVAL_MINUTES`).
