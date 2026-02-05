@@ -37,6 +37,8 @@ const getInitials = (name: string) =>
     .map(part => part[0]?.toUpperCase())
     .join('');
 
+const formatCurrencyOrDash = (value: number) => (value > 0 ? formatCurrency(value) : '-');
+
 const DriversEarningsPublicPage: React.FC = () => {
   const [wallets, setWallets] = useState<WeeklyWallet[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -218,14 +220,24 @@ const DriversEarningsPublicPage: React.FC = () => {
                   <div>
                     <p className="text-[11px] uppercase tracking-[0.2em] text-indigo-200">Top Earner</p>
                     <h2 className="text-2xl font-semibold mt-3 break-words">{summary.topEarner.name}</h2>
-                    <p className="text-slate-300 text-sm mt-1">Current month earnings</p>
+                    <p className="text-slate-300 text-sm mt-1">This Month</p>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-3xl font-semibold">{formatCurrency(summary.topEarner.currentMonth)}</span>
+                    <span className="text-3xl font-semibold">
+                      {formatCurrencyOrDash(summary.topEarner.currentMonth)}
+                    </span>
                     <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-200">
                       <ArrowUpRight size={20} />
                     </div>
                   </div>
+                  {summary.topEarner.recentWeek > 0 && (
+                    <div className="flex items-center justify-between text-sm text-slate-200/90">
+                      <span className="uppercase tracking-[0.2em] text-[11px] text-indigo-200/80">Recent Week</span>
+                      <span className="font-semibold text-white">
+                        {formatCurrency(summary.topEarner.recentWeek)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
@@ -278,12 +290,18 @@ const DriversEarningsPublicPage: React.FC = () => {
                     <div className="min-w-0">
                       <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Driver</p>
                       <h3 className="text-xl font-semibold text-slate-900 mt-1 break-words">{driver.name}</h3>
-                      <p className="text-xs text-slate-400 mt-1">Total earnings: {formatCurrency(driver.totalEarned)}</p>
+                      {driver.totalEarned > 0 && (
+                        <p className="text-xs text-slate-400 mt-1">
+                          Total earnings: {formatCurrency(driver.totalEarned)}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="text-right">
                     <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">This Month</p>
-                    <p className="text-lg font-semibold text-indigo-600 mt-2">{formatCurrency(driver.currentMonth)}</p>
+                    <p className="text-lg font-semibold text-indigo-600 mt-2">
+                      {formatCurrencyOrDash(driver.currentMonth)}
+                    </p>
                   </div>
                 </div>
 
@@ -293,13 +311,17 @@ const DriversEarningsPublicPage: React.FC = () => {
                       <Calendar size={14} /> Monthly breakdown
                     </div>
                     <div className="mt-3 space-y-2">
-                      {driver.monthly.map(month => (
+                      {driver.monthly
+                        .filter(month => month.amount > 0)
+                        .map(month => (
                         <div key={month.label} className="flex items-center justify-between text-sm gap-2">
                           <span className="text-slate-500">{month.label}</span>
                           <span className="font-semibold text-slate-900 whitespace-nowrap">{formatCurrency(month.amount)}</span>
                         </div>
                       ))}
-                      {!driver.monthly.length && <p className="text-xs text-slate-400">No monthly data yet</p>}
+                      {!driver.monthly.some(month => month.amount > 0) && (
+                        <p className="text-xs text-slate-400">No monthly data yet</p>
+                      )}
                     </div>
                   </div>
 
@@ -308,13 +330,17 @@ const DriversEarningsPublicPage: React.FC = () => {
                       <Wallet size={14} /> Weekly breakdown
                     </div>
                     <div className="mt-3 space-y-2">
-                      {driver.weekly.map(week => (
+                      {driver.weekly
+                        .filter(week => week.amount > 0)
+                        .map(week => (
                         <div key={week.label} className="flex items-center justify-between text-sm gap-2">
                           <span className="text-slate-500">{week.label}</span>
                           <span className="font-semibold text-slate-900 whitespace-nowrap">{formatCurrency(week.amount)}</span>
                         </div>
                       ))}
-                      {!driver.weekly.length && <p className="text-xs text-slate-400">No weekly data yet</p>}
+                      {!driver.weekly.some(week => week.amount > 0) && (
+                        <p className="text-xs text-slate-400">No weekly data yet</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -327,22 +353,28 @@ const DriversEarningsPublicPage: React.FC = () => {
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-xl bg-slate-50 p-3">
                     <p className="text-xs text-slate-400 uppercase tracking-widest">Weekly avg</p>
-                    <p className="text-lg font-semibold text-slate-900 mt-1">{formatCurrency(driver.weeklyAverage)}</p>
+                    <p className="text-lg font-semibold text-slate-900 mt-1">
+                      {formatCurrencyOrDash(driver.weeklyAverage)}
+                    </p>
                   </div>
                   <div className="rounded-xl bg-slate-50 p-3">
                     <p className="text-xs text-slate-400 uppercase tracking-widest">Monthly avg</p>
-                    <p className="text-lg font-semibold text-slate-900 mt-1">{formatCurrency(driver.monthlyAverage)}</p>
+                    <p className="text-lg font-semibold text-slate-900 mt-1">
+                      {formatCurrencyOrDash(driver.monthlyAverage)}
+                    </p>
                   </div>
                   <div className="rounded-xl bg-slate-50 p-3">
                     <p className="text-xs text-slate-400 uppercase tracking-widest">Highest week</p>
                     <p className="text-sm font-semibold text-slate-900 mt-1">
-                      {driver.highestWeek.label ? `${driver.highestWeek.label} · ${formatCurrency(driver.highestWeek.amount)}` : '-'}
+                      {driver.highestWeek.amount > 0
+                        ? `${driver.highestWeek.label} · ${formatCurrency(driver.highestWeek.amount)}`
+                        : '-'}
                     </p>
                   </div>
                   <div className="rounded-xl bg-slate-50 p-3">
                     <p className="text-xs text-slate-400 uppercase tracking-widest">Highest month</p>
                     <p className="text-sm font-semibold text-slate-900 mt-1">
-                      {driver.highestMonthEntry.label
+                      {driver.highestMonthEntry.amount > 0
                         ? `${driver.highestMonthEntry.label} · ${formatCurrency(driver.highestMonthEntry.amount)}`
                         : '-'}
                     </p>
