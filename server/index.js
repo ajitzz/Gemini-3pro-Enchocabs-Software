@@ -6,6 +6,7 @@ const { createHash } = require('crypto');
 const { OAuth2Client } = require('google-auth-library');
 const db = require('./db');
 const { getJSON: getCacheJSON, setJSON: setCacheJSON, deleteKeys: deleteCacheKeys } = require('./cache');
+const { enqueueBillingRefresh, isQStashConfigured } = require('./qstash');
 const app = express();
 
 app.use(cors());
@@ -16,6 +17,9 @@ const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'enchoenterprises@gm
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || '';
 const oauthClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 const KEEP_ALIVE_URL = process.env.KEEP_ALIVE_URL || '';
+const SESSION_CACHE_TTL_SECONDS = Number(process.env.SESSION_CACHE_TTL_SECONDS || 60 * 60 * 6);
+const BOT_CONFIG_CACHE_TTL_SECONDS = Number(process.env.BOT_CONFIG_CACHE_TTL_SECONDS || 60 * 10);
+const BOT_CONFIG_CACHE_KEY = 'driver_app_bot_config_v1';
 // --- HEALTH CHECK ---
 const healthHandler = (_req, res) => {
   res.set('Cache-Control', 'no-store');
@@ -363,6 +367,17 @@ const resetBillingsCache = () => {
 const invalidateKeys = async (...keys) => deleteCacheKeys(keys.filter(Boolean));
 
 const computeEtag = (payload) => createHash('sha1').update(JSON.stringify(payload)).digest('hex');
+const sessionCacheKey = (tokenHash) => `session:${tokenHash}`;
+const getBotConfigFallback = () => {
+  const raw = (process.env.BOT_CONFIG_JSON || process.env.BOT_CONFIG || '').trim();
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    console.warn('BOT_CONFIG_JSON is not valid JSON. Returning null config.');
+    return null;
+  }
+};
 
 const respondWithCacheHeaders = (req, res, payload, etag, cacheStatus, maxAgeSeconds) => {
   if (cacheStatus) {
@@ -1014,6 +1029,13 @@ app.post('/api/auth/google', async (req, res) => {
   }
 
   try {
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    const cachedSession = await getCacheJSON(sessionCacheKey(tokenHash));
+    if (cachedSession) {
+      res.set('X-Cache', 'REDIS');
+      return res.json(cachedSession);
+    }
+
     const ticket = await oauthClient.verifyIdToken({
       idToken: token,
       audience: clientId || GOOGLE_CLIENT_ID || undefined,
@@ -1046,7 +1068,10 @@ app.post('/api/auth/google', async (req, res) => {
       }
     }
 
-    res.json({ email, name, role, photoURL, driverId });
+    const sessionPayload = { email, name, role, photoURL, driverId };
+    await setCacheJSON(sessionCacheKey(tokenHash), sessionPayload, SESSION_CACHE_TTL_SECONDS);
+    res.set('X-Cache', 'MISS');
+    res.json(sessionPayload);
   } catch (err) {
     console.error('Google authentication failed:', err.message || err);
     res.status(401).json({ error: 'Invalid Google token' });
@@ -1076,7 +1101,22 @@ app.get('/api/driver-billings', async (req, res) => {
     const shouldRefresh = String(req.query.refresh || '').toLowerCase() === 'true'
       || String(process.env.SYNC_BILLINGS_ON_READ || '').toLowerCase() === 'true';
     if (shouldRefresh) {
-      await syncDriverBillings();
+      if (isQStashConfigured()) {
+        try {
+          const result = await enqueueBillingRefresh();
+          if (result.queued) {
+            res.set('X-Refresh', 'QSTASH');
+          } else {
+            res.set('X-Refresh', 'SKIPPED');
+            await syncDriverBillings();
+          }
+        } catch (err) {
+          console.error('Failed to enqueue billing refresh:', err.message || err);
+          await syncDriverBillings();
+        }
+      } else {
+        await syncDriverBillings();
+      }
     }
 
     const result = await db.query(`
@@ -1110,6 +1150,22 @@ app.get('/api/driver-billings', async (req, res) => {
   } catch (err) {
     console.error("Error fetching billings:", err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/driver-billings/refresh', async (req, res) => {
+  const expectedToken = (process.env.QSTASH_REFRESH_TOKEN || '').trim();
+  const providedToken = (req.get('x-refresh-token') || '').trim();
+  if (expectedToken && expectedToken !== providedToken) {
+    return res.status(401).json({ error: 'Unauthorized refresh request' });
+  }
+
+  try {
+    await syncDriverBillings();
+    res.json({ refreshed: true });
+  } catch (err) {
+    console.error('Driver billings refresh failed:', err.message || err);
+    res.status(500).json({ error: err.message || 'Refresh failed' });
   }
 });
 
@@ -1787,6 +1843,39 @@ app.post('/api/assets', async (req, res) => {
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
+  }
+});
+
+// --- BOT CONFIG ---
+app.get('/api/bot-config', async (_req, res) => {
+  try {
+    const cached = await getCacheJSON(BOT_CONFIG_CACHE_KEY);
+    if (cached) {
+      res.set('X-Cache', 'REDIS');
+      return res.json({ config: cached });
+    }
+
+    const fallback = getBotConfigFallback();
+    if (fallback !== null) {
+      await setCacheJSON(BOT_CONFIG_CACHE_KEY, fallback, BOT_CONFIG_CACHE_TTL_SECONDS);
+      res.set('X-Cache', 'MISS');
+      return res.json({ config: fallback });
+    }
+
+    res.set('X-Cache', 'MISS');
+    return res.json({ config: null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/bot-config', async (req, res) => {
+  const { config } = req.body || {};
+  try {
+    await setCacheJSON(BOT_CONFIG_CACHE_KEY, config ?? null, BOT_CONFIG_CACHE_TTL_SECONDS);
+    res.json({ config });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
