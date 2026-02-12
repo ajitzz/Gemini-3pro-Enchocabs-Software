@@ -1,17 +1,26 @@
 
 import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping, ManagerAccess, AdminAccess, DriverBillingRecord, CashMode } from '../types';
 
-// logic: Use local proxy in dev (npm run dev), use Render URL in production (Vercel)
+// logic: Use local proxy in dev (npm run dev).
+// In production prefer same-origin `/api` so deployments that host frontend+API together
+// (or route API through a reverse proxy) do not depend on a hard-coded external backend URL.
 const isLocal = ((import.meta as any).env && (import.meta as any).env.DEV) || 
                 (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'));
 
 const getApiBase = () => {
-    if (isLocal) return '/api';
     const env = (import.meta as any).env;
+
+    if (isLocal) return '/api';
+
     if (env && env.VITE_API_URL) {
         return env.VITE_API_URL.replace(/\/$/, '');
     }
-    return 'https://enchocabs-software-orginal-gemini3pro-1.onrender.com/api';
+
+    if (typeof window !== 'undefined' && window.location?.origin) {
+      return `${window.location.origin}/api`;
+    }
+
+    return '/api';
 };
 
 const API_BASE = getApiBase();
