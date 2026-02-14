@@ -113,6 +113,46 @@ const DriverLeadsPage: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  const RESERVED_IMPORT_HEADERS = new Set([
+    'created_time', 'created', 'date',
+    'platform', 'source', 'channel',
+    'full_name', 'name', 'lead_name',
+    'phone', 'contact', 'mobile',
+    'city', 'location',
+    'status', 'lead_status', 'state',
+    'admin', 'owner', 'handler',
+    'note', 'notes', 'update', 'latest_update'
+  ]);
+
+  const parseChatbotVariableValues = (value: any): string[] => {
+    if (value === null || value === undefined) return [];
+    const text = String(value).trim();
+    if (!text) return [];
+
+    if ((text.startsWith('[') && text.endsWith(']')) || (text.startsWith('{') && text.endsWith('}'))) {
+      try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed)) {
+          return parsed
+            .map((item) => {
+              if (item && typeof item === 'object' && 'response' in item) {
+                return String((item as any).response ?? '').trim();
+              }
+              return String(item ?? '').trim();
+            })
+            .filter(Boolean);
+        }
+      } catch {
+        // fallback to delimiter parsing
+      }
+    }
+
+    return text
+      .split(/\s*\|\s*|\s*;\s*/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  };
+
   const activeSheet = useMemo(() => {
     if (!sheets.length) return undefined;
     return sheets.find((s) => s.id === activeSheetId) || sheets[0];
@@ -393,24 +433,68 @@ const DriverLeadsPage: React.FC = () => {
 
   const exportActiveSheet = () => {
     if (!activeSheet) return;
-    const headers = ['Created', 'Lead', 'Phone', 'Status', 'Latest Update', 'Last Touch', 'Note'];
-    const rows = activeSheet.leads.map((lead) => {
-      const statusLabel = mapStatus(activeSheet, lead.statusId)?.label || 'Unknown';
-      const update = latestUpdate(lead);
+    type DriverAggregate = {
+      createdDate: string;
+      lastMessageAt: string;
+      phoneNumber: string;
+      name: string;
+      variables: Record<string, string[]>;
+    };
+
+    const drivers = new Map<string, DriverAggregate>();
+    const flowOrder = [...(activeSheet.chatbotFlowOrder || [])];
+
+    activeSheet.leads.forEach((lead) => {
+      const key = normalizePhone(lead.phone || '') || lead.fullName.trim().toLowerCase();
+      if (!key) return;
+
       const touchDate = latestTouch(lead);
-      const daysAgo = daysSince(touchDate);
-      return [
-        `${lead.createdTime} (Platform: ${lead.platform || '—'})`,
-        `${lead.fullName}${lead.city ? `, ${lead.city}` : ''}`,
-        lead.phone,
-        statusLabel,
-        update ? `${update.date} - ${update.text}` : '',
-        `${touchDate} (${daysAgo === 0 ? 'Today' : `${daysAgo}d ago`})`,
-        lead.note
-      ];
+      if (!drivers.has(key)) {
+        drivers.set(key, {
+          createdDate: lead.createdTime,
+          lastMessageAt: touchDate,
+          phoneNumber: lead.phone,
+          name: lead.fullName,
+          variables: {}
+        });
+      }
+
+      const driver = drivers.get(key)!;
+
+      if (new Date(lead.createdTime).getTime() < new Date(driver.createdDate).getTime()) {
+        driver.createdDate = lead.createdTime;
+      }
+      if (new Date(touchDate).getTime() > new Date(driver.lastMessageAt).getTime()) {
+        driver.lastMessageAt = touchDate;
+        driver.phoneNumber = lead.phone || driver.phoneNumber;
+        driver.name = lead.fullName || driver.name;
+      }
+
+      (lead.chatbotVariableOrder || Object.keys(lead.chatbotVariables || {})).forEach((variableName) => {
+        if (!flowOrder.includes(variableName)) flowOrder.push(variableName);
+      });
+
+      Object.entries(lead.chatbotVariables || {}).forEach(([variableName, values]) => {
+        if (!driver.variables[variableName]) driver.variables[variableName] = [];
+        driver.variables[variableName].push(...(values || []));
+      });
     });
+
+    const headers = ['Created Date', 'Last Message At', 'Phone Number', 'Name', ...flowOrder];
+    const rows = Array.from(drivers.values())
+      .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime())
+      .map((driver) => {
+        const variableCells = flowOrder.map((variableName) => {
+          const responses = (driver.variables[variableName] || []).map((v) => String(v || '').trim()).filter(Boolean);
+          if (!responses.length) return '';
+          return JSON.stringify(responses.map((response, index) => ({ order: index + 1, response })));
+        });
+
+        return [driver.createdDate, driver.lastMessageAt, driver.phoneNumber, driver.name, ...variableCells];
+      });
+
     const sheetLabel = activeSheet.name.trim().replace(/\s+/g, '-').toLowerCase() || 'leads';
-    downloadCSV(headers, rows, `${sheetLabel}-leads`);
+    downloadCSV(headers, rows, `${sheetLabel}-driver-excel-report`);
   };
 
   const mapStatus = (sheet: LeadSheet, statusId: string) => sheet.statuses.find((s) => s.id === statusId);
@@ -518,6 +602,19 @@ const DriverLeadsPage: React.FC = () => {
     const statusMatch = activeSheet?.statuses.find((s) => s.label.toLowerCase() === statusLabel.toLowerCase());
     const statusId = statusMatch ? statusMatch.id : activeSheet?.statuses[0]?.id || DEFAULT_STATUSES[0].id;
 
+    const chatbotVariableOrder: string[] = [];
+    const chatbotVariables: Record<string, string[]> = {};
+    Object.entries(row).forEach(([rawHeader, rawValue]) => {
+      const header = String(rawHeader || '').trim();
+      if (!header || RESERVED_IMPORT_HEADERS.has(header.toLowerCase())) return;
+
+      const values = parseChatbotVariableValues(rawValue);
+      if (!values.length) return;
+
+      chatbotVariableOrder.push(header);
+      chatbotVariables[header] = values;
+    });
+
     const lead: LeadRecord = {
       id: uuidv4(),
       sheetId: activeSheet?.id || '',
@@ -529,6 +626,8 @@ const DriverLeadsPage: React.FC = () => {
       statusId,
       admin: String(get('admin', 'owner', 'handler')).trim() || user?.name || 'Admin',
       note,
+      chatbotVariables,
+      chatbotVariableOrder,
       updates: note
         ? [
             {
@@ -613,7 +712,19 @@ const DriverLeadsPage: React.FC = () => {
     }
 
     const nextLeads = [candidate, ...currentLeads];
-    updateSheet(activeSheet.id, (sheet) => ({ ...sheet, leads: nextLeads }));
+    updateSheet(activeSheet.id, (sheet) => {
+      const flowOrder = [...(sheet.chatbotFlowOrder || [])];
+      const candidateOrder = candidate.chatbotVariableOrder || Object.keys(candidate.chatbotVariables || {});
+      candidateOrder.forEach((variableName) => {
+        if (!flowOrder.includes(variableName)) flowOrder.push(variableName);
+      });
+
+      return {
+        ...sheet,
+        leads: nextLeads,
+        chatbotFlowOrder: flowOrder
+      };
+    });
 
     if (rest.length) {
       return processLeadQueue(rest, nextLeads);

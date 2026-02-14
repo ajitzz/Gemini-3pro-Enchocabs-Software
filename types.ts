@@ -209,6 +209,8 @@ export interface LeadRecord {
   admin: string;
   note?: string;
   updates: LeadUpdate[];
+  chatbotVariables?: Record<string, string[]>;
+  chatbotVariableOrder?: string[];
 }
 
 export interface LeadSheet {
@@ -219,6 +221,7 @@ export interface LeadSheet {
   createdBy?: string;
   statuses: LeadStatus[];
   leads: LeadRecord[];
+  chatbotFlowOrder?: string[];
 }
 
 export type UserRole = 'super_admin' | 'admin' | 'driver';
