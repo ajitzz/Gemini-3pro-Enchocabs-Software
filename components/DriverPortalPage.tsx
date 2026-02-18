@@ -1322,6 +1322,11 @@ const DriverPortalPage: React.FC = () => {
                             <span className={`w-2 h-2  rounded-full ${viewingAsDriver.status === 'Active' ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
                             {viewingAsDriver.vehicle || 'No Vehicle Assigned'}
                         </span>
+                        {viewingAsDriver.vehicleRole && (
+                            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold ${viewingAsDriver.vehicleRole === 'Primary' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-slate-100 border-slate-200 text-slate-600'}`}>
+                                {viewingAsDriver.vehicleRole === 'Primary' ? 'Pri' : 'Sec'}
+                            </span>
+                        )}
                        
                        <button
                             onClick={isAdmin ? toggleCashMode : undefined}

@@ -67,6 +67,7 @@ export interface Driver {
   deposit: number;
   qrCode: string; // Must be unique among active drivers
   vehicle: string; // Max 2 active drivers per vehicle
+  vehicleRole?: 'Primary' | 'Secondary'; // Optional role per vehicle assignment
   status: 'Active' | 'Terminated';
   currentShift: 'Day' | 'Night'; // Default current shift
   defaultRent?: number; // Default daily rent amount

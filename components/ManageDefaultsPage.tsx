@@ -42,6 +42,9 @@ const ManageDefaultsPage: React.FC = () => {
 
   const getActiveDrivers = () => drivers.filter(d => !d.terminationDate);
 
+  const normalizeVehicleRole = (role?: string) => (role === 'Primary' || role === 'Secondary' ? role : undefined);
+  const getOppositeVehicleRole = (role?: string) => role === 'Primary' ? 'Secondary' : role === 'Secondary' ? 'Primary' : undefined;
+
   // --- ASSET MANAGEMENT ---
   const handleAddAsset = async (type: 'vehicles' | 'qrcodes') => {
     if (!newAssetValue.trim()) return;
@@ -105,6 +108,35 @@ const ManageDefaultsPage: React.FC = () => {
             alert(`QR Code ${changes.qrCode} is already assigned to another driver.`);
             return;
         }
+    }
+
+    const targetVehicle = changes.vehicle !== undefined ? changes.vehicle : originalDriver.vehicle;
+    const targetRole = normalizeVehicleRole(changes.vehicleRole !== undefined ? changes.vehicleRole : originalDriver.vehicleRole);
+
+    if (targetVehicle) {
+      const vehicleOccupants = getActiveDrivers().filter(d => {
+        if (d.id === driverId) return false;
+        const pendingVehicle = editState[d.id]?.vehicle !== undefined ? editState[d.id]?.vehicle : d.vehicle;
+        return pendingVehicle === targetVehicle;
+      });
+
+      const currentRoles = vehicleOccupants
+        .map(d => normalizeVehicleRole(editState[d.id]?.vehicleRole !== undefined ? editState[d.id]?.vehicleRole : d.vehicleRole))
+        .filter(Boolean) as Array<'Primary' | 'Secondary'>;
+
+      if (targetRole && currentRoles.includes(targetRole)) {
+        const roleLabel = targetRole === 'Primary' ? 'Primary (Pri)' : 'Secondary (Sec)';
+        alert(`${roleLabel} is already assigned for vehicle ${targetVehicle}.`);
+        return;
+      }
+
+      if (vehicleOccupants.length >= 1 && targetRole) {
+        const counterpart = vehicleOccupants[0];
+        const oppositeRole = getOppositeVehicleRole(targetRole);
+        if (oppositeRole) {
+          await storageService.saveDriver({ ...counterpart, vehicleRole: oppositeRole });
+        }
+      }
     }
 
     const today = new Date().toISOString().split('T')[0];
@@ -267,6 +299,7 @@ const ManageDefaultsPage: React.FC = () => {
                          <th className="px-6 py-4 font-semibold tracking-wider">Driver</th>
                          <th className="px-6 py-4 font-semibold tracking-wider">Default Vehicle</th>
                          <th className="px-6 py-4 font-semibold tracking-wider">Default QR</th>
+                         <th className="px-6 py-4 font-semibold tracking-wider">Pri/Sec</th>
                          <th className="px-6 py-4 font-semibold tracking-wider">Default Shift</th>
                          <th className="px-6 py-4 font-semibold tracking-wider">Default Rent</th>
                          <th className="px-6 py-4 font-semibold text-right tracking-wider">Actions</th>
@@ -279,6 +312,7 @@ const ManageDefaultsPage: React.FC = () => {
                          
                          const displayVehicle = changes.vehicle !== undefined ? changes.vehicle : d.vehicle;
                          const displayQr = changes.qrCode !== undefined ? changes.qrCode : d.qrCode;
+                         const displayRole = changes.vehicleRole !== undefined ? changes.vehicleRole : d.vehicleRole;
                          const displayShift = changes.currentShift !== undefined ? changes.currentShift : d.currentShift;
                          const displayRent = changes.defaultRent !== undefined ? changes.defaultRent : d.defaultRent;
 
@@ -314,6 +348,20 @@ const ManageDefaultsPage: React.FC = () => {
                                         {assets.qrCodes.map(q => (
                                            <option key={q} value={q}>{q}</option>
                                         ))}
+                                     </select>
+                                     <ChevronDown size={14} className="absolute right-3 top-3 text-slate-400 pointer-events-none" />
+                                  </div>
+                               </td>
+                               <td className="px-6 py-4">
+                                  <div className="relative w-32">
+                                     <select
+                                        value={displayRole || ''}
+                                        onChange={e => handleEditChange(d.id, 'vehicleRole', e.target.value || undefined)}
+                                        className="w-full pl-3 pr-8 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
+                                     >
+                                        <option value="">-- Optional --</option>
+                                        <option value="Primary">Pri</option>
+                                        <option value="Secondary">Sec</option>
                                      </select>
                                      <ChevronDown size={14} className="absolute right-3 top-3 text-slate-400 pointer-events-none" />
                                   </div>
