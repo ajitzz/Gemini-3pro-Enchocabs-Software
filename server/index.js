@@ -27,6 +27,8 @@ const healthHandler = (_req, res) => {
 };
 app.get('/health', healthHandler);
 app.head('/health', healthHandler);
+app.get('/api/health', healthHandler);
+app.head('/api/health', healthHandler);
 
 // --- KEEP ALIVE PING (Render free dynos can sleep without traffic) ---
 const startKeepAlive = () => {
