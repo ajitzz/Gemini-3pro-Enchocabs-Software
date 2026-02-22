@@ -12,7 +12,6 @@ CREATE TABLE IF NOT EXISTS drivers (
   deposit NUMERIC DEFAULT 0,
   qr_code TEXT,
   vehicle TEXT,
-  vehicle_role TEXT,
   status TEXT DEFAULT 'Active',
   current_shift TEXT DEFAULT 'Day',
   default_rent NUMERIC DEFAULT 0,

@@ -23,19 +23,6 @@ View your app in AI Studio: https://ai.studio/apps/drive/1uujoGkL20G_JOEUoqiymNN
 
 If you enable caching, set `REDIS_URL` (or `UPSTASH_REDIS_URL`) to the raw connection string, **not** a `redis-cli -u ...` command. Managed Redis providers such as Redis Cloud/RedisLabs typically require TLS; use a `rediss://` URL for those hosts. Example: `REDIS_URL=rediss://default:<password>@<host>:<port>`. On Vercel, add this exact `rediss://` value as a project environment variable so the server connects over TLS.
 
-## API base URL for hosted frontends
-
-If your frontend is deployed on a different host than the Express API (for example, preview deployments), set `VITE_API_URL` (or legacy alias `VITE_API_BASE_URL`) to your backend origin.
-
-Examples:
-
-- `VITE_API_URL=https://api.example.com`
-- `VITE_API_URL=https://api.example.com/api`
-
-The client normalizes both forms to `<origin>/api` and supports both `VITE_API_URL` and `VITE_API_BASE_URL` env names.
-
-If this is unset, browsers call same-origin `/api/...`. If your current host only serves the SPA, API requests will return HTML/404 instead of JSON.
-
 ### Session + bot config cache (Upstash Redis)
 
 The API caches authenticated session payloads and bot configuration in Redis to reduce round trips under load. Configure TTLs with:
@@ -59,7 +46,7 @@ If you are deploying to Render's free tier and want to reduce cold-start delays,
 
 ## Production health monitoring
 
-The API exposes lightweight health endpoints at both `/health` and `/api/health` (same response: `200` + `{ status: 'ok' }`) from both the Edge worker and the Express server. To monitor uptime without adding load:
+The API already exposes a lightweight `/health` endpoint that responds with `200` and `{ status: 'ok' }` from both the Edge worker and the Express server. To monitor uptime without adding load:
 
 1. In UptimeRobot, create an HTTP(s) monitor pointed to `<your-domain>/health`. Both `GET` and `HEAD` respond with `200` and `{ status: 'ok' }`, and they set `Cache-Control: no-store` so you always hit live code.
 2. Set the interval to 5 minutes so the check stays snappy while keeping free-tier allowances in mind.

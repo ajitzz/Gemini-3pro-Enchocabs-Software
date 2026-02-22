@@ -1,7 +1,18 @@
 
 import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping, ManagerAccess, AdminAccess, DriverBillingRecord, CashMode } from '../types';
 
-import { getApiBase } from '../lib/apiBase';
+// logic: Use local proxy in dev (npm run dev), use Render URL in production (Vercel)
+const isLocal = ((import.meta as any).env && (import.meta as any).env.DEV) || 
+                (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'));
+
+const getApiBase = () => {
+    if (isLocal) return '/api';
+    const env = (import.meta as any).env;
+    if (env && env.VITE_API_URL) {
+        return env.VITE_API_URL.replace(/\/$/, '');
+    }
+    return 'https://enchocabs-software-orginal-gemini3pro-1.onrender.com/api';
+};
 
 const API_BASE = getApiBase();
 
@@ -68,37 +79,6 @@ const buildQueryString = (params?: Record<string, string | number | boolean | un
   return query ? `?${query}` : '';
 };
 
-const extractErrorMessage = (response: Response, bodyText: string) => {
-  const contentType = response.headers.get('content-type') || '';
-  if (contentType.includes('text/html') || bodyText.trim().startsWith('<!DOCTYPE') || bodyText.trim().startsWith('<html')) {
-    return 'API returned HTML instead of JSON. Check VITE_API_URL and API rewrites so requests reach the backend service.';
-  }
-
-  try {
-    const parsed = JSON.parse(bodyText);
-    if (parsed && typeof parsed === 'object' && 'error' in parsed && typeof parsed.error === 'string') {
-      return parsed.error;
-    }
-  } catch (_e) {
-    // ignore parse errors here and fall through to generic message
-  }
-
-  return bodyText || `API Error ${response.status}: ${response.statusText}`;
-};
-
-const parseJsonResponse = (response: Response, bodyText: string) => {
-  const contentType = response.headers.get('content-type') || '';
-  if (contentType.includes('text/html') || bodyText.trim().startsWith('<!DOCTYPE') || bodyText.trim().startsWith('<html')) {
-    throw new Error('API returned HTML instead of JSON. Check VITE_API_URL and API rewrites so requests reach the backend service.');
-  }
-
-  try {
-    return bodyText ? JSON.parse(bodyText) : null;
-  } catch (_e) {
-    throw new Error('Received non-JSON response from API. Verify backend endpoint and proxy configuration.');
-  }
-};
-
 const api = {
   get: async (endpoint: string) => {
     const key = getCacheKey(endpoint);
@@ -115,11 +95,13 @@ const api = {
     const request = (async () => {
       try {
         const response = await fetch(`${API_BASE}${endpoint}`);
-        const bodyText = await response.text();
         if (!response.ok) {
-          throw new Error(extractErrorMessage(response, bodyText));
+          const text = await response.text();
+          let msg = `API Error ${response.status}: ${response.statusText}`;
+          try { const json = JSON.parse(text); if(json.error) msg = json.error; } catch(e) {}
+          throw new Error(msg);
         }
-        const payload = parseJsonResponse(response, bodyText);
+        const payload = await response.json();
         responseCache.set(key, { timestamp: Date.now(), ttlMs: getCacheTTL(endpoint), payload });
         return payload;
       } catch (error: any) {
@@ -140,11 +122,13 @@ const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
-      const bodyText = await response.text();
       if (!response.ok) {
-        throw new Error(extractErrorMessage(response, bodyText));
+        const text = await response.text();
+        let msg = `API Error ${response.status}: ${response.statusText}`;
+        try { const json = JSON.parse(text); if(json.error) msg = json.error; } catch(e) {}
+        throw new Error(msg);
       }
-      const payload = parseJsonResponse(response, bodyText);
+      const payload = await response.json();
       invalidateCache(endpoint);
       return payload;
     } catch (error: any) {
@@ -155,9 +139,8 @@ const api = {
   delete: async (endpoint: string) => {
     try {
       const response = await fetch(`${API_BASE}${endpoint}`, { method: 'DELETE' });
-      const bodyText = await response.text();
-      if (!response.ok) throw new Error(extractErrorMessage(response, bodyText));
-      const payload = parseJsonResponse(response, bodyText);
+      if (!response.ok) throw new Error(`API Error ${response.status}`);
+      const payload = await response.json();
       invalidateCache(endpoint);
       return payload;
     } catch (error: any) {
