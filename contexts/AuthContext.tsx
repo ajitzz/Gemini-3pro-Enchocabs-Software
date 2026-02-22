@@ -2,7 +2,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { AdminAccess, AuthUser, UserRole } from '../types';
 import { storageService } from '../services/storageService';
-import { getApiBase } from '../services/apiBase';
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -20,6 +19,21 @@ const ADMIN_CACHE_KEY = 'driver_app_admin_cache_v1';
 const ADMIN_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const VALIDATION_GRACE_MS = 2 * 60 * 1000; // 2 minutes after login/validation
 const WARMUP_TIMEOUT_MS = 4000;
+
+const getApiBase = () => {
+    // Check for Vite dev mode or specific local hostnames
+    const isLocal = ((import.meta as any).env && (import.meta as any).env.DEV) || 
+                    (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'));
+    
+    if (isLocal) return '/api';
+    
+    const env = (import.meta as any).env || {};
+    if (env.VITE_API_URL) {
+        return env.VITE_API_URL.replace(/\/$/, '');
+    }
+    // Fallback to the production backend if VITE_API_URL is not set
+    return 'https://enchocabs-software-orginal-gemini3pro-1.onrender.com/api';
+};
 
 // Access ENV directly here to avoid scope issues in nested functions
 const env = (import.meta as any).env || {};
