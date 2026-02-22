@@ -36,6 +36,26 @@ The client normalizes both forms to `<origin>/api`.
 
 If this is unset, browsers call same-origin `/api/...`. If your current host only serves the SPA, API requests will return HTML/404 instead of JSON.
 
+### Troubleshooting: "API returned HTML instead of JSON"
+
+This error means the frontend reached a page route (HTML) instead of the backend API (JSON).
+
+Most common cause on Vercel: setting `VITE_API_URL` to the frontend domain (for example `https://www.enchocabs.com/api`). If that domain is serving the SPA, `/api/*` can fall through to `index.html`, so the client receives HTML.
+
+Fix options:
+
+1. **Preferred:** point `VITE_API_URL` to the real backend origin (for example your Render API host), not the frontend host.
+2. Keep `VITE_API_URL` unset and configure a Vercel rewrite so `/api/:path*` proxies to your backend service.
+3. Redeploy after changing env vars (Vite variables are embedded at build time).
+
+Quick verification:
+
+```bash
+curl -i https://<your-api-host>/api/health
+```
+
+Expected: `200` with `content-type: application/json`. If you see `text/html`, you are still hitting the wrong origin/route.
+
 ### Session + bot config cache (Upstash Redis)
 
 The API caches authenticated session payloads and bot configuration in Redis to reduce round trips under load. Configure TTLs with:
