@@ -25,14 +25,14 @@ If you enable caching, set `REDIS_URL` (or `UPSTASH_REDIS_URL`) to the raw conne
 
 ## API base URL for hosted frontends
 
-If your frontend is deployed on a different host than the Express API (for example, preview deployments), set `VITE_API_URL` to your backend origin.
+If your frontend is deployed on a different host than the Express API (for example, preview deployments), set `VITE_API_URL` (or legacy alias `VITE_API_BASE_URL`) to your backend origin.
 
 Examples:
 
 - `VITE_API_URL=https://api.example.com`
 - `VITE_API_URL=https://api.example.com/api`
 
-The client normalizes both forms to `<origin>/api`.
+The client normalizes both forms to `<origin>/api` and supports both `VITE_API_URL` and `VITE_API_BASE_URL` env names.
 
 If this is unset, browsers call same-origin `/api/...`. If your current host only serves the SPA, API requests will return HTML/404 instead of JSON.
 
