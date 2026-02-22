@@ -34,7 +34,7 @@ Examples:
 
 The client normalizes both forms to `<origin>/api`.
 
-If this is unset, browsers call same-origin `/api/...`. If your current host only serves the SPA, API requests will return HTML/404 instead of JSON.
+If this is unset, the client now falls back to the default Render API origin (`https://enchocabs-software-orginal-gemini3pro-1.onrender.com/api`) to avoid SPA hosts returning HTML for API requests. Override with `VITE_API_URL` (or `VITE_API_FALLBACK_URL`) when you deploy a different backend.
 
 ### Session + bot config cache (Upstash Redis)
 
