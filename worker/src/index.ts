@@ -31,6 +31,8 @@ const healthHandler = (c: any) => {
 
 app.get('/health', healthHandler);
 app.head('/health', healthHandler);
+app.get('/api/health', healthHandler);
+app.head('/api/health', healthHandler);
 
 const verifyGoogleToken = async (token: string, audience?: string) => {
   const { payload } = await jwtVerify(token, GOOGLE_JWKS, {
