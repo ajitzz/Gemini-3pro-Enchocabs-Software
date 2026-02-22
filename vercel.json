@@ -1,3 +1,4 @@
+
 {
   "headers": [
     {
@@ -8,14 +9,6 @@
     }
   ],
   "rewrites": [
-    {
-      "source": "/api/:path*",
-      "destination": "/api/:path*"
-    },
-    {
-      "source": "/health",
-      "destination": "/health"
-    },
     {
       "source": "/(.*)",
       "destination": "/index.html"

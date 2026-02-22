@@ -113,114 +113,6 @@ const DriverLeadsPage: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const downloadExcel = (headers: string[], rows: (string | number | null | undefined)[][], filename: string) => {
-    if (typeof XLSX === 'undefined') {
-      downloadCSV(headers, rows, filename);
-      return;
-    }
-
-    const worksheetRows = [headers, ...rows];
-    const worksheet = XLSX.utils.aoa_to_sheet(worksheetRows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Driver Report');
-    XLSX.writeFile(workbook, `${filename}.xlsx`);
-  };
-
-  const collectFlowOrder = (sheet?: LeadSheet) => {
-    if (!sheet) return [] as string[];
-
-    const seen = new Set<string>();
-    const ordered: string[] = [];
-    const append = (name?: string) => {
-      const normalized = String(name || '').trim();
-      if (!normalized || seen.has(normalized)) return;
-      seen.add(normalized);
-      ordered.push(normalized);
-    };
-
-    (sheet.chatbotFlowOrder || []).forEach(append);
-    sheet.leads.forEach((lead) => {
-      (lead.chatbotVariableOrder || Object.keys(lead.chatbotVariables || {})).forEach(append);
-    });
-
-    return ordered;
-  };
-
-  const collectFlowOrderFromLeads = (sheet: LeadSheet | undefined, leads: LeadRecord[]) => {
-    if (!sheet) return [] as string[];
-    const seen = new Set<string>();
-    const ordered: string[] = [];
-
-    const append = (name?: string) => {
-      const normalized = String(name || '').trim();
-      if (!normalized || seen.has(normalized)) return;
-      seen.add(normalized);
-      ordered.push(normalized);
-    };
-
-    (sheet.chatbotFlowOrder || []).forEach(append);
-    leads.forEach((lead) => {
-      (lead.chatbotVariableOrder || Object.keys(lead.chatbotVariables || {})).forEach(append);
-    });
-
-    return ordered;
-  };
-
-  const reorderFlowVariable = (variableName: string, direction: 'up' | 'down') => {
-    if (!activeSheet) return;
-    updateSheet(activeSheet.id, (sheet) => {
-      const flowOrder = collectFlowOrder(sheet);
-      const idx = flowOrder.indexOf(variableName);
-      if (idx < 0) return { ...sheet, chatbotFlowOrder: flowOrder };
-
-      const target = direction === 'up' ? idx - 1 : idx + 1;
-      if (target < 0 || target >= flowOrder.length) return { ...sheet, chatbotFlowOrder: flowOrder };
-
-      [flowOrder[idx], flowOrder[target]] = [flowOrder[target], flowOrder[idx]];
-      return { ...sheet, chatbotFlowOrder: flowOrder };
-    });
-  };
-
-  const RESERVED_IMPORT_HEADERS = new Set([
-    'created_time', 'created', 'date',
-    'platform', 'source', 'channel',
-    'full_name', 'name', 'lead_name',
-    'phone', 'contact', 'mobile',
-    'city', 'location',
-    'status', 'lead_status', 'state',
-    'admin', 'owner', 'handler',
-    'note', 'notes', 'update', 'latest_update'
-  ]);
-
-  const parseChatbotVariableValues = (value: any): string[] => {
-    if (value === null || value === undefined) return [];
-    const text = String(value).trim();
-    if (!text) return [];
-
-    if ((text.startsWith('[') && text.endsWith(']')) || (text.startsWith('{') && text.endsWith('}'))) {
-      try {
-        const parsed = JSON.parse(text);
-        if (Array.isArray(parsed)) {
-          return parsed
-            .map((item) => {
-              if (item && typeof item === 'object' && 'response' in item) {
-                return String((item as any).response ?? '').trim();
-              }
-              return String(item ?? '').trim();
-            })
-            .filter(Boolean);
-        }
-      } catch {
-        // fallback to delimiter parsing
-      }
-    }
-
-    return text
-      .split(/\s*\|\s*|\s*;\s*|\r?\n+/)
-      .map((item) => item.trim())
-      .filter(Boolean);
-  };
-
   const activeSheet = useMemo(() => {
     if (!sheets.length) return undefined;
     return sheets.find((s) => s.id === activeSheetId) || sheets[0];
@@ -501,64 +393,24 @@ const DriverLeadsPage: React.FC = () => {
 
   const exportActiveSheet = () => {
     if (!activeSheet) return;
-    type DriverAggregate = {
-      createdDate: string;
-      lastMessageAt: string;
-      phoneNumber: string;
-      name: string;
-      variables: Record<string, string[]>;
-    };
-
-    const drivers = new Map<string, DriverAggregate>();
-    const flowOrder = collectFlowOrderFromLeads(activeSheet, filteredLeads);
-
-    filteredLeads.forEach((lead) => {
-      const key = normalizePhone(lead.phone || '') || lead.fullName.trim().toLowerCase();
-      if (!key) return;
-
+    const headers = ['Created', 'Lead', 'Phone', 'Status', 'Latest Update', 'Last Touch', 'Note'];
+    const rows = activeSheet.leads.map((lead) => {
+      const statusLabel = mapStatus(activeSheet, lead.statusId)?.label || 'Unknown';
+      const update = latestUpdate(lead);
       const touchDate = latestTouch(lead);
-      if (!drivers.has(key)) {
-        drivers.set(key, {
-          createdDate: lead.createdTime,
-          lastMessageAt: touchDate,
-          phoneNumber: lead.phone,
-          name: lead.fullName,
-          variables: {}
-        });
-      }
-
-      const driver = drivers.get(key)!;
-
-      if (new Date(lead.createdTime).getTime() < new Date(driver.createdDate).getTime()) {
-        driver.createdDate = lead.createdTime;
-      }
-      if (new Date(touchDate).getTime() > new Date(driver.lastMessageAt).getTime()) {
-        driver.lastMessageAt = touchDate;
-        driver.phoneNumber = lead.phone || driver.phoneNumber;
-        driver.name = lead.fullName || driver.name;
-      }
-
-      Object.entries(lead.chatbotVariables || {}).forEach(([variableName, values]) => {
-        if (!driver.variables[variableName]) driver.variables[variableName] = [];
-        driver.variables[variableName].push(...(values || []));
-      });
+      const daysAgo = daysSince(touchDate);
+      return [
+        `${lead.createdTime} (Platform: ${lead.platform || '—'})`,
+        `${lead.fullName}${lead.city ? `, ${lead.city}` : ''}`,
+        lead.phone,
+        statusLabel,
+        update ? `${update.date} - ${update.text}` : '',
+        `${touchDate} (${daysAgo === 0 ? 'Today' : `${daysAgo}d ago`})`,
+        lead.note
+      ];
     });
-
-    const headers = ['Created Date', 'Last Message At', 'Phone Number', 'Name', ...flowOrder];
-    const rows = Array.from(drivers.values())
-      .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime())
-      .map((driver) => {
-        const variableCells = flowOrder.map((variableName) => {
-          const responses = (driver.variables[variableName] || []).map((v) => String(v || '').trim()).filter(Boolean);
-          if (!responses.length) return '-';
-          return responses.join('\n');
-        });
-
-        return [driver.createdDate, driver.lastMessageAt, driver.phoneNumber, driver.name, ...variableCells];
-      });
-
     const sheetLabel = activeSheet.name.trim().replace(/\s+/g, '-').toLowerCase() || 'leads';
-    downloadExcel(headers, rows, `${sheetLabel}-driver-excel-report`);
+    downloadCSV(headers, rows, `${sheetLabel}-leads`);
   };
 
   const mapStatus = (sheet: LeadSheet, statusId: string) => sheet.statuses.find((s) => s.id === statusId);
@@ -633,8 +485,6 @@ const DriverLeadsPage: React.FC = () => {
     return [...activeSheet.leads].filter((lead) => byText(lead) && byStatus(lead)).sort(sorters[sortOption]);
   }, [activeSheet, filterText, sortOption, statusFilter]);
 
-  const orderedVariableColumns = useMemo(() => collectFlowOrder(activeSheet), [activeSheet]);
-
   const isFiltered = filterText.trim().length > 0 || statusFilter !== 'all' || sortOption !== 'recent';
 
   const parseCSV = (content: string) => {
@@ -668,19 +518,6 @@ const DriverLeadsPage: React.FC = () => {
     const statusMatch = activeSheet?.statuses.find((s) => s.label.toLowerCase() === statusLabel.toLowerCase());
     const statusId = statusMatch ? statusMatch.id : activeSheet?.statuses[0]?.id || DEFAULT_STATUSES[0].id;
 
-    const chatbotVariableOrder: string[] = [];
-    const chatbotVariables: Record<string, string[]> = {};
-    Object.entries(row).forEach(([rawHeader, rawValue]) => {
-      const header = String(rawHeader || '').trim();
-      if (!header || RESERVED_IMPORT_HEADERS.has(header.toLowerCase())) return;
-
-      const values = parseChatbotVariableValues(rawValue);
-      if (!values.length) return;
-
-      chatbotVariableOrder.push(header);
-      chatbotVariables[header] = values;
-    });
-
     const lead: LeadRecord = {
       id: uuidv4(),
       sheetId: activeSheet?.id || '',
@@ -692,8 +529,6 @@ const DriverLeadsPage: React.FC = () => {
       statusId,
       admin: String(get('admin', 'owner', 'handler')).trim() || user?.name || 'Admin',
       note,
-      chatbotVariables,
-      chatbotVariableOrder,
       updates: note
         ? [
             {
@@ -778,19 +613,7 @@ const DriverLeadsPage: React.FC = () => {
     }
 
     const nextLeads = [candidate, ...currentLeads];
-    updateSheet(activeSheet.id, (sheet) => {
-      const flowOrder = [...(sheet.chatbotFlowOrder || [])];
-      const candidateOrder = candidate.chatbotVariableOrder || Object.keys(candidate.chatbotVariables || {});
-      candidateOrder.forEach((variableName) => {
-        if (!flowOrder.includes(variableName)) flowOrder.push(variableName);
-      });
-
-      return {
-        ...sheet,
-        leads: nextLeads,
-        chatbotFlowOrder: flowOrder
-      };
-    });
+    updateSheet(activeSheet.id, (sheet) => ({ ...sheet, leads: nextLeads }));
 
     if (rest.length) {
       return processLeadQueue(rest, nextLeads);
@@ -1141,36 +964,6 @@ const DriverLeadsPage: React.FC = () => {
                 >
                   <Plus size={14} /> Add Lead
                 </button>
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
-              <p className="text-xs font-semibold text-slate-700">Chatbot variable column order (used in Driver Excel export)</p>
-              <div className="flex flex-wrap gap-2">
-                {orderedVariableColumns.length === 0 && (
-                  <span className="text-xs text-slate-500">No chatbot variables found yet.</span>
-                )}
-                {orderedVariableColumns.map((variableName, index, list) => (
-                  <div key={variableName} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1">
-                    <span className="text-xs text-slate-700">{variableName}</span>
-                    <button
-                      onClick={() => reorderFlowVariable(variableName, 'up')}
-                      disabled={index === 0}
-                      className="text-[10px] rounded border border-slate-200 px-1 text-slate-600 disabled:opacity-40"
-                      title="Move left"
-                    >
-                      ←
-                    </button>
-                    <button
-                      onClick={() => reorderFlowVariable(variableName, 'down')}
-                      disabled={index === list.length - 1}
-                      className="text-[10px] rounded border border-slate-200 px-1 text-slate-600 disabled:opacity-40"
-                      title="Move right"
-                    >
-                      →
-                    </button>
-                  </div>
-                ))}
               </div>
             </div>
 
