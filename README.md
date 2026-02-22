@@ -23,6 +23,19 @@ View your app in AI Studio: https://ai.studio/apps/drive/1uujoGkL20G_JOEUoqiymNN
 
 If you enable caching, set `REDIS_URL` (or `UPSTASH_REDIS_URL`) to the raw connection string, **not** a `redis-cli -u ...` command. Managed Redis providers such as Redis Cloud/RedisLabs typically require TLS; use a `rediss://` URL for those hosts. Example: `REDIS_URL=rediss://default:<password>@<host>:<port>`. On Vercel, add this exact `rediss://` value as a project environment variable so the server connects over TLS.
 
+## API base URL for hosted frontends
+
+If your frontend is deployed on a different host than the Express API (for example, preview deployments), set `VITE_API_URL` to your backend origin.
+
+Examples:
+
+- `VITE_API_URL=https://api.example.com`
+- `VITE_API_URL=https://api.example.com/api`
+
+The client normalizes both forms to `<origin>/api`.
+
+If this is unset, browsers call same-origin `/api/...`. If your current host only serves the SPA, API requests will return HTML/404 instead of JSON.
+
 ### Session + bot config cache (Upstash Redis)
 
 The API caches authenticated session payloads and bot configuration in Redis to reduce round trips under load. Configure TTLs with:

@@ -2,10 +2,16 @@
 import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping, ManagerAccess, AdminAccess, DriverBillingRecord, CashMode } from '../types';
 
 // logic: Use local proxy in dev (npm run dev).
-// In production prefer same-origin `/api` so deployments that host frontend+API together
-// (or route API through a reverse proxy) do not depend on a hard-coded external backend URL.
+// In production prefer same-origin `/api` unless `VITE_API_URL` explicitly points
+// to a dedicated backend origin.
 const isLocal = ((import.meta as any).env && (import.meta as any).env.DEV) || 
                 (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'));
+
+const normalizeApiBase = (raw: string) => {
+  const trimmed = raw.trim().replace(/\/$/, '');
+  if (!trimmed) return '/api';
+  return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
+};
 
 const getApiBase = () => {
     const env = (import.meta as any).env;
@@ -13,7 +19,7 @@ const getApiBase = () => {
     if (isLocal) return '/api';
 
     if (env && env.VITE_API_URL) {
-        return env.VITE_API_URL.replace(/\/$/, '');
+        return normalizeApiBase(env.VITE_API_URL);
     }
 
     if (typeof window !== 'undefined' && window.location?.origin) {
@@ -88,6 +94,37 @@ const buildQueryString = (params?: Record<string, string | number | boolean | un
   return query ? `?${query}` : '';
 };
 
+const extractErrorMessage = (response: Response, bodyText: string) => {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('text/html') || bodyText.trim().startsWith('<!DOCTYPE') || bodyText.trim().startsWith('<html')) {
+    return 'API returned HTML instead of JSON. Check VITE_API_URL and API rewrites so requests reach the backend service.';
+  }
+
+  try {
+    const parsed = JSON.parse(bodyText);
+    if (parsed && typeof parsed === 'object' && 'error' in parsed && typeof parsed.error === 'string') {
+      return parsed.error;
+    }
+  } catch (_e) {
+    // ignore parse errors here and fall through to generic message
+  }
+
+  return bodyText || `API Error ${response.status}: ${response.statusText}`;
+};
+
+const parseJsonResponse = (response: Response, bodyText: string) => {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('text/html') || bodyText.trim().startsWith('<!DOCTYPE') || bodyText.trim().startsWith('<html')) {
+    throw new Error('API returned HTML instead of JSON. Check VITE_API_URL and API rewrites so requests reach the backend service.');
+  }
+
+  try {
+    return bodyText ? JSON.parse(bodyText) : null;
+  } catch (_e) {
+    throw new Error('Received non-JSON response from API. Verify backend endpoint and proxy configuration.');
+  }
+};
+
 const api = {
   get: async (endpoint: string) => {
     const key = getCacheKey(endpoint);
@@ -104,13 +141,11 @@ const api = {
     const request = (async () => {
       try {
         const response = await fetch(`${API_BASE}${endpoint}`);
+        const bodyText = await response.text();
         if (!response.ok) {
-          const text = await response.text();
-          let msg = `API Error ${response.status}: ${response.statusText}`;
-          try { const json = JSON.parse(text); if(json.error) msg = json.error; } catch(e) {}
-          throw new Error(msg);
+          throw new Error(extractErrorMessage(response, bodyText));
         }
-        const payload = await response.json();
+        const payload = parseJsonResponse(response, bodyText);
         responseCache.set(key, { timestamp: Date.now(), ttlMs: getCacheTTL(endpoint), payload });
         return payload;
       } catch (error: any) {
@@ -131,13 +166,11 @@ const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
+      const bodyText = await response.text();
       if (!response.ok) {
-        const text = await response.text();
-        let msg = `API Error ${response.status}: ${response.statusText}`;
-        try { const json = JSON.parse(text); if(json.error) msg = json.error; } catch(e) {}
-        throw new Error(msg);
+        throw new Error(extractErrorMessage(response, bodyText));
       }
-      const payload = await response.json();
+      const payload = parseJsonResponse(response, bodyText);
       invalidateCache(endpoint);
       return payload;
     } catch (error: any) {
@@ -148,8 +181,9 @@ const api = {
   delete: async (endpoint: string) => {
     try {
       const response = await fetch(`${API_BASE}${endpoint}`, { method: 'DELETE' });
-      if (!response.ok) throw new Error(`API Error ${response.status}`);
-      const payload = await response.json();
+      const bodyText = await response.text();
+      if (!response.ok) throw new Error(extractErrorMessage(response, bodyText));
+      const payload = parseJsonResponse(response, bodyText);
       invalidateCache(endpoint);
       return payload;
     } catch (error: any) {
