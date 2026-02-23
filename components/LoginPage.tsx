@@ -40,7 +40,7 @@ const LoginPage: React.FC = () => {
   };
 
   const handleGoogleError = () => {
-      setError("Google Sign-In failed. Please check your connection or try again.");
+      setError("Google Sign-In failed. If this continues, verify your Google OAuth Authorized JavaScript origins include this domain.");
       setIsProcessing(false);
   };
 
@@ -92,7 +92,7 @@ const LoginPage: React.FC = () => {
                     
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-xs text-slate-500 leading-relaxed text-center">
                         <p className="mb-2"><strong className="text-indigo-600">Drivers:</strong> Use your registered email.</p>
-                        <p><strong className="text-indigo-600">Admin:</strong> Only authorized staff may enter.</p>
+                        <p><strong className="text-indigo-600">Admins:</strong> Only registered admin Gmail accounts may enter.</p>
                     </div>
                 </div>
             )}

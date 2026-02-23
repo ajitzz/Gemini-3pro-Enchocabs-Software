@@ -119,7 +119,7 @@ const RegistrationPage: React.FC = () => {
     
     const name = driverForm.name?.trim();
     const mobile = driverForm.mobile?.trim();
-    const email = driverForm.email?.trim() || '';
+    const email = (driverForm.email || '').trim().toLowerCase();
     const currentId = driverForm.id || editingDriverId;
 
     if (!name) return;
@@ -146,6 +146,27 @@ const RegistrationPage: React.FC = () => {
             setWarningMessage(`DUPLICATE CONTACT DETECTED\n\nMobile number "${mobile}" is already registered to "${duplicateMobile.name}".\n\nRegistration Cancelled.`);
             return;
         }
+    }
+
+    // 3. EMAIL VALIDATION FOR PORTAL ACCESS CONTROL
+    if (!email) {
+      setWarningMessage('EMAIL REQUIRED\n\nPlease enter a Gmail address for this driver.\n\nOnly registered emails can access the portal.');
+      return;
+    }
+
+    const isValidGmail = /^[a-zA-Z0-9._%+-]+@gmail\.com$/i.test(email);
+    if (!isValidGmail) {
+      setWarningMessage('INVALID EMAIL\n\nPlease provide a valid Gmail address (example@gmail.com).\n\nOnly registered Gmail accounts are allowed.');
+      return;
+    }
+
+    const duplicateEmail = drivers.find(
+      d => (d.email || '').trim().toLowerCase() === email && d.id !== currentId
+    );
+
+    if (duplicateEmail) {
+      setWarningMessage(`DUPLICATE EMAIL DETECTED\n\nEmail "${email}" is already registered to "${duplicateEmail.name}".\n\nEach driver must have a unique Gmail.`);
+      return;
     }
 
     const isTerminating = !!driverForm.terminationDate;
@@ -222,7 +243,7 @@ const RegistrationPage: React.FC = () => {
   };
 
   const openEditDriver = (d: Driver) => {
-    setDriverForm(d);
+    setDriverForm({ ...d, email: (d.email || '').trim().toLowerCase() });
     setEditingDriverId(d.id);
     setIsDriverFormOpen(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -372,7 +393,8 @@ const RegistrationPage: React.FC = () => {
           <form onSubmit={handleSaveDriver} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <InputField label="Full Name" value={driverForm.name || ''} onChange={(e: any) => setDriverForm({...driverForm, name: e.target.value})} placeholder="e.g. John Doe" required />
               <InputField label="Mobile Number" value={driverForm.mobile || ''} onChange={(e: any) => setDriverForm({...driverForm, mobile: e.target.value})} placeholder="e.g. +1 234 567 890" required={true} />
-              <InputField label="Gmail (Optional)" value={driverForm.email || ''} onChange={(e: any) => setDriverForm({...driverForm, email: e.target.value})} placeholder="e.g. driver@gmail.com" type="email" />
+              <InputField label="Gmail" value={driverForm.email || ''} onChange={(e: any) => setDriverForm({...driverForm, email: e.target.value})} placeholder="e.g. driver@gmail.com" type="email" required />
+              <p className="text-xs text-slate-500 -mt-1">Only registered Gmail accounts can sign in to the driver/admin portal.</p>
               
               <div className="lg:col-span-3 h-px bg-slate-100 my-2"></div>
               

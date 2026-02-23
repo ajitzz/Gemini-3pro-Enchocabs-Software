@@ -32,10 +32,15 @@ const healthHandler = (c: any) => {
 app.get('/health', healthHandler);
 app.head('/health', healthHandler);
 
-const verifyGoogleToken = async (token: string, audience?: string) => {
+const splitCsvEnv = (value: string | undefined) => String(value || '')
+  .split(',')
+  .map((part) => part.trim())
+  .filter(Boolean);
+
+const verifyGoogleToken = async (token: string, audiences?: string[]) => {
   const { payload } = await jwtVerify(token, GOOGLE_JWKS, {
     issuer: GOOGLE_ISSUERS,
-    audience,
+    audience: audiences && audiences.length > 0 ? audiences : undefined,
   });
   return payload;
 };
@@ -48,8 +53,15 @@ app.post('/api/auth/google', async (c) => {
   }
 
   try {
-    const payload = await verifyGoogleToken(token, clientId || c.env.GOOGLE_CLIENT_ID || undefined);
-    const email = (payload.email || '').toLowerCase();
+    const requestedClientId = String(clientId || '').trim();
+    const allowedAudiences = Array.from(new Set([
+      ...splitCsvEnv(c.env.GOOGLE_CLIENT_IDS),
+      String(c.env.GOOGLE_CLIENT_ID || '').trim(),
+      requestedClientId,
+    ].filter(Boolean)));
+
+    const payload = await verifyGoogleToken(token, allowedAudiences);
+    const email = String(payload.email || '').trim().toLowerCase();
     if (!email) return c.json({ error: 'Email not found in Google profile' }, 400);
 
     let role: string = 'driver';
