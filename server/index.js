@@ -331,14 +331,14 @@ const weeklyWalletsCacheKey = (driver) =>
   driver ? `weekly-wallets:driver:${normalizeDriver(driver)}` : WEEKLY_WALLETS_CACHE_KEY;
 const systemFlagCacheKey = (key) => `system-flag:${key}`;
 
-const SUMMARY_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.SUMMARY_CACHE_TTL_SECONDS || 300, 300);
-const BILLINGS_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.BILLINGS_CACHE_TTL_SECONDS || 600, 600);
-const DRIVERS_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.DRIVERS_CACHE_TTL_SECONDS || 600, 600);
-const DAILY_ENTRIES_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.DAILY_ENTRIES_CACHE_TTL_SECONDS || 300, 300);
-const WEEKLY_WALLETS_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.WEEKLY_WALLETS_CACHE_TTL_SECONDS || 300, 300);
-const ASSETS_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.ASSETS_CACHE_TTL_SECONDS || 900, 900);
-const RENTAL_SLAB_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.RENTAL_SLAB_CACHE_TTL_SECONDS || 900, 900);
-const SYSTEM_FLAG_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.SYSTEM_FLAG_CACHE_TTL_SECONDS || 900, 900);
+const SUMMARY_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.SUMMARY_CACHE_TTL_SECONDS || 120, 120);
+const BILLINGS_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.BILLINGS_CACHE_TTL_SECONDS || 300, 300);
+const DRIVERS_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.DRIVERS_CACHE_TTL_SECONDS || 240, 240);
+const DAILY_ENTRIES_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.DAILY_ENTRIES_CACHE_TTL_SECONDS || 240, 240);
+const WEEKLY_WALLETS_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.WEEKLY_WALLETS_CACHE_TTL_SECONDS || 240, 240);
+const ASSETS_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.ASSETS_CACHE_TTL_SECONDS || 600, 600);
+const RENTAL_SLAB_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.RENTAL_SLAB_CACHE_TTL_SECONDS || 600, 600);
+const SYSTEM_FLAG_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.SYSTEM_FLAG_CACHE_TTL_SECONDS || 600, 600);
 
 const summaryCache = {
   data: null,
@@ -1081,26 +1081,21 @@ app.post('/api/auth/google', async (req, res) => {
 
 app.get('/api/driver-billings', async (req, res) => {
   const now = Date.now();
-  const hasQuery = hasQueryParams(req.query);
-  if (!hasQuery) {
-    if (billingsCache.data && billingsCache.expiresAt <= now) {
-      resetBillingsCache();
-    }
-    if (billingsCache.data && billingsCache.expiresAt > now) {
-      return respondWithCacheHeaders(req, res, billingsCache.data, billingsCache.etag, 'MEM', BILLINGS_CACHE_TTL_SECONDS);
-    }
+  if (billingsCache.data && billingsCache.expiresAt <= now) {
+    resetBillingsCache();
+  }
+  if (billingsCache.data && billingsCache.expiresAt > now) {
+    return respondWithCacheHeaders(req, res, billingsCache.data, billingsCache.etag, 'MEM', BILLINGS_CACHE_TTL_SECONDS);
   }
 
   try {
-    if (!hasQuery) {
-      const cached = await getCacheJSON(BILLINGS_CACHE_KEY);
-      if (cached?.payload) {
-        const cachedEtag = cached.etag || computeEtag(cached.payload);
-        billingsCache.data = cached.payload;
-        billingsCache.etag = cachedEtag;
-        billingsCache.expiresAt = now + BILLINGS_CACHE_TTL_SECONDS * 1000;
-        return respondWithCacheHeaders(req, res, cached.payload, cachedEtag, 'REDIS', BILLINGS_CACHE_TTL_SECONDS);
-      }
+    const cached = await getCacheJSON(BILLINGS_CACHE_KEY);
+    if (cached?.payload) {
+      const cachedEtag = cached.etag || computeEtag(cached.payload);
+      billingsCache.data = cached.payload;
+      billingsCache.etag = cachedEtag;
+      billingsCache.expiresAt = now + BILLINGS_CACHE_TTL_SECONDS * 1000;
+      return respondWithCacheHeaders(req, res, cached.payload, cachedEtag, 'REDIS', BILLINGS_CACHE_TTL_SECONDS);
     }
 
     const shouldRefresh = String(req.query.refresh || '').toLowerCase() === 'true'
@@ -1124,31 +1119,6 @@ app.get('/api/driver-billings', async (req, res) => {
       }
     }
 
-    const values = [];
-    const filters = [];
-    const driverFilter = req.query.driver ? normalizeDriver(req.query.driver) : null;
-    if (driverFilter) {
-      values.push(driverFilter);
-      filters.push(`LOWER(driver_name) = $${values.length}`);
-    }
-
-    const fromDate = parseQueryDate(req.query.from, 'from');
-    if (fromDate) {
-      values.push(fromDate);
-      filters.push(`week_start_date >= $${values.length}`);
-    }
-
-    const toDate = parseQueryDate(req.query.to, 'to');
-    if (toDate) {
-      values.push(toDate);
-      filters.push(`week_end_date <= $${values.length}`);
-    }
-
-    const limit = parseQueryLimit(req.query.limit);
-    const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
-    const limitClause = limit ? `LIMIT $${values.length + 1}` : '';
-    if (limit) values.push(limit);
-
     const result = await db.query(`
       SELECT
         id, driver_id as "driverId", driver_name as "driverName", qr_code as "qrCode",
@@ -1159,10 +1129,8 @@ app.get('/api/driver-billings', async (req, res) => {
         wallet_overdue as "walletOverdue", adjustments, payout, status,
         generated_at as "generatedAt"
       FROM driver_billings
-      ${whereClause}
       ORDER BY week_start_date DESC, driver_name ASC
-      ${limitClause}
-    `, values);
+    `);
     const safeRows = result.rows.map(r => ({
       ...r,
       daysWorked: Number(r.daysWorked), trips: Number(r.trips),
@@ -1171,10 +1139,6 @@ app.get('/api/driver-billings', async (req, res) => {
       wallet: Number(r.wallet), walletOverdue: Number(r.walletOverdue),
       adjustments: Number(r.adjustments), payout: Number(r.payout)
     }));
-
-    if (hasQuery) {
-      return res.json(safeRows);
-    }
 
     const etag = computeEtag(safeRows);
     billingsCache.data = safeRows;
@@ -1185,9 +1149,6 @@ app.get('/api/driver-billings', async (req, res) => {
     return respondWithCacheHeaders(req, res, safeRows, etag, 'MISS', BILLINGS_CACHE_TTL_SECONDS);
   } catch (err) {
     console.error("Error fetching billings:", err);
-    if (err.message && err.message.startsWith('Invalid')) {
-      return res.status(400).json({ error: err.message });
-    }
     res.status(500).json({ error: err.message });
   }
 });
