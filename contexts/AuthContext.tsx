@@ -48,15 +48,31 @@ const authApi = {
 
 const warmupBackend = async () => {
   const API_BASE = getApiBase();
+  const normalizedBase = API_BASE.replace(/\/$/, '');
+  const warmupEndpoints = normalizedBase.endsWith('/api')
+    ? [`${normalizedBase}/health`, `${normalizedBase.replace(/\/api$/, '')}/health`]
+    : [`${normalizedBase}/health`, `${normalizedBase}/api/health`];
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), WARMUP_TIMEOUT_MS);
 
   try {
-    await fetch(`${API_BASE}/health`, {
-      method: 'GET',
-      cache: 'no-store',
-      signal: controller.signal
-    });
+    let warmedUp = false;
+    for (const endpoint of warmupEndpoints) {
+      const response = await fetch(endpoint, {
+        method: 'GET',
+        cache: 'no-store',
+        signal: controller.signal
+      });
+
+      if (response.ok) {
+        warmedUp = true;
+        break;
+      }
+    }
+
+    if (!warmedUp) {
+      console.warn('Backend warmup failed: no healthy endpoint responded 200', warmupEndpoints);
+    }
   } catch (error) {
     console.warn('Backend warmup skipped:', error);
   } finally {
