@@ -25,7 +25,14 @@ const getApiBase = () => {
           `Invalid VITE_API_URL: "${rawApiUrl}". Use a full URL (https://example.com/api) or root-relative path (/api). Falling back to default API URL.`
         );
     }
-    return 'https://enchocabs-software-orginal-gemini3pro-1.onrender.com/api';
+
+    if (rawApiUrl) {
+      console.error(
+        `Invalid VITE_API_URL: "${rawApiUrl}". Use https://example.com/api, example.com/api, or /api. Falling back to /api.`
+      );
+    }
+
+    return '/api';
 };
 
 const API_BASE = getApiBase();

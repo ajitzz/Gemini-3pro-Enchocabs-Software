@@ -19,6 +19,17 @@ View your app in AI Studio: https://ai.studio/apps/drive/1uujoGkL20G_JOEUoqiymNN
 3. Run the app:
    `npm run dev`
 
+
+## Frontend API base URL (Vercel)
+
+Set `VITE_API_URL` in your frontend deployment environment:
+
+- Recommended: `https://<your-backend>.onrender.com/api`
+- Also accepted by the app: `<your-backend>.onrender.com/api` (the client auto-adds `https://`)
+- Local/dev proxy: `/api`
+
+If this value is malformed, browsers can throw SSL/network errors when loading data. After updating env vars in Vercel, trigger a fresh redeploy.
+
 ## Redis configuration
 
 If you enable caching, set `REDIS_URL` (or `UPSTASH_REDIS_URL`) to the raw connection string, **not** a `redis-cli -u ...` command. Managed Redis providers such as Redis Cloud/RedisLabs typically require TLS; use a `rediss://` URL for those hosts. Example: `REDIS_URL=rediss://default:<password>@<host>:<port>`. On Vercel, add this exact `rediss://` value as a project environment variable so the server connects over TLS.
