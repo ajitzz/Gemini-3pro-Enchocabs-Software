@@ -1,39 +1,6 @@
 
 import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping, ManagerAccess, AdminAccess, DriverBillingRecord, CashMode } from '../types';
-
-// logic: Use local proxy in dev (npm run dev), use Render URL in production (Vercel)
-const isLocal = ((import.meta as any).env && (import.meta as any).env.DEV) || 
-                (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'));
-
-const getApiBase = () => {
-    if (isLocal) return '/api';
-    const env = (import.meta as any).env;
-    const rawApiUrl = env && typeof env.VITE_API_URL === 'string'
-      ? env.VITE_API_URL.trim().replace(/^['\"]|['\"]$/g, '')
-      : '';
-
-    if (rawApiUrl) {
-        const normalized = rawApiUrl.replace(/\/$/, '');
-        const isAbsoluteHttp = /^https?:\/\//i.test(normalized);
-        const isRootRelative = normalized.startsWith('/');
-
-        if (isAbsoluteHttp || isRootRelative) {
-          return normalized;
-        }
-
-        console.error(
-          `Invalid VITE_API_URL: "${rawApiUrl}". Use a full URL (https://example.com/api) or root-relative path (/api). Falling back to default API URL.`
-        );
-    }
-
-    if (rawApiUrl) {
-      console.error(
-        `Invalid VITE_API_URL: "${rawApiUrl}". Use https://example.com/api, example.com/api, or /api. Falling back to /api.`
-      );
-    }
-
-    return '/api';
-};
+import { getApiBase } from '../lib/apiBase';
 
 const API_BASE = getApiBase();
 
