@@ -8,8 +8,22 @@ const isLocal = ((import.meta as any).env && (import.meta as any).env.DEV) ||
 const getApiBase = () => {
     if (isLocal) return '/api';
     const env = (import.meta as any).env;
-    if (env && env.VITE_API_URL) {
-        return env.VITE_API_URL.replace(/\/$/, '');
+    const rawApiUrl = env && typeof env.VITE_API_URL === 'string'
+      ? env.VITE_API_URL.trim().replace(/^['\"]|['\"]$/g, '')
+      : '';
+
+    if (rawApiUrl) {
+        const normalized = rawApiUrl.replace(/\/$/, '');
+        const isAbsoluteHttp = /^https?:\/\//i.test(normalized);
+        const isRootRelative = normalized.startsWith('/');
+
+        if (isAbsoluteHttp || isRootRelative) {
+          return normalized;
+        }
+
+        console.error(
+          `Invalid VITE_API_URL: "${rawApiUrl}". Use a full URL (https://example.com/api) or root-relative path (/api). Falling back to default API URL.`
+        );
     }
     return 'https://enchocabs-software-orginal-gemini3pro-1.onrender.com/api';
 };
