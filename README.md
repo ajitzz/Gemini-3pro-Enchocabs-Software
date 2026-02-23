@@ -27,7 +27,8 @@ View your app in AI Studio: https://ai.studio/apps/drive/1uujoGkL20G_JOEUoqiymNN
 Set one of these in frontend env:
 
 - `VITE_GOOGLE_CLIENT_ID` - single client id used on every host.
-- `VITE_GOOGLE_CLIENT_ID_MAP` - JSON map of host to client id (recommended when using multiple domains), e.g. `{"localhost":"...apps.googleusercontent.com","enchocabs.com":"...apps.googleusercontent.com"}`.
+- `VITE_GOOGLE_CLIENT_ID_MAP` - JSON map of host/origin to client id (recommended when using multiple domains), e.g. `{"https://portal.enchocabs.com":"...apps.googleusercontent.com","localhost:5173":"...apps.googleusercontent.com","enchocabs.com":"...apps.googleusercontent.com"}`.
+  - Keys may be full origins, `host:port`, plain hostnames, or parent domains (for subdomain fallback).
 
 Backend/worker token verification can accept multiple audiences with:
 
