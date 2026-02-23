@@ -3,13 +3,16 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { GoogleLogin, CredentialResponse } from '@react-oauth/google';
-import { AlertOctagon, Loader2 } from 'lucide-react';
+import { AlertOctagon, Loader2, ShieldAlert } from 'lucide-react';
+import { getGoogleAuthDiagnostics } from '../lib/googleAuth';
 
 const LoginPage: React.FC = () => {
   const { loginWithGoogleToken, user } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const authDiagnostics = getGoogleAuthDiagnostics();
+  const hasValidClientId = authDiagnostics.hasClientId && authDiagnostics.clientId !== 'YOUR_GOOGLE_CLIENT_ID_HERE';
 
   // Effect to handle redirection AFTER user state is updated
   useEffect(() => {
@@ -78,17 +81,30 @@ const LoginPage: React.FC = () => {
                 </div>
             ) : (
                 <div className="space-y-6">
-                    <div className="flex justify-center w-full">
-                        <GoogleLogin
-                            onSuccess={handleGoogleSuccess}
-                            onError={handleGoogleError}
-                            theme="filled_blue"
-                            size="large"
-                            width="300"
-                            shape="pill"
-                            text="continue_with"
-                        />
-                    </div>
+                    {hasValidClientId ? (
+                      <div className="flex justify-center w-full">
+                          <GoogleLogin
+                              onSuccess={handleGoogleSuccess}
+                              onError={handleGoogleError}
+                              theme="filled_blue"
+                              size="large"
+                              width="300"
+                              shape="pill"
+                              text="continue_with"
+                          />
+                      </div>
+                    ) : (
+                      <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl text-amber-900">
+                        <div className="flex items-start gap-2">
+                          <ShieldAlert className="mt-0.5" size={18} />
+                          <div>
+                            <p className="text-sm font-bold">Google login is not configured for this domain</p>
+                            <p className="text-xs mt-1">Current origin: <span className="font-semibold">{authDiagnostics.origin || 'unknown'}</span></p>
+                            <p className="text-xs mt-1">Set <span className="font-semibold">VITE_GOOGLE_CLIENT_ID_MAP</span> with this host and include it in Google Cloud "Authorized JavaScript origins".</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-xs text-slate-500 leading-relaxed text-center">
                         <p className="mb-2"><strong className="text-indigo-600">Drivers:</strong> Use your registered email.</p>

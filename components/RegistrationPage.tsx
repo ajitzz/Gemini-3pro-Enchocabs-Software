@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Driver, LeaveRecord, ManagerAccess } from '../types';
 import { storageService } from '../services/storageService';
 import { UserPlus, Edit2, Clock, FileText, X, AlertTriangle, ShieldCheck, Users, CheckSquare, Square, AlertOctagon, Utensils, Loader2, Trash2, Archive, RefreshCcw, FileDown, Mail } from 'lucide-react';
@@ -27,6 +27,7 @@ const RegistrationPage: React.FC = () => {
   
   // UI State
   const [showTerminated, setShowTerminated] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Form States
   const [driverForm, setDriverForm] = useState<Partial<Driver>>({
@@ -290,8 +291,30 @@ const RegistrationPage: React.FC = () => {
       }
   };
 
-  // Filter Drivers based on Toggle
-  const displayedDrivers = drivers.filter(d => showTerminated ? !!d.terminationDate : !d.terminationDate);
+  const registrationStats = useMemo(() => {
+    const activeDrivers = drivers.filter(d => !d.terminationDate).length;
+    const terminatedDrivers = drivers.length - activeDrivers;
+    const managers = drivers.filter(d => d.isManager && !d.terminationDate).length;
+    const portalReady = drivers.filter(d => /^[a-zA-Z0-9._%+-]+@gmail\.com$/i.test(d.email || '')).length;
+    return { activeDrivers, terminatedDrivers, managers, portalReady };
+  }, [drivers]);
+
+  // Filter Drivers based on Toggle + Search
+  const displayedDrivers = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return drivers.filter(d => {
+      const matchesStatus = showTerminated ? !!d.terminationDate : !d.terminationDate;
+      if (!matchesStatus) return false;
+      if (!query) return true;
+
+      const haystack = [d.name, d.mobile, d.email, d.vehicle, d.status]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return haystack.includes(query);
+    });
+  }, [drivers, searchQuery, showTerminated]);
 
   const downloadCSV = (headers: string[], rows: (string | number | null | undefined)[][], filename: string) => {
     const csvRows = [headers.join(',')];
@@ -344,7 +367,7 @@ const RegistrationPage: React.FC = () => {
       <div className="flex flex-col md:flex-row justify-between items-end gap-4">
         <div>
            <h2 className="text-3xl font-bold text-slate-900 tracking-tight">HR Registration</h2>
-           <p className="text-slate-500 mt-1">Onboard drivers and manage deposits.</p>
+           <p className="text-slate-500 mt-1">Onboard drivers, secure Gmail access, and manage deposits.</p>
         </div>
         <div className="flex gap-3">
             <button
@@ -372,6 +395,25 @@ const RegistrationPage: React.FC = () => {
                {isDriverFormOpen ? <X size={20}/> : <UserPlus size={20} />}
                <span>{isDriverFormOpen ? 'Cancel' : 'Register Driver'}</span>
             </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="bg-white rounded-xl border border-slate-100 p-4">
+          <p className="text-xs uppercase tracking-wider text-slate-400 font-bold">Active Drivers</p>
+          <p className="text-2xl font-extrabold text-slate-800 mt-1">{registrationStats.activeDrivers}</p>
+        </div>
+        <div className="bg-white rounded-xl border border-slate-100 p-4">
+          <p className="text-xs uppercase tracking-wider text-slate-400 font-bold">Portal Ready Gmail</p>
+          <p className="text-2xl font-extrabold text-indigo-700 mt-1">{registrationStats.portalReady}</p>
+        </div>
+        <div className="bg-white rounded-xl border border-slate-100 p-4">
+          <p className="text-xs uppercase tracking-wider text-slate-400 font-bold">Managers</p>
+          <p className="text-2xl font-extrabold text-slate-800 mt-1">{registrationStats.managers}</p>
+        </div>
+        <div className="bg-white rounded-xl border border-slate-100 p-4">
+          <p className="text-xs uppercase tracking-wider text-slate-400 font-bold">Terminated</p>
+          <p className="text-2xl font-extrabold text-rose-700 mt-1">{registrationStats.terminatedDrivers}</p>
         </div>
       </div>
 
@@ -590,6 +632,14 @@ const RegistrationPage: React.FC = () => {
            <div className={`text-xs font-bold px-3 py-1 rounded-full border ${showTerminated ? 'bg-white text-rose-600 border-rose-200' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>
                {displayedDrivers.length} Records
            </div>
+        </div>
+        <div className="p-4 border-b border-slate-100 bg-slate-50/70">
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by name, mobile, Gmail, vehicle..."
+            className="w-full md:w-96 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
