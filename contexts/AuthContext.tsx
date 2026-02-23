@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { AdminAccess, AuthUser, UserRole } from '../types';
 import { storageService } from '../services/storageService';
 import { getApiBase } from '../lib/apiBase';
+import { getGoogleClientId } from '../lib/googleAuth';
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -21,9 +22,7 @@ const ADMIN_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const VALIDATION_GRACE_MS = 2 * 60 * 1000; // 2 minutes after login/validation
 const WARMUP_TIMEOUT_MS = 4000;
 
-// Access ENV directly here to avoid scope issues in nested functions
-const env = (import.meta as any).env || {};
-const CLIENT_ID_FROM_ENV = env.VITE_GOOGLE_CLIENT_ID || "";
+const CLIENT_ID_FROM_ENV = getGoogleClientId();
 
 const authApi = {
     login: async (token: string) => {

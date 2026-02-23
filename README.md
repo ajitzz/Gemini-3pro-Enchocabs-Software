@@ -22,6 +22,19 @@ View your app in AI Studio: https://ai.studio/apps/drive/1uujoGkL20G_JOEUoqiymNN
 
 ## Frontend API base URL (Vercel)
 
+## Google OAuth client-id configuration
+
+Set one of these in frontend env:
+
+- `VITE_GOOGLE_CLIENT_ID` - single client id used on every host.
+- `VITE_GOOGLE_CLIENT_ID_MAP` - JSON map of host to client id (recommended when using multiple domains), e.g. `{"localhost":"...apps.googleusercontent.com","enchocabs.com":"...apps.googleusercontent.com"}`.
+
+Backend/worker token verification can accept multiple audiences with:
+
+- `GOOGLE_CLIENT_IDS` - comma-separated list of allowed OAuth client IDs.
+
+This prevents login failures when different environments (localhost, preview, production) use different Google OAuth client IDs.
+
 Set `VITE_API_URL` in your frontend deployment environment:
 
 - Recommended: `https://<your-backend>.onrender.com/api`

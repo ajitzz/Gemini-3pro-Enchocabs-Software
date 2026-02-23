@@ -16,6 +16,16 @@ const PORT = process.env.PORT || 3000;
 const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'enchoenterprises@gmail.com').toLowerCase();
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || '';
 const oauthClient = new OAuth2Client(GOOGLE_CLIENT_ID);
+
+const splitCsvEnv = (value) => String(value || '')
+  .split(',')
+  .map((part) => part.trim())
+  .filter(Boolean);
+
+const GOOGLE_CLIENT_IDS = Array.from(new Set([
+  ...splitCsvEnv(process.env.GOOGLE_CLIENT_IDS),
+  GOOGLE_CLIENT_ID,
+].filter(Boolean)));
 const KEEP_ALIVE_URL = process.env.KEEP_ALIVE_URL || '';
 const SESSION_CACHE_TTL_SECONDS = Number(process.env.SESSION_CACHE_TTL_SECONDS || 60 * 60 * 6);
 const BOT_CONFIG_CACHE_TTL_SECONDS = Number(process.env.BOT_CONFIG_CACHE_TTL_SECONDS || 60 * 10);
@@ -1038,15 +1048,26 @@ app.post('/api/auth/google', async (req, res) => {
       return res.json(cachedSession);
     }
 
+    const requestedClientId = String(clientId || '').trim();
+    const allowedAudiences = Array.from(new Set([
+      ...GOOGLE_CLIENT_IDS,
+      requestedClientId,
+    ].filter(Boolean)));
+
     const ticket = await oauthClient.verifyIdToken({
       idToken: token,
-      audience: clientId || GOOGLE_CLIENT_ID || undefined,
+      audience: allowedAudiences.length > 0 ? allowedAudiences : undefined,
     });
 
     const payload = ticket.getPayload() || {};
-    const email = (payload.email || '').toLowerCase();
+    const email = (payload.email || '').trim().toLowerCase();
     if (!email) {
       return res.status(400).json({ error: 'Email not found in Google profile' });
+    }
+
+    const isGmail = /^[a-z0-9._%+-]+@gmail\.com$/i.test(email);
+    if (!isGmail) {
+      return res.status(403).json({ error: 'Unauthorized: only registered Gmail accounts are allowed' });
     }
 
     let role = 'driver';
