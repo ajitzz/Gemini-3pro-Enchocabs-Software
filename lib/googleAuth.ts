@@ -16,7 +16,13 @@ const normalizeMapKey = (rawKey: string): string => {
     // Keep the raw key when URL parsing fails.
   }
 
-  return key.replace(/^\.+/, '');
+  // Support protocol-less values copied from docs/console, e.g.
+  // "portal.example.com/" or "portal.example.com/staff".
+  return key
+    .replace(/^\.+/, '')
+    .replace(/^\/\//, '')
+    .replace(/\/$/, '')
+    .split('/')[0];
 };
 
 const parseClientIdMap = (rawMap: string): Record<string, string> => {
@@ -40,7 +46,7 @@ const parseClientIdMap = (rawMap: string): Record<string, string> => {
   }
 };
 
-export const getGoogleClientId = (): string => {
+export const getGoogleAuthDiagnostics = () => {
   const defaultClientId = String(env.VITE_GOOGLE_CLIENT_ID || '').trim();
   const clientIdMap = parseClientIdMap(String(env.VITE_GOOGLE_CLIENT_ID_MAP || '').trim());
   const host = typeof window !== 'undefined' ? window.location.host.toLowerCase() : '';
@@ -54,22 +60,44 @@ export const getGoogleClientId = (): string => {
     normalizeMapKey(hostname.replace(/^www\./, '')),
   ].filter(Boolean);
 
+  let resolvedFrom: string | null = null;
+  let clientId = '';
+
   for (const candidate of candidates) {
     if (clientIdMap[candidate]) {
-      return clientIdMap[candidate];
+      clientId = clientIdMap[candidate];
+      resolvedFrom = candidate;
+      break;
     }
   }
 
-  if (hostname) {
+  if (!clientId && hostname) {
     // Support parent-domain mappings like "example.com" for "portal.example.com".
     const parts = hostname.split('.').filter(Boolean);
     for (let i = 1; i < parts.length - 1; i += 1) {
       const parentDomain = parts.slice(i).join('.');
       if (clientIdMap[parentDomain]) {
-        return clientIdMap[parentDomain];
+        clientId = clientIdMap[parentDomain];
+        resolvedFrom = parentDomain;
+        break;
       }
     }
   }
 
-  return defaultClientId;
+  if (!clientId) {
+    clientId = defaultClientId;
+  }
+
+  return {
+    origin,
+    host,
+    hostname,
+    candidates,
+    configuredHosts: Object.keys(clientIdMap),
+    resolvedFrom,
+    hasClientId: !!clientId,
+    clientId,
+  };
 };
+
+export const getGoogleClientId = (): string => getGoogleAuthDiagnostics().clientId;

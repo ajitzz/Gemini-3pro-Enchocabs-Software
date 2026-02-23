@@ -29,6 +29,21 @@ Set one of these in frontend env:
 - `VITE_GOOGLE_CLIENT_ID` - single client id used on every host.
 - `VITE_GOOGLE_CLIENT_ID_MAP` - JSON map of host/origin to client id (recommended when using multiple domains), e.g. `{"https://portal.enchocabs.com":"...apps.googleusercontent.com","localhost:5173":"...apps.googleusercontent.com","enchocabs.com":"...apps.googleusercontent.com"}`.
   - Keys may be full origins, `host:port`, plain hostnames, or parent domains (for subdomain fallback).
+  - Avoid adding paths in map keys (`/staff`, trailing `/`). Use host/origin only.
+
+### Fix for `[GSI_LOGGER]: The given origin is not allowed for the given client ID`
+
+If Google login suddenly fails on Vercel previews or new domains, it is usually an OAuth origin mismatch. Ensure all of the following:
+
+1. In Google Cloud Console → OAuth Client, add every frontend domain to **Authorized JavaScript origins** (no path), for example:
+   - `https://gemini-3pro-enchocabs-software.vercel.app`
+   - `https://your-production-domain.com`
+   - `http://localhost:5173`
+2. In frontend env, map each host to the matching client id:
+   - `VITE_GOOGLE_CLIENT_ID_MAP={"gemini-3pro-enchocabs-software.vercel.app":"<client-id>","your-production-domain.com":"<client-id>","localhost:5173":"<client-id>"}`
+3. In backend env, allow all audiences that can issue ID tokens:
+   - `GOOGLE_CLIENT_IDS=<client-id-1>,<client-id-2>`
+4. Redeploy frontend and backend after env changes.
 
 Backend/worker token verification can accept multiple audiences with:
 
