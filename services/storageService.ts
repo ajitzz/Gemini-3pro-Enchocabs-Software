@@ -9,31 +9,21 @@ const getApiBase = () => {
     if (isLocal) return '/api';
     const env = (import.meta as any).env;
     const rawApiUrl = env && typeof env.VITE_API_URL === 'string'
-      ? env.VITE_API_URL.trim().replace(/^['"]|['"]$/g, '')
+      ? env.VITE_API_URL.trim().replace(/^['\"]|['\"]$/g, '')
       : '';
 
-    const normalizeApiUrl = (value: string) => {
-      const trimmed = value.replace(/\/$/, '');
-      if (!trimmed) return '';
+    if (rawApiUrl) {
+        const normalized = rawApiUrl.replace(/\/$/, '');
+        const isAbsoluteHttp = /^https?:\/\//i.test(normalized);
+        const isRootRelative = normalized.startsWith('/');
 
-      if (trimmed.startsWith('/')) return trimmed;
-
-      const absoluteCandidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-      try {
-        const parsed = new URL(absoluteCandidate);
-        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-          return absoluteCandidate;
+        if (isAbsoluteHttp || isRootRelative) {
+          return normalized;
         }
-      } catch (_error) {
-        return '';
-      }
 
-      return '';
-    };
-
-    const normalizedFromEnv = rawApiUrl ? normalizeApiUrl(rawApiUrl) : '';
-    if (normalizedFromEnv) {
-      return normalizedFromEnv;
+        console.error(
+          `Invalid VITE_API_URL: "${rawApiUrl}". Use a full URL (https://example.com/api) or root-relative path (/api). Falling back to default API URL.`
+        );
     }
 
     if (rawApiUrl) {
