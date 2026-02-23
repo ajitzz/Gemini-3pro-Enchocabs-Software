@@ -8,8 +8,22 @@ const isLocal = ((import.meta as any).env && (import.meta as any).env.DEV) ||
 const getApiBase = () => {
     if (isLocal) return '/api';
     const env = (import.meta as any).env;
-    if (env && env.VITE_API_URL) {
-        return env.VITE_API_URL.replace(/\/$/, '');
+    const rawApiUrl = env && typeof env.VITE_API_URL === 'string'
+      ? env.VITE_API_URL.trim().replace(/^['\"]|['\"]$/g, '')
+      : '';
+
+    if (rawApiUrl) {
+        const normalized = rawApiUrl.replace(/\/$/, '');
+        const isAbsoluteHttp = /^https?:\/\//i.test(normalized);
+        const isRootRelative = normalized.startsWith('/');
+
+        if (isAbsoluteHttp || isRootRelative) {
+          return normalized;
+        }
+
+        console.error(
+          `Invalid VITE_API_URL: "${rawApiUrl}". Use a full URL (https://example.com/api) or root-relative path (/api). Falling back to default API URL.`
+        );
     }
     return 'https://enchocabs-software-orginal-gemini3pro-1.onrender.com/api';
 };
@@ -17,27 +31,11 @@ const getApiBase = () => {
 const API_BASE = getApiBase();
 
 const CACHE_TTL_MS = 30_000;
-const LONG_CACHE_TTL_MS = 5 * 60_000;
-const SHORT_CACHE_TTL_MS = 60_000;
-const responseCache = new Map<string, { timestamp: number; ttlMs: number; payload: any }>();
+const responseCache = new Map<string, { timestamp: number; payload: any }>();
 const inflightRequests = new Map<string, Promise<any>>();
 
 const getCacheKey = (endpoint: string) => endpoint;
-const isFresh = (entry: { timestamp: number; ttlMs: number }) => Date.now() - entry.timestamp < entry.ttlMs;
-
-const getCacheTTL = (endpoint: string) => {
-  const base = endpoint.split('?')[0];
-  if (base.startsWith('/assets') || base.startsWith('/rental-slabs') || base.startsWith('/drivers')) {
-    return LONG_CACHE_TTL_MS;
-  }
-  if (base.startsWith('/admin-access') || base.startsWith('/header-mappings') || base.startsWith('/system-flags')) {
-    return LONG_CACHE_TTL_MS;
-  }
-  if (base.startsWith('/summary')) {
-    return SHORT_CACHE_TTL_MS;
-  }
-  return CACHE_TTL_MS;
-};
+const isFresh = (entry: { timestamp: number }) => Date.now() - entry.timestamp < CACHE_TTL_MS;
 
 const getCachePrefixes = (endpoint: string) => {
   const base = endpoint.split('?')[0];
@@ -102,7 +100,7 @@ const api = {
           throw new Error(msg);
         }
         const payload = await response.json();
-        responseCache.set(key, { timestamp: Date.now(), ttlMs: getCacheTTL(endpoint), payload });
+        responseCache.set(key, { timestamp: Date.now(), payload });
         return payload;
       } catch (error: any) {
         console.error(`API GET Error (${endpoint}):`, error);
@@ -377,8 +375,7 @@ export const storageService = {
   deleteWeeklyWallet: async (id: string): Promise<void> => api.delete(`/weekly-wallets/${id}`),
 
   // --- Driver Billings (NEW) ---
-  getDriverBillings: async (params?: { from?: string; to?: string; limit?: number; driver?: string; refresh?: boolean }): Promise<DriverBillingRecord[]> =>
-    api.get(`/driver-billings${buildQueryString(params)}`),
+  getDriverBillings: async (): Promise<DriverBillingRecord[]> => api.get('/driver-billings'),
   saveDriverBilling: async (billing: DriverBillingRecord): Promise<DriverBillingRecord> => api.post('/driver-billings', billing),
   deleteDriverBilling: async (id: string): Promise<void> => api.delete(`/driver-billings/${id}`),
 
