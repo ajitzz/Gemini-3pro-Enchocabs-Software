@@ -97,3 +97,36 @@ This approach keeps checks fast and side-effect free while giving you early warn
 ## Driver billing refresh behavior
 
 The `GET /api/driver-billings` endpoint now serves cached results immediately and only performs a full recomputation when explicitly requested. If you need to refresh billings on-demand, call the endpoint with `?refresh=true` or set `SYNC_BILLINGS_ON_READ=true` in the server environment to enable recomputation on cache misses. This prevents expensive billing syncs from slowing down every page load while still allowing manual refreshes when needed.
+
+## How to verify caching is working (Redis + browser snapshot)
+
+Use this quick checklist after deployment or while testing locally:
+
+1. **Confirm Redis is connected on the server**
+   - In server logs, look for `Redis cache connected`.
+   - If you see `Redis cache disabled`, your `REDIS_URL` / `UPSTASH_REDIS_URL` is missing or invalid.
+
+2. **Check `/api/summary` cache headers in DevTools**
+   - Open Chrome DevTools → **Network** → click the `summary` request.
+   - Verify response header `X-Cache`:
+     - `MISS` = generated fresh from DB
+     - `REDIS` = served from Redis
+     - `MEM` = served from in-process memory
+   - Verify `Cache-Control` and `ETag` are present.
+
+3. **Verify browser snapshot cache (dashboard localStorage)**
+   - Open DevTools → **Application** → **Local Storage** for your site.
+   - Confirm key `dashboard:summary:v1` exists after the dashboard loads once.
+   - Refresh within ~60 seconds and confirm dashboard paints immediately with the badge `Cached snapshot`, then flips to `Live Data` after fetch completes.
+
+4. **Functional check for data freshness**
+   - Create or update one daily entry.
+   - Reload dashboard and verify totals update after the background fetch (even if cached snapshot appeared first).
+
+5. **API spot-check from terminal (optional)**
+   - Run two back-to-back requests and inspect headers: first should usually be `MISS`, second should become `REDIS`/`MEM`.
+   - Example:
+     - `curl -I https://<your-domain>/api/summary`
+     - `curl -I https://<your-domain>/api/summary`
+
+If any step fails, clear browser storage once, redeploy with correct env vars, and re-check logs + `X-Cache` headers.
