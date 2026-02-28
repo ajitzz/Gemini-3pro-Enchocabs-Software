@@ -325,18 +325,32 @@ const DailyEntryPage: React.FC = () => {
   const loadData = async () => {
     setLoading(true);
     const dailyParams = showFullHistory ? undefined : { from: recentFromDate };
-    const [e, d, l, w] = await Promise.all([
-        storageService.getDailyEntries(dailyParams),
-        storageService.getDrivers(),
-        storageService.getLeaves(), // Fetch leaves
-        storageService.getWeeklyWallets()
-    ]);
 
-    setEntries(e.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-    setDrivers(d.filter(driver => !driver.terminationDate));
-    setLeaves(l);
-    setWeeklyWallets(w);
-    setLoading(false);
+    try {
+      const entriesPromise = storageService.getDailyEntries(dailyParams);
+      const asyncMetaPromise = Promise.all([
+        storageService.getDrivers(),
+        storageService.getLeaves(),
+        storageService.getWeeklyWallets()
+      ]);
+
+      const e = await entriesPromise;
+      setEntries(e.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      setLoading(false);
+
+      asyncMetaPromise
+        .then(([d, l, w]) => {
+          setDrivers(d.filter(driver => !driver.terminationDate));
+          setLeaves(l);
+          setWeeklyWallets(w);
+        })
+        .catch((error) => {
+          console.error('Failed to load secondary daily entry metadata:', error);
+        });
+    } catch (error) {
+      console.error('Failed to load daily entries:', error);
+      setLoading(false);
+    }
   };
 
   const upsertEntry = (entry: DailyEntry) => {
