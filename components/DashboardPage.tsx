@@ -6,8 +6,50 @@ import { Users, Banknote, Fuel, TrendingDown, TrendingUp, AlertCircle, ArrowUpRi
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Cell } from 'recharts';
 import NetCalculationPopup from './NetCalculationPopup';
 
+const DASHBOARD_SUMMARY_CACHE_KEY = 'dashboard:summary:v1';
+const DASHBOARD_SUMMARY_CACHE_TTL_MS = 60_000;
+
+type CachedDashboardSummary = {
+  timestamp: number;
+  payload: {
+    driverSummaries: DriverSummary[];
+    global: GlobalSummary | null;
+  };
+};
+
+const readCachedDashboardSummary = (): CachedDashboardSummary['payload'] | null => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.localStorage.getItem(DASHBOARD_SUMMARY_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CachedDashboardSummary;
+
+    if (!parsed?.timestamp || !parsed?.payload) return null;
+    if (Date.now() - parsed.timestamp > DASHBOARD_SUMMARY_CACHE_TTL_MS) return null;
+
+    return parsed.payload;
+  } catch {
+    return null;
+  }
+};
+
+const writeCachedDashboardSummary = (payload: CachedDashboardSummary['payload']) => {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(
+      DASHBOARD_SUMMARY_CACHE_KEY,
+      JSON.stringify({ timestamp: Date.now(), payload })
+    );
+  } catch {
+    // Ignore localStorage write errors (private mode / quota)
+  }
+};
+
 const DashboardPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
+  const [showingCachedData, setShowingCachedData] = useState(false);
   const [summaries, setSummaries] = useState<DriverSummary[]>([]);
   const [global, setGlobal] = useState<GlobalSummary | null>(null);
   const [filterDriver, setFilterDriver] = useState('');
@@ -30,14 +72,28 @@ const DashboardPage: React.FC = () => {
     setLoading(true);
     try {
       const summary = await storageService.getSummary();
-      setSummaries(summary.driverSummaries || []);
-      setGlobal(summary.global || null);
+      const payload = {
+        driverSummaries: summary.driverSummaries || [],
+        global: summary.global || null,
+      };
+      setSummaries(payload.driverSummaries);
+      setGlobal(payload.global);
+      setShowingCachedData(false);
+      writeCachedDashboardSummary(payload);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    const cached = readCachedDashboardSummary();
+    if (cached) {
+      setSummaries(cached.driverSummaries || []);
+      setGlobal(cached.global || null);
+      setLoading(false);
+      setShowingCachedData(true);
+    }
+
     loadData();
   }, []);
 
@@ -129,8 +185,8 @@ const DashboardPage: React.FC = () => {
           <p className="text-slate-500 mt-1 font-medium">Real-time performance metrics and wallet balances.</p>
         </div>
         <div className="flex items-center gap-2 text-xs font-medium bg-white text-slate-600 px-4 py-2 rounded-xl border border-slate-200 shadow-sm">
-           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-           Live Data
+           <span className={`w-2 h-2 rounded-full ${showingCachedData ? 'bg-amber-500' : 'bg-emerald-500 animate-pulse'}`}></span>
+           {showingCachedData ? 'Cached snapshot' : 'Live Data'}
         </div>
       </div>
 
