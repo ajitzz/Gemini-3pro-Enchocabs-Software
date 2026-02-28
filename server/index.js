@@ -336,12 +336,45 @@ const DRIVERS_CACHE_KEY = 'drivers:all';
 const DAILY_ENTRIES_CACHE_KEY = 'daily-entries:all';
 const WEEKLY_WALLETS_CACHE_KEY = 'weekly-wallets:all';
 const ASSETS_CACHE_KEY = 'assets:all';
+const QUERY_CACHE_NAMESPACE = {
+  dailyEntries: 'daily-entries',
+  weeklyWallets: 'weekly-wallets',
+};
 const rentalSlabCacheKey = (type) => `rental-slabs:${type}`;
 const dailyEntriesCacheKey = (driver) =>
   driver ? `daily-entries:driver:${normalizeDriver(driver)}` : DAILY_ENTRIES_CACHE_KEY;
 const weeklyWalletsCacheKey = (driver) =>
   driver ? `weekly-wallets:driver:${normalizeDriver(driver)}` : WEEKLY_WALLETS_CACHE_KEY;
 const systemFlagCacheKey = (key) => `system-flag:${key}`;
+
+const queryCacheRegistry = new Map();
+
+const registerQueryCacheKey = (namespace, key) => {
+  if (!namespace || !key) return;
+  const existing = queryCacheRegistry.get(namespace) || new Set();
+  existing.add(key);
+  queryCacheRegistry.set(namespace, existing);
+};
+
+const invalidateQueryCacheNamespace = async (namespace) => {
+  const keys = Array.from(queryCacheRegistry.get(namespace) || []);
+  queryCacheRegistry.delete(namespace);
+  if (keys.length === 0) return;
+  await deleteCacheKeys(keys);
+};
+
+const buildQueryCacheKey = (baseKey, query = {}) => {
+  const normalizedEntries = Object.entries(query)
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .filter(([key]) => key !== 'fresh')
+    .sort(([a], [b]) => a.localeCompare(b));
+
+  if (normalizedEntries.length === 0) return baseKey;
+
+  const searchParams = new URLSearchParams();
+  normalizedEntries.forEach(([key, value]) => searchParams.append(key, String(value)));
+  return `${baseKey}?${searchParams.toString()}`;
+};
 
 const SUMMARY_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.SUMMARY_CACHE_TTL_SECONDS || 120, 120);
 const BILLINGS_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.BILLINGS_CACHE_TTL_SECONDS || 300, 300);
@@ -441,6 +474,16 @@ const invalidateBillingsCache = async () => {
 const invalidateAggregateCaches = async () => {
   await invalidateSummaryCache();
   await invalidateBillingsCache();
+};
+
+const invalidateDailyEntriesCache = async () => {
+  await invalidateKeys(DAILY_ENTRIES_CACHE_KEY);
+  await invalidateQueryCacheNamespace(QUERY_CACHE_NAMESPACE.dailyEntries);
+};
+
+const invalidateWeeklyWalletsCache = async () => {
+  await invalidateKeys(WEEKLY_WALLETS_CACHE_KEY);
+  await invalidateQueryCacheNamespace(QUERY_CACHE_NAMESPACE.weeklyWallets);
 };
 
 // --- INITIALIZATION SQL ---
@@ -1451,9 +1494,11 @@ app.get('/api/summary', async (req, res) => {
 // --- DAILY ENTRIES ---
 app.get('/api/daily-entries', async (req, res) => {
   try {
-    const hasQuery = hasQueryParams(req.query);
-    if (!hasQuery) {
-      const cached = await getCacheJSON(DAILY_ENTRIES_CACHE_KEY);
+    const cacheBypass = req.query.fresh !== undefined;
+    const cacheKey = buildQueryCacheKey(DAILY_ENTRIES_CACHE_KEY, req.query);
+
+    if (!cacheBypass) {
+      const cached = await getCacheJSON(cacheKey);
       if (cached) {
         res.set('X-Cache', 'REDIS');
         return res.json(cached);
@@ -1498,8 +1543,9 @@ app.get('/api/daily-entries', async (req, res) => {
       rent: Number(r.rent), collection: Number(r.collection), fuel: Number(r.fuel), due: Number(r.due), payout: Number(r.payout)
     }));
 
-    if (!hasQuery) {
-      await setCacheJSON(DAILY_ENTRIES_CACHE_KEY, safeRows, DAILY_ENTRIES_CACHE_TTL_SECONDS);
+    if (!cacheBypass) {
+      await setCacheJSON(cacheKey, safeRows, DAILY_ENTRIES_CACHE_TTL_SECONDS);
+      registerQueryCacheKey(QUERY_CACHE_NAMESPACE.dailyEntries, cacheKey);
       res.set('X-Cache', 'MISS');
     }
     res.json(safeRows);
@@ -1558,7 +1604,7 @@ app.post('/api/daily-entries', async (req, res) => {
     }
 
     await invalidateAggregateCaches();
-    await invalidateKeys(DAILY_ENTRIES_CACHE_KEY);
+    await invalidateDailyEntriesCache();
     res.json(result.rows[0]);
   } catch (err) {
     if (err.code === '23505') {
@@ -1672,7 +1718,7 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
       await syncDriverBillingForWeek(target);
     }
     await invalidateAggregateCaches();
-    await invalidateKeys(DAILY_ENTRIES_CACHE_KEY);
+    await invalidateDailyEntriesCache();
     res.json({ success: true });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -1697,7 +1743,7 @@ app.delete('/api/daily-entries/:id', async (req, res) => {
       }
     }
     await invalidateAggregateCaches();
-    await invalidateKeys(DAILY_ENTRIES_CACHE_KEY);
+    await invalidateDailyEntriesCache();
     res.json({ success: true });
   } catch (err) {
     if (err.message && err.message.startsWith('Invalid')) {
@@ -1710,9 +1756,11 @@ app.delete('/api/daily-entries/:id', async (req, res) => {
 // --- WEEKLY WALLETS ---
 app.get('/api/weekly-wallets', async (req, res) => {
   try {
-    const hasQuery = hasQueryParams(req.query);
-    if (!hasQuery) {
-      const cached = await getCacheJSON(WEEKLY_WALLETS_CACHE_KEY);
+    const cacheBypass = req.query.fresh !== undefined;
+    const cacheKey = buildQueryCacheKey(WEEKLY_WALLETS_CACHE_KEY, req.query);
+
+    if (!cacheBypass) {
+      const cached = await getCacheJSON(cacheKey);
       if (cached) {
         res.set('X-Cache', 'REDIS');
         return res.json(cached);
@@ -1760,8 +1808,9 @@ app.get('/api/weekly-wallets', async (req, res) => {
       adjustments: Number(r.adjustments || 0)
     }));
 
-    if (!hasQuery) {
-      await setCacheJSON(WEEKLY_WALLETS_CACHE_KEY, safeRows, WEEKLY_WALLETS_CACHE_TTL_SECONDS);
+    if (!cacheBypass) {
+      await setCacheJSON(cacheKey, safeRows, WEEKLY_WALLETS_CACHE_TTL_SECONDS);
+      registerQueryCacheKey(QUERY_CACHE_NAMESPACE.weeklyWallets, cacheKey);
       res.set('X-Cache', 'MISS');
     }
     res.json(safeRows);
@@ -1809,7 +1858,7 @@ app.post('/api/weekly-wallets', async (req, res) => {
     }
 
     await invalidateAggregateCaches();
-    await invalidateKeys(WEEKLY_WALLETS_CACHE_KEY);
+    await invalidateWeeklyWalletsCache();
     res.json(result.rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1826,7 +1875,7 @@ app.delete('/api/weekly-wallets/:id', async (req, res) => {
       }
     }
     await invalidateAggregateCaches();
-    await invalidateKeys(WEEKLY_WALLETS_CACHE_KEY);
+    await invalidateWeeklyWalletsCache();
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
