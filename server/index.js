@@ -10,7 +10,34 @@ const { getJSON: getCacheJSON, setJSON: setCacheJSON, deleteKeys: deleteCacheKey
 const { enqueueBillingRefresh, isQStashConfigured } = require('./qstash');
 const app = express();
 
-app.use(cors());
+const splitCsvEnv = (value) => String(value || '')
+  .split(',')
+  .map((part) => part.trim())
+  .filter(Boolean);
+
+const defaultAllowedOrigins = [
+  'https://enchocabs.com',
+  'https://www.enchocabs.com',
+  'https://gemini-3pro-enchocabs-software.onrender.com',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+];
+
+const allowedOrigins = new Set([
+  ...defaultAllowedOrigins,
+  ...splitCsvEnv(process.env.CORS_ORIGINS),
+]);
+
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.has(origin)) {
+      callback(null, origin || true);
+      return;
+    }
+    callback(new Error(`Origin not allowed by CORS: ${origin}`));
+  },
+  credentials: true,
+}));
 app.use(express.json({ limit: '50mb' })); // Support large Excel imports
 
 app.use((req, res, next) => {
@@ -32,11 +59,6 @@ const PORT = process.env.PORT || 3000;
 const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'enchoenterprises@gmail.com').toLowerCase();
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || '';
 const oauthClient = new OAuth2Client(GOOGLE_CLIENT_ID);
-
-const splitCsvEnv = (value) => String(value || '')
-  .split(',')
-  .map((part) => part.trim())
-  .filter(Boolean);
 
 const GOOGLE_CLIENT_IDS = Array.from(new Set([
   ...splitCsvEnv(process.env.GOOGLE_CLIENT_IDS),
