@@ -66,8 +66,10 @@ const DriverPortalPage: React.FC = () => {
 
   const PORTAL_FALLBACK_REFRESH_MS = 60000;
   const CASHMODE_FALLBACK_REFRESH_MS = 20000;
+  const DRIVERS_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
   const portalRefreshTimerRef = useRef<number | null>(null);
   const cashModeRefreshTimerRef = useRef<number | null>(null);
+  const lastDriversRefreshRef = useRef(0);
 
   const tabOptions: {
       key: 'home' | 'daily' | 'billing';
@@ -321,6 +323,7 @@ const DriverPortalPage: React.FC = () => {
 
           if (user?.role === 'admin' || user?.role === 'super_admin') {
               setDriversList(allDrivers.sort((a, b) => a.name.localeCompare(b.name)));
+              lastDriversRefreshRef.current = Date.now();
           }
 
           let targetDriver: Driver | undefined;
@@ -401,21 +404,23 @@ const DriverPortalPage: React.FC = () => {
       }
   };
 
-  const refreshPortalData = useCallback(async () => {
+  const refreshPortalData = useCallback(async (options?: { includeDrivers?: boolean }) => {
       if (!user || !viewingAsDriver) return;
       try {
           const isAdminUser = user.role === 'admin' || user.role === 'super_admin';
+          const shouldLoadDrivers = options?.includeDrivers ?? false;
+
           const [drivers, dailyEntries, weeklyWallets] = await Promise.all([
-              storageService.getDrivers(),
+              shouldLoadDrivers ? storageService.getDrivers() : Promise.resolve(null),
               storageService.getDailyEntriesFresh(),
               storageService.getWeeklyWalletsFresh()
           ]);
 
-          if (isAdminUser) {
+          if (drivers && isAdminUser) {
               setDriversList(drivers.sort((a, b) => a.name.localeCompare(b.name)));
           }
 
-          const updatedDriver = drivers.find(d => d.id === viewingAsDriver.id);
+          const updatedDriver = drivers?.find(d => d.id === viewingAsDriver.id);
           if (updatedDriver) {
               setViewingAsDriver(updatedDriver);
               if (primaryDriver && primaryDriver.id === updatedDriver.id) {
@@ -462,7 +467,12 @@ const DriverPortalPage: React.FC = () => {
               window.clearTimeout(portalRefreshTimerRef.current);
           }
           portalRefreshTimerRef.current = window.setTimeout(() => {
-              refreshPortalData();
+              const now = Date.now();
+              const includeDrivers = type === 'drivers_changed' || (now - lastDriversRefreshRef.current) > DRIVERS_REFRESH_INTERVAL_MS;
+              if (includeDrivers) {
+                  lastDriversRefreshRef.current = now;
+              }
+              refreshPortalData({ includeDrivers });
               portalRefreshTimerRef.current = null;
           }, 300);
       }
@@ -497,7 +507,7 @@ const DriverPortalPage: React.FC = () => {
       let isMounted = true;
       const poll = async () => {
           if (!isMounted || liveUpdatesConnected) return;
-          await refreshPortalData();
+          await refreshPortalData({ includeDrivers: false });
       };
 
       poll();
