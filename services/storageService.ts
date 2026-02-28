@@ -2,6 +2,13 @@
 import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping, ManagerAccess, AdminAccess, DriverBillingRecord, CashMode } from '../types';
 import { getApiBase } from '../lib/apiBase';
 
+type DailyEntryBootstrapResponse = {
+  entries: DailyEntry[];
+  drivers: Driver[];
+  leaves: LeaveRecord[];
+  weeklyWallets: WeeklyWallet[];
+};
+
 const API_BASE = getApiBase();
 
 const CACHE_TTL_MS = 30_000;
@@ -335,6 +342,8 @@ export const storageService = {
   // --- Daily Entries ---
   getDailyEntries: async (params?: { from?: string; to?: string; limit?: number; driver?: string; fresh?: number }): Promise<DailyEntry[]> =>
     api.get(`/daily-entries${buildQueryString(params)}`),
+  getDailyEntriesBootstrap: async (params?: { from?: string; to?: string; fresh?: number }): Promise<DailyEntryBootstrapResponse> =>
+    api.get(`/daily-entries/bootstrap${buildQueryString(params)}`),
   getDailyEntriesFresh: async (): Promise<DailyEntry[]> => api.get(`/daily-entries${buildQueryString({ fresh: Date.now() })}`),
   saveDailyEntry: async (entry: DailyEntry): Promise<DailyEntry> => api.post('/daily-entries', entry),
   saveDailyEntriesBulk: async (newEntries: DailyEntry[]): Promise<void> => api.post('/daily-entries/bulk', newEntries),

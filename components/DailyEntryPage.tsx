@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef, useMemo, useCallback, useDeferredValue } from 'react';
 import { DailyEntry, Driver, LeaveRecord, WeeklyWallet } from '../types';
 import { storageService } from '../services/storageService';
 import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check, AlertOctagon, FileDown } from 'lucide-react';
@@ -267,6 +267,7 @@ const ColumnFilter: React.FC<ColumnFilterProps> = ({ columnKey, data, activeFilt
 
 const DailyEntryPage: React.FC = () => {
   const RECENT_DAYS = 60;
+  const LIVE_REFRESH_MS = 15000;
   const [entries, setEntries] = useState<DailyEntry[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [leaves, setLeaves] = useState<LeaveRecord[]>([]); // Added Leaves state
@@ -318,40 +319,93 @@ const DailyEntryPage: React.FC = () => {
 
   const recentFromDate = showFullHistory ? '' : getISODateDaysAgo(RECENT_DAYS);
 
-  useEffect(() => {
-    loadData();
-  }, [showFullHistory]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     const dailyParams = showFullHistory ? undefined : { from: recentFromDate };
 
     try {
-      const entriesPromise = storageService.getDailyEntries(dailyParams);
-      const asyncMetaPromise = Promise.all([
-        storageService.getDrivers(),
-        storageService.getLeaves(),
-        storageService.getWeeklyWallets()
-      ]);
+      const bootstrap = await storageService.getDailyEntriesBootstrap(dailyParams);
+      const sortedEntries = bootstrap.entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-      const e = await entriesPromise;
-      setEntries(e.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      setEntries(sortedEntries);
+      setDrivers(bootstrap.drivers.filter(driver => !driver.terminationDate));
+      setLeaves(bootstrap.leaves);
+      setWeeklyWallets(bootstrap.weeklyWallets);
       setLoading(false);
-
-      asyncMetaPromise
-        .then(([d, l, w]) => {
-          setDrivers(d.filter(driver => !driver.terminationDate));
-          setLeaves(l);
-          setWeeklyWallets(w);
-        })
-        .catch((error) => {
-          console.error('Failed to load secondary daily entry metadata:', error);
-        });
     } catch (error) {
-      console.error('Failed to load daily entries:', error);
-      setLoading(false);
+      console.warn('Daily bootstrap failed, falling back to parallel requests:', error);
+
+      try {
+        const entriesPromise = storageService.getDailyEntries(dailyParams);
+        const asyncMetaPromise = Promise.all([
+          storageService.getDrivers(),
+          storageService.getLeaves(),
+          storageService.getWeeklyWallets()
+        ]);
+
+        const e = await entriesPromise;
+        setEntries(e.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+        setLoading(false);
+
+        asyncMetaPromise
+          .then(([d, l, w]) => {
+            setDrivers(d.filter(driver => !driver.terminationDate));
+            setLeaves(l);
+            setWeeklyWallets(w);
+          })
+          .catch((metaError) => {
+            console.error('Failed to load secondary daily entry metadata:', metaError);
+          });
+      } catch (fallbackError) {
+        console.error('Failed to load daily entries:', fallbackError);
+        setLoading(false);
+      }
     }
-  };
+  }, [showFullHistory, recentFromDate]);
+
+  const refreshLiveData = useCallback(async () => {
+    if (document.visibilityState !== 'visible') return;
+
+    const dailyParams = showFullHistory ? undefined : { from: recentFromDate, fresh: Date.now() };
+    try {
+      const bootstrap = await storageService.getDailyEntriesBootstrap(dailyParams);
+      setEntries(prev => {
+        if (prev.length === bootstrap.entries.length && prev[0]?.id === bootstrap.entries[0]?.id) return prev;
+        return bootstrap.entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      });
+      setDrivers(bootstrap.drivers.filter(driver => !driver.terminationDate));
+      setLeaves(bootstrap.leaves);
+      setWeeklyWallets(bootstrap.weeklyWallets);
+    } catch (error) {
+      console.warn('Live refresh skipped due to transient failure:', error);
+    }
+  }, [showFullHistory, recentFromDate]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      refreshLiveData();
+    }, LIVE_REFRESH_MS);
+
+    const onFocus = () => refreshLiveData();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        refreshLiveData();
+      }
+    };
+
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [refreshLiveData]);
 
   const upsertEntry = (entry: DailyEntry) => {
     setEntries(prev => {
@@ -723,8 +777,10 @@ const DailyEntryPage: React.FC = () => {
   };
 
   // Filter Logic: Global Dates AND Column Specific Filters
+  const deferredEntriesWithAdjustments = useDeferredValue(entriesWithAdjustments);
+
   const filteredEntries = useMemo(() => {
-    return entriesWithAdjustments.filter(entry => {
+    return deferredEntriesWithAdjustments.filter(entry => {
         // 1. Global Date Range Filter
         const matchStart = filterDateStart === '' || entry.date >= filterDateStart;
         const matchEnd = filterDateEnd === '' || entry.date <= filterDateEnd;
@@ -749,7 +805,7 @@ const DailyEntryPage: React.FC = () => {
 
         return true;
     });
-  }, [entriesWithAdjustments, filterDateStart, filterDateEnd, filterDriver, columnFilters]);
+  }, [deferredEntriesWithAdjustments, filterDateStart, filterDateEnd, filterDriver, columnFilters]);
 
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 

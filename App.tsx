@@ -1,23 +1,35 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation, Outlet } from 'react-router-dom';
 import { LayoutDashboard, Calendar, Wallet, Menu, X, Users, Coffee, Upload, Settings, Briefcase, FileText, Calculator, UserCircle, LogOut, Shield, ClipboardList } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import DailyEntryPage from './components/DailyEntryPage';
-import WeeklyWalletPage from './components/WeeklyWalletPage';
-import DashboardPage from './components/DashboardPage';
-import RegistrationPage from './components/RegistrationPage';
-import LeavePage from './components/LeavePage';
-import ImportPage from './components/ImportPage';
-import ManageDefaultsPage from './components/ManageDefaultsPage';
-import CompanySettlementPage from './components/CompanySettlementPage';
-import DriverBillingsPage from './components/DriverBillingsPage';
-import RevenuePage from './components/RevenuePage';
-import DriverPortalPage from './components/DriverPortalPage';
-import LoginPage from './components/LoginPage';
-import AdminAccessPage from './components/AdminAccessPage';
-import DriverLeadsPage from './components/DriverLeadsPage';
-import HomePage from './components/HomePage';
-import DriversEarningsPublicPage from './components/DriversEarningsPublicPage';
+
+
+const HomePage = lazy(() => import('./components/HomePage'));
+const DriversEarningsPublicPage = lazy(() => import('./components/DriversEarningsPublicPage'));
+const LoginPage = lazy(() => import('./components/LoginPage'));
+const DriverPortalPage = lazy(() => import('./components/DriverPortalPage'));
+const DashboardPage = lazy(() => import('./components/DashboardPage'));
+const DailyEntryPage = lazy(() => import('./components/DailyEntryPage'));
+const WeeklyWalletPage = lazy(() => import('./components/WeeklyWalletPage'));
+const RegistrationPage = lazy(() => import('./components/RegistrationPage'));
+const ManageDefaultsPage = lazy(() => import('./components/ManageDefaultsPage'));
+const LeavePage = lazy(() => import('./components/LeavePage'));
+const CompanySettlementPage = lazy(() => import('./components/CompanySettlementPage'));
+const DriverBillingsPage = lazy(() => import('./components/DriverBillingsPage'));
+const RevenuePage = lazy(() => import('./components/RevenuePage'));
+const DriverLeadsPage = lazy(() => import('./components/DriverLeadsPage'));
+const ImportPage = lazy(() => import('./components/ImportPage'));
+const AdminAccessPage = lazy(() => import('./components/AdminAccessPage'));
+
+const RouteFallback = () => (
+  <div className="min-h-[240px] flex items-center justify-center bg-slate-50 rounded-2xl border border-slate-100">
+    <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+  </div>
+);
+
+const LazyPage = ({ children }: { children: React.ReactNode }) => (
+  <Suspense fallback={<RouteFallback />}>{children}</Suspense>
+);
 
 // --- PROTECTED ROUTE WRAPPER ---
 const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode, allowedRoles: string[] }) => {
@@ -206,15 +218,15 @@ const App: React.FC = () => {
     <AuthProvider>
         <BrowserRouter>
           <Routes>
-              <Route path="/" element={<HomePage />} />
-              <Route path="/drivers-earnings" element={<DriversEarningsPublicPage />} />
-              <Route path="/staff" element={<LoginPage />} />
+              <Route path="/" element={<LazyPage><HomePage /></LazyPage>} />
+              <Route path="/drivers-earnings" element={<LazyPage><DriversEarningsPublicPage /></LazyPage>} />
+              <Route path="/staff" element={<LazyPage><LoginPage /></LazyPage>} />
               <Route path="/login" element={<Navigate to="/staff" replace />} />
 
               {/* Driver Portal Route (Secure) */}
               <Route path="/portal" element={
                   <ProtectedRoute allowedRoles={['driver', 'admin', 'super_admin']}>
-                      <DriverPortalPage />
+                      <LazyPage><DriverPortalPage /></LazyPage>
                   </ProtectedRoute>
               } />
 
@@ -227,18 +239,18 @@ const App: React.FC = () => {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<DashboardPage />} />
-                <Route path="daily" element={<DailyEntryPage />} />
-                <Route path="weekly" element={<WeeklyWalletPage />} />
-                <Route path="registration" element={<RegistrationPage />} />
-                <Route path="defaults" element={<ManageDefaultsPage />} />
-                <Route path="leaves" element={<LeavePage />} />
-                <Route path="settlement" element={<CompanySettlementPage />} />
-                <Route path="billings" element={<DriverBillingsPage />} />
-                <Route path="revenue" element={<RevenuePage />} />
-                <Route path="driver-leads" element={<DriverLeadsPage />} />
-                <Route path="import" element={<ImportPage />} />
-                <Route path="admin-access" element={<AdminAccessPage />} />
+                <Route index element={<LazyPage><DashboardPage /></LazyPage>} />
+                <Route path="daily" element={<LazyPage><DailyEntryPage /></LazyPage>} />
+                <Route path="weekly" element={<LazyPage><WeeklyWalletPage /></LazyPage>} />
+                <Route path="registration" element={<LazyPage><RegistrationPage /></LazyPage>} />
+                <Route path="defaults" element={<LazyPage><ManageDefaultsPage /></LazyPage>} />
+                <Route path="leaves" element={<LazyPage><LeavePage /></LazyPage>} />
+                <Route path="settlement" element={<LazyPage><CompanySettlementPage /></LazyPage>} />
+                <Route path="billings" element={<LazyPage><DriverBillingsPage /></LazyPage>} />
+                <Route path="revenue" element={<LazyPage><RevenuePage /></LazyPage>} />
+                <Route path="driver-leads" element={<LazyPage><DriverLeadsPage /></LazyPage>} />
+                <Route path="import" element={<LazyPage><ImportPage /></LazyPage>} />
+                <Route path="admin-access" element={<LazyPage><AdminAccessPage /></LazyPage>} />
               </Route>
           </Routes>
         </BrowserRouter>

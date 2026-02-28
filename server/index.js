@@ -1557,6 +1557,82 @@ app.get('/api/daily-entries', async (req, res) => {
   }
 });
 
+app.get('/api/daily-entries/bootstrap', async (req, res) => {
+  try {
+    const cacheBypass = req.query.fresh !== undefined;
+    const cacheKey = buildQueryCacheKey('daily-entries:bootstrap', req.query);
+
+    if (!cacheBypass) {
+      const cached = await getCacheJSON(cacheKey);
+      if (cached) {
+        res.set('X-Cache', 'REDIS');
+        return res.json(cached);
+      }
+    }
+
+    const values = [];
+    const filters = [];
+
+    const fromDate = parseQueryDate(req.query.from, 'from');
+    if (fromDate) {
+      values.push(fromDate);
+      filters.push(`date >= $${values.length}`);
+    }
+
+    const toDate = parseQueryDate(req.query.to, 'to');
+    if (toDate) {
+      values.push(toDate);
+      filters.push(`date <= $${values.length}`);
+    }
+
+    const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+
+    const [dailyRes, driversRes, leavesRes, walletsRes] = await Promise.all([
+      db.query(
+        `SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes
+         FROM daily_entries
+         ${whereClause}
+         ORDER BY date DESC`,
+        values,
+      ),
+      db.query(`SELECT id, name, mobile, email, to_char(join_date, 'YYYY-MM-DD') as "joinDate", to_char(termination_date, 'YYYY-MM-DD') as "terminationDate", deposit, qr_code as "qrCode", vehicle, status, current_shift as "currentShift", default_rent as "defaultRent", notes, is_manager as "isManager", food_option as "foodOption" FROM drivers ORDER BY name`),
+      db.query(`SELECT id, driver_id as "driverId", to_char(start_date, 'YYYY-MM-DD') as "startDate", to_char(end_date, 'YYYY-MM-DD') as "endDate", to_char(actual_return_date, 'YYYY-MM-DD') as "actualReturnDate", days, reason FROM leaves`),
+      db.query(`SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate", to_char(week_end_date, 'YYYY-MM-DD') as "weekEndDate", earnings, refund, diff, cash, charges, trips, wallet_week as "walletWeek", days_worked_override as "daysWorkedOverride", rent_override as "rentOverride", adjustments, notes
+       FROM weekly_wallets
+       ORDER BY week_start_date DESC`),
+    ]);
+
+    const payload = {
+      entries: dailyRes.rows.map((r) => ({
+        ...r,
+        rent: Number(r.rent), collection: Number(r.collection), fuel: Number(r.fuel), due: Number(r.due), payout: Number(r.payout)
+      })),
+      drivers: driversRes.rows,
+      leaves: leavesRes.rows,
+      weeklyWallets: walletsRes.rows.map((r) => ({
+        ...r,
+        earnings: Number(r.earnings), refund: Number(r.refund), diff: Number(r.diff), cash: Number(r.cash), charges: Number(r.charges), walletWeek: Number(r.walletWeek),
+        daysWorkedOverride: r.daysWorkedOverride !== null ? Number(r.daysWorkedOverride) : undefined,
+        rentOverride: r.rentOverride !== null ? Number(r.rentOverride) : undefined,
+        adjustments: Number(r.adjustments || 0)
+      })),
+    };
+
+    if (!cacheBypass) {
+      await setCacheJSON(cacheKey, payload, DAILY_ENTRIES_CACHE_TTL_SECONDS);
+      registerQueryCacheKey(QUERY_CACHE_NAMESPACE.dailyEntries, cacheKey);
+      res.set('X-Cache', 'MISS');
+    }
+
+    res.json(payload);
+  } catch (err) {
+    if (err.message && err.message.startsWith('Invalid')) {
+      return res.status(400).json({ error: err.message });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/daily-entries', async (req, res) => {
   const e = req.body;
   try {

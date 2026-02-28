@@ -216,6 +216,20 @@ const toISODate = (rawVal: any) => {
   return '';
 };
 
+const parseQueryDate = (raw: string | undefined, label: string) => {
+  if (!raw) return null;
+  const iso = toISODate(raw);
+  if (!iso) throw new Error(`Invalid ${label} date format`);
+  return iso;
+};
+
+const parseQueryLimit = (raw: string | undefined, max = 5000) => {
+  if (!raw) return null;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return Math.min(Math.floor(value), max);
+};
+
 const syncDriverBillings = async (env: Env) => {
   // The heavy computation should be moved to SQL or a stored procedure. The scheduled trigger
   // simply invokes the database-side sync so the GET endpoint can stay lightweight.
@@ -227,16 +241,237 @@ const syncDriverBillings = async (env: Env) => {
   }
 };
 
+app.get('/api/daily-entries', async (c) => {
+  try {
+    const values: any[] = [];
+    const filters: string[] = [];
+    const driverFilter = c.req.query('driver') ? normalizeDriver(c.req.query('driver') as string) : null;
+
+    if (driverFilter) {
+      values.push(driverFilter);
+      filters.push(`LOWER(driver) = $${values.length}`);
+    }
+
+    const fromDate = parseQueryDate(c.req.query('from'), 'from');
+    if (fromDate) {
+      values.push(fromDate);
+      filters.push(`date >= $${values.length}`);
+    }
+
+    const toDate = parseQueryDate(c.req.query('to'), 'to');
+    if (toDate) {
+      values.push(toDate);
+      filters.push(`date <= $${values.length}`);
+    }
+
+    const limit = parseQueryLimit(c.req.query('limit'));
+    const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+    const limitClause = limit ? `LIMIT $${values.length + 1}` : '';
+    if (limit) values.push(limit);
+
+    const result = await query(
+      c.env,
+      `SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes
+       FROM daily_entries
+       ${whereClause}
+       ORDER BY date DESC
+       ${limitClause}`,
+      values,
+    );
+
+    const safeRows = result.rows.map((r: any) => ({
+      ...r,
+      rent: Number(r.rent),
+      collection: Number(r.collection),
+      fuel: Number(r.fuel),
+      due: Number(r.due),
+      payout: Number(r.payout),
+    }));
+
+    return c.json(safeRows);
+  } catch (err: any) {
+    if (err?.message?.startsWith('Invalid')) {
+      return c.json({ error: err.message }, 400);
+    }
+    return c.json({ error: err?.message || 'Failed to fetch daily entries' }, 500);
+  }
+});
+
+app.get('/api/daily-entries/bootstrap', async (c) => {
+  try {
+    const values: any[] = [];
+    const filters: string[] = [];
+
+    const fromDate = parseQueryDate(c.req.query('from'), 'from');
+    if (fromDate) {
+      values.push(fromDate);
+      filters.push(`date >= $${values.length}`);
+    }
+
+    const toDate = parseQueryDate(c.req.query('to'), 'to');
+    if (toDate) {
+      values.push(toDate);
+      filters.push(`date <= $${values.length}`);
+    }
+
+    const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+
+    const [dailyRes, driversRes, leavesRes, walletsRes] = await Promise.all([
+      query(
+        c.env,
+        `SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes
+         FROM daily_entries
+         ${whereClause}
+         ORDER BY date DESC`,
+        values,
+      ),
+      query(c.env, `SELECT id, name, mobile, email, to_char(join_date, 'YYYY-MM-DD') as "joinDate", to_char(termination_date, 'YYYY-MM-DD') as "terminationDate", deposit, qr_code as "qrCode", vehicle, status, current_shift as "currentShift", default_rent as "defaultRent", notes, is_manager as "isManager", food_option as "foodOption" FROM drivers ORDER BY name`),
+      query(c.env, `SELECT id, driver_id as "driverId", to_char(start_date, 'YYYY-MM-DD') as "startDate", to_char(end_date, 'YYYY-MM-DD') as "endDate", to_char(actual_return_date, 'YYYY-MM-DD') as "actualReturnDate", days, reason FROM leaves`),
+      query(c.env, `SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate", to_char(week_end_date, 'YYYY-MM-DD') as "weekEndDate", earnings, refund, diff, cash, charges, trips, wallet_week as "walletWeek", days_worked_override as "daysWorkedOverride", rent_override as "rentOverride", adjustments, notes
+       FROM weekly_wallets
+       ORDER BY week_start_date DESC`),
+    ]);
+
+    return c.json({
+      entries: dailyRes.rows.map((r: any) => ({
+        ...r,
+        rent: Number(r.rent),
+        collection: Number(r.collection),
+        fuel: Number(r.fuel),
+        due: Number(r.due),
+        payout: Number(r.payout),
+      })),
+      drivers: driversRes.rows,
+      leaves: leavesRes.rows,
+      weeklyWallets: walletsRes.rows.map((r: any) => ({
+        ...r,
+        earnings: Number(r.earnings),
+        refund: Number(r.refund),
+        diff: Number(r.diff),
+        cash: Number(r.cash),
+        charges: Number(r.charges),
+        walletWeek: Number(r.walletWeek),
+        daysWorkedOverride: r.daysWorkedOverride !== null ? Number(r.daysWorkedOverride) : undefined,
+        rentOverride: r.rentOverride !== null ? Number(r.rentOverride) : undefined,
+        adjustments: Number(r.adjustments || 0),
+      })),
+    });
+  } catch (err: any) {
+    if (err?.message?.startsWith('Invalid')) {
+      return c.json({ error: err.message }, 400);
+    }
+    return c.json({ error: err?.message || 'Failed to build daily bootstrap payload' }, 500);
+  }
+});
+
+app.post('/api/daily-entries', async (c) => {
+  const e = await c.req.json();
+  const isoDate = toISODate(e.date);
+  if (!isoDate) return c.json({ error: 'Invalid date format' }, 400);
+  const normalizedDriver = normalizeDriver(e.driver);
+  const duplicateCheck = await query(c.env, `SELECT id FROM daily_entries WHERE date = $1 AND LOWER(driver) = $2 AND ($3::uuid IS NULL OR id <> $3)`, [isoDate, normalizedDriver, e.id || null]);
+  if (duplicateCheck.rowCount && duplicateCheck.rowCount > 0) {
+    return c.json({ error: 'Driver already has an entry for this date. Please edit or delete the existing record.' }, 409);
+  }
+  const q = `
+    INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, payout, notes)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    ON CONFLICT (id) DO UPDATE SET
+      date=$2, day=$3, vehicle=$4, driver=$5, shift=$6, qr_code=$7, rent=$8, collection=$9, fuel=$10, due=$11, payout=$12, notes=$13
+    RETURNING *;
+  `;
+  const result = await query(c.env, q, [e.id, isoDate, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, e.notes]);
+  return c.json(result.rows[0]);
+});
+
+app.delete('/api/daily-entries/:id', async (c) => {
+  const { id } = c.req.param();
+  await query(c.env, 'DELETE FROM daily_entries WHERE id = $1', [id]);
+  return c.json({ success: true });
+});
+
+app.get('/api/drivers', async (c) => {
+  try {
+    const result = await query(c.env, `SELECT id, name, mobile, email, to_char(join_date, 'YYYY-MM-DD') as "joinDate", to_char(termination_date, 'YYYY-MM-DD') as "terminationDate", deposit, qr_code as "qrCode", vehicle, status, current_shift as "currentShift", default_rent as "defaultRent", notes, is_manager as "isManager", food_option as "foodOption" FROM drivers ORDER BY name`);
+    return c.json(result.rows);
+  } catch (err: any) {
+    return c.json({ error: err?.message || 'Failed to fetch drivers' }, 500);
+  }
+});
+
+app.get('/api/leaves', async (c) => {
+  try {
+    const result = await query(c.env, `SELECT id, driver_id as "driverId", to_char(start_date, 'YYYY-MM-DD') as "startDate", to_char(end_date, 'YYYY-MM-DD') as "endDate", to_char(actual_return_date, 'YYYY-MM-DD') as "actualReturnDate", days, reason FROM leaves`);
+    return c.json(result.rows);
+  } catch (err: any) {
+    return c.json({ error: err?.message || 'Failed to fetch leaves' }, 500);
+  }
+});
+
+app.get('/api/weekly-wallets', async (c) => {
+  try {
+    const values: any[] = [];
+    const filters: string[] = [];
+    const driverFilter = c.req.query('driver') ? normalizeDriver(c.req.query('driver') as string) : null;
+
+    if (driverFilter) {
+      values.push(driverFilter);
+      filters.push(`LOWER(driver) = $${values.length}`);
+    }
+
+    const fromDate = parseQueryDate(c.req.query('from'), 'from');
+    if (fromDate) {
+      values.push(fromDate);
+      filters.push(`week_start_date >= $${values.length}`);
+    }
+
+    const toDate = parseQueryDate(c.req.query('to'), 'to');
+    if (toDate) {
+      values.push(toDate);
+      filters.push(`week_start_date <= $${values.length}`);
+    }
+
+    const limit = parseQueryLimit(c.req.query('limit'));
+    const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+    const limitClause = limit ? `LIMIT $${values.length + 1}` : '';
+    if (limit) values.push(limit);
+
+    const result = await query(
+      c.env,
+      `SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate", to_char(week_end_date, 'YYYY-MM-DD') as "weekEndDate", earnings, refund, diff, cash, charges, trips, wallet_week as "walletWeek", days_worked_override as "daysWorkedOverride", rent_override as "rentOverride", adjustments, notes
+       FROM weekly_wallets
+       ${whereClause}
+       ORDER BY week_start_date DESC
+       ${limitClause}`,
+      values,
+    );
+
+    return c.json(result.rows.map((r: any) => ({
+      ...r,
+      earnings: Number(r.earnings),
+      refund: Number(r.refund),
+      diff: Number(r.diff),
+      cash: Number(r.cash),
+      charges: Number(r.charges),
+      walletWeek: Number(r.walletWeek),
+      daysWorkedOverride: r.daysWorkedOverride !== null ? Number(r.daysWorkedOverride) : undefined,
+      rentOverride: r.rentOverride !== null ? Number(r.rentOverride) : undefined,
+      adjustments: Number(r.adjustments || 0),
+    })));
+  } catch (err: any) {
+    if (err?.message?.startsWith('Invalid')) {
+      return c.json({ error: err.message }, 400);
+    }
+    return c.json({ error: err?.message || 'Failed to fetch weekly wallets' }, 500);
+  }
+});
+
 const placeholderPaths = [
   '/api/driver-billings',
-  '/api/drivers',
-  '/api/daily-entries',
-  '/api/weekly-wallets',
   '/api/assets',
   '/api/system-flags',
   '/api/rental-slabs',
   '/api/company-summaries',
-  '/api/leaves',
   '/api/shifts',
   '/api/header-mappings',
   '/api/admin-access',
@@ -245,45 +480,6 @@ const placeholderPaths = [
 
 placeholderPaths.forEach((path) => {
   if (path === '/api/driver-billings') return; // already implemented
-  if (path === '/api/daily-entries') {
-    app.get(path, async (c) => {
-      const result = await query(c.env, `SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, notes FROM daily_entries ORDER BY date DESC`);
-      const safeRows = result.rows.map((r: any) => ({
-        ...r,
-        rent: Number(r.rent),
-        collection: Number(r.collection),
-        fuel: Number(r.fuel),
-        due: Number(r.due),
-        payout: Number(r.payout),
-      }));
-      return c.json(safeRows);
-    });
-    app.post(path, async (c) => {
-      const e = await c.req.json();
-      const isoDate = toISODate(e.date);
-      if (!isoDate) return c.json({ error: 'Invalid date format' }, 400);
-      const normalizedDriver = normalizeDriver(e.driver);
-      const duplicateCheck = await query(c.env, `SELECT id FROM daily_entries WHERE date = $1 AND LOWER(driver) = $2 AND ($3::uuid IS NULL OR id <> $3)`, [isoDate, normalizedDriver, e.id || null]);
-      if (duplicateCheck.rowCount && duplicateCheck.rowCount > 0) {
-        return c.json({ error: 'Driver already has an entry for this date. Please edit or delete the existing record.' }, 409);
-      }
-      const q = `
-        INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, payout, notes)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-        ON CONFLICT (id) DO UPDATE SET
-          date=$2, day=$3, vehicle=$4, driver=$5, shift=$6, qr_code=$7, rent=$8, collection=$9, fuel=$10, due=$11, payout=$12, notes=$13
-        RETURNING *;
-      `;
-      const result = await query(c.env, q, [e.id, isoDate, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, e.notes]);
-      return c.json(result.rows[0]);
-    });
-    app.delete(`${path}/:id`, async (c) => {
-      const { id } = c.req.param();
-      await query(c.env, 'DELETE FROM daily_entries WHERE id = $1', [id]);
-      return c.json({ success: true });
-    });
-    return;
-  }
   app.all(path, (c) => c.json({ error: 'Route migrated placeholder - port logic from server/index.js' }, 501));
 });
 
