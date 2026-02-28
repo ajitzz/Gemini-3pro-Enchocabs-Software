@@ -1,7 +1,8 @@
 
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { storageService } from '../services/storageService';
+import { useLiveUpdates } from '../lib/useLiveUpdates';
 import { CashMode, DailyEntry, WeeklyWallet, Driver, RentalSlab } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -62,6 +63,11 @@ const DriverPortalPage: React.FC = () => {
       title?: string;
       sourceNote?: string;
   } | null>(null);
+
+  const PORTAL_FALLBACK_REFRESH_MS = 60000;
+  const CASHMODE_FALLBACK_REFRESH_MS = 20000;
+  const portalRefreshTimerRef = useRef<number | null>(null);
+  const cashModeRefreshTimerRef = useRef<number | null>(null);
 
   const tabOptions: {
       key: 'home' | 'daily' | 'billing';
@@ -447,21 +453,60 @@ const DriverPortalPage: React.FC = () => {
       }
   }, [myTeam, primaryDriver, rentalSlabs, user, viewingAsDriver]);
 
+  const { connected: liveUpdatesConnected } = useLiveUpdates((event) => {
+      const type = event?.type;
+      if (!type) return;
+
+      if (['daily_entries_changed', 'weekly_wallets_changed', 'drivers_changed', 'leaves_changed'].includes(type)) {
+          if (portalRefreshTimerRef.current !== null) {
+              window.clearTimeout(portalRefreshTimerRef.current);
+          }
+          portalRefreshTimerRef.current = window.setTimeout(() => {
+              refreshPortalData();
+              portalRefreshTimerRef.current = null;
+          }, 300);
+      }
+
+      if (type === 'cash_mode_changed' && viewingAsDriver?.id) {
+          if (cashModeRefreshTimerRef.current !== null) {
+              window.clearTimeout(cashModeRefreshTimerRef.current);
+          }
+          const driverId = viewingAsDriver.id;
+          cashModeRefreshTimerRef.current = window.setTimeout(() => {
+              refreshCashMode(driverId);
+              cashModeRefreshTimerRef.current = null;
+          }, 200);
+      }
+  }, !!user);
+
+  useEffect(() => {
+      return () => {
+          if (portalRefreshTimerRef.current !== null) {
+              window.clearTimeout(portalRefreshTimerRef.current);
+              portalRefreshTimerRef.current = null;
+          }
+          if (cashModeRefreshTimerRef.current !== null) {
+              window.clearTimeout(cashModeRefreshTimerRef.current);
+              cashModeRefreshTimerRef.current = null;
+          }
+      };
+  }, []);
+
   useEffect(() => {
       if (!user || !viewingAsDriver) return;
       let isMounted = true;
       const poll = async () => {
-          if (!isMounted) return;
+          if (!isMounted || liveUpdatesConnected) return;
           await refreshPortalData();
       };
 
       poll();
-      const interval = window.setInterval(poll, 15000);
+      const interval = window.setInterval(poll, PORTAL_FALLBACK_REFRESH_MS);
       return () => {
           isMounted = false;
           window.clearInterval(interval);
       };
-  }, [refreshPortalData, user, viewingAsDriver]);
+  }, [liveUpdatesConnected, refreshPortalData, user, viewingAsDriver]);
 
   const switchToDriverView = (targetDriver: Driver, allDaily: DailyEntry[], allWeekly: WeeklyWallet[]) => {
       setViewingAsDriver(targetDriver);
@@ -530,7 +575,7 @@ const DriverPortalPage: React.FC = () => {
       }
   };
 
-  // Continuously sync cash mode across admin/manager/driver views
+  // Continuously sync cash mode across admin/manager/driver views (fallback when live stream disconnects)
   useEffect(() => {
       if (!viewingAsDriver) return;
 
@@ -538,18 +583,18 @@ const DriverPortalPage: React.FC = () => {
       const driverId = viewingAsDriver.id;
 
       const sync = async () => {
-          if (!isMounted) return;
+          if (!isMounted || liveUpdatesConnected) return;
           await refreshCashMode(driverId);
       };
 
       sync();
-      const interval = setInterval(sync, 5000);
+      const interval = setInterval(sync, CASHMODE_FALLBACK_REFRESH_MS);
 
       return () => {
           isMounted = false;
           clearInterval(interval);
       };
-  }, [viewingAsDriver?.id, myTeam.length]);
+  }, [liveUpdatesConnected, refreshCashMode, viewingAsDriver?.id]);
   
   const viewTeamMember = async (member: Driver) => {
       try {
