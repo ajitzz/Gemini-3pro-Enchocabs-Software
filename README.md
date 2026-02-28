@@ -97,3 +97,22 @@ This approach keeps checks fast and side-effect free while giving you early warn
 ## Driver billing refresh behavior
 
 The `GET /api/driver-billings` endpoint now serves cached results immediately and only performs a full recomputation when explicitly requested. If you need to refresh billings on-demand, call the endpoint with `?refresh=true` or set `SYNC_BILLINGS_ON_READ=true` in the server environment to enable recomputation on cache misses. This prevents expensive billing syncs from slowing down every page load while still allowing manual refreshes when needed.
+
+## Performance program (Phase 1 → Phase 4)
+
+The project now includes a performance-upgrade track aligned to four phases:
+
+1. **Phase 1 (Frontend payload + render)**
+   - Route-prefetch on navigation hover/focus for faster route transitions.
+   - Lazy chart loading on dashboard to reduce critical route JS.
+   - Explicit vendor chunk split in Vite to improve browser cache reuse.
+2. **Phase 2 (Backend response optimization)**
+   - Single-flight summary aggregation prevents concurrent duplicate recomputation under load.
+   - Existing Redis + memory cache remains in place for hot summary paths.
+3. **Phase 3 (Live updates at scale)**
+   - Live update events now include monotonic `version` values for better client-side dedupe/selective refresh behavior.
+4. **Phase 4 (Performance observability + governance)**
+   - Browser web vitals are reported to `POST /api/perf-metrics`.
+   - API exposes `GET /api/perf-stats` with request timing summary, event versions, and recent vitals aggregates.
+
+These improvements target near-instant interaction under normal production load and establish the telemetry needed to sustain a 9.5/10 performance target.

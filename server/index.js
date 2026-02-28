@@ -13,6 +13,21 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); // Support large Excel imports
 
+app.use((req, res, next) => {
+  const startedAt = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - startedAt;
+    perfStats.requests += 1;
+    perfStats.totalDurationMs += duration;
+
+    if (duration > 1200) {
+      perfStats.slowRequests += 1;
+      perfStats.lastSlowPath = `${req.method} ${req.originalUrl} (${duration}ms)`;
+    }
+  });
+  next();
+});
+
 const PORT = process.env.PORT || 3000;
 const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'enchoenterprises@gmail.com').toLowerCase();
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || '';
@@ -34,9 +49,23 @@ const BOT_CONFIG_CACHE_KEY = 'driver_app_bot_config_v1';
 const liveEvents = new EventEmitter();
 liveEvents.setMaxListeners(200);
 
+const liveEventVersions = new Map();
+const perfStats = {
+  requests: 0,
+  totalDurationMs: 0,
+  slowRequests: 0,
+  lastSlowPath: null,
+};
+const perfMetricsBuffer = [];
+const PERF_METRICS_LIMIT = 200;
+
 const emitLiveUpdate = (type, payload = {}) => {
+  const version = (liveEventVersions.get(type) || 0) + 1;
+  liveEventVersions.set(type, version);
+
   liveEvents.emit('update', {
     type,
+    version,
     at: Date.now(),
     ...payload,
   });
@@ -437,6 +466,7 @@ const summaryCache = {
   etag: null,
   expiresAt: 0,
 };
+let summaryBuildPromise = null;
 
 const billingsCache = {
   data: null,
@@ -1475,64 +1505,73 @@ app.get('/api/summary', async (req, res) => {
       }
     }
 
-    const [dailyRes, walletRes, slabRes] = await Promise.all([
-      db.query("SELECT id, to_char(date, 'YYYY-MM-DD') as date, driver, rent, collection, fuel, due, payout FROM daily_entries"),
-      db.query("SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as week_start_date, to_char(week_end_date, 'YYYY-MM-DD') as week_end_date, trips, wallet_week, days_worked_override, rent_override, adjustments FROM weekly_wallets"),
-      db.query("SELECT min_trips as \"minTrips\", max_trips as \"maxTrips\", rent_amount as \"rentAmount\" FROM rental_slabs WHERE slab_type = 'driver' ORDER BY min_trips")
-    ]);
+    if (!summaryBuildPromise) {
+      summaryBuildPromise = (async () => {
+        const [dailyRes, walletRes, slabRes] = await Promise.all([
+          db.query("SELECT id, to_char(date, 'YYYY-MM-DD') as date, driver, rent, collection, fuel, due, payout FROM daily_entries"),
+          db.query("SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as week_start_date, to_char(week_end_date, 'YYYY-MM-DD') as week_end_date, trips, wallet_week, days_worked_override, rent_override, adjustments FROM weekly_wallets"),
+          db.query(`SELECT min_trips as "minTrips", max_trips as "maxTrips", rent_amount as "rentAmount" FROM rental_slabs WHERE slab_type = 'driver' ORDER BY min_trips`)
+        ]);
 
-    const dailyEntries = dailyRes.rows.map((r) => ({
-      ...r,
-      collection: Number(r.collection) || 0,
-      rent: Number(r.rent) || 0,
-      fuel: Number(r.fuel) || 0,
-      due: Number(r.due) || 0,
-      payout: Number(r.payout) || 0,
-    }));
+        const dailyEntries = dailyRes.rows.map((r) => ({
+          ...r,
+          collection: Number(r.collection) || 0,
+          rent: Number(r.rent) || 0,
+          fuel: Number(r.fuel) || 0,
+          due: Number(r.due) || 0,
+          payout: Number(r.payout) || 0,
+        }));
 
-    const weeklyWallets = walletRes.rows.map((w) => ({
-      ...w,
-      weekStartDate: getMondayISO(w.week_start_date),
-      weekEndDate: toISODate(w.week_end_date) || getSundayISO(getMondayISO(w.week_start_date)),
-      trips: Number(w.trips) || 0,
-      walletWeek: Number(w.wallet_week) || 0,
-      daysWorkedOverride: w.days_worked_override !== null ? Number(w.days_worked_override) : null,
-      rentOverride: w.rent_override !== null ? Number(w.rent_override) : null,
-      adjustments: Number(w.adjustments || 0),
-    }));
+        const weeklyWallets = walletRes.rows.map((w) => ({
+          ...w,
+          weekStartDate: getMondayISO(w.week_start_date),
+          weekEndDate: toISODate(w.week_end_date) || getSundayISO(getMondayISO(w.week_start_date)),
+          trips: Number(w.trips) || 0,
+          walletWeek: Number(w.wallet_week) || 0,
+          daysWorkedOverride: w.days_worked_override !== null ? Number(w.days_worked_override) : null,
+          rentOverride: w.rent_override !== null ? Number(w.rent_override) : null,
+          adjustments: Number(w.adjustments || 0),
+        }));
 
-    const rentalSlabs = slabRes.rows.map((r) => ({
-      minTrips: Number(r.minTrips),
-      maxTrips: r.maxTrips === null ? null : Number(r.maxTrips),
-      rentAmount: Number(r.rentAmount)
-    }));
-    const sortedSlabs = (rentalSlabs.length ? rentalSlabs : defaultDriverRentalSlabs).sort((a, b) => a.minTrips - b.minTrips);
+        const rentalSlabs = slabRes.rows.map((r) => ({
+          minTrips: Number(r.minTrips),
+          maxTrips: r.maxTrips === null ? null : Number(r.maxTrips),
+          rentAmount: Number(r.rentAmount)
+        }));
+        const sortedSlabs = (rentalSlabs.length ? rentalSlabs : defaultDriverRentalSlabs).sort((a, b) => a.minTrips - b.minTrips);
 
-    const driverBuckets = buildDriverBuckets(dailyEntries, weeklyWallets);
-    const driverSummaries = Array.from(driverBuckets.values())
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map(({ name, daily, wallets }) => calculateDriverStatsServer(name, daily, wallets, sortedSlabs))
-      .filter(Boolean);
+        const driverBuckets = buildDriverBuckets(dailyEntries, weeklyWallets);
+        const driverSummaries = Array.from(driverBuckets.values())
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map(({ name, daily, wallets }) => calculateDriverStatsServer(name, daily, wallets, sortedSlabs))
+          .filter(Boolean);
 
-    const global = {
-      totalCollection: driverSummaries.reduce((sum, d) => sum + d.totalCollection, 0),
-      totalRent: driverSummaries.reduce((sum, d) => sum + d.totalRent, 0),
-      totalFuel: driverSummaries.reduce((sum, d) => sum + d.totalFuel, 0),
-      totalDue: driverSummaries.reduce((sum, d) => sum + d.totalDue, 0),
-      totalPayout: driverSummaries.reduce((sum, d) => sum + d.totalPayout, 0),
-      totalWalletWeek: driverSummaries.reduce((sum, d) => sum + d.totalWalletWeek, 0),
-      pendingFromDrivers: driverSummaries.filter((d) => d.finalTotal < 0).reduce((sum, d) => sum + Math.abs(d.finalTotal), 0),
-      payableToDrivers: driverSummaries.filter((d) => d.finalTotal > 0).reduce((sum, d) => sum + d.finalTotal, 0),
-    };
+        const global = {
+          totalCollection: driverSummaries.reduce((sum, d) => sum + d.totalCollection, 0),
+          totalRent: driverSummaries.reduce((sum, d) => sum + d.totalRent, 0),
+          totalFuel: driverSummaries.reduce((sum, d) => sum + d.totalFuel, 0),
+          totalDue: driverSummaries.reduce((sum, d) => sum + d.totalDue, 0),
+          totalPayout: driverSummaries.reduce((sum, d) => sum + d.totalPayout, 0),
+          totalWalletWeek: driverSummaries.reduce((sum, d) => sum + d.totalWalletWeek, 0),
+          pendingFromDrivers: driverSummaries.filter((d) => d.finalTotal < 0).reduce((sum, d) => sum + Math.abs(d.finalTotal), 0),
+          payableToDrivers: driverSummaries.filter((d) => d.finalTotal > 0).reduce((sum, d) => sum + d.finalTotal, 0),
+        };
 
-    const payload = { driverSummaries, global };
-    const etag = computeEtag(payload);
-    summaryCache.data = payload;
-    summaryCache.etag = etag;
-    summaryCache.expiresAt = Date.now() + SUMMARY_CACHE_TTL_SECONDS * 1000;
+        const payload = { driverSummaries, global };
+        const etag = computeEtag(payload);
+        summaryCache.data = payload;
+        summaryCache.etag = etag;
+        summaryCache.expiresAt = Date.now() + SUMMARY_CACHE_TTL_SECONDS * 1000;
 
-    await setCacheJSON(SUMMARY_CACHE_KEY, { payload, etag }, SUMMARY_CACHE_TTL_SECONDS);
+        await setCacheJSON(SUMMARY_CACHE_KEY, { payload, etag }, SUMMARY_CACHE_TTL_SECONDS);
 
+        return { payload, etag };
+      })().finally(() => {
+        summaryBuildPromise = null;
+      });
+    }
+
+    const { payload, etag } = await summaryBuildPromise;
     return respondWithCacheHeaders(req, res, payload, etag, 'MISS', SUMMARY_CACHE_TTL_SECONDS);
   } catch (err) {
     console.error('Summary aggregation error:', err);
@@ -2374,6 +2413,59 @@ app.post('/api/manager-access', async (req, res) => {
   } finally {
     client.release();
   }
+});
+
+
+app.post('/api/perf-metrics', (req, res) => {
+  try {
+    const metric = req.body || {};
+    perfMetricsBuffer.push({
+      at: Date.now(),
+      route: metric.route || '',
+      name: metric.name || '',
+      value: Number(metric.value) || 0,
+      rating: metric.rating || 'unknown',
+      id: metric.id || '',
+    });
+
+    if (perfMetricsBuffer.length > PERF_METRICS_LIMIT) {
+      perfMetricsBuffer.splice(0, perfMetricsBuffer.length - PERF_METRICS_LIMIT);
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message });
+  }
+});
+
+app.get('/api/perf-stats', (_req, res) => {
+  const avgMs = perfStats.requests ? Math.round(perfStats.totalDurationMs / perfStats.requests) : 0;
+  const metricSummary = perfMetricsBuffer.reduce((acc, metric) => {
+    const key = metric.name || 'unknown';
+    if (!acc[key]) {
+      acc[key] = { count: 0, total: 0 };
+    }
+    acc[key].count += 1;
+    acc[key].total += metric.value;
+    return acc;
+  }, {});
+
+  const webVitals = Object.entries(metricSummary).map(([name, data]) => ({
+    name,
+    count: data.count,
+    avg: data.count ? Number((data.total / data.count).toFixed(2)) : 0,
+  }));
+
+  res.json({
+    api: {
+      requests: perfStats.requests,
+      avgDurationMs: avgMs,
+      slowRequests: perfStats.slowRequests,
+      lastSlowPath: perfStats.lastSlowPath,
+    },
+    liveEventVersions: Object.fromEntries(liveEventVersions.entries()),
+    webVitals,
+  });
 });
 
 initDb()

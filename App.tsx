@@ -21,6 +21,39 @@ const DriverLeadsPage = lazy(() => import('./components/DriverLeadsPage'));
 const ImportPage = lazy(() => import('./components/ImportPage'));
 const AdminAccessPage = lazy(() => import('./components/AdminAccessPage'));
 
+
+const routePrefetchers: Record<string, () => Promise<unknown>> = {
+  '/': () => import('./components/HomePage'),
+  '/drivers-earnings': () => import('./components/DriversEarningsPublicPage'),
+  '/staff': () => import('./components/LoginPage'),
+  '/portal': () => import('./components/DriverPortalPage'),
+  '/app': () => import('./components/DashboardPage'),
+  '/app/daily': () => import('./components/DailyEntryPage'),
+  '/app/weekly': () => import('./components/WeeklyWalletPage'),
+  '/app/registration': () => import('./components/RegistrationPage'),
+  '/app/defaults': () => import('./components/ManageDefaultsPage'),
+  '/app/leaves': () => import('./components/LeavePage'),
+  '/app/settlement': () => import('./components/CompanySettlementPage'),
+  '/app/billings': () => import('./components/DriverBillingsPage'),
+  '/app/revenue': () => import('./components/RevenuePage'),
+  '/app/driver-leads': () => import('./components/DriverLeadsPage'),
+  '/app/import': () => import('./components/ImportPage'),
+  '/app/admin-access': () => import('./components/AdminAccessPage'),
+};
+
+const prefetchedRoutes = new Set<string>();
+
+const prefetchRoute = (route: string) => {
+  if (!route || prefetchedRoutes.has(route)) return;
+  const prefetcher = routePrefetchers[route];
+  if (!prefetcher) return;
+
+  prefetchedRoutes.add(route);
+  prefetcher().catch(() => {
+    prefetchedRoutes.delete(route);
+  });
+};
+
 const RouteFallback = () => (
   <div className="min-h-[240px] flex items-center justify-center bg-slate-50 rounded-2xl border border-slate-100">
     <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
@@ -76,6 +109,8 @@ const Layout: React.FC = () => {
       to={to}
       end={end}
       onClick={() => setIsMobileMenuOpen(false)}
+      onMouseEnter={() => prefetchRoute(to)}
+      onFocus={() => prefetchRoute(to)}
       className={({ isActive }) =>
         `flex items-center justify-between px-4 py-3.5 rounded-xl transition-all duration-300 group cursor-pointer ${
           isActive
