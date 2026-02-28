@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useRef, useMemo, useCallback, useDeferredValue } from 'react';
 import { DailyEntry, Driver, LeaveRecord, WeeklyWallet } from '../types';
 import { storageService } from '../services/storageService';
+import { useLiveUpdates } from '../lib/useLiveUpdates';
 import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check, AlertOctagon, FileDown } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
@@ -267,7 +268,7 @@ const ColumnFilter: React.FC<ColumnFilterProps> = ({ columnKey, data, activeFilt
 
 const DailyEntryPage: React.FC = () => {
   const RECENT_DAYS = 60;
-  const LIVE_REFRESH_MS = 15000;
+  const FALLBACK_LIVE_REFRESH_MS = 60000;
   const [entries, setEntries] = useState<DailyEntry[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [leaves, setLeaves] = useState<LeaveRecord[]>([]); // Added Leaves state
@@ -310,6 +311,7 @@ const DailyEntryPage: React.FC = () => {
     notes: ''
   };
   const [formData, setFormData] = useState<Partial<DailyEntry>>(initialFormState);
+  const liveRefreshTimerRef = useRef<number | null>(null);
 
   const getISODateDaysAgo = (days: number) => {
     const date = new Date();
@@ -385,10 +387,28 @@ const DailyEntryPage: React.FC = () => {
     loadData();
   }, [loadData]);
 
+  const { connected: liveUpdatesConnected } = useLiveUpdates((event) => {
+    const type = event?.type;
+    if (!type || !['daily_entries_changed', 'weekly_wallets_changed', 'drivers_changed', 'leaves_changed'].includes(type)) {
+      return;
+    }
+
+    if (liveRefreshTimerRef.current !== null) {
+      window.clearTimeout(liveRefreshTimerRef.current);
+    }
+
+    liveRefreshTimerRef.current = window.setTimeout(() => {
+      refreshLiveData();
+      liveRefreshTimerRef.current = null;
+    }, 250);
+  });
+
   useEffect(() => {
     const interval = window.setInterval(() => {
-      refreshLiveData();
-    }, LIVE_REFRESH_MS);
+      if (!liveUpdatesConnected) {
+        refreshLiveData();
+      }
+    }, FALLBACK_LIVE_REFRESH_MS);
 
     const onFocus = () => refreshLiveData();
     const onVisible = () => {
@@ -402,10 +422,14 @@ const DailyEntryPage: React.FC = () => {
 
     return () => {
       window.clearInterval(interval);
+      if (liveRefreshTimerRef.current !== null) {
+        window.clearTimeout(liveRefreshTimerRef.current);
+        liveRefreshTimerRef.current = null;
+      }
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [refreshLiveData]);
+  }, [liveUpdatesConnected, refreshLiveData]);
 
   const upsertEntry = (entry: DailyEntry) => {
     setEntries(prev => {

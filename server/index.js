@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
 const { createHash } = require('crypto');
+const { EventEmitter } = require('events');
 const { OAuth2Client } = require('google-auth-library');
 const db = require('./db');
 const { getJSON: getCacheJSON, setJSON: setCacheJSON, deleteKeys: deleteCacheKeys } = require('./cache');
@@ -30,6 +31,52 @@ const KEEP_ALIVE_URL = process.env.KEEP_ALIVE_URL || '';
 const SESSION_CACHE_TTL_SECONDS = Number(process.env.SESSION_CACHE_TTL_SECONDS || 60 * 60 * 6);
 const BOT_CONFIG_CACHE_TTL_SECONDS = Number(process.env.BOT_CONFIG_CACHE_TTL_SECONDS || 60 * 10);
 const BOT_CONFIG_CACHE_KEY = 'driver_app_bot_config_v1';
+const liveEvents = new EventEmitter();
+liveEvents.setMaxListeners(200);
+
+const emitLiveUpdate = (type, payload = {}) => {
+  liveEvents.emit('update', {
+    type,
+    at: Date.now(),
+    ...payload,
+  });
+};
+
+app.get('/api/live-updates', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+
+  if (typeof res.flushHeaders === 'function') {
+    res.flushHeaders();
+  }
+
+  const writeEvent = (eventName, data) => {
+    res.write(`event: ${eventName}\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  // Hint browser/EventSource clients how fast to reconnect after disconnects.
+  res.write('retry: 3000\n\n');
+
+  writeEvent('ready', { at: Date.now() });
+
+  const keepAlive = setInterval(() => {
+    res.write(': heartbeat\n\n');
+  }, 25000);
+
+  const onUpdate = (payload) => {
+    writeEvent('update', payload);
+  };
+
+  liveEvents.on('update', onUpdate);
+
+  req.on('close', () => {
+    clearInterval(keepAlive);
+    liveEvents.off('update', onUpdate);
+  });
+});
 // --- HEALTH CHECK ---
 const healthHandler = (_req, res) => {
   res.set('Cache-Control', 'no-store');
@@ -1376,6 +1423,7 @@ app.post('/api/drivers', async (req, res) => {
     await client.query('COMMIT');
     await invalidateSummaryCache();
     await invalidateKeys(DRIVERS_CACHE_KEY);
+    emitLiveUpdate('drivers_changed');
     res.json(result.rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -1398,6 +1446,7 @@ app.delete('/api/drivers/:id', async (req, res) => {
     const result = await db.query('DELETE FROM drivers WHERE id = $1', [req.params.id]);
     await invalidateSummaryCache();
     await invalidateKeys(DRIVERS_CACHE_KEY);
+    emitLiveUpdate('drivers_changed');
     res.json({ success: true });
   } catch (err) {
     console.error("Delete Error:", err);
@@ -1681,6 +1730,7 @@ app.post('/api/daily-entries', async (req, res) => {
 
     await invalidateAggregateCaches();
     await invalidateDailyEntriesCache();
+    emitLiveUpdate('daily_entries_changed');
     res.json(result.rows[0]);
   } catch (err) {
     if (err.code === '23505') {
@@ -1795,6 +1845,7 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
     }
     await invalidateAggregateCaches();
     await invalidateDailyEntriesCache();
+    emitLiveUpdate('daily_entries_changed');
     res.json({ success: true });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -1820,6 +1871,7 @@ app.delete('/api/daily-entries/:id', async (req, res) => {
     }
     await invalidateAggregateCaches();
     await invalidateDailyEntriesCache();
+    emitLiveUpdate('daily_entries_changed');
     res.json({ success: true });
   } catch (err) {
     if (err.message && err.message.startsWith('Invalid')) {
@@ -1935,6 +1987,7 @@ app.post('/api/weekly-wallets', async (req, res) => {
 
     await invalidateAggregateCaches();
     await invalidateWeeklyWalletsCache();
+    emitLiveUpdate('weekly_wallets_changed');
     res.json(result.rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1952,6 +2005,7 @@ app.delete('/api/weekly-wallets/:id', async (req, res) => {
     }
     await invalidateAggregateCaches();
     await invalidateWeeklyWalletsCache();
+    emitLiveUpdate('weekly_wallets_changed');
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -2060,6 +2114,9 @@ app.post('/api/system-flags/:key', async (req, res) => {
       [req.params.key, value]
     );
     await invalidateKeys(systemFlagCacheKey(req.params.key));
+    if (req.params.key.startsWith('cash-mode')) {
+      emitLiveUpdate('cash_mode_changed', { key: req.params.key });
+    }
     res.json({ key: req.params.key, value });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2210,6 +2267,7 @@ app.post('/api/leaves', async (req, res) => {
   try {
     const q = `INSERT INTO leaves (id, driver_id, start_date, end_date, actual_return_date, days, reason) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO UPDATE SET driver_id=$2, start_date=$3, end_date=$4, actual_return_date=$5, days=$6, reason=$7 RETURNING *`;
     const result = await db.query(q, [l.id, l.driverId, l.startDate, l.endDate, l.actualReturnDate, l.days, l.reason]);
+    emitLiveUpdate('leaves_changed');
     res.json(result.rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -2217,6 +2275,7 @@ app.post('/api/leaves', async (req, res) => {
 app.delete('/api/leaves/:id', async (req, res) => {
   try {
     await db.query('DELETE FROM leaves WHERE id = $1', [req.params.id]);
+    emitLiveUpdate('leaves_changed');
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
