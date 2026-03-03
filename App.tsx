@@ -75,9 +75,17 @@ const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode
 
     const verifyAccess = async () => {
       if (user?.role !== 'admin') return;
-      setValidatingAccess(true);
-      await refreshSession();
-      if (isMounted) setValidatingAccess(false);
+
+      const spinnerDelay = window.setTimeout(() => {
+        if (isMounted) setValidatingAccess(true);
+      }, 120);
+
+      try {
+        await refreshSession();
+      } finally {
+        window.clearTimeout(spinnerDelay);
+        if (isMounted) setValidatingAccess(false);
+      }
     };
 
     verifyAccess();
