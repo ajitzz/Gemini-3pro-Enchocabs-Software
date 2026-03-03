@@ -1613,7 +1613,9 @@ app.get('/api/daily-entries', async (req, res) => {
       const cached = await getCacheJSON(cacheKey);
       if (cached) {
         res.set('X-Cache', 'REDIS');
-        return res.json(cached);
+        const cachedPayload = cached.payload || cached;
+        const cachedEtag = cached.etag || computeEtag(cachedPayload);
+        return respondWithCacheHeaders(req, res, cachedPayload, cachedEtag, 'REDIS', DAILY_ENTRIES_CACHE_TTL_SECONDS);
       }
     }
 
@@ -1656,10 +1658,12 @@ app.get('/api/daily-entries', async (req, res) => {
     }));
 
     if (!cacheBypass) {
-      await setCacheJSON(cacheKey, safeRows, DAILY_ENTRIES_CACHE_TTL_SECONDS);
+      const etag = computeEtag(safeRows);
+      await setCacheJSON(cacheKey, { payload: safeRows, etag }, DAILY_ENTRIES_CACHE_TTL_SECONDS);
       registerQueryCacheKey(QUERY_CACHE_NAMESPACE.dailyEntries, cacheKey);
-      res.set('X-Cache', 'MISS');
+      return respondWithCacheHeaders(req, res, safeRows, etag, 'MISS', DAILY_ENTRIES_CACHE_TTL_SECONDS);
     }
+    res.set('Cache-Control', 'no-store');
     res.json(safeRows);
   } catch (err) {
     if (err.message && err.message.startsWith('Invalid')) {
@@ -1678,7 +1682,9 @@ app.get('/api/daily-entries/bootstrap', async (req, res) => {
       const cached = await getCacheJSON(cacheKey);
       if (cached) {
         res.set('X-Cache', 'REDIS');
-        return res.json(cached);
+        const cachedPayload = cached.payload || cached;
+        const cachedEtag = cached.etag || computeEtag(cachedPayload);
+        return respondWithCacheHeaders(req, res, cachedPayload, cachedEtag, 'REDIS', DAILY_ENTRIES_CACHE_TTL_SECONDS);
       }
     }
 
@@ -1761,11 +1767,13 @@ app.get('/api/daily-entries/bootstrap', async (req, res) => {
     };
 
     if (!cacheBypass) {
-      await setCacheJSON(cacheKey, payload, DAILY_ENTRIES_CACHE_TTL_SECONDS);
+      const etag = computeEtag(payload);
+      await setCacheJSON(cacheKey, { payload, etag }, DAILY_ENTRIES_CACHE_TTL_SECONDS);
       registerQueryCacheKey(QUERY_CACHE_NAMESPACE.dailyEntries, cacheKey);
-      res.set('X-Cache', 'MISS');
+      return respondWithCacheHeaders(req, res, payload, etag, 'MISS', DAILY_ENTRIES_CACHE_TTL_SECONDS);
     }
 
+    res.set('Cache-Control', 'no-store');
     res.json(payload);
   } catch (err) {
     if (err.message && err.message.startsWith('Invalid')) {
