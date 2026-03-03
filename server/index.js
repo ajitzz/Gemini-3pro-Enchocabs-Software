@@ -1677,6 +1677,7 @@ app.get('/api/daily-entries/bootstrap', async (req, res) => {
   try {
     const cacheBypass = req.query.fresh !== undefined;
     const cacheKey = buildQueryCacheKey('daily-entries:bootstrap', req.query);
+    const metaOnly = String(req.query.metaOnly || '').toLowerCase() === 'true';
 
     if (!cacheBypass) {
       const cached = await getCacheJSON(cacheKey);
@@ -1730,13 +1731,15 @@ app.get('/api/daily-entries/bootstrap', async (req, res) => {
     const walletsWhereClause = walletsFilters.length ? `WHERE ${walletsFilters.join(' AND ')}` : '';
 
     const [dailyRes, driversRes, leavesRes, walletsRes] = await Promise.all([
-      db.query(
-        `SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes
-         FROM daily_entries
-         ${whereClause}
-         ORDER BY date DESC`,
-        values,
-      ),
+      metaOnly
+        ? Promise.resolve({ rows: [] })
+        : db.query(
+            `SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes
+             FROM daily_entries
+             ${whereClause}
+             ORDER BY date DESC`,
+            values,
+          ),
       db.query(`SELECT id, name, mobile, email, to_char(join_date, 'YYYY-MM-DD') as "joinDate", to_char(termination_date, 'YYYY-MM-DD') as "terminationDate", deposit, qr_code as "qrCode", vehicle, status, current_shift as "currentShift", default_rent as "defaultRent", notes, is_manager as "isManager", food_option as "foodOption" FROM drivers ORDER BY name`),
       db.query(
         `SELECT id, driver_id as "driverId", to_char(start_date, 'YYYY-MM-DD') as "startDate", to_char(end_date, 'YYYY-MM-DD') as "endDate", to_char(actual_return_date, 'YYYY-MM-DD') as "actualReturnDate", days, reason

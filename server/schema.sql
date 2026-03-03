@@ -63,6 +63,8 @@ CREATE TABLE IF NOT EXISTS weekly_wallets (
 );
 
 CREATE INDEX IF NOT EXISTS weekly_wallets_start_date_idx ON weekly_wallets (week_start_date);
+CREATE INDEX IF NOT EXISTS weekly_wallets_end_date_idx ON weekly_wallets (week_end_date);
+CREATE INDEX IF NOT EXISTS weekly_wallets_date_range_idx ON weekly_wallets (week_start_date, week_end_date);
 CREATE INDEX IF NOT EXISTS weekly_wallets_driver_idx ON weekly_wallets (LOWER(driver));
 
 -- 5. Driver Billings Table (Finalized/Saved Bills)
@@ -155,6 +157,9 @@ CREATE TABLE IF NOT EXISTS leaves (
   days INTEGER,
   reason TEXT
 );
+
+CREATE INDEX IF NOT EXISTS leaves_start_date_idx ON leaves (start_date);
+CREATE INDEX IF NOT EXISTS leaves_end_date_idx ON leaves (end_date);
 
 -- 10. Shifts Table (History)
 CREATE TABLE IF NOT EXISTS shifts (

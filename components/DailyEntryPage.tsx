@@ -321,18 +321,23 @@ const DailyEntryPage: React.FC = () => {
 
   const recentFromDate = showFullHistory ? '' : getISODateDaysAgo(RECENT_DAYS);
 
+  const sortEntriesByDateDesc = useCallback((records: DailyEntry[]) =>
+    [...records].sort((a, b) => b.date.localeCompare(a.date)), []);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     const dailyParams = showFullHistory ? undefined : { from: recentFromDate };
 
     try {
-      const bootstrap = await storageService.getDailyEntriesBootstrap(dailyParams);
-      const sortedEntries = bootstrap.entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      const [initialEntries, metadata] = await Promise.all([
+        storageService.getDailyEntries(dailyParams),
+        storageService.getDailyEntriesMeta(dailyParams),
+      ]);
 
-      setEntries(sortedEntries);
-      setDrivers(bootstrap.drivers.filter(driver => !driver.terminationDate));
-      setLeaves(bootstrap.leaves);
-      setWeeklyWallets(bootstrap.weeklyWallets);
+      setEntries(sortEntriesByDateDesc(initialEntries));
+      setDrivers(metadata.drivers.filter(driver => !driver.terminationDate));
+      setLeaves(metadata.leaves);
+      setWeeklyWallets(metadata.weeklyWallets);
       setLoading(false);
     } catch (error) {
       console.warn('Daily bootstrap failed, falling back to parallel requests:', error);
@@ -346,7 +351,7 @@ const DailyEntryPage: React.FC = () => {
         ]);
 
         const e = await entriesPromise;
-        setEntries(e.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+        setEntries(sortEntriesByDateDesc(e));
         setLoading(false);
 
         asyncMetaPromise
@@ -363,16 +368,16 @@ const DailyEntryPage: React.FC = () => {
         setLoading(false);
       }
     }
-  }, [showFullHistory, recentFromDate]);
+  }, [showFullHistory, recentFromDate, sortEntriesByDateDesc]);
 
   const refreshEntriesOnly = useCallback(async () => {
     const dailyParams = showFullHistory ? undefined : { from: recentFromDate };
     const entries = await storageService.getDailyEntries(dailyParams, { skipMemoryCache: true });
     setEntries(prev => {
       if (prev.length === entries.length && prev[0]?.id === entries[0]?.id) return prev;
-      return entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      return sortEntriesByDateDesc(entries);
     });
-  }, [showFullHistory, recentFromDate]);
+  }, [showFullHistory, recentFromDate, sortEntriesByDateDesc]);
 
   const refreshLiveData = useCallback(async (mode: 'entries-only' | 'full' = 'entries-only') => {
     if (document.visibilityState !== 'visible') return;
@@ -387,7 +392,7 @@ const DailyEntryPage: React.FC = () => {
       const bootstrap = await storageService.getDailyEntriesBootstrap(dailyParams, { skipMemoryCache: true });
       setEntries(prev => {
         if (prev.length === bootstrap.entries.length && prev[0]?.id === bootstrap.entries[0]?.id) return prev;
-        return bootstrap.entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        return sortEntriesByDateDesc(bootstrap.entries);
       });
       setDrivers(bootstrap.drivers.filter(driver => !driver.terminationDate));
       setLeaves(bootstrap.leaves);
@@ -395,7 +400,7 @@ const DailyEntryPage: React.FC = () => {
     } catch (error) {
       console.warn('Live refresh skipped due to transient failure:', error);
     }
-  }, [refreshEntriesOnly, showFullHistory, recentFromDate]);
+  }, [refreshEntriesOnly, showFullHistory, recentFromDate, sortEntriesByDateDesc]);
 
   useEffect(() => {
     loadData();
@@ -452,7 +457,7 @@ const DailyEntryPage: React.FC = () => {
       if (!showFullHistory && recentFromDate && entry.date < recentFromDate) {
         return next;
       }
-      return [entry, ...next].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      return sortEntriesByDateDesc([entry, ...next]);
     });
   };
 
