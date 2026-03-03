@@ -329,15 +329,12 @@ const DailyEntryPage: React.FC = () => {
     const dailyParams = showFullHistory ? undefined : { from: recentFromDate };
 
     try {
-      const [initialEntries, metadata] = await Promise.all([
-        storageService.getDailyEntries(dailyParams),
-        storageService.getDailyEntriesMeta(dailyParams),
-      ]);
+      const bootstrap = await storageService.getDailyEntriesBootstrap(dailyParams);
 
-      setEntries(sortEntriesByDateDesc(initialEntries));
-      setDrivers(metadata.drivers.filter(driver => !driver.terminationDate));
-      setLeaves(metadata.leaves);
-      setWeeklyWallets(metadata.weeklyWallets);
+      setEntries(sortEntriesByDateDesc(bootstrap.entries));
+      setDrivers(bootstrap.drivers.filter(driver => !driver.terminationDate));
+      setLeaves(bootstrap.leaves);
+      setWeeklyWallets(bootstrap.weeklyWallets);
       setLoading(false);
     } catch (error) {
       console.warn('Daily bootstrap failed, falling back to parallel requests:', error);

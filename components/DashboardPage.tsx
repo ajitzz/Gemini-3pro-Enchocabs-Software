@@ -6,9 +6,11 @@ import { Users, Banknote, Fuel, TrendingDown, AlertCircle, ArrowUpRight, ArrowDo
 import NetCalculationPopup from './NetCalculationPopup';
 
 const NetPayoutChartCard = lazy(() => import('./dashboard/NetPayoutChartCard'));
+const DASHBOARD_SUMMARY_CACHE_KEY = 'driver_app_dashboard_summary_v1';
 
 const DashboardPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
+  const [isStaleData, setIsStaleData] = useState(false);
   const [summaries, setSummaries] = useState<DriverSummary[]>([]);
   const [global, setGlobal] = useState<GlobalSummary | null>(null);
   const [filterDriver, setFilterDriver] = useState('');
@@ -29,10 +31,28 @@ const DashboardPage: React.FC = () => {
 
   const loadData = async () => {
     setLoading(true);
+
+    try {
+      const cached = sessionStorage.getItem(DASHBOARD_SUMMARY_CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed?.driverSummaries) && parsed?.global) {
+          setSummaries(parsed.driverSummaries);
+          setGlobal(parsed.global);
+          setIsStaleData(true);
+          setLoading(false);
+        }
+      }
+    } catch (cacheError) {
+      console.warn('Failed to read dashboard cache', cacheError);
+    }
+
     try {
       const summary = await storageService.getSummary();
       setSummaries(summary.driverSummaries || []);
       setGlobal(summary.global || null);
+      setIsStaleData(false);
+      sessionStorage.setItem(DASHBOARD_SUMMARY_CACHE_KEY, JSON.stringify(summary));
     } finally {
       setLoading(false);
     }
@@ -131,7 +151,7 @@ const DashboardPage: React.FC = () => {
         </div>
         <div className="flex items-center gap-2 text-xs font-medium bg-white text-slate-600 px-4 py-2 rounded-xl border border-slate-200 shadow-sm">
            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-           Live Data
+           {isStaleData ? 'Refreshing data…' : 'Live Data'}
         </div>
       </div>
 
