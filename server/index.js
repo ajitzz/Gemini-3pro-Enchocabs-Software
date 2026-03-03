@@ -822,6 +822,8 @@ const initDb = async () => {
     await db.query('CREATE INDEX IF NOT EXISTS daily_entries_date_idx ON daily_entries (date);');
     await db.query('CREATE INDEX IF NOT EXISTS daily_entries_driver_idx ON daily_entries ((lower(driver)));');
     await db.query('CREATE INDEX IF NOT EXISTS weekly_wallets_driver_week_idx ON weekly_wallets (driver, week_start_date, week_end_date);');
+    await db.query('CREATE INDEX IF NOT EXISTS weekly_wallets_range_idx ON weekly_wallets (week_end_date, week_start_date);');
+    await db.query('CREATE INDEX IF NOT EXISTS leaves_range_idx ON leaves (end_date, start_date);');
     await db.query('CREATE INDEX IF NOT EXISTS driver_billings_week_idx ON driver_billings (week_start_date, week_end_date);');
     await db.query('CREATE INDEX IF NOT EXISTS driver_billings_driver_idx ON driver_billings ((lower(driver_name)));');
 
@@ -1697,6 +1699,30 @@ app.get('/api/daily-entries/bootstrap', async (req, res) => {
 
     const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
 
+    const leavesValues = [];
+    const leavesFilters = [];
+    if (fromDate) {
+      leavesValues.push(fromDate);
+      leavesFilters.push(`end_date >= $${leavesValues.length}`);
+    }
+    if (toDate) {
+      leavesValues.push(toDate);
+      leavesFilters.push(`start_date <= $${leavesValues.length}`);
+    }
+    const leavesWhereClause = leavesFilters.length ? `WHERE ${leavesFilters.join(' AND ')}` : '';
+
+    const walletsValues = [];
+    const walletsFilters = [];
+    if (fromDate) {
+      walletsValues.push(fromDate);
+      walletsFilters.push(`week_end_date >= $${walletsValues.length}`);
+    }
+    if (toDate) {
+      walletsValues.push(toDate);
+      walletsFilters.push(`week_start_date <= $${walletsValues.length}`);
+    }
+    const walletsWhereClause = walletsFilters.length ? `WHERE ${walletsFilters.join(' AND ')}` : '';
+
     const [dailyRes, driversRes, leavesRes, walletsRes] = await Promise.all([
       db.query(
         `SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes
@@ -1706,10 +1732,16 @@ app.get('/api/daily-entries/bootstrap', async (req, res) => {
         values,
       ),
       db.query(`SELECT id, name, mobile, email, to_char(join_date, 'YYYY-MM-DD') as "joinDate", to_char(termination_date, 'YYYY-MM-DD') as "terminationDate", deposit, qr_code as "qrCode", vehicle, status, current_shift as "currentShift", default_rent as "defaultRent", notes, is_manager as "isManager", food_option as "foodOption" FROM drivers ORDER BY name`),
-      db.query(`SELECT id, driver_id as "driverId", to_char(start_date, 'YYYY-MM-DD') as "startDate", to_char(end_date, 'YYYY-MM-DD') as "endDate", to_char(actual_return_date, 'YYYY-MM-DD') as "actualReturnDate", days, reason FROM leaves`),
+      db.query(
+        `SELECT id, driver_id as "driverId", to_char(start_date, 'YYYY-MM-DD') as "startDate", to_char(end_date, 'YYYY-MM-DD') as "endDate", to_char(actual_return_date, 'YYYY-MM-DD') as "actualReturnDate", days, reason
+         FROM leaves
+         ${leavesWhereClause}`,
+        leavesValues,
+      ),
       db.query(`SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate", to_char(week_end_date, 'YYYY-MM-DD') as "weekEndDate", earnings, refund, diff, cash, charges, trips, wallet_week as "walletWeek", days_worked_override as "daysWorkedOverride", rent_override as "rentOverride", adjustments, notes
        FROM weekly_wallets
-       ORDER BY week_start_date DESC`),
+       ${walletsWhereClause}
+       ORDER BY week_start_date DESC`, walletsValues),
     ]);
 
     const payload = {
