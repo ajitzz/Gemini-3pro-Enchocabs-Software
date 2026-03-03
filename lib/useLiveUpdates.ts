@@ -5,6 +5,7 @@ type LiveUpdateEvent = {
   type?: string;
   at?: number;
   key?: string;
+  version?: number;
 };
 
 const RETRY_BASE_MS = 1000;
@@ -23,6 +24,7 @@ export const useLiveUpdates = (
   const retryTimeoutRef = useRef<number | null>(null);
   const retryAttemptRef = useRef(0);
   const callbackRef = useRef(onUpdate);
+  const lastVersionRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
     callbackRef.current = onUpdate;
@@ -56,6 +58,15 @@ export const useLiveUpdates = (
         if (cancelled) return;
         try {
           const payload = JSON.parse((event as MessageEvent).data || '{}') as LiveUpdateEvent;
+
+          if (payload.type && typeof payload.version === 'number') {
+            const lastVersion = lastVersionRef.current[payload.type] || 0;
+            if (payload.version <= lastVersion) {
+              return;
+            }
+            lastVersionRef.current[payload.type] = payload.version;
+          }
+
           callbackRef.current(payload);
         } catch (error) {
           console.warn('Failed to parse live update payload:', error);

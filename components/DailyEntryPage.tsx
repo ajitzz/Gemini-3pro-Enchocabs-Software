@@ -365,11 +365,25 @@ const DailyEntryPage: React.FC = () => {
     }
   }, [showFullHistory, recentFromDate]);
 
-  const refreshLiveData = useCallback(async () => {
+  const refreshEntriesOnly = useCallback(async () => {
+    const dailyParams = showFullHistory ? undefined : { from: recentFromDate, fresh: Date.now() };
+    const entries = await storageService.getDailyEntries(dailyParams);
+    setEntries(prev => {
+      if (prev.length === entries.length && prev[0]?.id === entries[0]?.id) return prev;
+      return entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    });
+  }, [showFullHistory, recentFromDate]);
+
+  const refreshLiveData = useCallback(async (mode: 'entries-only' | 'full' = 'entries-only') => {
     if (document.visibilityState !== 'visible') return;
 
-    const dailyParams = showFullHistory ? undefined : { from: recentFromDate, fresh: Date.now() };
     try {
+      if (mode === 'entries-only') {
+        await refreshEntriesOnly();
+        return;
+      }
+
+      const dailyParams = showFullHistory ? undefined : { from: recentFromDate, fresh: Date.now() };
       const bootstrap = await storageService.getDailyEntriesBootstrap(dailyParams);
       setEntries(prev => {
         if (prev.length === bootstrap.entries.length && prev[0]?.id === bootstrap.entries[0]?.id) return prev;
@@ -381,7 +395,7 @@ const DailyEntryPage: React.FC = () => {
     } catch (error) {
       console.warn('Live refresh skipped due to transient failure:', error);
     }
-  }, [showFullHistory, recentFromDate]);
+  }, [refreshEntriesOnly, showFullHistory, recentFromDate]);
 
   useEffect(() => {
     loadData();
@@ -398,7 +412,8 @@ const DailyEntryPage: React.FC = () => {
     }
 
     liveRefreshTimerRef.current = window.setTimeout(() => {
-      refreshLiveData();
+      const refreshMode = type === 'daily_entries_changed' ? 'entries-only' : 'full';
+      refreshLiveData(refreshMode);
       liveRefreshTimerRef.current = null;
     }, 250);
   });
@@ -406,14 +421,14 @@ const DailyEntryPage: React.FC = () => {
   useEffect(() => {
     const interval = window.setInterval(() => {
       if (!liveUpdatesConnected) {
-        refreshLiveData();
+        refreshLiveData('entries-only');
       }
     }, FALLBACK_LIVE_REFRESH_MS);
 
-    const onFocus = () => refreshLiveData();
+    const onFocus = () => refreshLiveData('entries-only');
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
-        refreshLiveData();
+        refreshLiveData('entries-only');
       }
     };
 
