@@ -46,12 +46,18 @@ const invalidateCache = (endpoint: string) => {
   });
 };
 
-const buildQueryString = (params?: Record<string, string | number | boolean | undefined>) => {
+const buildQueryString = (params?: Record<string, string | number | boolean | string[] | number[] | undefined>) => {
   if (!params) return '';
   const entries = Object.entries(params).filter(([, value]) => value !== undefined && value !== '');
   if (entries.length === 0) return '';
   const search = new URLSearchParams();
   entries.forEach(([key, value]) => {
+    if (Array.isArray(value)) {
+      if (!value.length) return;
+      search.set(key, value.join(','));
+      return;
+    }
+
     search.set(key, String(value));
   });
   const query = search.toString();
@@ -346,7 +352,7 @@ const calculateDriverStats = (
 export const storageService = {
   // --- Daily Entries ---
   getDailyEntries: async (
-    params?: { from?: string; to?: string; limit?: number; driver?: string; fresh?: number },
+    params?: { from?: string; to?: string; limit?: number; driver?: string; drivers?: string[]; fresh?: number },
     options?: GetOptions,
   ): Promise<DailyEntry[]> => api.get(`/daily-entries${buildQueryString(params)}`, options),
   getDailyEntriesBootstrap: async (
@@ -372,7 +378,7 @@ export const storageService = {
 
   // --- Weekly Wallets ---
   getWeeklyWallets: async (
-    params?: { from?: string; to?: string; limit?: number; driver?: string; fresh?: number },
+    params?: { from?: string; to?: string; limit?: number; driver?: string; drivers?: string[]; fresh?: number },
     options?: GetOptions,
   ): Promise<WeeklyWallet[]> => api.get(`/weekly-wallets${buildQueryString(params)}`, options),
   getWeeklyWalletsFresh: async (): Promise<WeeklyWallet[]> => api.get(`/weekly-wallets${buildQueryString({ fresh: 1 })}`, { skipMemoryCache: true }),
@@ -392,6 +398,14 @@ export const storageService = {
 
   // --- Access ---
   getManagerAccess: async (): Promise<ManagerAccess[]> => api.get('/manager-access'),
+  getManagerAccessByManagerId: async (managerId: string): Promise<ManagerAccess | null> => {
+    try {
+      return await api.get(`/manager-access/${managerId}`);
+    } catch (error) {
+      console.error(`Failed to load manager access for ${managerId}:`, error);
+      return null;
+    }
+  },
   saveManagerAccess: async (access: ManagerAccess): Promise<void> => api.post('/manager-access', access),
   getAuthorizedAdmins: async (): Promise<AdminAccess[]> => api.get('/admin-access'),
   addAuthorizedAdmin: async (admin: AdminAccess): Promise<void> => api.post('/admin-access', admin),
