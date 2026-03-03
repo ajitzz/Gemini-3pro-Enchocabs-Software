@@ -558,6 +558,24 @@ const parseQueryLimit = (raw, max = 5000) => {
   return Math.min(Math.floor(value), max);
 };
 
+
+const parseDriverFilters = (query = {}) => {
+  const multi = typeof query.drivers === 'string'
+    ? query.drivers.split(',').map((name) => normalizeDriver(name)).filter(Boolean)
+    : [];
+
+  if (multi.length) {
+    return Array.from(new Set(multi));
+  }
+
+  if (typeof query.driver === 'string') {
+    const single = normalizeDriver(query.driver);
+    return single ? [single] : [];
+  }
+
+  return [];
+};
+
 const hasQueryParams = (query = {}) => Object.keys(query).length > 0;
 
 const invalidateSummaryCache = async () => {
@@ -1621,10 +1639,13 @@ app.get('/api/daily-entries', async (req, res) => {
 
     const values = [];
     const filters = [];
-    const driverFilter = req.query.driver ? normalizeDriver(req.query.driver) : null;
-    if (driverFilter) {
-      values.push(driverFilter);
+    const driverFilters = parseDriverFilters(req.query);
+    if (driverFilters.length === 1) {
+      values.push(driverFilters[0]);
       filters.push(`LOWER(driver) = $${values.length}`);
+    } else if (driverFilters.length > 1) {
+      values.push(driverFilters);
+      filters.push(`LOWER(driver) = ANY($${values.length})`);
     }
 
     const fromDate = parseQueryDate(req.query.from, 'from');
@@ -2001,10 +2022,13 @@ app.get('/api/weekly-wallets', async (req, res) => {
 
     const values = [];
     const filters = [];
-    const driverFilter = req.query.driver ? normalizeDriver(req.query.driver) : null;
-    if (driverFilter) {
-      values.push(driverFilter);
+    const driverFilters = parseDriverFilters(req.query);
+    if (driverFilters.length === 1) {
+      values.push(driverFilters[0]);
       filters.push(`LOWER(driver) = $${values.length}`);
+    } else if (driverFilters.length > 1) {
+      values.push(driverFilters);
+      filters.push(`LOWER(driver) = ANY($${values.length})`);
     }
 
     const fromDate = parseQueryDate(req.query.from, 'from');
@@ -2459,6 +2483,17 @@ app.get('/api/manager-access', async (req, res) => {
     const accessList = Object.keys(map).map(k => ({ managerId: k, childDriverIds: map[k] }));
     res.json(accessList);
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+
+app.get('/api/manager-access/:managerId', async (req, res) => {
+  try {
+    const result = await db.query('SELECT child_driver_id FROM manager_access WHERE manager_id = $1', [req.params.managerId]);
+    const childDriverIds = result.rows.map((row) => row.child_driver_id);
+    res.json({ managerId: req.params.managerId, childDriverIds });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post('/api/manager-access', async (req, res) => {
