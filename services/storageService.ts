@@ -350,9 +350,21 @@ export const storageService = {
     options?: GetOptions,
   ): Promise<DailyEntry[]> => api.get(`/daily-entries${buildQueryString(params)}`, options),
   getDailyEntriesBootstrap: async (
-    params?: { from?: string; to?: string; fresh?: number },
+    params?: { from?: string; to?: string; fresh?: number; metaOnly?: boolean },
     options?: GetOptions,
   ): Promise<DailyEntryBootstrapResponse> => api.get(`/daily-entries/bootstrap${buildQueryString(params)}`, options),
+  getDailyEntriesMeta: async (
+    params?: { from?: string; to?: string; fresh?: number },
+    options?: GetOptions,
+  ): Promise<Omit<DailyEntryBootstrapResponse, 'entries'>> => {
+    const query = buildQueryString({ ...(params || {}), metaOnly: true });
+    const payload = await api.get(`/daily-entries/bootstrap${query}`, options);
+    return {
+      drivers: payload.drivers,
+      leaves: payload.leaves,
+      weeklyWallets: payload.weeklyWallets,
+    };
+  },
   getDailyEntriesFresh: async (): Promise<DailyEntry[]> => api.get(`/daily-entries${buildQueryString({ fresh: 1 })}`, { skipMemoryCache: true }),
   saveDailyEntry: async (entry: DailyEntry): Promise<DailyEntry> => api.post('/daily-entries', entry),
   saveDailyEntriesBulk: async (newEntries: DailyEntry[]): Promise<void> => api.post('/daily-entries/bulk', newEntries),
