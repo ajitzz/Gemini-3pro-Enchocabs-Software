@@ -58,11 +58,16 @@ const buildQueryString = (params?: Record<string, string | number | boolean | un
   return query ? `?${query}` : '';
 };
 
+type GetOptions = {
+  skipMemoryCache?: boolean;
+};
+
 const api = {
-  get: async (endpoint: string) => {
+  get: async (endpoint: string, options: GetOptions = {}) => {
+    const { skipMemoryCache = false } = options;
     const key = getCacheKey(endpoint);
     const cached = responseCache.get(key);
-    if (cached && isFresh(cached)) {
+    if (!skipMemoryCache && cached && isFresh(cached)) {
       return cached.payload;
     }
 
@@ -340,19 +345,25 @@ const calculateDriverStats = (
 
 export const storageService = {
   // --- Daily Entries ---
-  getDailyEntries: async (params?: { from?: string; to?: string; limit?: number; driver?: string; fresh?: number }): Promise<DailyEntry[]> =>
-    api.get(`/daily-entries${buildQueryString(params)}`),
-  getDailyEntriesBootstrap: async (params?: { from?: string; to?: string; fresh?: number }): Promise<DailyEntryBootstrapResponse> =>
-    api.get(`/daily-entries/bootstrap${buildQueryString(params)}`),
-  getDailyEntriesFresh: async (): Promise<DailyEntry[]> => api.get(`/daily-entries${buildQueryString({ fresh: Date.now() })}`),
+  getDailyEntries: async (
+    params?: { from?: string; to?: string; limit?: number; driver?: string; fresh?: number },
+    options?: GetOptions,
+  ): Promise<DailyEntry[]> => api.get(`/daily-entries${buildQueryString(params)}`, options),
+  getDailyEntriesBootstrap: async (
+    params?: { from?: string; to?: string; fresh?: number },
+    options?: GetOptions,
+  ): Promise<DailyEntryBootstrapResponse> => api.get(`/daily-entries/bootstrap${buildQueryString(params)}`, options),
+  getDailyEntriesFresh: async (): Promise<DailyEntry[]> => api.get(`/daily-entries${buildQueryString({ fresh: 1 })}`, { skipMemoryCache: true }),
   saveDailyEntry: async (entry: DailyEntry): Promise<DailyEntry> => api.post('/daily-entries', entry),
   saveDailyEntriesBulk: async (newEntries: DailyEntry[]): Promise<void> => api.post('/daily-entries/bulk', newEntries),
   deleteDailyEntry: async (id: string): Promise<void> => api.delete(`/daily-entries/${id}`),
 
   // --- Weekly Wallets ---
-  getWeeklyWallets: async (params?: { from?: string; to?: string; limit?: number; driver?: string; fresh?: number }): Promise<WeeklyWallet[]> =>
-    api.get(`/weekly-wallets${buildQueryString(params)}`),
-  getWeeklyWalletsFresh: async (): Promise<WeeklyWallet[]> => api.get(`/weekly-wallets${buildQueryString({ fresh: Date.now() })}`),
+  getWeeklyWallets: async (
+    params?: { from?: string; to?: string; limit?: number; driver?: string; fresh?: number },
+    options?: GetOptions,
+  ): Promise<WeeklyWallet[]> => api.get(`/weekly-wallets${buildQueryString(params)}`, options),
+  getWeeklyWalletsFresh: async (): Promise<WeeklyWallet[]> => api.get(`/weekly-wallets${buildQueryString({ fresh: 1 })}`, { skipMemoryCache: true }),
   saveWeeklyWallet: async (wallet: WeeklyWallet): Promise<WeeklyWallet> => api.post('/weekly-wallets', wallet),
   saveWeeklyWalletsBulk: async (newWallets: WeeklyWallet[]): Promise<void> => Promise.all(newWallets.map(w => api.post('/weekly-wallets', w))).then(() => {}),
   deleteWeeklyWallet: async (id: string): Promise<void> => api.delete(`/weekly-wallets/${id}`),

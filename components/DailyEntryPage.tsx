@@ -366,8 +366,8 @@ const DailyEntryPage: React.FC = () => {
   }, [showFullHistory, recentFromDate]);
 
   const refreshEntriesOnly = useCallback(async () => {
-    const dailyParams = showFullHistory ? undefined : { from: recentFromDate, fresh: Date.now() };
-    const entries = await storageService.getDailyEntries(dailyParams);
+    const dailyParams = showFullHistory ? undefined : { from: recentFromDate };
+    const entries = await storageService.getDailyEntries(dailyParams, { skipMemoryCache: true });
     setEntries(prev => {
       if (prev.length === entries.length && prev[0]?.id === entries[0]?.id) return prev;
       return entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -383,8 +383,8 @@ const DailyEntryPage: React.FC = () => {
         return;
       }
 
-      const dailyParams = showFullHistory ? undefined : { from: recentFromDate, fresh: Date.now() };
-      const bootstrap = await storageService.getDailyEntriesBootstrap(dailyParams);
+      const dailyParams = showFullHistory ? undefined : { from: recentFromDate };
+      const bootstrap = await storageService.getDailyEntriesBootstrap(dailyParams, { skipMemoryCache: true });
       setEntries(prev => {
         if (prev.length === bootstrap.entries.length && prev[0]?.id === bootstrap.entries[0]?.id) return prev;
         return bootstrap.entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
