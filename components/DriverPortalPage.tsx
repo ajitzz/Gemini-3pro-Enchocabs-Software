@@ -342,16 +342,8 @@ const DriverPortalPage: React.FC = () => {
               return;
           }
 
-          const isAdminUser = user?.role === 'admin' || user?.role === 'super_admin';
           let allDaily: DailyEntry[] = [];
           let allWeekly: WeeklyWallet[] = [];
-
-          if (isAdminUser) {
-              [allDaily, allWeekly] = await Promise.all([
-                  storageService.getDailyEntries(),
-                  storageService.getWeeklyWallets()
-              ]);
-          }
 
           let teamMembers: Driver[] = [];
           if (targetDriver.isManager) {
@@ -362,15 +354,13 @@ const DriverPortalPage: React.FC = () => {
               }
           }
 
-          if (!isAdminUser) {
-              const driversToLoad = [targetDriver.name, ...teamMembers.map(member => member.name)].filter(Boolean);
-              const uniqueDrivers = Array.from(new Set(driversToLoad));
+          const driversToLoad = [targetDriver.name, ...teamMembers.map(member => member.name)].filter(Boolean);
+          const uniqueDrivers = Array.from(new Set(driversToLoad));
 
-              [allDaily, allWeekly] = await Promise.all([
-                  storageService.getDailyEntries({ drivers: uniqueDrivers }),
-                  storageService.getWeeklyWallets({ drivers: uniqueDrivers })
-              ]);
-          }
+          [allDaily, allWeekly] = await Promise.all([
+              storageService.getDailyEntries({ drivers: uniqueDrivers }),
+              storageService.getWeeklyWallets({ drivers: uniqueDrivers })
+          ]);
 
           setGlobalDaily(allDaily);
           setGlobalWeekly(allWeekly);
@@ -400,16 +390,27 @@ const DriverPortalPage: React.FC = () => {
       }
   };
 
+  const getScopedDriverNames = useCallback((activeDriverName?: string) => {
+      const scopedDrivers = [
+          activeDriverName,
+          primaryDriver?.name,
+          ...myTeam.map(member => member.name)
+      ].filter(Boolean) as string[];
+
+      return Array.from(new Set(scopedDrivers));
+  }, [myTeam, primaryDriver?.name]);
+
   const refreshPortalData = useCallback(async (options?: { includeDrivers?: boolean }) => {
       if (!user || !viewingAsDriver) return;
       try {
           const isAdminUser = user.role === 'admin' || user.role === 'super_admin';
           const shouldLoadDrivers = options?.includeDrivers ?? false;
+          const scopedDriverNames = getScopedDriverNames(viewingAsDriver.name);
 
           const [drivers, dailyEntries, weeklyWallets] = await Promise.all([
               shouldLoadDrivers ? storageService.getDrivers() : Promise.resolve(null),
-              isAdminUser ? storageService.getDailyEntriesFresh() : Promise.resolve<DailyEntry[]>([]),
-              isAdminUser ? storageService.getWeeklyWalletsFresh() : Promise.resolve<WeeklyWallet[]>([])
+              storageService.getDailyEntries({ drivers: scopedDriverNames, fresh: 1 }),
+              storageService.getWeeklyWallets({ drivers: scopedDriverNames, fresh: 1 })
           ]);
 
           if (drivers && isAdminUser) {
@@ -424,16 +425,8 @@ const DriverPortalPage: React.FC = () => {
               }
           }
 
-          let allDaily = dailyEntries;
-          let allWeekly = weeklyWallets;
-
-          if (!isAdminUser) {
-              const driversToLoad = [primaryDriver?.name, ...myTeam.map(member => member.name)].filter(Boolean) as string[];
-              [allDaily, allWeekly] = await Promise.all([
-                  storageService.getDailyEntries({ drivers: driversToLoad, fresh: 1 }),
-                  storageService.getWeeklyWallets({ drivers: driversToLoad, fresh: 1 })
-              ]);
-          }
+          const allDaily = dailyEntries;
+          const allWeekly = weeklyWallets;
 
           setGlobalDaily(allDaily);
           setGlobalWeekly(allWeekly);
@@ -453,7 +446,7 @@ const DriverPortalPage: React.FC = () => {
       } catch (err) {
           console.error('Failed to refresh portal data', err);
       }
-  }, [myTeam, primaryDriver, rentalSlabs, user, viewingAsDriver]);
+  }, [getScopedDriverNames, myTeam, primaryDriver, rentalSlabs, user, viewingAsDriver]);
 
   const { connected: liveUpdatesConnected } = useLiveUpdates((event) => {
       const type = event?.type;
@@ -526,10 +519,28 @@ const DriverPortalPage: React.FC = () => {
       refreshCashMode(targetDriver.id, true);
   };
 
-  const handleAdminDriverSwitch = (driverId: string) => {
+  const handleAdminDriverSwitch = async (driverId: string) => {
       const target = driversList.find(d => d.id === driverId);
       if (target) {
-          switchToDriverView(target, globalDaily, globalWeekly);
+          try {
+              const [dailyEntries, weeklyWallets] = await Promise.all([
+                  storageService.getDailyEntries({
+                      drivers: getScopedDriverNames(target.name),
+                      fresh: 1
+                  }),
+                  storageService.getWeeklyWallets({
+                      drivers: getScopedDriverNames(target.name),
+                      fresh: 1
+                  })
+              ]);
+
+              setGlobalDaily(dailyEntries);
+              setGlobalWeekly(weeklyWallets);
+              switchToDriverView(target, dailyEntries, weeklyWallets);
+          } catch (err) {
+              console.error('Failed to switch admin driver view', err);
+              alert('Could not load selected driver data. Please try again.');
+          }
       }
   };
 
