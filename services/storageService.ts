@@ -442,6 +442,20 @@ export const storageService = {
     await api.post(`/system-flags/cash-mode-${driverId}`, { value: mode });
   },
 
+
+  // --- Web Push ---
+  getPushPublicKey: async (): Promise<{ enabled: boolean; publicKey: string | null }> => api.get('/push/public-key'),
+  savePushSubscription: async (driverId: string, subscription: any): Promise<void> => {
+    await api.post('/push-subscriptions', { driverId, subscription });
+  },
+  deletePushSubscription: async (endpoint: string): Promise<void> => {
+    await fetch(`${API_BASE}/push-subscriptions`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ endpoint })
+    });
+  },
+
   // --- Shifts & Leaves ---
   getDriverShifts: async (): Promise<DriverShiftRecord[]> => api.get('/shifts'),
   saveDriverShift: async (shift: DriverShiftRecord): Promise<DriverShiftRecord> => api.post('/shifts', shift),

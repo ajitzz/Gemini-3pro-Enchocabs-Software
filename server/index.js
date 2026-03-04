@@ -5,6 +5,14 @@ const { v4: uuidv4 } = require('uuid');
 const { createHash } = require('crypto');
 const { EventEmitter } = require('events');
 const { OAuth2Client } = require('google-auth-library');
+
+let webPush = null;
+try {
+  // Optional dependency in restricted environments
+  webPush = require('web-push');
+} catch (error) {
+  console.warn('web-push dependency not available; push delivery disabled.');
+}
 const db = require('./db');
 const { getJSON: getCacheJSON, setJSON: setCacheJSON, deleteKeys: deleteCacheKeys } = require('./cache');
 const { enqueueBillingRefresh, isQStashConfigured } = require('./qstash');
@@ -68,6 +76,14 @@ const KEEP_ALIVE_URL = process.env.KEEP_ALIVE_URL || '';
 const SESSION_CACHE_TTL_SECONDS = Number(process.env.SESSION_CACHE_TTL_SECONDS || 60 * 60 * 6);
 const BOT_CONFIG_CACHE_TTL_SECONDS = Number(process.env.BOT_CONFIG_CACHE_TTL_SECONDS || 60 * 10);
 const WIDGET_ACCESS_TOKEN = String(process.env.WIDGET_ACCESS_TOKEN || '').trim();
+const VAPID_PUBLIC_KEY = String(process.env.VAPID_PUBLIC_KEY || '').trim();
+const VAPID_PRIVATE_KEY = String(process.env.VAPID_PRIVATE_KEY || '').trim();
+const VAPID_SUBJECT = String(process.env.VAPID_SUBJECT || 'mailto:ops@enchocabs.com').trim();
+const webPushEnabled = Boolean(webPush && VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
+
+if (webPushEnabled) {
+  webPush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+}
 const BOT_CONFIG_CACHE_KEY = 'driver_app_bot_config_v1';
 const liveEvents = new EventEmitter();
 liveEvents.setMaxListeners(200);
@@ -92,6 +108,46 @@ const emitLiveUpdate = (type, payload = {}) => {
     at: Date.now(),
     ...payload,
   });
+};
+
+const getDriverIdsForName = async (driverName) => {
+  if (!driverName) return [];
+  const result = await db.query(
+    `SELECT id FROM drivers WHERE LOWER(name) = LOWER($1) AND (termination_date IS NULL OR termination_date >= CURRENT_DATE)`,
+    [driverName]
+  );
+  return result.rows.map((row) => row.id).filter(Boolean);
+};
+
+const sendPushToDriverIds = async (driverIds, notificationPayload) => {
+  if (!webPushEnabled || !Array.isArray(driverIds) || driverIds.length === 0) return;
+
+  const uniqueDriverIds = Array.from(new Set(driverIds.filter(Boolean)));
+  if (!uniqueDriverIds.length) return;
+
+  const subs = await db.query(
+    `SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE driver_id = ANY($1::uuid[])`,
+    [uniqueDriverIds]
+  );
+
+  if (!subs.rows.length) return;
+
+  const payload = JSON.stringify(notificationPayload);
+
+  await Promise.allSettled(subs.rows.map(async (sub) => {
+    try {
+      await webPush.sendNotification({
+        endpoint: sub.endpoint,
+        keys: { p256dh: sub.p256dh, auth: sub.auth },
+      }, payload);
+    } catch (error) {
+      const code = Number(error?.statusCode || error?.status || 0);
+      if (code === 404 || code === 410) {
+        await db.query('DELETE FROM push_subscriptions WHERE id = $1', [sub.id]);
+      }
+      console.error('Push send failed:', code || error?.message || error);
+    }
+  }));
 };
 
 app.get('/api/live-updates', (req, res) => {
@@ -129,6 +185,60 @@ app.get('/api/live-updates', (req, res) => {
     liveEvents.off('update', onUpdate);
   });
 });
+
+app.get('/api/push/public-key', (_req, res) => {
+  res.json({ enabled: webPushEnabled, publicKey: webPushEnabled ? VAPID_PUBLIC_KEY : null });
+});
+
+app.post('/api/push-subscriptions', async (req, res) => {
+  try {
+    const { driverId, subscription } = req.body || {};
+    const endpoint = subscription?.endpoint;
+    const p256dh = subscription?.keys?.p256dh;
+    const auth = subscription?.keys?.auth;
+
+    if (!driverId || !endpoint || !p256dh || !auth) {
+      return res.status(400).json({ error: 'driverId and complete subscription keys are required' });
+    }
+
+    await db.query(
+      `CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        driver_id UUID NOT NULL,
+        endpoint TEXT NOT NULL UNIQUE,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )`
+    );
+
+    await db.query(
+      `INSERT INTO push_subscriptions (driver_id, endpoint, p256dh, auth)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (endpoint) DO UPDATE
+       SET driver_id = EXCLUDED.driver_id,
+           p256dh = EXCLUDED.p256dh,
+           auth = EXCLUDED.auth`,
+      [driverId, endpoint, p256dh, auth]
+    );
+
+    res.json({ success: true, enabled: webPushEnabled });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/push-subscriptions', async (req, res) => {
+  try {
+    const { endpoint } = req.body || {};
+    if (!endpoint) return res.status(400).json({ error: 'endpoint is required' });
+    await db.query('DELETE FROM push_subscriptions WHERE endpoint = $1', [endpoint]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // --- HEALTH CHECK ---
 const healthHandler = (_req, res) => {
   res.set('Cache-Control', 'no-store');
@@ -771,6 +881,17 @@ const initDb = async () => {
         flag_key TEXT PRIMARY KEY,
         flag_value TEXT,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        driver_id UUID NOT NULL,
+        endpoint TEXT NOT NULL UNIQUE,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
     // 2. Migrations / Updates
@@ -2225,8 +2346,33 @@ app.post('/api/weekly-wallets', async (req, res) => {
 
     await invalidateAggregateCaches();
     await invalidateWeeklyWalletsCache();
-    emitLiveUpdate('weekly_wallets_changed');
-    res.json(result.rows[0]);
+
+    const savedWallet = result.rows[0] || {};
+    const walletBalance = Number(savedWallet.wallet_week || w.walletWeek || 0);
+    emitLiveUpdate('weekly_wallets_changed', {
+      change: previousWallet ? 'updated' : 'added',
+      driver: savedWallet.driver || w.driver,
+      weekStartDate: savedWallet.week_start_date || startISO,
+      weekEndDate: savedWallet.week_end_date || endISO || null,
+      walletBalance,
+    });
+
+    const targetDriverIds = await getDriverIdsForName(savedWallet.driver || w.driver);
+    await sendPushToDriverIds(targetDriverIds, {
+      title: 'Weekly wallet updated',
+      body: `${savedWallet.driver || w.driver}: ${walletBalance.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })}`,
+      url: '/portal',
+      tag: `weekly-wallet-${savedWallet.driver || w.driver}`,
+      meta: {
+        type: 'weekly_wallets_changed',
+        change: previousWallet ? 'updated' : 'added',
+        walletBalance,
+        weekStartDate: savedWallet.week_start_date || startISO,
+        weekEndDate: savedWallet.week_end_date || endISO || null,
+      },
+    });
+
+    res.json(savedWallet);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

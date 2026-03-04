@@ -1,11 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { getApiBase } from './apiBase';
 
-type LiveUpdateEvent = {
+export type LiveUpdateEvent = {
   type?: string;
   at?: number;
   key?: string;
   version?: number;
+  change?: 'added' | 'updated' | 'deleted';
+  driver?: string;
+  weekStartDate?: string;
+  weekEndDate?: string | null;
+  walletBalance?: number;
 };
 
 const RETRY_BASE_MS = 1000;

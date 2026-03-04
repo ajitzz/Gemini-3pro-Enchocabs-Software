@@ -205,3 +205,14 @@ CREATE TABLE IF NOT EXISTS system_flags (
   flag_value TEXT,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+
+-- 16. Push Subscriptions
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  driver_id UUID NOT NULL,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
