@@ -19,7 +19,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // --- CONFIGURATION ---
 const ADMIN_CACHE_KEY = 'driver_app_admin_cache_v1';
 const ADMIN_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-const VALIDATION_GRACE_MS = 2 * 60 * 1000; // 2 minutes after login/validation
+const VALIDATION_GRACE_MS = 10 * 60 * 1000; // 10 minutes after login/validation
 const WARMUP_TIMEOUT_MS = 4000;
 
 const CLIENT_ID_FROM_ENV = getGoogleClientId();
@@ -241,7 +241,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     validate();
-    const interval = setInterval(validate, 15000);
+    const interval = setInterval(validate, 60000);
 
     return () => {
       isMounted = false;

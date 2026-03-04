@@ -1,5 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation, Outlet } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, Navigate, Outlet } from 'react-router-dom';
 import { LayoutDashboard, Calendar, Wallet, Menu, X, Users, Coffee, Upload, Settings, Briefcase, FileText, Calculator, UserCircle, LogOut, Shield, ClipboardList } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
@@ -67,7 +67,6 @@ const LazyPage = ({ children }: { children: React.ReactNode }) => (
 // --- PROTECTED ROUTE WRAPPER ---
 const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode, allowedRoles: string[] }) => {
   const { user, loading, refreshSession } = useAuth();
-  const location = useLocation();
   const [validatingAccess, setValidatingAccess] = useState(false);
 
   useEffect(() => {
@@ -90,12 +89,12 @@ const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode
 
     verifyAccess();
     return () => { isMounted = false; };
-  }, [refreshSession, user, location.pathname]);
+  }, [refreshSession, user]);
 
   if (loading || validatingAccess) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div></div>;
 
   if (!user) {
-    return <Navigate to="/staff" state={{ from: location }} replace />;
+    return <Navigate to="/staff" replace />;
   }
 
   if (!allowedRoles.includes(user.role)) {

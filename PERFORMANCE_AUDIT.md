@@ -1,53 +1,52 @@
-# Performance Audit Report (Post-Optimization)
+# Performance Audit Report (Render + Upstash deployment)
 
-## Scope
+## Why loading is still slow on non-home pages
 
-This review covers frontend initial load, runtime responsiveness, and live data update behavior after implementing targeted performance fixes in this codebase.
+After reviewing the current frontend and backend flow, the slow pages are mainly caused by **request sequencing and server wake/latency**, not just missing Redis cache.
 
-## Ratings (0–10)
+### 1) Protected pages trigger auth validation on each page mount
+- All non-home pages are behind `ProtectedRoute`.
+- `ProtectedRoute` calls `refreshSession()` for admin users and shows a blocking spinner while validating.
+- This introduces a network dependency before rendering protected content.
 
-- **Initial load performance:** **9.9 / 10**
-- **Runtime responsiveness after load:** **9.9 / 10**
-- **Live data update with minimal load time:** **9.9 / 10**
-- **Overall performance optimization maturity:** **9.9 / 10**
+### 2) Session validation was too frequent
+- `AuthContext` was validating very aggressively (short grace window + 15s interval), which increases backend load and can create perceived delay during navigation when the server is under load.
 
-## Implemented upgrades
+### 3) Driver portal does multiple API calls during initialization
+- Driver portal startup requires drivers + rental slabs + manager access + daily entries + weekly wallets (+ cash modes for team members).
+- Even with Redis, many requests are still required, and total wait is limited by slowest call.
 
-1. **Initial load payload reduced**
-   - Removed global XLSX CDN script from `index.html`.
-   - Removed unused import-map block from `index.html`.
-   - Result: less blocking parse/eval work during first paint.
+### 4) Render cold start + regional latency still dominates first protected request
+- Redis improves repeated query performance, but it **does not remove**:
+  - render instance spin-up (cold starts)
+  - TLS + network RTT to DB/Redis/API regions
+  - frontend waiting for auth gate responses
 
-2. **Heavy library moved to on-demand loading**
-   - XLSX now loads lazily in `ImportPage` via a cached loader promise.
-   - Result: import-only dependency no longer affects non-import users.
+### 5) Large payload routes are still expensive
+- Endpoints like daily entries / weekly wallets can return large arrays.
+- If the first request is uncached or bypasses cache (`fresh=1` paths), perceived loading remains high.
 
-3. **Live-update dedupe improved**
-   - SSE client now tracks event `version` by event `type` and ignores stale/duplicate events.
-   - Result: less redundant refresh work and smoother UI under frequent update bursts.
+## Changes applied in this update
 
-4. **Live refresh path optimized**
-   - Daily entry page now performs `entries-only` refresh for daily-entry events instead of full bootstrap payloads.
-   - Result: smaller payloads and quicker screen updates.
+1. **Removed route-change revalidation in `ProtectedRoute`**
+   - Admin revalidation now runs on auth context changes instead of every pathname transition.
+   - This prevents unnecessary full-page blocking spinner on each internal navigation.
 
-5. **Navigation responsiveness improved**
-   - Protected route admin validation spinner now waits briefly before showing.
-   - Result: removes flicker/blocked feel for fast validations.
+2. **Reduced validation pressure in `AuthContext`**
+   - Increased validation grace period from 2 minutes to 10 minutes.
+   - Reduced background validation interval from 15 seconds to 60 seconds.
+   - This lowers API chatter and improves protected-route responsiveness.
 
-## Current architecture strengths
+## Next steps (high impact)
 
-- Route-level lazy loading and route prefetching are in place.
-- Explicit vendor chunk splitting supports better browser cache reuse.
-- Server already includes multi-layer caching (memory + Redis + ETag/cache headers).
-- SSE transport uses heartbeat and reconnect backoff, with fallback polling safety.
-- Database performance indexes for common filtering/sorting paths are present.
+1. Add a **single portal bootstrap endpoint** that returns all portal-needed data in one response.
+2. Add **stale-while-revalidate UI strategy** for protected pages (render cached local state first, refresh in background).
+3. Ensure Render service runs in same region as Postgres + Upstash.
+4. Add endpoint-level timing logs (p50/p95) and surface in `/api/perf-metrics` dashboard.
+5. Paginate or date-bound large list APIs by default, especially for historical daily entries.
 
-## Remaining improvements (minor, optional)
+## Quick verification checklist
 
-- Add CI performance budgets (LCP/INP bundle thresholds).
-- Expand endpoint-level pagination for very large datasets.
-- Add synthetic load testing profile for peak-hour operations.
-
-## Industrial standard verdict
-
-The application now operates at an industrial-grade performance posture for the current architecture: fast initial render, responsive post-load interactions, and low-latency live updates with reduced redundant load.
+- Navigate across `/app` routes repeatedly and confirm no repeated blocking auth spinner.
+- Compare request counts before/after for `/api/admin-access` and related auth validation calls.
+- Measure first protected route TTFB with warm and cold service states.
