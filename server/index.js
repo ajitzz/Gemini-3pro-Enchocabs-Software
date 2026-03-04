@@ -2085,6 +2085,14 @@ app.post('/api/weekly-wallets', async (req, res) => {
     const endISO = toISODate(w.weekEndDate || (startISO ? getSundayISO(startISO) : ''));
     if (!startISO) return res.status(400).json({ error: 'Invalid week start date' });
 
+    const duplicateCheck = await db.query(
+      `SELECT id FROM weekly_wallets WHERE driver = $1 AND week_start_date = $2 AND id <> $3 LIMIT 1`,
+      [w.driver, startISO, w.id || '']
+    );
+    if (duplicateCheck.rows.length > 0) {
+      return res.status(409).json({ error: 'Weekly wallet already exists for this driver and week.' });
+    }
+
     const existingWallet = w.id
       ? await db.query(`SELECT driver, to_char(week_start_date, 'YYYY-MM-DD') as week_start_date FROM weekly_wallets WHERE id = $1`, [w.id])
       : { rows: [] };

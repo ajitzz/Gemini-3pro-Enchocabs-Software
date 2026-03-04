@@ -37,7 +37,7 @@ const WeeklyWalletPage: React.FC = () => {
   const [showFullHistory, setShowFullHistory] = useState(false);
   
   // Duplicate Warning State
-  const [duplicateWarning, setDuplicateWarning] = useState<{ active: boolean, existingId: string, payload: WeeklyWallet } | null>(null);
+  const [duplicateWarning, setDuplicateWarning] = useState<{ driver: string; weekStartDate: string } | null>(null);
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return '-';
@@ -232,31 +232,28 @@ const WeeklyWalletPage: React.FC = () => {
     };
 
     if (duplicate) {
-        setDuplicateWarning({
-            active: true,
-            existingId: duplicate.id,
-            payload: newWallet
-        });
-        return;
+      setDuplicateWarning({
+        driver: newWallet.driver,
+        weekStartDate: newWallet.weekStartDate
+      });
+      return;
     }
 
-    const savedWallet = await storageService.saveWeeklyWallet(newWallet);
-    resetForm();
-    upsertWallet({ ...newWallet, ...savedWallet });
-  };
-
-  const handleOverrideConfirm = async () => {
-      if (!duplicateWarning) return;
-
-      const walletToSave = {
-          ...duplicateWarning.payload,
-          id: duplicateWarning.existingId // Overwrite existing ID
-      };
-
-      const savedWallet = await storageService.saveWeeklyWallet(walletToSave);
+    try {
+      const savedWallet = await storageService.saveWeeklyWallet(newWallet);
       setDuplicateWarning(null);
       resetForm();
-      upsertWallet({ ...walletToSave, ...savedWallet });
+      upsertWallet({ ...newWallet, ...savedWallet });
+    } catch (error: any) {
+      if (error?.message?.toLowerCase().includes('already exists')) {
+        setDuplicateWarning({
+          driver: newWallet.driver,
+          weekStartDate: newWallet.weekStartDate
+        });
+        return;
+      }
+      alert(error?.message || 'Failed to save weekly wallet.');
+    }
   };
 
   const handleEdit = (wallet: WeeklyWallet) => {
@@ -576,20 +573,14 @@ const WeeklyWalletPage: React.FC = () => {
                   </div>
                   <div className="p-6">
                       <p className="text-slate-600 font-medium leading-relaxed mb-4">
-                          Driver <strong>{duplicateWarning.payload.driver}</strong> already has a wallet entry for the week starting <strong>{formatDate(duplicateWarning.payload.weekStartDate)}</strong>.
+                          Driver <strong>{duplicateWarning.driver}</strong> already has a wallet entry for the week starting <strong>{formatDate(duplicateWarning.weekStartDate)}</strong>. Duplicate weekly wallets are not allowed.
                       </p>
                       <div className="flex gap-3">
                           <button 
                             onClick={() => setDuplicateWarning(null)}
-                            className="flex-1 py-3 border border-slate-200 text-slate-600 rounded-xl font-bold hover:bg-slate-50 transition-colors"
+                            className="w-full py-3 border border-slate-200 text-slate-600 rounded-xl font-bold hover:bg-slate-50 transition-colors"
                           >
-                              Cancel
-                          </button>
-                          <button 
-                            onClick={handleOverrideConfirm}
-                            className="flex-1 py-3 bg-amber-500 text-white rounded-xl font-bold hover:bg-amber-600 shadow-lg shadow-amber-500/20 transition-colors"
-                          >
-                              Override
+                              OK
                           </button>
                       </div>
                   </div>
