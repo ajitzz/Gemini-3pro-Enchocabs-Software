@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import NetCalculationPopup from './NetCalculationPopup';
+import DriverMobileWidgetCard from './driver/DriverMobileWidgetCard';
 
 type PortalDailyEntry = DailyEntry & { adjustmentApplied?: number; adjustedDue?: number };
 
@@ -49,6 +50,7 @@ const DriverPortalPage: React.FC = () => {
   const [copiedDriverId, setCopiedDriverId] = useState<string | null>(null);
   const [teamCashModes, setTeamCashModes] = useState<Record<string, CashMode>>({});
   const [teamCashModeUpdating, setTeamCashModeUpdating] = useState<Record<string, boolean>>({});
+  const [widgetUpdatedAt, setWidgetUpdatedAt] = useState<number>(Date.now());
   const [calcPopup, setCalcPopup] = useState<{
       metric: 'netPayout' | 'netBalance';
       values: {
@@ -434,6 +436,8 @@ const DriverPortalPage: React.FC = () => {
           const activeName = updatedDriver?.name || viewingAsDriver.name;
           setRawDaily(allDaily.filter(d => d.driver === activeName).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
           setRawWeekly(allWeekly.filter(w => w.driver === activeName).sort((a,b) => new Date(b.weekStartDate).getTime() - new Date(a.weekStartDate).getTime()));
+
+          setWidgetUpdatedAt(Date.now());
 
           if (myTeam.length > 0) {
               const balances: Record<string, number> = {};
@@ -1427,6 +1431,15 @@ const DriverPortalPage: React.FC = () => {
                     )}
                 </div>
            </div>
+
+           <DriverMobileWidgetCard
+               netBalance={netBalance}
+               netPayout={balanceSummary.netPayout}
+               connected={liveUpdatesConnected}
+               updatedAt={widgetUpdatedAt}
+               onOpenNetPayout={() => openCalculationPopup('netPayout')}
+               onOpenNetBalance={() => openCalculationPopup('netBalance')}
+           />
 
            {/* Top Cards Grid (Dynamic) */}
            <div className="grid grid-cols-2 gap-4 mb-2">

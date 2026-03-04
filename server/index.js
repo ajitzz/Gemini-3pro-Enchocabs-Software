@@ -67,6 +67,7 @@ const GOOGLE_CLIENT_IDS = Array.from(new Set([
 const KEEP_ALIVE_URL = process.env.KEEP_ALIVE_URL || '';
 const SESSION_CACHE_TTL_SECONDS = Number(process.env.SESSION_CACHE_TTL_SECONDS || 60 * 60 * 6);
 const BOT_CONFIG_CACHE_TTL_SECONDS = Number(process.env.BOT_CONFIG_CACHE_TTL_SECONDS || 60 * 10);
+const WIDGET_ACCESS_TOKEN = String(process.env.WIDGET_ACCESS_TOKEN || '').trim();
 const BOT_CONFIG_CACHE_KEY = 'driver_app_bot_config_v1';
 const liveEvents = new EventEmitter();
 liveEvents.setMaxListeners(200);
@@ -420,6 +421,19 @@ const calculateDriverStatsServer = (driverName, driverDaily, driverWallets, sort
     netPayoutSource,
     netPayoutRange
   };
+};
+
+
+const getWidgetTokenFromRequest = (req) => {
+  const headerToken = String(req.headers['x-widget-token'] || '').trim();
+  const queryToken = String(req.query?.token || '').trim();
+  return headerToken || queryToken;
+};
+
+const isWidgetRequestAuthorized = (req) => {
+  if (!WIDGET_ACCESS_TOKEN) return true;
+  const provided = getWidgetTokenFromRequest(req);
+  return provided === WIDGET_ACCESS_TOKEN;
 };
 
 const clampTtlSeconds = (value, fallbackSeconds) => {
@@ -1263,6 +1277,94 @@ app.post('/api/auth/google', async (req, res) => {
   }
 });
 
+
+
+app.get('/api/drivers/:driverId/widget-summary', async (req, res) => {
+  try {
+    if (!isWidgetRequestAuthorized(req)) {
+      return res.status(401).json({ error: 'Unauthorized widget request' });
+    }
+
+    const driverId = String(req.params.driverId || '').trim();
+    if (!driverId) {
+      return res.status(400).json({ error: 'driverId is required' });
+    }
+
+    const [driverRes, dailyRes, walletRes, slabsRes] = await Promise.all([
+      db.query('SELECT id, name FROM drivers WHERE id = $1 LIMIT 1', [driverId]),
+      db.query(
+        `SELECT id, to_char(date, 'YYYY-MM-DD') as date, driver, rent, collection, fuel, due, payout
+         FROM daily_entries
+         WHERE lower(driver) = lower((SELECT name FROM drivers WHERE id = $1 LIMIT 1))`,
+        [driverId]
+      ),
+      db.query(
+        `SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate", to_char(week_end_date, 'YYYY-MM-DD') as "weekEndDate",
+                trips, earnings, rent_override as "rentOverride", days_worked_override as "daysWorkedOverride",
+                refund, diff, cash, charges, adjustments
+         FROM weekly_wallets
+         WHERE lower(driver) = lower((SELECT name FROM drivers WHERE id = $1 LIMIT 1))`,
+        [driverId]
+      ),
+      db.query(
+        `SELECT id, type, min_trips as "minTrips", max_trips as "maxTrips", rent_amount as "rentAmount"
+         FROM rental_slabs
+         ORDER BY min_trips ASC`
+      )
+    ]);
+
+    if (driverRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Driver not found' });
+    }
+
+    const driver = driverRes.rows[0];
+    const dailyEntries = dailyRes.rows.map((r) => ({
+      ...r,
+      rent: Number(r.rent) || 0,
+      collection: Number(r.collection) || 0,
+      fuel: Number(r.fuel) || 0,
+      due: Number(r.due) || 0,
+      payout: Number(r.payout) || 0,
+    }));
+    const weeklyWallets = walletRes.rows.map((r) => ({
+      ...r,
+      trips: Number(r.trips) || 0,
+      earnings: Number(r.earnings) || 0,
+      rentOverride: r.rentOverride === null ? null : Number(r.rentOverride),
+      daysWorkedOverride: r.daysWorkedOverride === null ? null : Number(r.daysWorkedOverride),
+      refund: Number(r.refund) || 0,
+      diff: Number(r.diff) || 0,
+      cash: Number(r.cash) || 0,
+      charges: Number(r.charges) || 0,
+      adjustments: Number(r.adjustments) || 0,
+    }));
+    const sortedSlabs = slabsRes.rows.map((r) => ({
+      ...r,
+      minTrips: Number(r.minTrips) || 0,
+      maxTrips: r.maxTrips === null ? null : Number(r.maxTrips),
+      rentAmount: Number(r.rentAmount) || 0,
+    }));
+
+    const summary = calculateDriverStatsServer(driver.name, dailyEntries, weeklyWallets, sortedSlabs);
+
+    if (!summary) {
+      return res.status(404).json({ error: 'Unable to compute widget summary' });
+    }
+
+    res.set('Cache-Control', 'no-store');
+    return res.json({
+      driverId: driver.id,
+      driverName: driver.name,
+      netBalance: Number(summary.finalTotal) || 0,
+      netPayout: Number(summary.netPayout) || 0,
+      netPayoutSource: summary.netPayoutSource,
+      netPayoutRange: summary.netPayoutRange || null,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
 
 app.get('/api/driver-billings', async (req, res) => {
   const now = Date.now();

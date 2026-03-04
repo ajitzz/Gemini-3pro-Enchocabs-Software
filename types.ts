@@ -232,3 +232,14 @@ export interface AuthUser {
   photoURL?: string;
   driverId?: string;
 }
+
+
+export interface DriverWidgetSummary {
+  driverId: string;
+  driverName: string;
+  netBalance: number;
+  netPayout: number;
+  netPayoutSource: 'overall' | 'latest-wallet';
+  netPayoutRange?: string | null;
+  updatedAt: string;
+}
