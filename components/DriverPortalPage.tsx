@@ -2,17 +2,18 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { storageService } from '../services/storageService';
-import { useLiveUpdates } from '../lib/useLiveUpdates';
+import { useLiveUpdates, type LiveUpdateEvent } from '../lib/useLiveUpdates';
 import { CashMode, DailyEntry, WeeklyWallet, Driver, RentalSlab } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import {
   Download, Calendar, Wallet, FileText, ChevronRight, LogOut, 
   UserCircle, TrendingUp, TrendingDown, DollarSign, MapPin, 
-  CheckCircle, AlertCircle, Eye, X, ShieldCheck, Users, ArrowLeft, Lock, ArrowRight, Gauge, BarChart3, ChevronDown, Copy, AlertTriangle, ArrowUpRight, Clock, Ticket, Utensils
+  CheckCircle, AlertCircle, Eye, X, ShieldCheck, Users, ArrowLeft, Lock, ArrowRight, Gauge, BarChart3, ChevronDown, Copy, AlertTriangle, ArrowUpRight, Clock, Ticket, Utensils, Bell
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import NetCalculationPopup from './NetCalculationPopup';
 import DriverMobileWidgetCard from './driver/DriverMobileWidgetCard';
+import { registerDriverPushNotifications } from '../lib/pushNotifications';
 
 type PortalDailyEntry = DailyEntry & { adjustmentApplied?: number; adjustedDue?: number };
 
@@ -51,6 +52,8 @@ const DriverPortalPage: React.FC = () => {
   const [teamCashModes, setTeamCashModes] = useState<Record<string, CashMode>>({});
   const [teamCashModeUpdating, setTeamCashModeUpdating] = useState<Record<string, boolean>>({});
   const [widgetUpdatedAt, setWidgetUpdatedAt] = useState<number>(Date.now());
+  const [unreadUpdateCount, setUnreadUpdateCount] = useState(0);
+  const [lastUpdateLabel, setLastUpdateLabel] = useState<string | null>(null);
   const [calcPopup, setCalcPopup] = useState<{
       metric: 'netPayout' | 'netBalance';
       values: {
@@ -72,6 +75,7 @@ const DriverPortalPage: React.FC = () => {
   const portalRefreshTimerRef = useRef<number | null>(null);
   const cashModeRefreshTimerRef = useRef<number | null>(null);
   const lastDriversRefreshRef = useRef(0);
+  const previousNetBalanceRef = useRef<number | null>(null);
 
   const tabOptions: {
       key: 'home' | 'daily' | 'billing';
@@ -254,6 +258,16 @@ const DriverPortalPage: React.FC = () => {
         initializePortal();
     }
   }, [user]);
+
+  useEffect(() => {
+      if (user?.role !== 'driver') return;
+      const targetDriverId = user.driverId || viewingAsDriver?.id;
+      if (!targetDriverId) return;
+
+      registerDriverPushNotifications(targetDriverId).catch((error) => {
+          console.warn('Push registration skipped:', error);
+      });
+  }, [user?.driverId, user?.role, viewingAsDriver?.id]);
 
   useEffect(() => {
     let isMounted = true;
@@ -455,6 +469,34 @@ const DriverPortalPage: React.FC = () => {
   const { connected: liveUpdatesConnected } = useLiveUpdates((event) => {
       const type = event?.type;
       if (!type) return;
+
+      const formatLiveUpdateLabel = (payload: LiveUpdateEvent): string | null => {
+          if (payload.type === 'weekly_wallets_changed') {
+              const hasWalletBalance = typeof payload.walletBalance === 'number' && !Number.isNaN(payload.walletBalance);
+              const driverLabel = payload.driver ? `${payload.driver}: ` : '';
+
+              if (hasWalletBalance) {
+                  return `${driverLabel}Weekly wallet balance ${formatCurrencyInt(payload.walletBalance || 0)}`;
+              }
+
+              return `${driverLabel}Weekly wallet updated`;
+          }
+
+          const updateLabels: Record<string, string> = {
+              daily_entries_changed: 'Daily log updated',
+              drivers_changed: 'Driver profile updated',
+              leaves_changed: 'Leave data updated',
+              cash_mode_changed: 'Cash mode changed'
+          };
+
+          return updateLabels[payload.type || ''] || null;
+      };
+
+      const notificationLabel = formatLiveUpdateLabel(event);
+      if (notificationLabel) {
+          setUnreadUpdateCount(prev => Math.min(prev + 1, 99));
+          setLastUpdateLabel(notificationLabel);
+      }
 
       if (['daily_entries_changed', 'weekly_wallets_changed', 'drivers_changed', 'leaves_changed'].includes(type)) {
           if (portalRefreshTimerRef.current !== null) {
@@ -804,6 +846,20 @@ const DriverPortalPage: React.FC = () => {
   const netBalance = driverStats?.finalTotal ?? 0;
   const hasFoodAccess = user?.role === 'driver' && Boolean(viewingAsDriver?.foodOption);
   const isFoodTicketActive = netBalance >= 0;
+
+  useEffect(() => {
+      if (!viewingAsDriver) return;
+
+      if (previousNetBalanceRef.current === null) {
+          previousNetBalanceRef.current = netBalance;
+          return;
+      }
+
+      if (previousNetBalanceRef.current !== netBalance) {
+          setLastUpdateLabel(`Net balance updated: ${formatCurrencyInt(netBalance)}`);
+          previousNetBalanceRef.current = netBalance;
+      }
+  }, [netBalance, viewingAsDriver]);
 
   // --- 3. AGGREGATED STATS (Month/Prev Month/Year) ---
     const aggregatedStats = useMemo(() => {
@@ -1346,7 +1402,22 @@ const DriverPortalPage: React.FC = () => {
                        </p>
                    </div>
                </div>
-               <div className="flex gap-3">
+               <div className="flex items-center gap-2">
+                   <div className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold border ${netBalance >= 0 ? 'bg-emerald-500/10 border-emerald-400/30 text-emerald-300' : 'bg-rose-500/10 border-rose-400/30 text-rose-300'}`}>
+                       Net {formatCurrencyInt(netBalance)}
+                   </div>
+                   <button
+                       onClick={() => setUnreadUpdateCount(0)}
+                       className="relative p-2 bg-slate-800 rounded-lg hover:bg-slate-700 text-slate-300"
+                       title={lastUpdateLabel ? `${lastUpdateLabel} • Tap to mark as seen` : 'Live updates'}
+                   >
+                       <Bell size={20} />
+                       {unreadUpdateCount > 0 && (
+                           <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-[10px] font-bold text-white flex items-center justify-center border border-slate-900">
+                               {unreadUpdateCount}
+                           </span>
+                       )}
+                   </button>
                    {user?.role !== 'driver' && (
                        <button onClick={returnToDashboard} className="p-2 bg-slate-800 rounded-lg hover:bg-slate-700 text-slate-300" title="Exit View Mode">
                            <LogOut size={20} />
@@ -1359,6 +1430,15 @@ const DriverPortalPage: React.FC = () => {
                    )}
                </div>
            </div>
+
+           {lastUpdateLabel && (
+               <div className="max-w-md mx-auto px-6 pb-3">
+                   <p className="inline-flex items-center gap-2 text-[11px] text-emerald-300 bg-emerald-500/10 border border-emerald-400/20 px-2.5 py-1 rounded-full font-semibold">
+                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
+                       {lastUpdateLabel}
+                   </p>
+               </div>
+           )}
            
            {/* Admin Selector (Only for Admins) */}
            {(user?.role === 'admin' || user?.role === 'super_admin') && (

@@ -1,35 +1,42 @@
-const CACHE_NAME = 'enchocabs-shell-v1';
-const APP_SHELL = ['/', '/portal', '/manifest.webmanifest'];
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
 
-self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
-  self.skipWaiting();
-});
-
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
-    )
-  );
-  self.clients.claim();
-});
-
-self.addEventListener('fetch', (event) => {
-  const { request } = event;
-  if (request.method !== 'GET') return;
-
-  // Keep API responses fresh; do not cache dynamic API payloads in SW.
-  if (request.url.includes('/api/')) {
-    event.respondWith(fetch(request));
-    return;
+  let payload = {};
+  try {
+    payload = event.data.json();
+  } catch (error) {
+    payload = { title: 'Driver Tracker', body: event.data.text() };
   }
 
-  event.respondWith(
-    caches.match(request).then((cached) => cached || fetch(request).then((response) => {
-      const copy = response.clone();
-      caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-      return response;
-    }))
-  );
+  const title = payload.title || 'Driver Tracker';
+  const options = {
+    body: payload.body || 'New update available',
+    icon: '/favicon.ico',
+    badge: '/favicon.ico',
+    tag: payload.tag || 'driver-update',
+    data: {
+      url: payload.url || '/portal',
+      meta: payload.meta || null,
+    },
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = event.notification.data?.url || '/portal';
+
+  event.waitUntil((async () => {
+    const clientsList = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of clientsList) {
+      if (client.url.includes(targetUrl) && 'focus' in client) {
+        await client.focus();
+        return;
+      }
+    }
+    if (clients.openWindow) {
+      await clients.openWindow(targetUrl);
+    }
+  })());
 });
