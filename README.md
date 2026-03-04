@@ -116,3 +116,138 @@ The project now includes a performance-upgrade track aligned to four phases:
    - API exposes `GET /api/perf-stats` with request timing summary, event versions, and recent vitals aggregates.
 
 These improvements target near-instant interaction under normal production load and establish the telemetry needed to sustain a 9.5/10 performance target.
+
+## Mobile home screen widget options for driver net balance/payout
+
+If you want each driver to see **Net Balance** and **Net Payout** directly from their phone home screen, there are two practical paths:
+
+1. **Progressive Web App (PWA) + Add to Home Screen** (recommended fastest path)
+   - Keep this app as web-first.
+   - Add PWA support (manifest + service worker) so drivers can install it from browser to home screen.
+   - Open directly to `/portal` and show a compact “widget-style” summary card at the top.
+   - Use existing `/api/live-updates` SSE stream for near-live refresh inside the app.
+
+2. **Native home-screen widgets (Android/iOS)**
+   - True OS widgets (outside browser) need native apps:
+     - Android: App Widget / Jetpack Glance.
+     - iOS: WidgetKit.
+   - Your native app can call this backend API and render Net Balance / Net Payout in an actual phone widget.
+
+### Recommendation
+
+- Start with **PWA install + portal summary card** for speed and lower cost.
+- Move to native widgets only if you need “always-visible” numbers without opening the app.
+
+### Suggested API response for widget summary
+
+Expose a small endpoint for fast mobile refresh, e.g.:
+
+`GET /api/drivers/:driverId/widget-summary`
+
+Response example:
+
+```json
+{
+  "driverId": "...",
+  "driverName": "...",
+  "netBalance": 1250,
+  "netPayout": 980,
+  "netPayoutSource": "latest-wallet",
+  "updatedAt": "2026-03-04T10:30:00.000Z"
+}
+```
+
+This keeps the widget lightweight and avoids fetching the full portal payload on every refresh.
+
+
+## Step-by-step: implement this from the current website
+
+Use this sequence to deliver driver-facing mobile widgets from the existing codebase without a full rewrite.
+
+### Phase A — ship a “widget-like” mobile card in the current Driver Portal (fastest)
+
+1. **Keep `/portal` as the single driver entry point**
+   - Driver route already exists and is role-protected in `App.tsx`.
+2. **Create a compact top card component** (example: `components/driver/DriverBalanceWidgetCard.tsx`)
+   - Show: `Net Balance`, `Net Payout`, `last updated`, and a tiny status dot.
+   - Reuse values already computed in `DriverPortalPage.tsx` (`netBalance`, `balanceSummary.netPayout`).
+3. **Render this card at the top of the mobile layout in `DriverPortalPage.tsx`**
+   - Keep large touch targets and high-contrast numbers.
+4. **Use existing live update pipeline**
+   - Keep `useLiveUpdates` hook + fallback polling as-is so numbers refresh near-live.
+5. **Add “Updated just now / Xm ago” label**
+   - Use last refresh timestamp in state; this builds driver trust in live data.
+
+Result: drivers install/open the site and immediately see widget-like numbers inside the web app.
+
+### Phase B — make it installable on home screen (PWA)
+
+1. Add a web app manifest (`public/manifest.webmanifest`):
+   - app name, icons, `display: standalone`, `start_url: /portal`.
+2. Add a service worker (via Vite plugin like `vite-plugin-pwa` or a manual worker).
+3. Cache shell assets and keep API requests network-first.
+4. Add install prompt UI on login/portal (`Install app`).
+
+Result: drivers can pin the app to home screen and open directly to portal like a native app.
+
+### Phase C — optimize backend payload for mobile card
+
+1. Add endpoint: `GET /api/drivers/:driverId/widget-summary`.
+2. In handler, reuse existing summary math (same logic used for portal stats) to avoid mismatch.
+3. Return only small payload (`netBalance`, `netPayout`, `source`, `updatedAt`).
+4. Enforce auth: driver can only read their own `driverId` unless admin/super_admin.
+
+Result: fast refresh, less mobile data usage, no heavy full-page fetch for simple cards.
+
+### Phase D — true OS home-screen widgets (optional, native)
+
+- If you need numbers visible **without opening app**:
+  - Android: native app + App Widget/Glance.
+  - iOS: native app + WidgetKit.
+- Native widget calls the same `widget-summary` endpoint.
+
+### Minimal implementation checklist (repo-focused)
+
+- [ ] Build `DriverBalanceWidgetCard` UI component.
+- [ ] Mount component in `DriverPortalPage.tsx` mobile-first position.
+- [ ] Add `updatedAt` state + relative-time label.
+- [ ] Add PWA manifest + icons + service worker.
+- [ ] Add install CTA in portal/login.
+- [ ] Add `/api/drivers/:driverId/widget-summary` route with auth guard.
+- [ ] QA on Android Chrome + iOS Safari add-to-home-screen flow.
+
+### Security & correctness guardrails
+
+- Never trust `driverId` from client alone; validate from authenticated session.
+- Keep one shared calculation function for portal and widget endpoint.
+- Emit/consume existing live events (`daily_entries_changed`, `weekly_wallets_changed`) to keep data consistent.
+
+### Suggested rollout (1 week)
+
+- **Day 1–2:** Phase A (mobile widget card in portal).
+- **Day 3:** Phase B (PWA installability).
+- **Day 4:** Phase C (`widget-summary` endpoint + auth).
+- **Day 5:** QA + production deploy + driver onboarding message.
+
+
+### Native widget backend endpoint (implemented)
+
+For Android/iOS true home-screen widgets, use:
+
+- `GET /api/drivers/:driverId/widget-summary`
+
+Response includes:
+
+- `driverId`
+- `driverName`
+- `netBalance`
+- `netPayout`
+- `netPayoutSource`
+- `netPayoutRange`
+- `updatedAt`
+
+Security option:
+
+- Set `WIDGET_ACCESS_TOKEN` in backend env.
+- Pass token via `X-Widget-Token` header (or `?token=` query for simple widget clients).
+- If `WIDGET_ACCESS_TOKEN` is unset, endpoint remains open (recommended only for trusted internal setups).

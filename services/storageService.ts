@@ -1,5 +1,5 @@
 
-import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping, ManagerAccess, AdminAccess, DriverBillingRecord, CashMode } from '../types';
+import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping, ManagerAccess, AdminAccess, DriverBillingRecord, CashMode, DriverWidgetSummary } from '../types';
 import { getApiBase } from '../lib/apiBase';
 
 type DailyEntryBootstrapResponse = {
@@ -387,6 +387,10 @@ export const storageService = {
   deleteWeeklyWallet: async (id: string): Promise<void> => api.delete(`/weekly-wallets/${id}`),
 
   // --- Driver Billings (NEW) ---
+  getDriverWidgetSummary: async (driverId: string, token?: string): Promise<DriverWidgetSummary> => {
+    const query = token ? `?token=${encodeURIComponent(token)}` : '';
+    return api.get(`/drivers/${encodeURIComponent(driverId)}/widget-summary${query}`);
+  },
   getDriverBillings: async (): Promise<DriverBillingRecord[]> => api.get('/driver-billings'),
   saveDriverBilling: async (billing: DriverBillingRecord): Promise<DriverBillingRecord> => api.post('/driver-billings', billing),
   deleteDriverBilling: async (id: string): Promise<void> => api.delete(`/driver-billings/${id}`),
