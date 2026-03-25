@@ -1922,6 +1922,7 @@ app.get('/api/daily-entries/bootstrap', async (req, res) => {
     const cacheBypass = req.query.fresh !== undefined;
     const cacheKey = buildQueryCacheKey('daily-entries:bootstrap', req.query);
     const metaOnly = String(req.query.metaOnly || '').toLowerCase() === 'true';
+    const includeMeta = String(req.query.includeMeta || 'true').toLowerCase() !== 'false';
 
     if (!cacheBypass) {
       const cached = await getCacheJSON(cacheKey);
@@ -1935,6 +1936,14 @@ app.get('/api/daily-entries/bootstrap', async (req, res) => {
 
     const values = [];
     const filters = [];
+    const driverFilters = parseDriverFilters(req.query);
+    if (driverFilters.length === 1) {
+      values.push(driverFilters[0]);
+      filters.push(`LOWER(driver) = $${values.length}`);
+    } else if (driverFilters.length > 1) {
+      values.push(driverFilters);
+      filters.push(`LOWER(driver) = ANY($${values.length})`);
+    }
 
     const fromDate = parseQueryDate(req.query.from, 'from');
     if (fromDate) {
@@ -1964,6 +1973,13 @@ app.get('/api/daily-entries/bootstrap', async (req, res) => {
 
     const walletsValues = [];
     const walletsFilters = [];
+    if (driverFilters.length === 1) {
+      walletsValues.push(driverFilters[0]);
+      walletsFilters.push(`LOWER(driver) = $${walletsValues.length}`);
+    } else if (driverFilters.length > 1) {
+      walletsValues.push(driverFilters);
+      walletsFilters.push(`LOWER(driver) = ANY($${walletsValues.length})`);
+    }
     if (fromDate) {
       walletsValues.push(fromDate);
       walletsFilters.push(`week_end_date >= $${walletsValues.length}`);
@@ -1984,13 +2000,17 @@ app.get('/api/daily-entries/bootstrap', async (req, res) => {
              ORDER BY date DESC`,
             values,
           ),
-      db.query(`SELECT id, name, mobile, email, to_char(join_date, 'YYYY-MM-DD') as "joinDate", to_char(termination_date, 'YYYY-MM-DD') as "terminationDate", deposit, qr_code as "qrCode", vehicle, status, current_shift as "currentShift", default_rent as "defaultRent", notes, is_manager as "isManager", food_option as "foodOption" FROM drivers ORDER BY name`),
-      db.query(
-        `SELECT id, driver_id as "driverId", to_char(start_date, 'YYYY-MM-DD') as "startDate", to_char(end_date, 'YYYY-MM-DD') as "endDate", to_char(actual_return_date, 'YYYY-MM-DD') as "actualReturnDate", days, reason
-         FROM leaves
-         ${leavesWhereClause}`,
-        leavesValues,
-      ),
+      includeMeta
+        ? db.query(`SELECT id, name, mobile, email, to_char(join_date, 'YYYY-MM-DD') as "joinDate", to_char(termination_date, 'YYYY-MM-DD') as "terminationDate", deposit, qr_code as "qrCode", vehicle, status, current_shift as "currentShift", default_rent as "defaultRent", notes, is_manager as "isManager", food_option as "foodOption" FROM drivers ORDER BY name`)
+        : Promise.resolve({ rows: [] }),
+      includeMeta
+        ? db.query(
+            `SELECT id, driver_id as "driverId", to_char(start_date, 'YYYY-MM-DD') as "startDate", to_char(end_date, 'YYYY-MM-DD') as "endDate", to_char(actual_return_date, 'YYYY-MM-DD') as "actualReturnDate", days, reason
+             FROM leaves
+             ${leavesWhereClause}`,
+            leavesValues,
+          )
+        : Promise.resolve({ rows: [] }),
       db.query(`SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate", to_char(week_end_date, 'YYYY-MM-DD') as "weekEndDate", earnings, refund, diff, cash, charges, trips, wallet_week as "walletWeek", days_worked_override as "daysWorkedOverride", rent_override as "rentOverride", adjustments, notes
        FROM weekly_wallets
        ${walletsWhereClause}

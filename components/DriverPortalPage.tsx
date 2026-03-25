@@ -373,10 +373,12 @@ const DriverPortalPage: React.FC = () => {
           const driversToLoad = [targetDriver.name, ...teamMembers.map(member => member.name)].filter(Boolean);
           const uniqueDrivers = Array.from(new Set(driversToLoad));
 
-          [allDaily, allWeekly] = await Promise.all([
-              storageService.getDailyEntries({ drivers: uniqueDrivers }),
-              storageService.getWeeklyWallets({ drivers: uniqueDrivers })
-          ]);
+          const bootstrapPayload = await storageService.getDailyEntriesBootstrap({
+              drivers: uniqueDrivers,
+              includeMeta: false,
+          });
+          allDaily = bootstrapPayload.entries;
+          allWeekly = bootstrapPayload.weeklyWallets;
 
           setGlobalDaily(allDaily);
           setGlobalWeekly(allWeekly);
@@ -423,11 +425,12 @@ const DriverPortalPage: React.FC = () => {
           const shouldLoadDrivers = options?.includeDrivers ?? false;
           const scopedDriverNames = getScopedDriverNames(viewingAsDriver.name);
 
-          const [drivers, dailyEntries, weeklyWallets] = await Promise.all([
+          const [drivers, bootstrapPayload] = await Promise.all([
               shouldLoadDrivers ? storageService.getDrivers() : Promise.resolve(null),
-              storageService.getDailyEntries({ drivers: scopedDriverNames, fresh: 1 }),
-              storageService.getWeeklyWallets({ drivers: scopedDriverNames, fresh: 1 })
+              storageService.getDailyEntriesBootstrap({ drivers: scopedDriverNames, fresh: 1, includeMeta: false })
           ]);
+          const dailyEntries = bootstrapPayload.entries;
+          const weeklyWallets = bootstrapPayload.weeklyWallets;
 
           if (drivers && isAdminUser) {
               setDriversList(drivers.sort((a, b) => a.name.localeCompare(b.name)));
@@ -569,16 +572,13 @@ const DriverPortalPage: React.FC = () => {
       const target = driversList.find(d => d.id === driverId);
       if (target) {
           try {
-              const [dailyEntries, weeklyWallets] = await Promise.all([
-                  storageService.getDailyEntries({
-                      drivers: getScopedDriverNames(target.name),
-                      fresh: 1
-                  }),
-                  storageService.getWeeklyWallets({
-                      drivers: getScopedDriverNames(target.name),
-                      fresh: 1
-                  })
-              ]);
+              const bootstrapPayload = await storageService.getDailyEntriesBootstrap({
+                  drivers: getScopedDriverNames(target.name),
+                  fresh: 1,
+                  includeMeta: false,
+              });
+              const dailyEntries = bootstrapPayload.entries;
+              const weeklyWallets = bootstrapPayload.weeklyWallets;
 
               setGlobalDaily(dailyEntries);
               setGlobalWeekly(weeklyWallets);
@@ -662,10 +662,9 @@ const DriverPortalPage: React.FC = () => {
   
   const viewTeamMember = async (member: Driver) => {
       try {
-        const [allDaily, allWeekly] = await Promise.all([
-            storageService.getDailyEntries({ driver: member.name }),
-            storageService.getWeeklyWallets({ driver: member.name })
-        ]);
+        const bootstrapPayload = await storageService.getDailyEntriesBootstrap({ driver: member.name, includeMeta: false });
+        const allDaily = bootstrapPayload.entries;
+        const allWeekly = bootstrapPayload.weeklyWallets;
         switchToDriverView(member, allDaily, allWeekly);
       } catch (err) {
           alert("Could not load team member data.");
