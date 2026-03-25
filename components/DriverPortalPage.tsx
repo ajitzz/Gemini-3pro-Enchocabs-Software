@@ -375,6 +375,7 @@ const DriverPortalPage: React.FC = () => {
 
           const bootstrapPayload = await storageService.getDailyEntriesBootstrap({
               drivers: uniqueDrivers,
+              includeMeta: false,
           });
           allDaily = bootstrapPayload.entries;
           allWeekly = bootstrapPayload.weeklyWallets;
@@ -426,7 +427,7 @@ const DriverPortalPage: React.FC = () => {
 
           const [drivers, bootstrapPayload] = await Promise.all([
               shouldLoadDrivers ? storageService.getDrivers() : Promise.resolve(null),
-              storageService.getDailyEntriesBootstrap({ drivers: scopedDriverNames, fresh: 1 })
+              storageService.getDailyEntriesBootstrap({ drivers: scopedDriverNames, fresh: 1, includeMeta: false })
           ]);
           const dailyEntries = bootstrapPayload.entries;
           const weeklyWallets = bootstrapPayload.weeklyWallets;
@@ -573,7 +574,8 @@ const DriverPortalPage: React.FC = () => {
           try {
               const bootstrapPayload = await storageService.getDailyEntriesBootstrap({
                   drivers: getScopedDriverNames(target.name),
-                  fresh: 1
+                  fresh: 1,
+                  includeMeta: false,
               });
               const dailyEntries = bootstrapPayload.entries;
               const weeklyWallets = bootstrapPayload.weeklyWallets;
@@ -660,7 +662,7 @@ const DriverPortalPage: React.FC = () => {
   
   const viewTeamMember = async (member: Driver) => {
       try {
-        const bootstrapPayload = await storageService.getDailyEntriesBootstrap({ driver: member.name });
+        const bootstrapPayload = await storageService.getDailyEntriesBootstrap({ driver: member.name, includeMeta: false });
         const allDaily = bootstrapPayload.entries;
         const allWeekly = bootstrapPayload.weeklyWallets;
         switchToDriverView(member, allDaily, allWeekly);

@@ -14,6 +14,7 @@ type DriverScopedQueryParams = {
   to?: string;
   fresh?: number;
   metaOnly?: boolean;
+  includeMeta?: boolean;
   driver?: string;
   drivers?: string[];
 };
