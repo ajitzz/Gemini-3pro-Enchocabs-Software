@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 
 const NetPayoutChartCard = lazy(() => import('./dashboard/NetPayoutChartCard'));
 const DASHBOARD_SUMMARY_CACHE_KEY = 'driver_app_dashboard_summary_v1';
+const HIDDEN_DRIVERS_STORAGE_KEY = 'driver_app_hidden_drivers_v1';
 const DEFAULT_VISIBLE_DRIVERS = 8;
 
 const DashboardPage: React.FC = () => {
@@ -19,6 +20,7 @@ const DashboardPage: React.FC = () => {
   const [global, setGlobal] = useState<GlobalSummary | null>(null);
   const [filterDriver, setFilterDriver] = useState('');
   const [showAllDrivers, setShowAllDrivers] = useState(false);
+  const [hiddenDrivers, setHiddenDrivers] = useState<string[]>([]);
   const [calcPopup, setCalcPopup] = useState<{
     metric: 'netPayout' | 'netBalance';
     netValue: number;
@@ -68,6 +70,28 @@ const DashboardPage: React.FC = () => {
   };
 
   useEffect(() => {
+    try {
+      const savedHiddenDrivers = localStorage.getItem(HIDDEN_DRIVERS_STORAGE_KEY);
+      if (savedHiddenDrivers) {
+        const parsedHiddenDrivers = JSON.parse(savedHiddenDrivers);
+        if (Array.isArray(parsedHiddenDrivers)) {
+          setHiddenDrivers(parsedHiddenDrivers);
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to load hidden drivers', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(HIDDEN_DRIVERS_STORAGE_KEY, JSON.stringify(hiddenDrivers));
+    } catch (error) {
+      console.warn('Failed to save hidden drivers', error);
+    }
+  }, [hiddenDrivers]);
+
+  useEffect(() => {
     loadData();
   }, []);
 
@@ -91,26 +115,32 @@ const DashboardPage: React.FC = () => {
     });
   };
 
-  const filteredSummaries = summaries.filter(s =>
-    filterDriver === '' || s.driver.toLowerCase().includes(filterDriver.toLowerCase())
-  );
+  const filteredSummaries = summaries
+    .filter((s) => !hiddenDrivers.includes(s.driver))
+    .filter(s =>
+      filterDriver === '' || s.driver.toLowerCase().includes(filterDriver.toLowerCase())
+    );
 
   const walletChargesByDriver = weeklyWallets.reduce((acc, wallet) => {
     acc[wallet.driver] = (acc[wallet.driver] || 0) + (Number(wallet.charges) || 0);
     return acc;
   }, {} as Record<string, number>);
 
-  const enrichedSummaries = filteredSummaries.map((driver) => {
-    const totalWalletWithCharges = driver.totalWalletWeek + (walletChargesByDriver[driver.driver] || 0);
-    return {
-      ...driver,
-      totalWalletWithCharges
-    };
-  });
+  const enrichedSummaries = filteredSummaries
+    .map((driver) => {
+      const totalWalletWithCharges = driver.totalWalletWeek + (walletChargesByDriver[driver.driver] || 0);
+      return {
+        ...driver,
+        totalWalletWithCharges
+      };
+    })
+    .sort((a, b) => a.finalTotal - b.finalTotal);
 
   const visibleSummaries = showAllDrivers
     ? enrichedSummaries
     : enrichedSummaries.slice(0, DEFAULT_VISIBLE_DRIVERS);
+
+  const hiddenDriverList = [...hiddenDrivers].sort((a, b) => a.localeCompare(b));
 
   const balanceTotals = visibleSummaries.reduce(
     (acc, driver) => ({
@@ -250,8 +280,35 @@ const DashboardPage: React.FC = () => {
                 />
                 <Users size={16} className="absolute left-3.5 top-2.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
               </div>
+              {hiddenDriverList.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setHiddenDrivers([])}
+                  className="px-3 py-2 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-semibold border border-indigo-100 hover:bg-indigo-100 transition-colors"
+                >
+                  Unhide all ({hiddenDriverList.length})
+                </button>
+              )}
             </div>
           </div>
+          {hiddenDriverList.length > 0 && (
+            <div className="px-6 py-3 border-b border-slate-100 bg-slate-50/70">
+              <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-2">Hidden Drivers</p>
+              <div className="flex flex-wrap gap-2">
+                {hiddenDriverList.map((driverName) => (
+                  <button
+                    key={driverName}
+                    type="button"
+                    onClick={() => setHiddenDrivers((prev) => prev.filter((name) => name !== driverName))}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-600 hover:border-indigo-200 hover:text-indigo-700 transition-colors"
+                  >
+                    {driverName}
+                    <span className="text-[10px] uppercase tracking-wider text-indigo-500">Unhide</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           
           <div className="overflow-x-auto flex-1 scrollbar-thin">
             <table className="w-full text-sm text-left">
@@ -266,6 +323,7 @@ const DashboardPage: React.FC = () => {
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Payout</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Payout</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Balance</th>
+                  <th className="px-6 py-4 font-semibold text-right tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -311,11 +369,20 @@ const DashboardPage: React.FC = () => {
                         {formatCurrency(driver.finalTotal)}
                       </span>
                     </td>
+                    <td className="px-6 py-4 text-right">
+                      <button
+                        type="button"
+                        onClick={() => setHiddenDrivers((prev) => [...new Set([...prev, driver.driver])])}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
+                      >
+                        Hide
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {visibleSummaries.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="px-6 py-20 text-center text-slate-400">
+                    <td colSpan={10} className="px-6 py-20 text-center text-slate-400">
                       <div className="flex flex-col items-center gap-2">
                         <Users size={32} className="opacity-20" />
                         <p>No drivers found matching "{filterDriver}"</p>
@@ -335,6 +402,7 @@ const DashboardPage: React.FC = () => {
                   <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.payout)}</td>
                   <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.netPayout)}</td>
                   <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.finalTotal)}</td>
+                  <td className="px-6 py-3 text-right">-</td>
                 </tr>
               </tfoot>
             </table>
