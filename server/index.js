@@ -1935,6 +1935,14 @@ app.get('/api/daily-entries/bootstrap', async (req, res) => {
 
     const values = [];
     const filters = [];
+    const driverFilters = parseDriverFilters(req.query);
+    if (driverFilters.length === 1) {
+      values.push(driverFilters[0]);
+      filters.push(`LOWER(driver) = $${values.length}`);
+    } else if (driverFilters.length > 1) {
+      values.push(driverFilters);
+      filters.push(`LOWER(driver) = ANY($${values.length})`);
+    }
 
     const fromDate = parseQueryDate(req.query.from, 'from');
     if (fromDate) {
@@ -1964,6 +1972,13 @@ app.get('/api/daily-entries/bootstrap', async (req, res) => {
 
     const walletsValues = [];
     const walletsFilters = [];
+    if (driverFilters.length === 1) {
+      walletsValues.push(driverFilters[0]);
+      walletsFilters.push(`LOWER(driver) = $${walletsValues.length}`);
+    } else if (driverFilters.length > 1) {
+      walletsValues.push(driverFilters);
+      walletsFilters.push(`LOWER(driver) = ANY($${walletsValues.length})`);
+    }
     if (fromDate) {
       walletsValues.push(fromDate);
       walletsFilters.push(`week_end_date >= $${walletsValues.length}`);

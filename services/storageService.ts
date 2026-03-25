@@ -9,6 +9,15 @@ type DailyEntryBootstrapResponse = {
   weeklyWallets: WeeklyWallet[];
 };
 
+type DriverScopedQueryParams = {
+  from?: string;
+  to?: string;
+  fresh?: number;
+  metaOnly?: boolean;
+  driver?: string;
+  drivers?: string[];
+};
+
 const API_BASE = getApiBase();
 
 const CACHE_TTL_MS = 30_000;
@@ -356,11 +365,11 @@ export const storageService = {
     options?: GetOptions,
   ): Promise<DailyEntry[]> => api.get(`/daily-entries${buildQueryString(params)}`, options),
   getDailyEntriesBootstrap: async (
-    params?: { from?: string; to?: string; fresh?: number; metaOnly?: boolean },
+    params?: DriverScopedQueryParams,
     options?: GetOptions,
   ): Promise<DailyEntryBootstrapResponse> => api.get(`/daily-entries/bootstrap${buildQueryString(params)}`, options),
   getDailyEntriesMeta: async (
-    params?: { from?: string; to?: string; fresh?: number },
+    params?: Omit<DriverScopedQueryParams, 'metaOnly'>,
     options?: GetOptions,
   ): Promise<Omit<DailyEntryBootstrapResponse, 'entries'>> => {
     const query = buildQueryString({ ...(params || {}), metaOnly: true });
