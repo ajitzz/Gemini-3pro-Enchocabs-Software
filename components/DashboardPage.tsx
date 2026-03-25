@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { storageService } from '../services/storageService';
-import { DriverSummary, GlobalSummary } from '../types';
+import { DriverSummary, GlobalSummary, WeeklyWallet } from '../types';
 import { Users, Banknote, Fuel, TrendingDown, AlertCircle, ArrowUpRight, ArrowDownRight, Wallet } from 'lucide-react';
 import NetCalculationPopup from './NetCalculationPopup';
 
@@ -12,6 +12,7 @@ const DashboardPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isStaleData, setIsStaleData] = useState(false);
   const [summaries, setSummaries] = useState<DriverSummary[]>([]);
+  const [weeklyWallets, setWeeklyWallets] = useState<WeeklyWallet[]>([]);
   const [global, setGlobal] = useState<GlobalSummary | null>(null);
   const [filterDriver, setFilterDriver] = useState('');
   const [calcPopup, setCalcPopup] = useState<{
@@ -48,8 +49,12 @@ const DashboardPage: React.FC = () => {
     }
 
     try {
-      const summary = await storageService.getSummary();
+      const [summary, wallets] = await Promise.all([
+        storageService.getSummary(),
+        storageService.getWeeklyWallets()
+      ]);
       setSummaries(summary.driverSummaries || []);
+      setWeeklyWallets(wallets || []);
       setGlobal(summary.global || null);
       setIsStaleData(false);
       sessionStorage.setItem(DASHBOARD_SUMMARY_CACHE_KEY, JSON.stringify(summary));
@@ -86,17 +91,31 @@ const DashboardPage: React.FC = () => {
     filterDriver === '' || s.driver.toLowerCase().includes(filterDriver.toLowerCase())
   );
 
-  const balanceTotals = filteredSummaries.reduce(
+  const walletChargesByDriver = weeklyWallets.reduce((acc, wallet) => {
+    acc[wallet.driver] = (acc[wallet.driver] || 0) + (Number(wallet.charges) || 0);
+    return acc;
+  }, {} as Record<string, number>);
+
+  const enrichedSummaries = filteredSummaries.map((driver) => {
+    const totalWalletWithCharges = driver.totalWalletWeek + (walletChargesByDriver[driver.driver] || 0);
+    return {
+      ...driver,
+      totalWalletWithCharges
+    };
+  });
+
+  const balanceTotals = enrichedSummaries.reduce(
     (acc, driver) => ({
       collection: acc.collection + driver.totalCollection,
       rent: acc.rent + driver.totalRent,
       fuel: acc.fuel + driver.totalFuel,
       due: acc.due + driver.totalDue,
-      wallet: acc.wallet + driver.totalWalletWeek,
+      wallet: acc.wallet + driver.totalWalletWithCharges,
+      payout: acc.payout + driver.totalPayout,
       netPayout: acc.netPayout + driver.netPayout,
       finalTotal: acc.finalTotal + driver.finalTotal,
     }),
-    { collection: 0, rent: 0, fuel: 0, due: 0, wallet: 0, netPayout: 0, finalTotal: 0 }
+    { collection: 0, rent: 0, fuel: 0, due: 0, wallet: 0, payout: 0, netPayout: 0, finalTotal: 0 }
   );
 
   const StatCard = ({ title, value, colorClass, icon: Icon, subtext, trend }: any) => (
@@ -219,19 +238,21 @@ const DashboardPage: React.FC = () => {
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Fuel</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Dues</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet</th>
+                  <th className="px-6 py-4 font-semibold text-right tracking-wider">Payout</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Payout</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Balance</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredSummaries.map((driver) => (
+                {enrichedSummaries.map((driver) => (
                   <tr key={driver.driver} className="hover:bg-slate-50 transition-colors group">
                     <td className="px-6 py-4 font-bold text-slate-700 group-hover:text-indigo-600 transition-colors">{driver.driver}</td>
                     <td className="px-6 py-4 text-right text-slate-600 font-medium">{formatCurrency(driver.totalCollection)}</td>
                     <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalRent)}</td>
                     <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalFuel)}</td>
                     <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalDue)}</td>
-                    <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalWalletWeek)}</td>
+                    <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalWalletWithCharges)}</td>
+                    <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalPayout)}</td>
                     <td className="px-6 py-4 text-right">
                       <div
                         className="flex flex-col items-end gap-1 cursor-pointer"
@@ -267,9 +288,9 @@ const DashboardPage: React.FC = () => {
                     </td>
                   </tr>
                 ))}
-                {filteredSummaries.length === 0 && (
+                {enrichedSummaries.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-6 py-20 text-center text-slate-400">
+                    <td colSpan={9} className="px-6 py-20 text-center text-slate-400">
                       <div className="flex flex-col items-center gap-2">
                         <Users size={32} className="opacity-20" />
                         <p>No drivers found matching "{filterDriver}"</p>
@@ -286,6 +307,7 @@ const DashboardPage: React.FC = () => {
                   <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.fuel)}</td>
                   <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.due)}</td>
                   <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.wallet)}</td>
+                  <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.payout)}</td>
                   <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.netPayout)}</td>
                   <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.finalTotal)}</td>
                 </tr>
