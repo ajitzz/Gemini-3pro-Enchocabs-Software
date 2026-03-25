@@ -91,11 +91,12 @@ const DashboardPage: React.FC = () => {
       collection: acc.collection + driver.totalCollection,
       rent: acc.rent + driver.totalRent,
       fuel: acc.fuel + driver.totalFuel,
+      due: acc.due + driver.totalDue,
       wallet: acc.wallet + driver.totalWalletWeek,
       netPayout: acc.netPayout + driver.netPayout,
       finalTotal: acc.finalTotal + driver.finalTotal,
     }),
-    { collection: 0, rent: 0, fuel: 0, wallet: 0, netPayout: 0, finalTotal: 0 }
+    { collection: 0, rent: 0, fuel: 0, due: 0, wallet: 0, netPayout: 0, finalTotal: 0 }
   );
 
   const StatCard = ({ title, value, colorClass, icon: Icon, subtext, trend }: any) => (
@@ -216,6 +217,7 @@ const DashboardPage: React.FC = () => {
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Collection</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Rent</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Fuel</th>
+                  <th className="px-6 py-4 font-semibold text-right tracking-wider">Dues</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Payout</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Balance</th>
@@ -228,6 +230,7 @@ const DashboardPage: React.FC = () => {
                     <td className="px-6 py-4 text-right text-slate-600 font-medium">{formatCurrency(driver.totalCollection)}</td>
                     <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalRent)}</td>
                     <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalFuel)}</td>
+                    <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalDue)}</td>
                     <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalWalletWeek)}</td>
                     <td className="px-6 py-4 text-right">
                       <div
@@ -266,7 +269,7 @@ const DashboardPage: React.FC = () => {
                 ))}
                 {filteredSummaries.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-6 py-20 text-center text-slate-400">
+                    <td colSpan={8} className="px-6 py-20 text-center text-slate-400">
                       <div className="flex flex-col items-center gap-2">
                         <Users size={32} className="opacity-20" />
                         <p>No drivers found matching "{filterDriver}"</p>
@@ -281,6 +284,7 @@ const DashboardPage: React.FC = () => {
                   <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.collection)}</td>
                   <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.rent)}</td>
                   <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.fuel)}</td>
+                  <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.due)}</td>
                   <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.wallet)}</td>
                   <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.netPayout)}</td>
                   <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.finalTotal)}</td>
@@ -308,7 +312,7 @@ const DashboardPage: React.FC = () => {
                 <div>
                   <h4 className="font-bold text-white text-sm mb-1 uppercase tracking-wider">Net Calculation</h4>
                   <p className="text-slate-300 text-xs leading-relaxed font-mono mt-2 bg-slate-800 p-2 rounded-lg border border-slate-700">
-                    Total = Collection - Rent - Fuel + Due + WalletWeek
+                    Total = Collection - Rent - Fuel + Due + WalletWeek - Payouts
                   </p>
                   <div className="mt-4 space-y-2">
                      <div className="flex items-center justify-between text-xs bg-slate-800/50 p-2 rounded-lg border border-slate-700/50">
