@@ -2,31 +2,33 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, BarChart3, Users } from 'lucide-react';
 import { storageService } from '../services/storageService';
-import { DriverSummary, WeeklyWallet } from '../types';
+import { DriverSummary } from '../types';
 
 const HIDDEN_DRIVERS_STORAGE_KEY = 'driver_app_hidden_drivers_v1';
+
+const loadHiddenDrivers = (): string[] => {
+  try {
+    const savedHiddenDrivers = localStorage.getItem(HIDDEN_DRIVERS_STORAGE_KEY);
+    if (!savedHiddenDrivers) return [];
+
+    const parsedHiddenDrivers = JSON.parse(savedHiddenDrivers);
+    if (!Array.isArray(parsedHiddenDrivers)) return [];
+
+    return parsedHiddenDrivers
+      .map((name) => (typeof name === 'string' ? name.trim() : ''))
+      .filter(Boolean);
+  } catch (error) {
+    console.warn('Failed to load hidden drivers', error);
+    return [];
+  }
+};
 
 const DriverBalanceInsightsPage: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [summaries, setSummaries] = useState<DriverSummary[]>([]);
-  const [weeklyWallets, setWeeklyWallets] = useState<WeeklyWallet[]>([]);
   const [filterDriver, setFilterDriver] = useState('');
-  const [hiddenDrivers, setHiddenDrivers] = useState<string[]>([]);
-
-  useEffect(() => {
-    try {
-      const savedHiddenDrivers = localStorage.getItem(HIDDEN_DRIVERS_STORAGE_KEY);
-      if (savedHiddenDrivers) {
-        const parsedHiddenDrivers = JSON.parse(savedHiddenDrivers);
-        if (Array.isArray(parsedHiddenDrivers)) {
-          setHiddenDrivers(parsedHiddenDrivers);
-        }
-      }
-    } catch (error) {
-      console.warn('Failed to load hidden drivers', error);
-    }
-  }, []);
+  const [hiddenDrivers, setHiddenDrivers] = useState<string[]>(() => loadHiddenDrivers());
 
   useEffect(() => {
     try {
@@ -40,12 +42,8 @@ const DriverBalanceInsightsPage: React.FC = () => {
     const loadData = async () => {
       setLoading(true);
       try {
-        const [summary, wallets] = await Promise.all([
-          storageService.getSummary(),
-          storageService.getWeeklyWallets()
-        ]);
-        setSummaries(summary.driverSummaries || []);
-        setWeeklyWallets(wallets || []);
+        const { summaries: driverSummaries } = await storageService.getDriverBalanceSummaries();
+        setSummaries(driverSummaries || []);
       } finally {
         setLoading(false);
       }
@@ -60,17 +58,12 @@ const DriverBalanceInsightsPage: React.FC = () => {
     maximumFractionDigits: 2,
   }).format(value);
 
-  const walletChargesByDriver = useMemo(() => weeklyWallets.reduce((acc, wallet) => {
-    acc[wallet.driver] = (acc[wallet.driver] || 0) + (Number(wallet.charges) || 0);
-    return acc;
-  }, {} as Record<string, number>), [weeklyWallets]);
-
   const sortedSummaries = useMemo(() => summaries
     .map((summary) => ({
       ...summary,
-      totalWalletWithCharges: summary.totalWalletWeek + (walletChargesByDriver[summary.driver] || 0),
+      totalWalletWithCharges: summary.totalWalletWeek,
     }))
-    .sort((a, b) => a.finalTotal - b.finalTotal), [summaries, walletChargesByDriver]);
+    .sort((a, b) => a.finalTotal - b.finalTotal), [summaries]);
 
   const filteredSummaries = useMemo(() => sortedSummaries
     .filter((summary) => !hiddenDrivers.includes(summary.driver))

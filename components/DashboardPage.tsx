@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { storageService } from '../services/storageService';
-import { DriverSummary, GlobalSummary, WeeklyWallet } from '../types';
+import { DriverSummary, GlobalSummary } from '../types';
 import { Users, Banknote, Fuel, TrendingDown, AlertCircle, ArrowUpRight, ArrowDownRight, Wallet, ExternalLink } from 'lucide-react';
 import NetCalculationPopup from './NetCalculationPopup';
 import { useNavigate } from 'react-router-dom';
@@ -11,16 +11,47 @@ const DASHBOARD_SUMMARY_CACHE_KEY = 'driver_app_dashboard_summary_v1';
 const HIDDEN_DRIVERS_STORAGE_KEY = 'driver_app_hidden_drivers_v1';
 const DEFAULT_VISIBLE_DRIVERS = 8;
 
+const buildGlobalSummary = (driverSummaries: DriverSummary[]): GlobalSummary => ({
+  totalCollection: driverSummaries.reduce((sum, d) => sum + d.totalCollection, 0),
+  totalRent: driverSummaries.reduce((sum, d) => sum + d.totalRent, 0),
+  totalFuel: driverSummaries.reduce((sum, d) => sum + d.totalFuel, 0),
+  totalDue: driverSummaries.reduce((sum, d) => sum + d.totalDue, 0),
+  totalPayout: driverSummaries.reduce((sum, d) => sum + d.totalPayout, 0),
+  totalWalletWeek: driverSummaries.reduce((sum, d) => sum + d.totalWalletWeek, 0),
+  pendingFromDrivers: driverSummaries
+    .filter((d) => d.finalTotal < 0)
+    .reduce((sum, d) => sum + Math.abs(d.finalTotal), 0),
+  payableToDrivers: driverSummaries
+    .filter((d) => d.finalTotal > 0)
+    .reduce((sum, d) => sum + d.finalTotal, 0),
+});
+
+const loadHiddenDrivers = (): string[] => {
+  try {
+    const savedHiddenDrivers = localStorage.getItem(HIDDEN_DRIVERS_STORAGE_KEY);
+    if (!savedHiddenDrivers) return [];
+
+    const parsedHiddenDrivers = JSON.parse(savedHiddenDrivers);
+    if (!Array.isArray(parsedHiddenDrivers)) return [];
+
+    return parsedHiddenDrivers
+      .map((name) => (typeof name === 'string' ? name.trim() : ''))
+      .filter(Boolean);
+  } catch (error) {
+    console.warn('Failed to load hidden drivers', error);
+    return [];
+  }
+};
+
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [isStaleData, setIsStaleData] = useState(false);
   const [summaries, setSummaries] = useState<DriverSummary[]>([]);
-  const [weeklyWallets, setWeeklyWallets] = useState<WeeklyWallet[]>([]);
   const [global, setGlobal] = useState<GlobalSummary | null>(null);
   const [filterDriver, setFilterDriver] = useState('');
   const [showAllDrivers, setShowAllDrivers] = useState(false);
-  const [hiddenDrivers, setHiddenDrivers] = useState<string[]>([]);
+  const [hiddenDrivers, setHiddenDrivers] = useState<string[]>(() => loadHiddenDrivers());
   const [calcPopup, setCalcPopup] = useState<{
     metric: 'netPayout' | 'netBalance';
     netValue: number;
@@ -55,33 +86,20 @@ const DashboardPage: React.FC = () => {
     }
 
     try {
-      const [summary, wallets] = await Promise.all([
-        storageService.getSummary(),
-        storageService.getWeeklyWallets()
-      ]);
-      setSummaries(summary.driverSummaries || []);
-      setWeeklyWallets(wallets || []);
-      setGlobal(summary.global || null);
+      const { summaries: driverSummaries } = await storageService.getDriverBalanceSummaries();
+      const computedGlobal = buildGlobalSummary(driverSummaries || []);
+
+      setSummaries(driverSummaries || []);
+      setGlobal(computedGlobal);
       setIsStaleData(false);
-      sessionStorage.setItem(DASHBOARD_SUMMARY_CACHE_KEY, JSON.stringify(summary));
+      sessionStorage.setItem(
+        DASHBOARD_SUMMARY_CACHE_KEY,
+        JSON.stringify({ driverSummaries: driverSummaries || [], global: computedGlobal })
+      );
     } finally {
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    try {
-      const savedHiddenDrivers = localStorage.getItem(HIDDEN_DRIVERS_STORAGE_KEY);
-      if (savedHiddenDrivers) {
-        const parsedHiddenDrivers = JSON.parse(savedHiddenDrivers);
-        if (Array.isArray(parsedHiddenDrivers)) {
-          setHiddenDrivers(parsedHiddenDrivers);
-        }
-      }
-    } catch (error) {
-      console.warn('Failed to load hidden drivers', error);
-    }
-  }, []);
 
   useEffect(() => {
     try {
@@ -121,19 +139,8 @@ const DashboardPage: React.FC = () => {
       filterDriver === '' || s.driver.toLowerCase().includes(filterDriver.toLowerCase())
     );
 
-  const walletChargesByDriver = weeklyWallets.reduce((acc, wallet) => {
-    acc[wallet.driver] = (acc[wallet.driver] || 0) + (Number(wallet.charges) || 0);
-    return acc;
-  }, {} as Record<string, number>);
-
   const enrichedSummaries = filteredSummaries
-    .map((driver) => {
-      const totalWalletWithCharges = driver.totalWalletWeek + (walletChargesByDriver[driver.driver] || 0);
-      return {
-        ...driver,
-        totalWalletWithCharges
-      };
-    })
+    .map((driver) => ({ ...driver, totalWalletWithCharges: driver.totalWalletWeek }))
     .sort((a, b) => a.finalTotal - b.finalTotal);
 
   const visibleSummaries = showAllDrivers
