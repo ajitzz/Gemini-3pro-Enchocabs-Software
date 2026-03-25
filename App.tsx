@@ -20,6 +20,7 @@ const RevenuePage = lazy(() => import('./components/RevenuePage'));
 const DriverLeadsPage = lazy(() => import('./components/DriverLeadsPage'));
 const ImportPage = lazy(() => import('./components/ImportPage'));
 const AdminAccessPage = lazy(() => import('./components/AdminAccessPage'));
+const DriverBalanceInsightsPage = lazy(() => import('./components/DriverBalanceInsightsPage'));
 
 
 const routePrefetchers: Record<string, () => Promise<unknown>> = {
@@ -39,6 +40,7 @@ const routePrefetchers: Record<string, () => Promise<unknown>> = {
   '/app/driver-leads': () => import('./components/DriverLeadsPage'),
   '/app/import': () => import('./components/ImportPage'),
   '/app/admin-access': () => import('./components/AdminAccessPage'),
+  '/app/driver-balances': () => import('./components/DriverBalanceInsightsPage'),
 };
 
 const prefetchedRoutes = new Set<string>();
@@ -293,6 +295,7 @@ const App: React.FC = () => {
                 <Route path="driver-leads" element={<LazyPage><DriverLeadsPage /></LazyPage>} />
                 <Route path="import" element={<LazyPage><ImportPage /></LazyPage>} />
                 <Route path="admin-access" element={<LazyPage><AdminAccessPage /></LazyPage>} />
+                <Route path="driver-balances" element={<LazyPage><DriverBalanceInsightsPage /></LazyPage>} />
               </Route>
           </Routes>
         </BrowserRouter>

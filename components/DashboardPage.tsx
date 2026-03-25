@@ -2,14 +2,16 @@
 import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { storageService } from '../services/storageService';
 import { DriverSummary, GlobalSummary, WeeklyWallet } from '../types';
-import { Users, Banknote, Fuel, TrendingDown, AlertCircle, ArrowUpRight, ArrowDownRight, Wallet } from 'lucide-react';
+import { Users, Banknote, Fuel, TrendingDown, AlertCircle, ArrowUpRight, ArrowDownRight, Wallet, ExternalLink } from 'lucide-react';
 import NetCalculationPopup from './NetCalculationPopup';
+import { useNavigate } from 'react-router-dom';
 
 const NetPayoutChartCard = lazy(() => import('./dashboard/NetPayoutChartCard'));
 const DASHBOARD_SUMMARY_CACHE_KEY = 'driver_app_dashboard_summary_v1';
 const DEFAULT_VISIBLE_DRIVERS = 8;
 
 const DashboardPage: React.FC = () => {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [isStaleData, setIsStaleData] = useState(false);
   const [summaries, setSummaries] = useState<DriverSummary[]>([]);
@@ -220,6 +222,14 @@ const DashboardPage: React.FC = () => {
               <Users size={20} className="text-indigo-500"/> Driver Balances
             </h3>
             <div className="flex items-center gap-2 flex-wrap justify-end">
+              <button
+                type="button"
+                onClick={() => navigate('/app/driver-balances')}
+                className="px-3 py-2 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-semibold border border-indigo-100 hover:bg-indigo-100 transition-colors inline-flex items-center gap-1.5"
+              >
+                View full analysis
+                <ExternalLink size={14} />
+              </button>
               <button
                 type="button"
                 onClick={() => setShowAllDrivers((prev) => !prev)}
