@@ -7,7 +7,6 @@ import NetCalculationPopup from './NetCalculationPopup';
 import { useNavigate } from 'react-router-dom';
 
 const NetPayoutChartCard = lazy(() => import('./dashboard/NetPayoutChartCard'));
-const DASHBOARD_SUMMARY_CACHE_KEY = 'driver_app_dashboard_summary_v1';
 const HIDDEN_DRIVERS_STORAGE_KEY = 'driver_app_hidden_drivers_v1';
 const DEFAULT_VISIBLE_DRIVERS = 8;
 
@@ -46,7 +45,6 @@ const loadHiddenDrivers = (): string[] => {
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [isStaleData, setIsStaleData] = useState(false);
   const [summaries, setSummaries] = useState<DriverSummary[]>([]);
   const [global, setGlobal] = useState<GlobalSummary | null>(null);
   const [filterDriver, setFilterDriver] = useState('');
@@ -71,31 +69,11 @@ const DashboardPage: React.FC = () => {
     setLoading(true);
 
     try {
-      const cached = sessionStorage.getItem(DASHBOARD_SUMMARY_CACHE_KEY);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed?.driverSummaries) && parsed?.global) {
-          setSummaries(parsed.driverSummaries);
-          setGlobal(parsed.global);
-          setIsStaleData(true);
-          setLoading(false);
-        }
-      }
-    } catch (cacheError) {
-      console.warn('Failed to read dashboard cache', cacheError);
-    }
-
-    try {
       const { summaries: driverSummaries } = await storageService.getDriverBalanceSummaries();
       const computedGlobal = buildGlobalSummary(driverSummaries || []);
 
       setSummaries(driverSummaries || []);
       setGlobal(computedGlobal);
-      setIsStaleData(false);
-      sessionStorage.setItem(
-        DASHBOARD_SUMMARY_CACHE_KEY,
-        JSON.stringify({ driverSummaries: driverSummaries || [], global: computedGlobal })
-      );
     } finally {
       setLoading(false);
     }
@@ -139,13 +117,11 @@ const DashboardPage: React.FC = () => {
       filterDriver === '' || s.driver.toLowerCase().includes(filterDriver.toLowerCase())
     );
 
-  const enrichedSummaries = filteredSummaries
-    .map((driver) => ({ ...driver, totalWalletWithCharges: driver.totalWalletWeek }))
-    .sort((a, b) => a.finalTotal - b.finalTotal);
+  const sortedSummaries = [...filteredSummaries].sort((a, b) => a.finalTotal - b.finalTotal);
 
   const visibleSummaries = showAllDrivers
-    ? enrichedSummaries
-    : enrichedSummaries.slice(0, DEFAULT_VISIBLE_DRIVERS);
+    ? sortedSummaries
+    : sortedSummaries.slice(0, DEFAULT_VISIBLE_DRIVERS);
 
   const hiddenDriverList = [...hiddenDrivers].sort((a, b) => a.localeCompare(b));
 
@@ -155,7 +131,7 @@ const DashboardPage: React.FC = () => {
       rent: acc.rent + driver.totalRent,
       fuel: acc.fuel + driver.totalFuel,
       due: acc.due + driver.totalDue,
-      wallet: acc.wallet + driver.totalWalletWithCharges,
+      wallet: acc.wallet + driver.totalWalletWeek,
       payout: acc.payout + driver.totalPayout,
       netPayout: acc.netPayout + driver.netPayout,
       finalTotal: acc.finalTotal + driver.finalTotal,
@@ -216,7 +192,7 @@ const DashboardPage: React.FC = () => {
         </div>
         <div className="flex items-center gap-2 text-xs font-medium bg-white text-slate-600 px-4 py-2 rounded-xl border border-slate-200 shadow-sm">
            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-           {isStaleData ? 'Refreshing data…' : 'Live Data'}
+           Live Data
         </div>
       </div>
 
@@ -272,7 +248,7 @@ const DashboardPage: React.FC = () => {
                 onClick={() => setShowAllDrivers((prev) => !prev)}
                 className="px-3 py-2 bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold border border-slate-200 hover:bg-slate-100 transition-colors"
               >
-                {showAllDrivers ? 'Show fewer drivers' : `Show all (${enrichedSummaries.length}) drivers`}
+                {showAllDrivers ? 'Show fewer drivers' : `Show all (${sortedSummaries.length}) drivers`}
               </button>
               <div className="relative group">
                 <input 
@@ -316,6 +292,9 @@ const DashboardPage: React.FC = () => {
               </div>
             </div>
           )}
+          <div className="px-6 py-2 border-b border-slate-100 bg-slate-50/40 text-[11px] text-slate-500 font-medium">
+            Net Balance = Collection - Rent - Fuel + Due + Wallet Week - Payout · Net Payout = min(Net Balance, latest wallet cutoff balance).
+          </div>
           
           <div className="overflow-x-auto flex-1 scrollbar-thin">
             <table className="w-full text-sm text-left">
@@ -326,7 +305,7 @@ const DashboardPage: React.FC = () => {
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Rent</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Fuel</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Dues</th>
-                  <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet</th>
+                  <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet Week</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Payout</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Payout</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Balance</th>
@@ -341,7 +320,7 @@ const DashboardPage: React.FC = () => {
                     <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalRent)}</td>
                     <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalFuel)}</td>
                     <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalDue)}</td>
-                    <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalWalletWithCharges)}</td>
+                    <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalWalletWeek)}</td>
                     <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalPayout)}</td>
                     <td className="px-6 py-4 text-right">
                       <div

@@ -58,11 +58,7 @@ const DriverBalanceInsightsPage: React.FC = () => {
     maximumFractionDigits: 2,
   }).format(value);
 
-  const sortedSummaries = useMemo(() => summaries
-    .map((summary) => ({
-      ...summary,
-      totalWalletWithCharges: summary.totalWalletWeek,
-    }))
+  const sortedSummaries = useMemo(() => [...summaries]
     .sort((a, b) => a.finalTotal - b.finalTotal), [summaries]);
 
   const filteredSummaries = useMemo(() => sortedSummaries
@@ -80,7 +76,7 @@ const DriverBalanceInsightsPage: React.FC = () => {
       rent: acc.rent + driver.totalRent,
       fuel: acc.fuel + driver.totalFuel,
       due: acc.due + driver.totalDue,
-      wallet: acc.wallet + driver.totalWalletWithCharges,
+      wallet: acc.wallet + driver.totalWalletWeek,
       payout: acc.payout + driver.totalPayout,
       netPayout: acc.netPayout + driver.netPayout,
       finalTotal: acc.finalTotal + driver.finalTotal,
@@ -183,6 +179,9 @@ const DriverBalanceInsightsPage: React.FC = () => {
             </div>
           </div>
         )}
+        <div className="px-6 py-2 border-b border-slate-100 bg-slate-50/40 text-[11px] text-slate-500 font-medium">
+          Net Balance = Collection - Rent - Fuel + Due + Wallet Week - Payout · Net Payout = min(Net Balance, latest wallet cutoff balance).
+        </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left min-w-[1100px]">
@@ -193,7 +192,7 @@ const DriverBalanceInsightsPage: React.FC = () => {
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Rent</th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Fuel</th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Dues</th>
-                <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet</th>
+                <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet Week</th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Payout</th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Payout</th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Balance</th>
@@ -208,7 +207,7 @@ const DriverBalanceInsightsPage: React.FC = () => {
                   <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalRent)}</td>
                   <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalFuel)}</td>
                   <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalDue)}</td>
-                  <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalWalletWithCharges)}</td>
+                  <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalWalletWeek)}</td>
                   <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalPayout)}</td>
                   <td className="px-6 py-4 text-right">
                     <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-bold border ${
