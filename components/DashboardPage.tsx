@@ -1,26 +1,55 @@
 
 import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { storageService } from '../services/storageService';
-import { DriverSummary, GlobalSummary, WeeklyWallet } from '../types';
+import { DriverSummary, GlobalSummary } from '../types';
 import { Users, Banknote, Fuel, TrendingDown, AlertCircle, ArrowUpRight, ArrowDownRight, Wallet, ExternalLink } from 'lucide-react';
 import NetCalculationPopup from './NetCalculationPopup';
 import { useNavigate } from 'react-router-dom';
 
 const NetPayoutChartCard = lazy(() => import('./dashboard/NetPayoutChartCard'));
-const DASHBOARD_SUMMARY_CACHE_KEY = 'driver_app_dashboard_summary_v1';
 const HIDDEN_DRIVERS_STORAGE_KEY = 'driver_app_hidden_drivers_v1';
 const DEFAULT_VISIBLE_DRIVERS = 8;
+
+const buildGlobalSummary = (driverSummaries: DriverSummary[]): GlobalSummary => ({
+  totalCollection: driverSummaries.reduce((sum, d) => sum + d.totalCollection, 0),
+  totalRent: driverSummaries.reduce((sum, d) => sum + d.totalRent, 0),
+  totalFuel: driverSummaries.reduce((sum, d) => sum + d.totalFuel, 0),
+  totalDue: driverSummaries.reduce((sum, d) => sum + d.totalDue, 0),
+  totalPayout: driverSummaries.reduce((sum, d) => sum + d.totalPayout, 0),
+  totalWalletWeek: driverSummaries.reduce((sum, d) => sum + d.totalWalletWeek, 0),
+  pendingFromDrivers: driverSummaries
+    .filter((d) => d.finalTotal < 0)
+    .reduce((sum, d) => sum + Math.abs(d.finalTotal), 0),
+  payableToDrivers: driverSummaries
+    .filter((d) => d.finalTotal > 0)
+    .reduce((sum, d) => sum + d.finalTotal, 0),
+});
+
+const loadHiddenDrivers = (): string[] => {
+  try {
+    const savedHiddenDrivers = localStorage.getItem(HIDDEN_DRIVERS_STORAGE_KEY);
+    if (!savedHiddenDrivers) return [];
+
+    const parsedHiddenDrivers = JSON.parse(savedHiddenDrivers);
+    if (!Array.isArray(parsedHiddenDrivers)) return [];
+
+    return parsedHiddenDrivers
+      .map((name) => (typeof name === 'string' ? name.trim() : ''))
+      .filter(Boolean);
+  } catch (error) {
+    console.warn('Failed to load hidden drivers', error);
+    return [];
+  }
+};
 
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [isStaleData, setIsStaleData] = useState(false);
   const [summaries, setSummaries] = useState<DriverSummary[]>([]);
-  const [weeklyWallets, setWeeklyWallets] = useState<WeeklyWallet[]>([]);
   const [global, setGlobal] = useState<GlobalSummary | null>(null);
   const [filterDriver, setFilterDriver] = useState('');
   const [showAllDrivers, setShowAllDrivers] = useState(false);
-  const [hiddenDrivers, setHiddenDrivers] = useState<string[]>([]);
+  const [hiddenDrivers, setHiddenDrivers] = useState<string[]>(() => loadHiddenDrivers());
   const [calcPopup, setCalcPopup] = useState<{
     metric: 'netPayout' | 'netBalance';
     netValue: number;
@@ -40,48 +69,15 @@ const DashboardPage: React.FC = () => {
     setLoading(true);
 
     try {
-      const cached = sessionStorage.getItem(DASHBOARD_SUMMARY_CACHE_KEY);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed?.driverSummaries) && parsed?.global) {
-          setSummaries(parsed.driverSummaries);
-          setGlobal(parsed.global);
-          setIsStaleData(true);
-          setLoading(false);
-        }
-      }
-    } catch (cacheError) {
-      console.warn('Failed to read dashboard cache', cacheError);
-    }
+      const { summaries: driverSummaries } = await storageService.getDriverBalanceSummaries();
+      const computedGlobal = buildGlobalSummary(driverSummaries || []);
 
-    try {
-      const [summary, wallets] = await Promise.all([
-        storageService.getSummary(),
-        storageService.getWeeklyWallets()
-      ]);
-      setSummaries(summary.driverSummaries || []);
-      setWeeklyWallets(wallets || []);
-      setGlobal(summary.global || null);
-      setIsStaleData(false);
-      sessionStorage.setItem(DASHBOARD_SUMMARY_CACHE_KEY, JSON.stringify(summary));
+      setSummaries(driverSummaries || []);
+      setGlobal(computedGlobal);
     } finally {
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    try {
-      const savedHiddenDrivers = localStorage.getItem(HIDDEN_DRIVERS_STORAGE_KEY);
-      if (savedHiddenDrivers) {
-        const parsedHiddenDrivers = JSON.parse(savedHiddenDrivers);
-        if (Array.isArray(parsedHiddenDrivers)) {
-          setHiddenDrivers(parsedHiddenDrivers);
-        }
-      }
-    } catch (error) {
-      console.warn('Failed to load hidden drivers', error);
-    }
-  }, []);
 
   useEffect(() => {
     try {
@@ -121,24 +117,11 @@ const DashboardPage: React.FC = () => {
       filterDriver === '' || s.driver.toLowerCase().includes(filterDriver.toLowerCase())
     );
 
-  const walletChargesByDriver = weeklyWallets.reduce((acc, wallet) => {
-    acc[wallet.driver] = (acc[wallet.driver] || 0) + (Number(wallet.charges) || 0);
-    return acc;
-  }, {} as Record<string, number>);
-
-  const enrichedSummaries = filteredSummaries
-    .map((driver) => {
-      const totalWalletWithCharges = driver.totalWalletWeek + (walletChargesByDriver[driver.driver] || 0);
-      return {
-        ...driver,
-        totalWalletWithCharges
-      };
-    })
-    .sort((a, b) => a.finalTotal - b.finalTotal);
+  const sortedSummaries = [...filteredSummaries].sort((a, b) => a.finalTotal - b.finalTotal);
 
   const visibleSummaries = showAllDrivers
-    ? enrichedSummaries
-    : enrichedSummaries.slice(0, DEFAULT_VISIBLE_DRIVERS);
+    ? sortedSummaries
+    : sortedSummaries.slice(0, DEFAULT_VISIBLE_DRIVERS);
 
   const hiddenDriverList = [...hiddenDrivers].sort((a, b) => a.localeCompare(b));
 
@@ -148,7 +131,7 @@ const DashboardPage: React.FC = () => {
       rent: acc.rent + driver.totalRent,
       fuel: acc.fuel + driver.totalFuel,
       due: acc.due + driver.totalDue,
-      wallet: acc.wallet + driver.totalWalletWithCharges,
+      wallet: acc.wallet + driver.totalWalletWeek,
       payout: acc.payout + driver.totalPayout,
       netPayout: acc.netPayout + driver.netPayout,
       finalTotal: acc.finalTotal + driver.finalTotal,
@@ -209,7 +192,7 @@ const DashboardPage: React.FC = () => {
         </div>
         <div className="flex items-center gap-2 text-xs font-medium bg-white text-slate-600 px-4 py-2 rounded-xl border border-slate-200 shadow-sm">
            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-           {isStaleData ? 'Refreshing data…' : 'Live Data'}
+           Live Data
         </div>
       </div>
 
@@ -265,7 +248,7 @@ const DashboardPage: React.FC = () => {
                 onClick={() => setShowAllDrivers((prev) => !prev)}
                 className="px-3 py-2 bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold border border-slate-200 hover:bg-slate-100 transition-colors"
               >
-                {showAllDrivers ? 'Show fewer drivers' : `Show all (${enrichedSummaries.length}) drivers`}
+                {showAllDrivers ? 'Show fewer drivers' : `Show all (${sortedSummaries.length}) drivers`}
               </button>
               <div className="relative group">
                 <input 
@@ -309,6 +292,9 @@ const DashboardPage: React.FC = () => {
               </div>
             </div>
           )}
+          <div className="px-6 py-2 border-b border-slate-100 bg-slate-50/40 text-[11px] text-slate-500 font-medium">
+            Net Balance = Collection - Rent - Fuel + Due + Wallet Week - Payout · Net Payout = min(Net Balance, latest wallet cutoff balance).
+          </div>
           
           <div className="overflow-x-auto flex-1 scrollbar-thin">
             <table className="w-full text-sm text-left">
@@ -319,7 +305,7 @@ const DashboardPage: React.FC = () => {
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Rent</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Fuel</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Dues</th>
-                  <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet</th>
+                  <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet Week</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Payout</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Payout</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Balance</th>
@@ -334,7 +320,7 @@ const DashboardPage: React.FC = () => {
                     <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalRent)}</td>
                     <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalFuel)}</td>
                     <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalDue)}</td>
-                    <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalWalletWithCharges)}</td>
+                    <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalWalletWeek)}</td>
                     <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalPayout)}</td>
                     <td className="px-6 py-4 text-right">
                       <div

@@ -2,31 +2,33 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, BarChart3, Users } from 'lucide-react';
 import { storageService } from '../services/storageService';
-import { DriverSummary, WeeklyWallet } from '../types';
+import { DriverSummary } from '../types';
 
 const HIDDEN_DRIVERS_STORAGE_KEY = 'driver_app_hidden_drivers_v1';
+
+const loadHiddenDrivers = (): string[] => {
+  try {
+    const savedHiddenDrivers = localStorage.getItem(HIDDEN_DRIVERS_STORAGE_KEY);
+    if (!savedHiddenDrivers) return [];
+
+    const parsedHiddenDrivers = JSON.parse(savedHiddenDrivers);
+    if (!Array.isArray(parsedHiddenDrivers)) return [];
+
+    return parsedHiddenDrivers
+      .map((name) => (typeof name === 'string' ? name.trim() : ''))
+      .filter(Boolean);
+  } catch (error) {
+    console.warn('Failed to load hidden drivers', error);
+    return [];
+  }
+};
 
 const DriverBalanceInsightsPage: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [summaries, setSummaries] = useState<DriverSummary[]>([]);
-  const [weeklyWallets, setWeeklyWallets] = useState<WeeklyWallet[]>([]);
   const [filterDriver, setFilterDriver] = useState('');
-  const [hiddenDrivers, setHiddenDrivers] = useState<string[]>([]);
-
-  useEffect(() => {
-    try {
-      const savedHiddenDrivers = localStorage.getItem(HIDDEN_DRIVERS_STORAGE_KEY);
-      if (savedHiddenDrivers) {
-        const parsedHiddenDrivers = JSON.parse(savedHiddenDrivers);
-        if (Array.isArray(parsedHiddenDrivers)) {
-          setHiddenDrivers(parsedHiddenDrivers);
-        }
-      }
-    } catch (error) {
-      console.warn('Failed to load hidden drivers', error);
-    }
-  }, []);
+  const [hiddenDrivers, setHiddenDrivers] = useState<string[]>(() => loadHiddenDrivers());
 
   useEffect(() => {
     try {
@@ -40,12 +42,8 @@ const DriverBalanceInsightsPage: React.FC = () => {
     const loadData = async () => {
       setLoading(true);
       try {
-        const [summary, wallets] = await Promise.all([
-          storageService.getSummary(),
-          storageService.getWeeklyWallets()
-        ]);
-        setSummaries(summary.driverSummaries || []);
-        setWeeklyWallets(wallets || []);
+        const { summaries: driverSummaries } = await storageService.getDriverBalanceSummaries();
+        setSummaries(driverSummaries || []);
       } finally {
         setLoading(false);
       }
@@ -60,17 +58,8 @@ const DriverBalanceInsightsPage: React.FC = () => {
     maximumFractionDigits: 2,
   }).format(value);
 
-  const walletChargesByDriver = useMemo(() => weeklyWallets.reduce((acc, wallet) => {
-    acc[wallet.driver] = (acc[wallet.driver] || 0) + (Number(wallet.charges) || 0);
-    return acc;
-  }, {} as Record<string, number>), [weeklyWallets]);
-
-  const sortedSummaries = useMemo(() => summaries
-    .map((summary) => ({
-      ...summary,
-      totalWalletWithCharges: summary.totalWalletWeek + (walletChargesByDriver[summary.driver] || 0),
-    }))
-    .sort((a, b) => a.finalTotal - b.finalTotal), [summaries, walletChargesByDriver]);
+  const sortedSummaries = useMemo(() => [...summaries]
+    .sort((a, b) => a.finalTotal - b.finalTotal), [summaries]);
 
   const filteredSummaries = useMemo(() => sortedSummaries
     .filter((summary) => !hiddenDrivers.includes(summary.driver))
@@ -87,7 +76,7 @@ const DriverBalanceInsightsPage: React.FC = () => {
       rent: acc.rent + driver.totalRent,
       fuel: acc.fuel + driver.totalFuel,
       due: acc.due + driver.totalDue,
-      wallet: acc.wallet + driver.totalWalletWithCharges,
+      wallet: acc.wallet + driver.totalWalletWeek,
       payout: acc.payout + driver.totalPayout,
       netPayout: acc.netPayout + driver.netPayout,
       finalTotal: acc.finalTotal + driver.finalTotal,
@@ -190,6 +179,9 @@ const DriverBalanceInsightsPage: React.FC = () => {
             </div>
           </div>
         )}
+        <div className="px-6 py-2 border-b border-slate-100 bg-slate-50/40 text-[11px] text-slate-500 font-medium">
+          Net Balance = Collection - Rent - Fuel + Due + Wallet Week - Payout · Net Payout = min(Net Balance, latest wallet cutoff balance).
+        </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left min-w-[1100px]">
@@ -200,7 +192,7 @@ const DriverBalanceInsightsPage: React.FC = () => {
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Rent</th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Fuel</th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Dues</th>
-                <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet</th>
+                <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet Week</th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Payout</th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Payout</th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Balance</th>
@@ -215,7 +207,7 @@ const DriverBalanceInsightsPage: React.FC = () => {
                   <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalRent)}</td>
                   <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalFuel)}</td>
                   <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalDue)}</td>
-                  <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalWalletWithCharges)}</td>
+                  <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalWalletWeek)}</td>
                   <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalPayout)}</td>
                   <td className="px-6 py-4 text-right">
                     <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-bold border ${
