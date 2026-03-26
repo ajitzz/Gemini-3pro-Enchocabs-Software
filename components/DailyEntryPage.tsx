@@ -269,6 +269,29 @@ const ColumnFilter: React.FC<ColumnFilterProps> = ({ columnKey, data, activeFilt
 const DailyEntryPage: React.FC = () => {
   const RECENT_DAYS = 60;
   const FALLBACK_LIVE_REFRESH_MS = 60000;
+  const getTodayISODate = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  const normalizeDateValue = (raw?: string | null) => {
+    if (!raw) return '';
+    const direct = String(raw).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(direct)) return direct;
+    const parsed = new Date(direct);
+    if (Number.isNaN(parsed.getTime())) return '';
+    const year = parsed.getFullYear();
+    const month = String(parsed.getMonth() + 1).padStart(2, '0');
+    const day = String(parsed.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  const sanitizeEntryDate = (entry: DailyEntry): DailyEntry => ({
+    ...entry,
+    date: normalizeDateValue(entry.date) || getTodayISODate(),
+  });
+
   const [entries, setEntries] = useState<DailyEntry[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [leaves, setLeaves] = useState<LeaveRecord[]>([]); // Added Leaves state
@@ -297,7 +320,7 @@ const DailyEntryPage: React.FC = () => {
 
   // Form State
   const initialFormState: Partial<DailyEntry> = {
-    date: new Date().toISOString().split('T')[0],
+    date: getTodayISODate(),
     vehicle: '',
     driver: '',
     shift: 'Day',
@@ -331,7 +354,7 @@ const DailyEntryPage: React.FC = () => {
     try {
       const bootstrap = await storageService.getDailyEntriesBootstrap(dailyParams);
 
-      setEntries(sortEntriesByDateDesc(bootstrap.entries));
+      setEntries(sortEntriesByDateDesc(bootstrap.entries.map(sanitizeEntryDate)));
       setDrivers(bootstrap.drivers.filter(driver => !driver.terminationDate));
       setLeaves(bootstrap.leaves);
       setWeeklyWallets(bootstrap.weeklyWallets);
@@ -348,7 +371,7 @@ const DailyEntryPage: React.FC = () => {
         ]);
 
         const e = await entriesPromise;
-        setEntries(sortEntriesByDateDesc(e));
+        setEntries(sortEntriesByDateDesc(e.map(sanitizeEntryDate)));
         setLoading(false);
 
         asyncMetaPromise
@@ -372,7 +395,7 @@ const DailyEntryPage: React.FC = () => {
     const entries = await storageService.getDailyEntries(dailyParams, { skipMemoryCache: true });
     setEntries(prev => {
       if (prev.length === entries.length && prev[0]?.id === entries[0]?.id) return prev;
-      return sortEntriesByDateDesc(entries);
+      return sortEntriesByDateDesc(entries.map(sanitizeEntryDate));
     });
   }, [showFullHistory, recentFromDate, sortEntriesByDateDesc]);
 
@@ -389,7 +412,7 @@ const DailyEntryPage: React.FC = () => {
       const bootstrap = await storageService.getDailyEntriesBootstrap(dailyParams, { skipMemoryCache: true });
       setEntries(prev => {
         if (prev.length === bootstrap.entries.length && prev[0]?.id === bootstrap.entries[0]?.id) return prev;
-        return sortEntriesByDateDesc(bootstrap.entries);
+        return sortEntriesByDateDesc(bootstrap.entries.map(sanitizeEntryDate));
       });
       setDrivers(bootstrap.drivers.filter(driver => !driver.terminationDate));
       setLeaves(bootstrap.leaves);
@@ -528,7 +551,11 @@ const DailyEntryPage: React.FC = () => {
     if (e.type === 'submit' || (e as React.KeyboardEvent).key === 'Enter') {
         e.preventDefault();
         
-        if (!formData.date || !formData.driver) return;
+        const normalizedDate = normalizeDateValue(formData.date);
+        if (!normalizedDate || !formData.driver) {
+          alert('Date and Driver are mandatory fields.');
+          return;
+        }
 
         // Explicit Validation for Mandatory Numbers
         if (formData.collection === undefined || formData.rent === undefined) {
@@ -544,18 +571,18 @@ const DailyEntryPage: React.FC = () => {
 
         // Check for duplicate entry on same day
         const duplicateEntry = entries.find(entry => 
-          entry.date === formData.date && 
+          entry.date === normalizedDate && 
           entry.driver === formData.driver && 
           entry.id !== editingId
         );
 
-        const dateObj = new Date(formData.date);
+        const dateObj = new Date(normalizedDate);
         const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'long' });
 
         // Use existing ID if editing, otherwise generate new one (but will be overridden if duplicate exists)
         const newEntry: DailyEntry = {
           id: formData.id || crypto.randomUUID(),
-          date: formData.date,
+          date: normalizedDate,
           day: dayName,
           vehicle: formData.vehicle || 'Unknown',
           driver: formData.driver || 'Unknown',
@@ -585,7 +612,7 @@ const DailyEntryPage: React.FC = () => {
           if (editingId) {
             resetForm();
           } else {
-            resetFormAfterSave(formData.date);
+            resetFormAfterSave(normalizedDate);
           }
           upsertEntry({ ...newEntry, ...savedEntry });
         } catch (error: any) {
@@ -633,14 +660,19 @@ const DailyEntryPage: React.FC = () => {
   const resetFormAfterSave = (preserveDate: string) => {
     setFormData({
       ...initialFormState,
-      date: preserveDate,
+      date: normalizeDateValue(preserveDate) || getTodayISODate(),
     });
     setEditingId(null);
     setShowOptionalFields(false);
   };
 
   const handleEdit = (entry: DailyEntry) => {
-    setFormData(entry);
+    setFormData({
+      ...initialFormState,
+      ...entry,
+      date: normalizeDateValue(entry.date) || getTodayISODate(),
+      payoutDate: normalizeDateValue(entry.payoutDate) || '',
+    });
     setEditingId(entry.id);
     if ((entry.fuel && entry.fuel !== 0) || (entry.due && entry.due !== 0) || (entry.payout && entry.payout !== 0) || entry.payoutDate) {
         setShowOptionalFields(true);
