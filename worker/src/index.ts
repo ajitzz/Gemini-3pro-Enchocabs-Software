@@ -401,10 +401,76 @@ app.get('/api/drivers', async (c) => {
 
 app.get('/api/leaves', async (c) => {
   try {
-    const result = await query(c.env, `SELECT id, driver_id as "driverId", to_char(start_date, 'YYYY-MM-DD') as "startDate", to_char(end_date, 'YYYY-MM-DD') as "endDate", to_char(actual_return_date, 'YYYY-MM-DD') as "actualReturnDate", days, reason FROM leaves`);
+    const result = await query(
+      c.env,
+      `SELECT id, driver_id as "driverId", to_char(start_date, 'YYYY-MM-DD') as "startDate", to_char(end_date, 'YYYY-MM-DD') as "endDate", to_char(actual_return_date, 'YYYY-MM-DD') as "actualReturnDate", days, reason
+       FROM leaves
+       ORDER BY start_date DESC, id DESC`,
+    );
     return c.json(result.rows);
   } catch (err: any) {
     return c.json({ error: err?.message || 'Failed to fetch leaves' }, 500);
+  }
+});
+
+app.post('/api/leaves', async (c) => {
+  try {
+    const l = await c.req.json();
+    const id = l.id || crypto.randomUUID();
+    const driverId = l.driverId;
+    const startDate = toISODate(l.startDate);
+    const endDate = toISODate(l.endDate);
+    const actualReturnDate = l.actualReturnDate ? toISODate(l.actualReturnDate) : null;
+
+    if (!driverId || !startDate || !endDate) {
+      return c.json({ error: 'driverId, startDate and endDate are required.' }, 400);
+    }
+    if (startDate > endDate) {
+      return c.json({ error: 'endDate must be on or after startDate.' }, 400);
+    }
+    if (actualReturnDate && actualReturnDate < startDate) {
+      return c.json({ error: 'actualReturnDate cannot be before startDate.' }, 400);
+    }
+
+    const overlap = await query(
+      c.env,
+      `SELECT id
+       FROM leaves
+       WHERE driver_id = $1
+         AND id <> $2
+         AND daterange(start_date, COALESCE(actual_return_date, end_date) + 1, '[)')
+             && daterange($3::date, COALESCE($4::date, $5::date) + 1, '[)')
+       LIMIT 1`,
+      [driverId, id, startDate, actualReturnDate, endDate],
+    );
+    if ((overlap.rowCount || 0) > 0) {
+      return c.json({ error: 'Overlapping leave already exists for this driver.' }, 409);
+    }
+
+    const dayCount = Math.floor((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+    const result = await query(
+      c.env,
+      `INSERT INTO leaves (id, driver_id, start_date, end_date, actual_return_date, days, reason)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (id) DO UPDATE SET
+         driver_id=$2, start_date=$3, end_date=$4, actual_return_date=$5, days=$6, reason=$7
+       RETURNING id, driver_id as "driverId", to_char(start_date, 'YYYY-MM-DD') as "startDate", to_char(end_date, 'YYYY-MM-DD') as "endDate", to_char(actual_return_date, 'YYYY-MM-DD') as "actualReturnDate", days, reason`,
+      [id, driverId, startDate, endDate, actualReturnDate, dayCount, l.reason],
+    );
+    return c.json(result.rows[0]);
+  } catch (err: any) {
+    return c.json({ error: err?.message || 'Failed to save leave' }, 500);
+  }
+});
+
+app.delete('/api/leaves/:id', async (c) => {
+  try {
+    const { id } = c.req.param();
+    await query(c.env, 'DELETE FROM leaves WHERE id = $1', [id]);
+    return c.json({ success: true });
+  } catch (err: any) {
+    return c.json({ error: err?.message || 'Failed to delete leave' }, 500);
   }
 });
 

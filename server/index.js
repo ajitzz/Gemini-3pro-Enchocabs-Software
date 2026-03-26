@@ -829,7 +829,8 @@ const initDb = async () => {
         end_date DATE,
         actual_return_date DATE,
         days INTEGER,
-        reason TEXT
+        reason TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
@@ -953,6 +954,10 @@ const initDb = async () => {
           END IF;
           ALTER TABLE driver_billings ALTER COLUMN days_worked SET DEFAULT 0;
           ALTER TABLE driver_billings ALTER COLUMN trips SET DEFAULT 0;
+
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='leaves' AND column_name='created_at') THEN
+              ALTER TABLE leaves ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+          END IF;
       END $$;
     `);
 
@@ -2661,7 +2666,18 @@ app.delete('/api/company-summaries/:id', async (req, res) => {
 // --- LEAVES, SHIFTS, CONFIG ---
 app.get('/api/leaves', async (req, res) => {
   try {
-    const result = await db.query(`SELECT id, driver_id as "driverId", to_char(start_date, 'YYYY-MM-DD') as "startDate", to_char(end_date, 'YYYY-MM-DD') as "endDate", to_char(actual_return_date, 'YYYY-MM-DD') as "actualReturnDate", days, reason FROM leaves`);
+    const result = await db.query(`
+      SELECT
+        id,
+        driver_id as "driverId",
+        to_char(start_date, 'YYYY-MM-DD') as "startDate",
+        to_char(end_date, 'YYYY-MM-DD') as "endDate",
+        to_char(actual_return_date, 'YYYY-MM-DD') as "actualReturnDate",
+        days,
+        reason
+      FROM leaves
+      ORDER BY start_date DESC, id DESC
+    `);
     res.json(result.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -2669,8 +2685,44 @@ app.get('/api/leaves', async (req, res) => {
 app.post('/api/leaves', async (req, res) => {
   const l = req.body;
   try {
+    const id = l.id || randomUUID();
+    const driverId = l.driverId;
+    const startDate = toISODate(l.startDate);
+    const endDate = toISODate(l.endDate);
+    const actualReturnDate = l.actualReturnDate ? toISODate(l.actualReturnDate) : null;
+
+    if (!driverId || !startDate || !endDate) {
+      return res.status(400).json({ error: 'driverId, startDate and endDate are required.' });
+    }
+
+    if (startDate > endDate) {
+      return res.status(400).json({ error: 'endDate must be on or after startDate.' });
+    }
+
+    if (actualReturnDate && actualReturnDate < startDate) {
+      return res.status(400).json({ error: 'actualReturnDate cannot be before startDate.' });
+    }
+
+    const overlapCheck = await db.query(
+      `
+        SELECT id
+        FROM leaves
+        WHERE driver_id = $1
+          AND id <> $2
+          AND daterange(start_date, COALESCE(actual_return_date, end_date) + 1, '[)')
+              && daterange($3::date, COALESCE($4::date, $5::date) + 1, '[)')
+        LIMIT 1
+      `,
+      [driverId, id, startDate, actualReturnDate, endDate],
+    );
+
+    if ((overlapCheck.rowCount || 0) > 0) {
+      return res.status(409).json({ error: 'Overlapping leave already exists for this driver.' });
+    }
+
+    const dayCount = Math.floor((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1;
     const q = `INSERT INTO leaves (id, driver_id, start_date, end_date, actual_return_date, days, reason) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO UPDATE SET driver_id=$2, start_date=$3, end_date=$4, actual_return_date=$5, days=$6, reason=$7 RETURNING *`;
-    const result = await db.query(q, [l.id, l.driverId, l.startDate, l.endDate, l.actualReturnDate, l.days, l.reason]);
+    const result = await db.query(q, [id, driverId, startDate, endDate, actualReturnDate, dayCount, l.reason]);
     emitLiveUpdate('leaves_changed');
     res.json(result.rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }

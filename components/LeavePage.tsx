@@ -42,10 +42,11 @@ const LeavePage: React.FC = () => {
 
     const start = new Date(form.startDate);
     const end = new Date(form.endDate);
-    const diffTime = Math.abs(end.getTime() - start.getTime());
+    const diffTime = end.getTime() - start.getTime();
+    if (diffTime < 0) return alert('End date must be on or after start date');
     const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // Inclusive
 
-    if (days <= 0) return alert('End date must be after start date');
+    if (days <= 0) return alert('Invalid leave duration');
 
     const newLeave: LeaveRecord = {
       id: crypto.randomUUID(),
@@ -71,6 +72,10 @@ const LeavePage: React.FC = () => {
 
   const handleUpdateReturnDate = async (leave: LeaveRecord) => {
       if (!returnDateInput) return;
+      if (returnDateInput < leave.startDate) {
+          alert('Return date cannot be before leave start date');
+          return;
+      }
       
       const updatedLeave: LeaveRecord = {
           ...leave,
