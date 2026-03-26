@@ -51,6 +51,27 @@ Backend/worker token verification can accept multiple audiences with:
 
 This prevents login failures when different environments (localhost, preview, production) use different Google OAuth client IDs.
 
+### Fix for backend `Origin not allowed by CORS` on Vercel preview URLs
+
+If Render logs repeatedly show `Origin not allowed by CORS` for preview domains (for example `...vercel.app`), configure backend CORS env vars:
+
+- `CORS_ORIGINS` - comma-separated exact origins.
+- `CORS_ORIGIN_PATTERNS` - comma-separated wildcard patterns for dynamic preview domains.
+
+Example:
+
+`CORS_ORIGINS=https://enchocabs.com,https://www.enchocabs.com`
+
+`CORS_ORIGIN_PATTERNS=https://gemini-3pro-enchocabs-software-*.vercel.app`
+
+After updating env vars, redeploy backend on Render.
+
+Tip: if you set `CORS_ORIGIN_PATTERNS=https://<project>.vercel.app` (without `*`), the server now also accepts preview URLs for the same Vercel project slug (`https://<project>-<preview-id>.vercel.app`).
+Tip: do not include path values like `/` or `/api` in CORS origins/patterns. Use origin only (scheme + host). The server now normalizes common trailing-slash entries automatically.
+For your current project naming style, both of these are valid:
+- `CORS_ORIGIN_PATTERNS=https://gemini-3pro-enchocabs-software.vercel.app` (auto-allows same-project previews)
+- `CORS_ORIGIN_PATTERNS=https://gemini-3pro-enchocabs-software-*.vercel.app` (explicit wildcard)
+
 Set `VITE_API_URL` in your frontend deployment environment:
 
 - Recommended: `https://<your-backend>.onrender.com/api`
@@ -62,6 +83,33 @@ If this value is malformed, browsers can throw SSL/network errors when loading d
 ## Redis configuration
 
 If you enable caching, set `REDIS_URL` (or `UPSTASH_REDIS_URL`) to the raw connection string, **not** a `redis-cli -u ...` command. Managed Redis providers such as Redis Cloud/RedisLabs typically require TLS; use a `rediss://` URL for those hosts. Example: `REDIS_URL=rediss://default:<password>@<host>:<port>`. On Vercel, add this exact `rediss://` value as a project environment variable so the server connects over TLS.
+
+## PostgreSQL SSL warning note
+
+If Render logs show this Node warning from `pg-connection-string` about ssl modes (`prefer`, `require`, `verify-ca`), the server now normalizes the database URL by adding `useLibpqCompat=true` when needed. This keeps current behavior stable while newer pg/libpq semantics roll out.
+
+## After moving PostgreSQL to a new region (example: US-East → Singapore)
+
+If you created a new DB in a closer region and imported data, apply this checklist before calling migration complete:
+
+1. Update backend environment variable:
+   - `DATABASE_URL=postgresql://...new-singapore-host.../neondb?sslmode=require&channel_binding=require`
+   - If `POSTGRES_URL` is also set in Render, keep only one source of truth (prefer `DATABASE_URL`) to avoid accidental fallback to old DB.
+2. Redeploy backend service so new env vars are loaded.
+3. Validate connection target from logs:
+   - Startup should show `Successfully connected to PostgreSQL database`.
+   - You should no longer see app traffic hitting old US-East DB metrics.
+4. Verify row counts on critical tables in the new DB:
+   - `drivers`, `daily_entries`, `driver_billings`, `weekly_wallets`, `leads`.
+5. Run a smoke test from UI/API:
+   - Login, open dashboard, driver billings, daily entries, and lead pages.
+   - Confirm create/update flows persist to the new DB.
+6. Keep old DB read-only for 24-72 hours rollback window, then decommission.
+
+### Optional but recommended post-move tuning
+
+- Keep Render + Postgres + Redis in Singapore for lowest latency.
+- Track p95 route latency before/after cutover to confirm improvement.
 
 ### Session + bot config cache (Upstash Redis)
 
@@ -116,6 +164,11 @@ The project now includes a performance-upgrade track aligned to four phases:
    - API exposes `GET /api/perf-stats` with request timing summary, event versions, and recent vitals aggregates.
 
 These improvements target near-instant interaction under normal production load and establish the telemetry needed to sustain a 9.5/10 performance target.
+
+
+## Performance troubleshooting playbook
+
+For step-by-step diagnosis of slow data loads across cron jobs, Redis, Render, API design, DB, and frontend rendering, see [`PERFORMANCE_TROUBLESHOOTING_PLAYBOOK.md`](./PERFORMANCE_TROUBLESHOOTING_PLAYBOOK.md).
 
 ## Mobile home screen widget options for driver net balance/payout
 

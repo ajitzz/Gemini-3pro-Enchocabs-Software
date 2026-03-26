@@ -23,6 +23,34 @@ const splitCsvEnv = (value) => String(value || '')
   .map((part) => part.trim())
   .filter(Boolean);
 
+const normalizeOrigin = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const parsed = new URL(raw);
+    return parsed.origin.toLowerCase();
+  } catch (_error) {
+    return raw.replace(/\/+$/, '').toLowerCase();
+  }
+};
+
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const wildcardToRegex = (pattern) => {
+  const escaped = escapeRegex(normalizeOrigin(pattern)).replace(/\\\*/g, '.*');
+  return new RegExp(`^${escaped}$`, 'i');
+};
+const buildOriginRegexes = (pattern) => {
+  const normalizedPattern = normalizeOrigin(pattern);
+  const regexes = [wildcardToRegex(normalizedPattern)];
+  const vercelExactMatch = normalizedPattern.match(/^https:\/\/([a-z0-9-]+)\.vercel\.app$/i);
+  if (vercelExactMatch && !normalizedPattern.includes('*')) {
+    // Also allow Vercel preview deployments for the same project slug.
+    const slug = vercelExactMatch[1];
+    regexes.push(new RegExp(`^https://${escapeRegex(slug)}-[a-z0-9-]+\\.vercel\\.app$`, 'i'));
+  }
+  return regexes;
+};
+
 const defaultAllowedOrigins = [
   'https://enchocabs.com',
   'https://www.enchocabs.com',
@@ -32,17 +60,51 @@ const defaultAllowedOrigins = [
 ];
 
 const allowedOrigins = new Set([
-  ...defaultAllowedOrigins,
-  ...splitCsvEnv(process.env.CORS_ORIGINS),
+  ...defaultAllowedOrigins.map(normalizeOrigin),
+  ...splitCsvEnv(process.env.CORS_ORIGINS).map(normalizeOrigin),
 ]);
+const allowedOriginPatterns = splitCsvEnv(process.env.CORS_ORIGIN_PATTERNS)
+  .map((pattern) => {
+    try {
+      return buildOriginRegexes(pattern);
+    } catch (_error) {
+      console.warn(`Invalid CORS_ORIGIN_PATTERNS entry ignored: ${pattern}`);
+      return null;
+    }
+  })
+  .flat()
+  .filter(Boolean);
+const blockedCorsLogTimestamps = new Map();
+
+if (process.env.NODE_ENV !== 'test' && (process.env.CORS_ORIGINS || process.env.CORS_ORIGIN_PATTERNS)) {
+  console.log(
+    `CORS allowlist initialized with ${allowedOrigins.size} exact origins and ${allowedOriginPatterns.length} pattern regexes.`
+  );
+}
+
+const isOriginAllowed = (origin) => {
+  const normalizedOrigin = normalizeOrigin(origin);
+  if (!normalizedOrigin || allowedOrigins.has(normalizedOrigin)) return true;
+  return allowedOriginPatterns.some((regex) => regex.test(normalizedOrigin));
+};
+
+const logBlockedOrigin = (origin) => {
+  const now = Date.now();
+  const lastLoggedAt = blockedCorsLogTimestamps.get(origin) || 0;
+  if (now - lastLoggedAt >= 60_000) {
+    blockedCorsLogTimestamps.set(origin, now);
+    console.warn(`Blocked CORS origin: ${origin}`);
+  }
+};
 
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedOrigins.has(origin)) {
+    if (isOriginAllowed(origin)) {
       callback(null, origin || true);
       return;
     }
-    callback(new Error(`Origin not allowed by CORS: ${origin}`));
+    logBlockedOrigin(origin);
+    callback(null, false);
   },
   credentials: true,
 }));
