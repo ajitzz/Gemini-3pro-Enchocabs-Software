@@ -155,7 +155,8 @@ CREATE TABLE IF NOT EXISTS leaves (
   end_date DATE,
   actual_return_date DATE,
   days INTEGER,
-  reason TEXT
+  reason TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS leaves_start_date_idx ON leaves (start_date);
