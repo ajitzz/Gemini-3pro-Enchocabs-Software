@@ -347,6 +347,36 @@ const DailyEntryPage: React.FC = () => {
   const sortEntriesByDateDesc = useCallback((records: DailyEntry[]) =>
     [...records].sort((a, b) => b.date.localeCompare(a.date)), []);
 
+  const areEntriesEquivalent = useCallback((a: DailyEntry[], b: DailyEntry[]) => {
+    if (a.length !== b.length) return false;
+
+    for (let i = 0; i < a.length; i += 1) {
+      const left = a[i];
+      const right = b[i];
+
+      if (
+        left.id !== right.id ||
+        left.date !== right.date ||
+        left.day !== right.day ||
+        left.vehicle !== right.vehicle ||
+        left.driver !== right.driver ||
+        left.shift !== right.shift ||
+        left.collection !== right.collection ||
+        left.rent !== right.rent ||
+        left.fuel !== right.fuel ||
+        left.due !== right.due ||
+        left.payout !== right.payout ||
+        (left.payoutDate || '') !== (right.payoutDate || '') ||
+        (left.qrCode || '') !== (right.qrCode || '') ||
+        (left.notes || '') !== (right.notes || '')
+      ) {
+        return false;
+      }
+    }
+
+    return true;
+  }, []);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     const dailyParams = showFullHistory ? undefined : { from: recentFromDate };
@@ -392,12 +422,12 @@ const DailyEntryPage: React.FC = () => {
 
   const refreshEntriesOnly = useCallback(async () => {
     const dailyParams = showFullHistory ? undefined : { from: recentFromDate };
-    const entries = await storageService.getDailyEntries(dailyParams, { skipMemoryCache: true });
+    const entries = sortEntriesByDateDesc((await storageService.getDailyEntries(dailyParams, { skipMemoryCache: true })).map(sanitizeEntryDate));
     setEntries(prev => {
-      if (prev.length === entries.length && prev[0]?.id === entries[0]?.id) return prev;
-      return sortEntriesByDateDesc(entries.map(sanitizeEntryDate));
+      if (areEntriesEquivalent(prev, entries)) return prev;
+      return entries;
     });
-  }, [showFullHistory, recentFromDate, sortEntriesByDateDesc]);
+  }, [showFullHistory, recentFromDate, sortEntriesByDateDesc, areEntriesEquivalent]);
 
   const refreshLiveData = useCallback(async (mode: 'entries-only' | 'full' = 'entries-only') => {
     if (document.visibilityState !== 'visible') return;
@@ -410,9 +440,10 @@ const DailyEntryPage: React.FC = () => {
 
       const dailyParams = showFullHistory ? undefined : { from: recentFromDate };
       const bootstrap = await storageService.getDailyEntriesBootstrap(dailyParams, { skipMemoryCache: true });
+      const nextEntries = sortEntriesByDateDesc(bootstrap.entries.map(sanitizeEntryDate));
       setEntries(prev => {
-        if (prev.length === bootstrap.entries.length && prev[0]?.id === bootstrap.entries[0]?.id) return prev;
-        return sortEntriesByDateDesc(bootstrap.entries.map(sanitizeEntryDate));
+        if (areEntriesEquivalent(prev, nextEntries)) return prev;
+        return nextEntries;
       });
       setDrivers(bootstrap.drivers.filter(driver => !driver.terminationDate));
       setLeaves(bootstrap.leaves);
@@ -420,7 +451,7 @@ const DailyEntryPage: React.FC = () => {
     } catch (error) {
       console.warn('Live refresh skipped due to transient failure:', error);
     }
-  }, [refreshEntriesOnly, showFullHistory, recentFromDate, sortEntriesByDateDesc]);
+  }, [refreshEntriesOnly, showFullHistory, recentFromDate, sortEntriesByDateDesc, areEntriesEquivalent]);
 
   useEffect(() => {
     loadData();
