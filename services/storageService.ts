@@ -81,7 +81,13 @@ type GetOptions = {
 const api = {
   get: async (endpoint: string, options: GetOptions = {}) => {
     const { skipMemoryCache = false } = options;
-    const key = getCacheKey(endpoint);
+    const requestEndpoint = skipMemoryCache
+      ? (() => {
+          const separator = endpoint.includes('?') ? '&' : '?';
+          return `${endpoint}${separator}fresh=1`;
+        })()
+      : endpoint;
+    const key = getCacheKey(requestEndpoint);
     const cached = responseCache.get(key);
     if (!skipMemoryCache && cached && isFresh(cached)) {
       return cached.payload;
@@ -94,7 +100,7 @@ const api = {
 
     const request = (async () => {
       try {
-        const response = await fetch(`${API_BASE}${endpoint}`);
+        const response = await fetch(`${API_BASE}${requestEndpoint}`, skipMemoryCache ? { cache: 'no-store' } : undefined);
         if (!response.ok) {
           const text = await response.text();
           let msg = `API Error ${response.status}: ${response.statusText}`;
