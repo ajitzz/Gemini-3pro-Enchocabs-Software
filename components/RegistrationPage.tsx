@@ -24,6 +24,7 @@ const RegistrationPage: React.FC = () => {
   const [saving, setSaving] = useState(false); // New saving state
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [leaves, setLeaves] = useState<LeaveRecord[]>([]);
+  const [dailyEntryLastByDriver, setDailyEntryLastByDriver] = useState<Record<string, { date: string; vehicle?: string; qrCode?: string; shift?: string }>>({});
   
   // UI State
   const [showTerminated, setShowTerminated] = useState(false);
@@ -59,12 +60,29 @@ const RegistrationPage: React.FC = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [d, l] = await Promise.all([
+      const [d, l, entries] = await Promise.all([
         storageService.getDrivers(),
         storageService.getLeaves(),
+        storageService.getDailyEntries({ limit: 5000 }),
       ]);
       setDrivers(d);
       setLeaves(l);
+
+      const latestMap = entries.reduce((acc, entry) => {
+        const key = entry.driver.trim().toLowerCase();
+        if (!key) return acc;
+        const existing = acc[key];
+        if (!existing || entry.date > existing.date) {
+          acc[key] = {
+            date: entry.date,
+            vehicle: entry.vehicle,
+            qrCode: entry.qrCode,
+            shift: entry.shift
+          };
+        }
+        return acc;
+      }, {} as Record<string, { date: string; vehicle?: string; qrCode?: string; shift?: string }>);
+      setDailyEntryLastByDriver(latestMap);
     } catch (err) {
       console.error("Failed to load drivers", err);
       // Optional: Add global error toast here
@@ -176,6 +194,8 @@ const RegistrationPage: React.FC = () => {
     if (driverForm.id) {
        // --- UPDATE EXISTING DRIVER ---
        const existingDriver = drivers.find(d => d.id === driverForm.id);
+       const lastEntry = dailyEntryLastByDriver[name.toLowerCase()];
+       const isRejoining = !!existingDriver?.terminationDate && !isTerminating;
        
        newDriver = {
           ...existingDriver!,
@@ -184,8 +204,15 @@ const RegistrationPage: React.FC = () => {
           mobile: mobile || '', // Ensure trimmed
           email: email,
           // If terminating, clear operational assignments to free them up
-          vehicle: isTerminating ? '' : existingDriver!.vehicle,
-          qrCode: isTerminating ? '' : existingDriver!.qrCode,
+          vehicle: isTerminating
+            ? ''
+            : (driverForm.vehicle || existingDriver!.vehicle || (isRejoining ? lastEntry?.vehicle || '' : '')),
+          qrCode: isTerminating
+            ? ''
+            : (driverForm.qrCode || existingDriver!.qrCode || (isRejoining ? lastEntry?.qrCode || '' : '')),
+          currentShift: isTerminating
+            ? existingDriver!.currentShift
+            : ((driverForm.currentShift as Driver['currentShift']) || existingDriver!.currentShift || ((isRejoining && lastEntry?.shift === 'Night') ? 'Night' : 'Day')),
           status: isTerminating ? 'Terminated' : 'Active'
        };
     } else {
@@ -244,10 +271,24 @@ const RegistrationPage: React.FC = () => {
   };
 
   const openEditDriver = (d: Driver) => {
-    setDriverForm({ ...d, email: (d.email || '').trim().toLowerCase() });
+    const lastEntry = dailyEntryLastByDriver[d.name.trim().toLowerCase()];
+    const shouldHydrateOps = !!d.terminationDate;
+    setDriverForm({
+      ...d,
+      email: (d.email || '').trim().toLowerCase(),
+      vehicle: shouldHydrateOps ? (d.vehicle || lastEntry?.vehicle || '') : d.vehicle,
+      qrCode: shouldHydrateOps ? (d.qrCode || lastEntry?.qrCode || '') : d.qrCode,
+      currentShift: shouldHydrateOps ? ((d.currentShift || (lastEntry?.shift === 'Night' ? 'Night' : 'Day')) as Driver['currentShift']) : d.currentShift
+    });
     setEditingDriverId(d.id);
     setIsDriverFormOpen(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const getLastDailyEntryForFormDriver = () => {
+    const formName = driverForm.name?.trim().toLowerCase();
+    if (!formName) return undefined;
+    return dailyEntryLastByDriver[formName];
   };
 
   // --- Manager Team Management ---
@@ -532,7 +573,44 @@ const RegistrationPage: React.FC = () => {
                   onChange={e => setDriverForm({...driverForm, terminationDate: e.target.value || undefined})} 
                   className="w-full px-4 py-2.5 bg-white border border-rose-200 rounded-xl text-rose-700 focus:ring-2 focus:ring-rose-500 outline-none" 
                 />
-                <p className="text-[10px] text-rose-400 mt-2 font-medium">Setting this will automatically release assigned assets.</p>
+                {getLastDailyEntryForFormDriver()?.date ? (
+                  <p className="text-[11px] text-rose-500 mt-2 font-medium">
+                    Last daily entry: <span className="font-bold">{getLastDailyEntryForFormDriver()!.date.split('-').reverse().join('-')}</span>. Use this as termination date to close access after that day.
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-rose-400 mt-2 font-medium">No daily entry found for this driver yet.</p>
+                )}
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {getLastDailyEntryForFormDriver()?.date && (
+                    <button
+                      type="button"
+                      onClick={() => setDriverForm({ ...driverForm, terminationDate: getLastDailyEntryForFormDriver()!.date })}
+                      className="px-2.5 py-1 text-[11px] rounded-lg bg-white border border-rose-200 text-rose-600 font-semibold hover:bg-rose-100"
+                    >
+                      Use Last Entry Date
+                    </button>
+                  )}
+                  {driverForm.terminationDate && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const lastEntry = getLastDailyEntryForFormDriver();
+                        setDriverForm({
+                          ...driverForm,
+                          terminationDate: undefined,
+                          status: 'Active',
+                          vehicle: driverForm.vehicle || lastEntry?.vehicle || '',
+                          qrCode: driverForm.qrCode || lastEntry?.qrCode || '',
+                          currentShift: (driverForm.currentShift || (lastEntry?.shift === 'Night' ? 'Night' : 'Day')) as Driver['currentShift']
+                        });
+                      }}
+                      className="px-2.5 py-1 text-[11px] rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 font-semibold hover:bg-emerald-100"
+                    >
+                      Cancel Termination (Rejoin)
+                    </button>
+                  )}
+                </div>
+                <p className="text-[10px] text-rose-400 mt-2 font-medium">Setting termination will close portal access and release assigned assets. Rejoin can restore last known assignments.</p>
               </div>
 
               <div className="lg:col-span-2 flex justify-end items-end pb-2">
