@@ -29,6 +29,7 @@ const DriverBalanceInsightsPage: React.FC = () => {
   const [summaries, setSummaries] = useState<DriverSummary[]>([]);
   const [filterDriver, setFilterDriver] = useState('');
   const [hiddenDrivers, setHiddenDrivers] = useState<string[]>(() => loadHiddenDrivers());
+  const [lastDailyEntryByDriver, setLastDailyEntryByDriver] = useState<Record<string, string>>({});
 
   useEffect(() => {
     try {
@@ -42,8 +43,17 @@ const DriverBalanceInsightsPage: React.FC = () => {
     const loadData = async () => {
       setLoading(true);
       try {
-        const { summaries: driverSummaries } = await storageService.getDriverBalanceSummaries();
+        const { summaries: driverSummaries, sortedDaily } = await storageService.getDriverBalanceSummaries();
         setSummaries(driverSummaries || []);
+
+        const latestEntryMap = (sortedDaily || []).reduce<Record<string, string>>((acc, entry) => {
+          if (!acc[entry.driver]) {
+            acc[entry.driver] = entry.date;
+          }
+          return acc;
+        }, {});
+
+        setLastDailyEntryByDriver(latestEntryMap);
       } finally {
         setLoading(false);
       }
@@ -57,6 +67,19 @@ const DriverBalanceInsightsPage: React.FC = () => {
     currency: 'INR',
     maximumFractionDigits: 2,
   }).format(value);
+
+  const formatEntryDate = (isoDate?: string) => {
+    if (!isoDate) return 'No daily entries yet';
+
+    const parsed = new Date(`${isoDate}T00:00:00`);
+    if (Number.isNaN(parsed.getTime())) return isoDate;
+
+    return parsed.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+  };
 
   const sortedSummaries = useMemo(() => [...summaries]
     .sort((a, b) => a.finalTotal - b.finalTotal), [summaries]);
@@ -202,7 +225,12 @@ const DriverBalanceInsightsPage: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {filteredSummaries.map((driver) => (
                 <tr key={driver.driver} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-6 py-4 font-bold text-slate-700">{driver.driver}</td>
+                  <td className="px-6 py-4">
+                    <div className="font-bold text-slate-700">{driver.driver}</div>
+                    <div className="text-[11px] text-slate-400 font-medium mt-0.5">
+                      Last daily entry: {formatEntryDate(lastDailyEntryByDriver[driver.driver])}
+                    </div>
+                  </td>
                   <td className="px-6 py-4 text-right text-slate-600 font-medium">{formatCurrency(driver.totalCollection)}</td>
                   <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalRent)}</td>
                   <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalFuel)}</td>
