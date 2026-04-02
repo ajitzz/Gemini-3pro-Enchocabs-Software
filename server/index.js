@@ -2771,8 +2771,8 @@ app.post('/api/leaves', async (req, res) => {
         FROM leaves
         WHERE driver_id = $1
           AND id <> $2
-          AND daterange(start_date, COALESCE(actual_return_date, end_date) + 1, '[)')
-              && daterange($3::date, COALESCE($4::date, $5::date) + 1, '[)')
+          AND daterange(start_date, COALESCE(actual_return_date, end_date + 1), '[)')
+              && daterange($3::date, COALESCE($4::date, $5::date + 1), '[)')
         LIMIT 1
       `,
       [driverId, id, startDate, actualReturnDate, endDate],
