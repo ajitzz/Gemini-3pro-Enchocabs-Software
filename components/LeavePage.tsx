@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { Driver, LeaveRecord } from '../types';
 import { storageService } from '../services/storageService';
+import { isDriverUnavailableOnDate } from '../lib/leaveUtils';
 import { Coffee, Trash2, Calendar, ChevronDown, CheckCircle, Clock } from 'lucide-react';
 
 const LeavePage: React.FC = () => {
@@ -98,21 +99,7 @@ const LeavePage: React.FC = () => {
   // Check if driver is on leave during the selected start date
   const isDriverOnLeave = (driverId: string) => {
       if (!form.startDate) return false;
-      const targetDate = form.startDate;
-
-      return leaves.some(leave => {
-          if (leave.driverId !== driverId) return false;
-
-          const start = leave.startDate;
-          
-          if (leave.actualReturnDate) {
-              // They are back after actualReturnDate, so they are unavailable through that date
-              return targetDate >= start && targetDate <= leave.actualReturnDate;
-          } else {
-              // Still away, unavailable up to planned end (inclusive)
-              return targetDate >= start && targetDate <= leave.endDate;
-          }
-      });
+      return leaves.some((leave) => leave.driverId === driverId && isDriverUnavailableOnDate(leave, form.startDate));
   };
 
   return (

@@ -3,6 +3,7 @@ import React, { useEffect, useState, useRef, useMemo, useCallback, useDeferredVa
 import { DailyEntry, Driver, LeaveRecord, WeeklyWallet } from '../types';
 import { storageService } from '../services/storageService';
 import { useLiveUpdates } from '../lib/useLiveUpdates';
+import { isDriverUnavailableOnDate } from '../lib/leaveUtils';
 import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check, AlertOctagon, FileDown } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
@@ -764,19 +765,8 @@ const DailyEntryPage: React.FC = () => {
   // Helper to check if driver is on leave for the selected form date
   const isDriverOnLeave = (driverId: string) => {
     if (!formData.date) return false;
-    const dateStr = formData.date;
-
-    return leaves.some(leave => {
-        if (leave.driverId !== driverId) return false;
-        
-        const start = leave.startDate;
-        
-        if (leave.actualReturnDate) {
-            return dateStr >= start && dateStr <= leave.actualReturnDate;
-        } else {
-            return dateStr >= start && dateStr <= leave.endDate;
-        }
-    });
+    const selectedDate = formData.date;
+    return leaves.some((leave) => leave.driverId === driverId && isDriverUnavailableOnDate(leave, selectedDate));
   };
 
   const existingDriversForDate = useMemo(() => {
