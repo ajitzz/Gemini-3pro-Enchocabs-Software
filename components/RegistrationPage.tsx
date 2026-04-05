@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Driver, LeaveRecord, ManagerAccess } from '../types';
 import { storageService } from '../services/storageService';
-import { UserPlus, Edit2, Clock, FileText, X, AlertTriangle, ShieldCheck, Users, CheckSquare, Square, AlertOctagon, Utensils, Loader2, Trash2, Archive, RefreshCcw, FileDown, Mail, Eye, EyeOff } from 'lucide-react';
+import { UserPlus, Edit2, Clock, FileText, X, AlertTriangle, ShieldCheck, Users, CheckSquare, Square, AlertOctagon, Utensils, Loader2, Trash2, Archive, RefreshCcw, FileDown, Mail } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
 const InputField = ({ label, value, onChange, placeholder, type = "text", required = false, className = "" }: any) => (
@@ -213,8 +213,7 @@ const RegistrationPage: React.FC = () => {
           currentShift: isTerminating
             ? existingDriver!.currentShift
             : ((driverForm.currentShift as Driver['currentShift']) || existingDriver!.currentShift || ((isRejoining && lastEntry?.shift === 'Night') ? 'Night' : 'Day')),
-          status: isTerminating ? 'Terminated' : 'Active',
-          hideFromRecords: isTerminating ? (driverForm.hideFromRecords ?? true) : false
+          status: isTerminating ? 'Terminated' : 'Active'
        };
     } else {
        // --- CREATE NEW DRIVER ---
@@ -234,8 +233,7 @@ const RegistrationPage: React.FC = () => {
          currentShift: 'Day', // Default
          notes: driverForm.notes,
          isManager: driverForm.isManager || false,
-         foodOption: driverForm.foodOption || false,
-         hideFromRecords: !!driverForm.terminationDate
+         foodOption: driverForm.foodOption || false
        };
     }
 
@@ -270,22 +268,6 @@ const RegistrationPage: React.FC = () => {
               setSaving(false);
           }
       }
-  };
-
-  const handleToggleArchiveVisibility = async (driver: Driver) => {
-    try {
-      setSaving(true);
-      await storageService.saveDriver({
-        ...driver,
-        hideFromRecords: !driver.hideFromRecords,
-        status: driver.terminationDate ? 'Terminated' : 'Active'
-      });
-      await loadData();
-    } catch (error: any) {
-      alert(`Failed to update archive visibility: ${error.message}`);
-    } finally {
-      setSaving(false);
-    }
   };
 
   const openEditDriver = (d: Driver) => {
@@ -619,8 +601,7 @@ const RegistrationPage: React.FC = () => {
                           status: 'Active',
                           vehicle: driverForm.vehicle || lastEntry?.vehicle || '',
                           qrCode: driverForm.qrCode || lastEntry?.qrCode || '',
-                          currentShift: (driverForm.currentShift || (lastEntry?.shift === 'Night' ? 'Night' : 'Day')) as Driver['currentShift'],
-                          hideFromRecords: false
+                          currentShift: (driverForm.currentShift || (lastEntry?.shift === 'Night' ? 'Night' : 'Day')) as Driver['currentShift']
                         });
                       }}
                       className="px-2.5 py-1 text-[11px] rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 font-semibold hover:bg-emerald-100"
@@ -769,11 +750,6 @@ const RegistrationPage: React.FC = () => {
                            )}
                         </div>
                         {isTerminated && <span className="ml-0 px-2 py-0.5 bg-rose-100 text-rose-600 text-[10px] uppercase tracking-wide rounded-full font-bold">Terminated</span>}
-                        {isTerminated && (
-                          <span className={`ml-2 px-2 py-0.5 text-[10px] uppercase tracking-wide rounded-full font-bold ${d.hideFromRecords ? 'bg-slate-800 text-white' : 'bg-amber-100 text-amber-700'}`}>
-                            {d.hideFromRecords ? 'Hidden' : 'Visible'}
-                          </span>
-                        )}
                       </td>
                       <td className="px-6 py-4 text-slate-600">
                           <div className="flex flex-col gap-1">
@@ -809,16 +785,6 @@ const RegistrationPage: React.FC = () => {
                               >
                                 <Edit2 size={16} />
                               </button>
-                              {showTerminated && (
-                                <button
-                                  onClick={() => handleToggleArchiveVisibility(d)}
-                                  disabled={saving}
-                                  className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 p-2 rounded-lg transition-colors disabled:opacity-50"
-                                  title={d.hideFromRecords ? 'Unhide driver records and portal data' : 'Hide driver records and portal data'}
-                                >
-                                  {d.hideFromRecords ? <Eye size={16} /> : <EyeOff size={16} />}
-                                </button>
-                              )}
                               <button 
                                 onClick={() => handleDeleteDriver(d.id)} 
                                 className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 p-2 rounded-lg transition-colors"

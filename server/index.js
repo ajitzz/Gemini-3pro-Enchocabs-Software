@@ -812,13 +812,11 @@ const initDb = async () => {
         default_rent NUMERIC DEFAULT 0,
         notes TEXT,
         is_manager BOOLEAN DEFAULT FALSE,
-        food_option BOOLEAN DEFAULT FALSE,
-        hide_from_records BOOLEAN DEFAULT FALSE
+        food_option BOOLEAN DEFAULT FALSE
       );
     `);
 
     await db.query(`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS food_option BOOLEAN DEFAULT FALSE;`);
-    await db.query(`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS hide_from_records BOOLEAN DEFAULT FALSE;`);
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS daily_entries (
@@ -1448,14 +1446,7 @@ app.post('/api/auth/google', async (req, res) => {
       if (adminRes.rows.length > 0) {
         role = 'admin';
       } else {
-        const driverRes = await db.query(
-          `SELECT id, name
-           FROM drivers
-           WHERE lower(email) = lower($1)
-             AND COALESCE(hide_from_records, FALSE) = FALSE
-           LIMIT 1`,
-          [email]
-        );
+        const driverRes = await db.query('SELECT id, name FROM drivers WHERE lower(email) = lower($1) LIMIT 1', [email]);
         if (driverRes.rows.length === 0) {
           return res.status(403).json({ error: 'Unauthorized: email not registered' });
         }
@@ -1708,7 +1699,7 @@ app.get('/api/drivers', async (req, res) => {
       return res.json(cached);
     }
 
-    const result = await db.query(`SELECT id, name, mobile, email, to_char(join_date, 'YYYY-MM-DD') as "joinDate", to_char(termination_date, 'YYYY-MM-DD') as "terminationDate", deposit, qr_code as "qrCode", vehicle, status, current_shift as "currentShift", default_rent as "defaultRent", notes, is_manager as "isManager", food_option as "foodOption", hide_from_records as "hideFromRecords" FROM drivers ORDER BY name`);
+    const result = await db.query(`SELECT id, name, mobile, email, to_char(join_date, 'YYYY-MM-DD') as "joinDate", to_char(termination_date, 'YYYY-MM-DD') as "terminationDate", deposit, qr_code as "qrCode", vehicle, status, current_shift as "currentShift", default_rent as "defaultRent", notes, is_manager as "isManager", food_option as "foodOption" FROM drivers ORDER BY name`);
     await setCacheJSON(DRIVERS_CACHE_KEY, result.rows, DRIVERS_CACHE_TTL_SECONDS);
 
     res.set('X-Cache', 'MISS');
@@ -1779,21 +1770,16 @@ app.post('/api/drivers', async (req, res) => {
         }
     }
 
-    const shouldHideFromRecords =
-      d.hideFromRecords !== undefined && d.hideFromRecords !== null
-        ? !!d.hideFromRecords
-        : !!d.terminationDate;
-
     const q = `
-      INSERT INTO drivers (id, name, mobile, email, join_date, termination_date, deposit, qr_code, vehicle, status, current_shift, default_rent, notes, is_manager, food_option, hide_from_records)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      INSERT INTO drivers (id, name, mobile, email, join_date, termination_date, deposit, qr_code, vehicle, status, current_shift, default_rent, notes, is_manager, food_option)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       ON CONFLICT (id) DO UPDATE SET
-        name=$2, mobile=$3, email=$4, join_date=$5, termination_date=$6, deposit=$7, qr_code=$8, vehicle=$9, status=$10, current_shift=$11, default_rent=$12, notes=$13, is_manager=$14, food_option=$15, hide_from_records=$16
+        name=$2, mobile=$3, email=$4, join_date=$5, termination_date=$6, deposit=$7, qr_code=$8, vehicle=$9, status=$10, current_shift=$11, default_rent=$12, notes=$13, is_manager=$14, food_option=$15
       RETURNING *;
     `;
     const result = await client.query(q, [
       idToUse, nameToSave, mobileToSave, d.email, d.joinDate, d.terminationDate || null, 
-      d.deposit, qrToSave, d.vehicle, d.status, d.currentShift, d.defaultRent, d.notes, d.isManager, d.foodOption ?? false, shouldHideFromRecords
+      d.deposit, qrToSave, d.vehicle, d.status, d.currentShift, d.defaultRent, d.notes, d.isManager, d.foodOption ?? false
     ]);
 
     await client.query('COMMIT');
@@ -1943,11 +1929,6 @@ app.get('/api/daily-entries', async (req, res) => {
 
     const values = [];
     const filters = [];
-    filters.push(`NOT EXISTS (
-      SELECT 1 FROM drivers d
-      WHERE LOWER(d.name) = LOWER(daily_entries.driver)
-        AND COALESCE(d.hide_from_records, FALSE) = TRUE
-    )`);
     const driverFilters = parseDriverFilters(req.query);
     if (driverFilters.length === 1) {
       values.push(driverFilters[0]);
@@ -2022,11 +2003,6 @@ app.get('/api/daily-entries/bootstrap', async (req, res) => {
 
     const values = [];
     const filters = [];
-    filters.push(`NOT EXISTS (
-      SELECT 1 FROM drivers d
-      WHERE LOWER(d.name) = LOWER(daily_entries.driver)
-        AND COALESCE(d.hide_from_records, FALSE) = TRUE
-    )`);
     const driverFilters = parseDriverFilters(req.query);
     if (driverFilters.length === 1) {
       values.push(driverFilters[0]);
@@ -2064,11 +2040,6 @@ app.get('/api/daily-entries/bootstrap', async (req, res) => {
 
     const walletsValues = [];
     const walletsFilters = [];
-    walletsFilters.push(`NOT EXISTS (
-      SELECT 1 FROM drivers d
-      WHERE LOWER(d.name) = LOWER(weekly_wallets.driver)
-        AND COALESCE(d.hide_from_records, FALSE) = TRUE
-    )`);
     if (driverFilters.length === 1) {
       walletsValues.push(driverFilters[0]);
       walletsFilters.push(`LOWER(driver) = $${walletsValues.length}`);
@@ -2097,7 +2068,7 @@ app.get('/api/daily-entries/bootstrap', async (req, res) => {
             values,
           ),
       includeMeta
-        ? db.query(`SELECT id, name, mobile, email, to_char(join_date, 'YYYY-MM-DD') as "joinDate", to_char(termination_date, 'YYYY-MM-DD') as "terminationDate", deposit, qr_code as "qrCode", vehicle, status, current_shift as "currentShift", default_rent as "defaultRent", notes, is_manager as "isManager", food_option as "foodOption", hide_from_records as "hideFromRecords" FROM drivers WHERE COALESCE(hide_from_records, FALSE) = FALSE ORDER BY name`)
+        ? db.query(`SELECT id, name, mobile, email, to_char(join_date, 'YYYY-MM-DD') as "joinDate", to_char(termination_date, 'YYYY-MM-DD') as "terminationDate", deposit, qr_code as "qrCode", vehicle, status, current_shift as "currentShift", default_rent as "defaultRent", notes, is_manager as "isManager", food_option as "foodOption" FROM drivers ORDER BY name`)
         : Promise.resolve({ rows: [] }),
       includeMeta
         ? db.query(
@@ -2361,11 +2332,6 @@ app.get('/api/weekly-wallets', async (req, res) => {
 
     const values = [];
     const filters = [];
-    filters.push(`NOT EXISTS (
-      SELECT 1 FROM drivers d
-      WHERE LOWER(d.name) = LOWER(weekly_wallets.driver)
-        AND COALESCE(d.hide_from_records, FALSE) = TRUE
-    )`);
     const driverFilters = parseDriverFilters(req.query);
     if (driverFilters.length === 1) {
       values.push(driverFilters[0]);
