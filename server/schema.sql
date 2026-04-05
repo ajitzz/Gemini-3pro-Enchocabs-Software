@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS drivers (
   email TEXT,
   join_date DATE DEFAULT CURRENT_DATE,
   termination_date DATE,
+  is_hidden BOOLEAN DEFAULT FALSE,
   deposit NUMERIC DEFAULT 0,
   qr_code TEXT,
   vehicle TEXT,

@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Driver, LeaveRecord, ManagerAccess } from '../types';
 import { storageService } from '../services/storageService';
-import { UserPlus, Edit2, Clock, FileText, X, AlertTriangle, ShieldCheck, Users, CheckSquare, Square, AlertOctagon, Utensils, Loader2, Trash2, Archive, RefreshCcw, FileDown, Mail } from 'lucide-react';
+import { UserPlus, Edit2, Clock, FileText, X, AlertTriangle, ShieldCheck, Users, CheckSquare, Square, AlertOctagon, Utensils, Loader2, Trash2, Archive, RefreshCcw, FileDown, Mail, Eye, EyeOff } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
 const InputField = ({ label, value, onChange, placeholder, type = "text", required = false, className = "" }: any) => (
@@ -213,7 +213,8 @@ const RegistrationPage: React.FC = () => {
           currentShift: isTerminating
             ? existingDriver!.currentShift
             : ((driverForm.currentShift as Driver['currentShift']) || existingDriver!.currentShift || ((isRejoining && lastEntry?.shift === 'Night') ? 'Night' : 'Day')),
-          status: isTerminating ? 'Terminated' : 'Active'
+          status: isTerminating ? 'Terminated' : 'Active',
+          isHidden: isTerminating ? true : (driverForm.isHidden ?? existingDriver?.isHidden ?? false)
        };
     } else {
        // --- CREATE NEW DRIVER ---
@@ -233,7 +234,8 @@ const RegistrationPage: React.FC = () => {
          currentShift: 'Day', // Default
          notes: driverForm.notes,
          isManager: driverForm.isManager || false,
-         foodOption: driverForm.foodOption || false
+         foodOption: driverForm.foodOption || false,
+         isHidden: !!driverForm.terminationDate
        };
     }
 
@@ -283,6 +285,22 @@ const RegistrationPage: React.FC = () => {
     setEditingDriverId(d.id);
     setIsDriverFormOpen(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const updateDriverVisibility = async (driver: Driver, isHidden: boolean) => {
+    try {
+      setSaving(true);
+      await storageService.saveDriver({
+        ...driver,
+        isHidden,
+        status: driver.terminationDate ? 'Terminated' : 'Active'
+      });
+      await loadData();
+    } catch (err: any) {
+      alert(`Failed to update archive visibility: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const getLastDailyEntryForFormDriver = () => {
@@ -599,6 +617,7 @@ const RegistrationPage: React.FC = () => {
                           ...driverForm,
                           terminationDate: undefined,
                           status: 'Active',
+                          isHidden: false,
                           vehicle: driverForm.vehicle || lastEntry?.vehicle || '',
                           qrCode: driverForm.qrCode || lastEntry?.qrCode || '',
                           currentShift: (driverForm.currentShift || (lastEntry?.shift === 'Night' ? 'Night' : 'Day')) as Driver['currentShift']
@@ -750,6 +769,7 @@ const RegistrationPage: React.FC = () => {
                            )}
                         </div>
                         {isTerminated && <span className="ml-0 px-2 py-0.5 bg-rose-100 text-rose-600 text-[10px] uppercase tracking-wide rounded-full font-bold">Terminated</span>}
+                        {isTerminated && d.isHidden && <span className="ml-2 px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] uppercase tracking-wide rounded-full font-bold">Hidden</span>}
                       </td>
                       <td className="px-6 py-4 text-slate-600">
                           <div className="flex flex-col gap-1">
@@ -785,6 +805,16 @@ const RegistrationPage: React.FC = () => {
                               >
                                 <Edit2 size={16} />
                               </button>
+                              {showTerminated && (
+                                <button
+                                  onClick={() => updateDriverVisibility(d, !d.isHidden)}
+                                  disabled={saving}
+                                  className={`p-2 rounded-lg transition-colors disabled:opacity-60 ${d.isHidden ? 'text-amber-600 hover:text-emerald-600 hover:bg-emerald-50' : 'text-emerald-600 hover:text-amber-600 hover:bg-amber-50'}`}
+                                  title={d.isHidden ? 'Unhide this driver history in records and portal' : 'Hide this driver history in records and portal'}
+                                >
+                                  {d.isHidden ? <Eye size={16} /> : <EyeOff size={16} />}
+                                </button>
+                              )}
                               <button 
                                 onClick={() => handleDeleteDriver(d.id)} 
                                 className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 p-2 rounded-lg transition-colors"

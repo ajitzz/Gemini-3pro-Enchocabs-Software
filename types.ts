@@ -64,6 +64,7 @@ export interface Driver {
   email?: string; // New: Optional Email/Gmail
   joinDate: string;
   terminationDate?: string;
+  isHidden?: boolean; // Hidden from records/portal when true
   deposit: number;
   qrCode: string; // Must be unique among active drivers
   vehicle: string; // Max 2 active drivers per vehicle

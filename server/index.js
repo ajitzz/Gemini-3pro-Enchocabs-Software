@@ -804,6 +804,7 @@ const initDb = async () => {
         email TEXT,
         join_date DATE DEFAULT CURRENT_DATE,
         termination_date DATE,
+        is_hidden BOOLEAN DEFAULT FALSE,
         deposit NUMERIC DEFAULT 0,
         qr_code TEXT,
         vehicle TEXT,
@@ -817,6 +818,7 @@ const initDb = async () => {
     `);
 
     await db.query(`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS food_option BOOLEAN DEFAULT FALSE;`);
+    await db.query(`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS is_hidden BOOLEAN DEFAULT FALSE;`);
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS daily_entries (
@@ -1038,6 +1040,13 @@ const initDb = async () => {
       AND (trim(qr_code) = '' OR qr_code = '0' OR qr_code = '.' OR qr_code = '-' OR lower(qr_code) = 'n/a' OR lower(qr_code) = 'null');
     `);
 
+    await db.query(`
+      UPDATE drivers
+      SET is_hidden = TRUE
+      WHERE termination_date IS NOT NULL
+        AND COALESCE(is_hidden, FALSE) = FALSE;
+    `);
+
     // 4. Performance indexes for common filters
     await db.query('CREATE INDEX IF NOT EXISTS daily_entries_date_idx ON daily_entries (date);');
     await db.query('CREATE INDEX IF NOT EXISTS daily_entries_driver_idx ON daily_entries ((lower(driver)));');
@@ -1151,7 +1160,7 @@ const calculateDriverBillings = async () => {
     db.query("SELECT min_trips as \"minTrips\", max_trips as \"maxTrips\", rent_amount as \"rentAmount\" FROM rental_slabs WHERE slab_type = 'driver' ORDER BY min_trips"),
     db.query("SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as week_start_date, to_char(week_end_date, 'YYYY-MM-DD') as week_end_date, earnings, refund, diff, cash, charges, trips, wallet_week, rent_override, days_worked_override, adjustments, notes FROM weekly_wallets"),
     db.query("SELECT id, to_char(date, 'YYYY-MM-DD') as date, driver, shift, qr_code, collection, fuel, due FROM daily_entries"),
-    db.query("SELECT id, name, qr_code FROM drivers")
+    db.query("SELECT id, name, qr_code FROM drivers WHERE COALESCE(is_hidden, FALSE) = FALSE")
   ]);
 
   const rentalSlabs = slabRes.rows.map(r => ({
@@ -1233,7 +1242,7 @@ const fetchDriverBillingForWeek = async ({ driverName, weekStart }) => {
          AND date BETWEEN $2::date AND $3::date`,
       [driverName, weekStart, weekEnd]
     ),
-    db.query("SELECT id, name, qr_code FROM drivers WHERE lower(name) = lower($1) LIMIT 1", [driverName])
+    db.query("SELECT id, name, qr_code FROM drivers WHERE lower(name) = lower($1) AND COALESCE(is_hidden, FALSE) = FALSE LIMIT 1", [driverName])
   ]);
 
   const rentalSlabs = slabRes.rows.map((r) => ({
@@ -1446,7 +1455,10 @@ app.post('/api/auth/google', async (req, res) => {
       if (adminRes.rows.length > 0) {
         role = 'admin';
       } else {
-        const driverRes = await db.query('SELECT id, name FROM drivers WHERE lower(email) = lower($1) LIMIT 1', [email]);
+        const driverRes = await db.query(
+          'SELECT id, name FROM drivers WHERE lower(email) = lower($1) AND COALESCE(is_hidden, FALSE) = FALSE LIMIT 1',
+          [email]
+        );
         if (driverRes.rows.length === 0) {
           return res.status(403).json({ error: 'Unauthorized: email not registered' });
         }
@@ -1479,7 +1491,7 @@ app.get('/api/drivers/:driverId/widget-summary', async (req, res) => {
     }
 
     const [driverRes, dailyRes, walletRes, slabsRes] = await Promise.all([
-      db.query('SELECT id, name FROM drivers WHERE id = $1 LIMIT 1', [driverId]),
+      db.query('SELECT id, name FROM drivers WHERE id = $1 AND COALESCE(is_hidden, FALSE) = FALSE LIMIT 1', [driverId]),
       db.query(
         `SELECT id, to_char(date, 'YYYY-MM-DD') as date, driver, rent, collection, fuel, due, payout
          FROM daily_entries
@@ -1699,7 +1711,7 @@ app.get('/api/drivers', async (req, res) => {
       return res.json(cached);
     }
 
-    const result = await db.query(`SELECT id, name, mobile, email, to_char(join_date, 'YYYY-MM-DD') as "joinDate", to_char(termination_date, 'YYYY-MM-DD') as "terminationDate", deposit, qr_code as "qrCode", vehicle, status, current_shift as "currentShift", default_rent as "defaultRent", notes, is_manager as "isManager", food_option as "foodOption" FROM drivers ORDER BY name`);
+    const result = await db.query(`SELECT id, name, mobile, email, to_char(join_date, 'YYYY-MM-DD') as "joinDate", to_char(termination_date, 'YYYY-MM-DD') as "terminationDate", COALESCE(is_hidden, FALSE) as "isHidden", deposit, qr_code as "qrCode", vehicle, status, current_shift as "currentShift", default_rent as "defaultRent", notes, is_manager as "isManager", food_option as "foodOption" FROM drivers ORDER BY name`);
     await setCacheJSON(DRIVERS_CACHE_KEY, result.rows, DRIVERS_CACHE_TTL_SECONDS);
 
     res.set('X-Cache', 'MISS');
@@ -1720,6 +1732,8 @@ app.post('/api/drivers', async (req, res) => {
   try {
     await client.query('BEGIN');
     const nameToSave = d.name.trim();
+    const shouldAutoHide = !!d.terminationDate && d.isHidden === undefined;
+    const isHiddenToSave = shouldAutoHide ? true : !!d.isHidden;
     let mobileToSave = null;
     if (d.mobile) {
         const clean = String(d.mobile).trim();
@@ -1771,15 +1785,15 @@ app.post('/api/drivers', async (req, res) => {
     }
 
     const q = `
-      INSERT INTO drivers (id, name, mobile, email, join_date, termination_date, deposit, qr_code, vehicle, status, current_shift, default_rent, notes, is_manager, food_option)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      INSERT INTO drivers (id, name, mobile, email, join_date, termination_date, is_hidden, deposit, qr_code, vehicle, status, current_shift, default_rent, notes, is_manager, food_option)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       ON CONFLICT (id) DO UPDATE SET
-        name=$2, mobile=$3, email=$4, join_date=$5, termination_date=$6, deposit=$7, qr_code=$8, vehicle=$9, status=$10, current_shift=$11, default_rent=$12, notes=$13, is_manager=$14, food_option=$15
+        name=$2, mobile=$3, email=$4, join_date=$5, termination_date=$6, is_hidden=$7, deposit=$8, qr_code=$9, vehicle=$10, status=$11, current_shift=$12, default_rent=$13, notes=$14, is_manager=$15, food_option=$16
       RETURNING *;
     `;
     const result = await client.query(q, [
-      idToUse, nameToSave, mobileToSave, d.email, d.joinDate, d.terminationDate || null, 
-      d.deposit, qrToSave, d.vehicle, d.status, d.currentShift, d.defaultRent, d.notes, d.isManager, d.foodOption ?? false
+      idToUse, nameToSave, mobileToSave, d.email, d.joinDate, d.terminationDate || null,
+      isHiddenToSave, d.deposit, qrToSave, d.vehicle, d.status, d.currentShift, d.defaultRent, d.notes, d.isManager, d.foodOption ?? false
     ]);
 
     await client.query('COMMIT');
@@ -1951,7 +1965,12 @@ app.get('/api/daily-entries', async (req, res) => {
     }
 
     const limit = parseQueryLimit(req.query.limit);
-    const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+    const visibilityFilter = `NOT EXISTS (
+      SELECT 1 FROM drivers d
+      WHERE LOWER(d.name) = LOWER(daily_entries.driver)
+        AND COALESCE(d.is_hidden, FALSE) = TRUE
+    )`;
+    const whereClause = `WHERE ${[...filters, visibilityFilter].join(' AND ')}`;
     const limitClause = limit ? `LIMIT $${values.length + 1}` : '';
     if (limit) values.push(limit);
 
@@ -2024,7 +2043,12 @@ app.get('/api/daily-entries/bootstrap', async (req, res) => {
       filters.push(`date <= $${values.length}`);
     }
 
-    const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+    const dailyVisibilityFilter = `NOT EXISTS (
+      SELECT 1 FROM drivers d
+      WHERE LOWER(d.name) = LOWER(daily_entries.driver)
+        AND COALESCE(d.is_hidden, FALSE) = TRUE
+    )`;
+    const whereClause = `WHERE ${[...filters, dailyVisibilityFilter].join(' AND ')}`;
 
     const leavesValues = [];
     const leavesFilters = [];
@@ -2055,7 +2079,12 @@ app.get('/api/daily-entries/bootstrap', async (req, res) => {
       walletsValues.push(toDate);
       walletsFilters.push(`week_start_date <= $${walletsValues.length}`);
     }
-    const walletsWhereClause = walletsFilters.length ? `WHERE ${walletsFilters.join(' AND ')}` : '';
+    const walletVisibilityFilter = `NOT EXISTS (
+      SELECT 1 FROM drivers d
+      WHERE LOWER(d.name) = LOWER(weekly_wallets.driver)
+        AND COALESCE(d.is_hidden, FALSE) = TRUE
+    )`;
+    const walletsWhereClause = `WHERE ${[...walletsFilters, walletVisibilityFilter].join(' AND ')}`;
 
     const [dailyRes, driversRes, leavesRes, walletsRes] = await Promise.all([
       metaOnly
@@ -2068,7 +2097,7 @@ app.get('/api/daily-entries/bootstrap', async (req, res) => {
             values,
           ),
       includeMeta
-        ? db.query(`SELECT id, name, mobile, email, to_char(join_date, 'YYYY-MM-DD') as "joinDate", to_char(termination_date, 'YYYY-MM-DD') as "terminationDate", deposit, qr_code as "qrCode", vehicle, status, current_shift as "currentShift", default_rent as "defaultRent", notes, is_manager as "isManager", food_option as "foodOption" FROM drivers ORDER BY name`)
+        ? db.query(`SELECT id, name, mobile, email, to_char(join_date, 'YYYY-MM-DD') as "joinDate", to_char(termination_date, 'YYYY-MM-DD') as "terminationDate", COALESCE(is_hidden, FALSE) as "isHidden", deposit, qr_code as "qrCode", vehicle, status, current_shift as "currentShift", default_rent as "defaultRent", notes, is_manager as "isManager", food_option as "foodOption" FROM drivers ORDER BY name`)
         : Promise.resolve({ rows: [] }),
       includeMeta
         ? db.query(
@@ -2354,7 +2383,12 @@ app.get('/api/weekly-wallets', async (req, res) => {
     }
 
     const limit = parseQueryLimit(req.query.limit);
-    const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+    const visibilityFilter = `NOT EXISTS (
+      SELECT 1 FROM drivers d
+      WHERE LOWER(d.name) = LOWER(weekly_wallets.driver)
+        AND COALESCE(d.is_hidden, FALSE) = TRUE
+    )`;
+    const whereClause = `WHERE ${[...filters, visibilityFilter].join(' AND ')}`;
     const limitClause = limit ? `LIMIT $${values.length + 1}` : '';
     if (limit) values.push(limit);
 
