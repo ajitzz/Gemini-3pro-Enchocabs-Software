@@ -73,6 +73,7 @@ export interface Driver {
   notes?: string;
   isManager?: boolean; // New: Manager Role Flag
   foodOption?: boolean; // Food access enabled
+  hideFromRecords?: boolean; // Hide driver data from records/portal while archived
 }
 
 export interface ManagerAccess {
