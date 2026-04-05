@@ -334,22 +334,23 @@ const DriverPortalPage: React.FC = () => {
               storageService.getDrivers(),
               storageService.getDriverRentalSlabs()
           ]);
+          const visibleDrivers = allDrivers.filter(d => !d.isHidden);
           const sortedSlabs = slabs.sort((a, b) => a.minTrips - b.minTrips);
           setRentalSlabs(sortedSlabs);
 
           if (user?.role === 'admin' || user?.role === 'super_admin') {
-              setDriversList(allDrivers.sort((a, b) => a.name.localeCompare(b.name)));
+              setDriversList(visibleDrivers.sort((a, b) => a.name.localeCompare(b.name)));
               lastDriversRefreshRef.current = Date.now();
           }
 
           let targetDriver: Driver | undefined;
 
           if (user?.role === 'driver' && user.driverId) {
-              targetDriver = allDrivers.find(d => d.id === user.driverId);
+              targetDriver = visibleDrivers.find(d => d.id === user.driverId);
           } else if ((user?.role === 'admin' || user?.role === 'super_admin')) {
-              targetDriver = allDrivers.find(d => d.email === user.email);
+              targetDriver = visibleDrivers.find(d => d.email === user.email);
               if (!targetDriver) {
-                  targetDriver = allDrivers.find(d => !d.terminationDate);
+                  targetDriver = visibleDrivers.find(d => !d.terminationDate) || visibleDrivers[0];
               }
           }
 
@@ -365,7 +366,7 @@ const DriverPortalPage: React.FC = () => {
           if (targetDriver.isManager) {
               const myAccess = await storageService.getManagerAccessByManagerId(targetDriver.id);
               if (myAccess && myAccess.childDriverIds.length > 0) {
-                  teamMembers = allDrivers.filter(d => myAccess.childDriverIds.includes(d.id));
+                  teamMembers = visibleDrivers.filter(d => myAccess.childDriverIds.includes(d.id));
                   setMyTeam(teamMembers);
               }
           }
