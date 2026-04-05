@@ -17,11 +17,8 @@ CREATE TABLE IF NOT EXISTS drivers (
   default_rent NUMERIC DEFAULT 0,
   notes TEXT,
   is_manager BOOLEAN DEFAULT FALSE,
-  food_option BOOLEAN DEFAULT FALSE,
-  hide_from_records BOOLEAN DEFAULT FALSE
+  food_option BOOLEAN DEFAULT FALSE
 );
-
-ALTER TABLE drivers ADD COLUMN IF NOT EXISTS hide_from_records BOOLEAN DEFAULT FALSE;
 
 -- 3. Daily Entries Table (Daily Logs)
 CREATE TABLE IF NOT EXISTS daily_entries (
