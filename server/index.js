@@ -54,18 +54,10 @@ const buildOriginRegexes = (pattern) => {
 const defaultAllowedOrigins = [
   'https://enchocabs.com',
   'https://www.enchocabs.com',
-  'https://enchocabs-software.vercel.app',
-  'https://gemini-3pro-enchocabs-software.vercel.app',
   'https://gemini-3pro-enchocabs-software.onrender.com',
   'http://localhost:5173',
   'http://127.0.0.1:5173',
 ];
-const defaultAllowedOriginPatterns = [
-  'https://enchocabs-software.vercel.app',
-  'https://gemini-3pro-enchocabs-software.vercel.app',
-]
-  .map((pattern) => buildOriginRegexes(pattern))
-  .flat();
 
 const allowedOrigins = new Set([
   ...defaultAllowedOrigins.map(normalizeOrigin),
@@ -81,7 +73,6 @@ const allowedOriginPatterns = splitCsvEnv(process.env.CORS_ORIGIN_PATTERNS)
     }
   })
   .flat()
-  .concat(defaultAllowedOriginPatterns)
   .filter(Boolean);
 const blockedCorsLogTimestamps = new Map();
 
