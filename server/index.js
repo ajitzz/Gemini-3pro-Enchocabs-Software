@@ -2992,23 +2992,36 @@ app.get('/api/perf-stats', (_req, res) => {
   });
 });
 
-initDb()
-  .then(async () => {
-    try {
-      await syncDriverBillings();
-      setInterval(() => {
-        syncDriverBillings().catch((err) => console.error('Driver billing sync failed:', err));
-      }, 5 * 60 * 1000);
-    } catch (err) {
-      console.error('Initial driver billing sync failed:', err);
-    }
+let billingSyncInterval = null;
 
-    app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-    });
+const startRecurringBillingSync = () => {
+  if (billingSyncInterval) return;
+  billingSyncInterval = setInterval(() => {
+    syncDriverBillings().catch((err) => console.error('Driver billing sync failed:', err));
+  }, 5 * 60 * 1000);
+};
 
-    startKeepAlive();
-  })
-  .catch((err) => {
+const runBackgroundInitialization = async () => {
+  try {
+    await initDb();
+    await syncDriverBillings();
+    startRecurringBillingSync();
+    console.log('Background initialization completed successfully.');
+  } catch (err) {
     console.error('Initialization failed:', err);
-  });
+    setTimeout(() => {
+      runBackgroundInitialization().catch((retryErr) => {
+        console.error('Initialization retry failed:', retryErr);
+      });
+    }, 60 * 1000);
+  }
+};
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
+
+startKeepAlive();
+runBackgroundInitialization().catch((err) => {
+  console.error('Unexpected initialization error:', err);
+});
