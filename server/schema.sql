@@ -119,7 +119,9 @@ CREATE TABLE IF NOT EXISTS company_summaries (
   end_date DATE,
   file_name TEXT,
   imported_at TIMESTAMP,
-  note TEXT
+  note TEXT,
+  mapping_snapshot JSONB,
+  import_diagnostics JSONB
 );
 
 -- 8. Company Summary Rows Table (Imported Data)
@@ -177,7 +179,8 @@ CREATE TABLE IF NOT EXISTS header_mappings (
   internal_key TEXT PRIMARY KEY,
   label TEXT,
   excel_header TEXT,
-  required BOOLEAN
+  required BOOLEAN,
+  calc_op TEXT
 );
 
 -- 12. Admin Access Table (Auth)
