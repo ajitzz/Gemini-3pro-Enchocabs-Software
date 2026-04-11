@@ -217,7 +217,7 @@ const ImportPage: React.FC = () => {
         }
       }
 
-      const datePattern = /^(\d{1,4})[\/.-](\d{1,2})[\/.-](\d{1,4})(.*)$/;
+      const datePattern = /^(\d{1,4})[/.-](\d{1,2})[/.-](\d{1,4})(.*)$/;
       const match = strVal.match(datePattern);
       
       if (match) {
@@ -581,7 +581,7 @@ const ImportPage: React.FC = () => {
   };
 
   const resolveDriver_Reactivate = async () => {
-    const { driver } = currentConflict?.payload;
+    const driver = currentConflict?.payload?.driver;
     if (!driver) return;
 
     try {
@@ -624,7 +624,8 @@ const ImportPage: React.FC = () => {
   };
 
   const resolveDuplicate_Override = () => {
-    const { existing, isBatchDuplicate } = currentConflict?.payload;
+    const existing = currentConflict?.payload?.existing;
+    const isBatchDuplicate = currentConflict?.payload?.isBatchDuplicate;
     if (!isBatchDuplicate && existing?.id) {
       setImportState(prev => ({
         ...prev,

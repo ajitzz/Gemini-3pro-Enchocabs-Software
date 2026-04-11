@@ -1088,7 +1088,7 @@ const DriverPortalPage: React.FC = () => {
     }, [dailyWithAdjustments, filteredDaily, fromDate, getAdjustedDue, isDateFilterActive, rawDaily, rawWeekly, rentalSlabs, toDate, viewingAsDriver]);
 
   // --- 4. DYNAMIC CARD DATA ---
-    const topCards = useMemo(() => {
+    const topCards: any = useMemo(() => {
         const latestBill = billingData[0];
 
         // OVERVIEW: Weekly snapshot with consolidated style
@@ -1524,28 +1524,23 @@ const DriverPortalPage: React.FC = () => {
            {/* Top Cards Grid (Dynamic) */}
            <div className="grid grid-cols-2 gap-4 mb-2">
                {/* Check if consolidated card (Daily Log Tab Special) */}
-               {/* @ts-ignore */}
                {topCards.isConsolidated ? (
                    <div className="col-span-2 bg-white p-6 rounded-[28px] border border-slate-100 shadow-sm flex flex-col justify-center space-y-4">
                        <div className="flex items-start justify-between gap-4">
                            <div className="flex-1 space-y-1">
-                               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.18em]">{/* @ts-ignore */}{topCards.data.headerLabel}</p>
-                               <p className="text-2xl font-extrabold text-slate-900">{/* @ts-ignore */}{formatCurrencyInt(topCards.data.headerValue || 0)}</p>
-                               <p className="text-[10px] text-slate-500 font-semibold leading-tight">{/* @ts-ignore */}{topCards.data.headerSubtext || 'No data available'}</p>
-                               {/* @ts-ignore */}
+                               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.18em]">{topCards.data.headerLabel}</p>
+                               <p className="text-2xl font-extrabold text-slate-900">{formatCurrencyInt(topCards.data.headerValue || 0)}</p>
+                               <p className="text-[10px] text-slate-500 font-semibold leading-tight">{topCards.data.headerSubtext || 'No data available'}</p>
                                {topCards.data.headerBadge && (
                                    <span className="inline-flex items-center mt-1 px-2 py-1 rounded-full bg-indigo-50 text-[10px] font-semibold text-indigo-700 border border-indigo-100 tracking-[0.12em]">
                                        {topCards.data.headerBadge}
                                    </span>
                                )}
                            </div>
-                           {/* @ts-ignore */}
                            {typeof topCards.data.payout === 'number' && (
                                <div className="bg-indigo-50 border border-indigo-100 rounded-2xl px-4 py-3 text-right shadow-inner min-w-[160px]">
                                    <p className="text-[10px] uppercase font-bold text-indigo-500 tracking-[0.16em]">Monthly Payout</p>
-                                   {/* @ts-ignore */}
                                    <p className={`text-lg font-extrabold ${topCards.data.payout < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
-                                       {/* @ts-ignore */}
                                        {formatCurrencyInt(topCards.data.payout)}
                                    </p>
                                    <p className="text-[10px] text-indigo-400 font-semibold">Cleared / Payable</p>
@@ -1553,7 +1548,6 @@ const DriverPortalPage: React.FC = () => {
                            )}
                        </div>
                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                           {/* @ts-ignore */}
                            {topCards.data.stats?.map((stat: any) => {
                                const isNetPayout = stat.label === 'Net Payout';
                                const isNetBalance = stat.label === 'Net Balance';
@@ -1581,40 +1575,29 @@ const DriverPortalPage: React.FC = () => {
                ) : (
                    <>
                        {/* Left Card */}
-                       {/* @ts-ignore */}
-                       {/* @ts-ignore */}
                        <div
                            onClick={activeTab === 'home' ? () => openCalculationPopup('netPayout') : undefined}
                            className={`${topCards.left?.colorClass ?? ''} p-6 rounded-[24px] text-white relative overflow-hidden shadow-xl flex flex-col justify-center ${topCards.left?.colSpan ? `col-span-${topCards.left.colSpan}` : ''} ${activeTab === 'home' ? 'cursor-pointer transition transform hover:-translate-y-0.5' : ''}`}
                        >
-                           {/* @ts-ignore */}
                            <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-200 mb-1">{topCards.left.label}</p>
-                           {/* @ts-ignore */}
                            <h3 className={`text-3xl font-bold tracking-tight mb-1 ${topCards.left.isCurrency && typeof topCards.left.value === 'number' && topCards.left.value < 0 ? 'text-rose-300' : 'text-white'}`}>
-                               {/* @ts-ignore */}
                                {topCards.left.isCurrency && typeof topCards.left.value === 'number' ? formatCurrencyInt(topCards.left.value) : topCards.left.value}
                            </h3>
                            <p className="text-[10px] text-indigo-200/80 flex items-center gap-1">
-                               {/* @ts-ignore */}
                                {topCards.left?.range ? (
                                    <span className="px-2 py-1 rounded-full bg-white/10 border border-white/10 tracking-[0.14em] uppercase text-[9px] leading-none">{topCards.left.range}</span>
                                ) : (
-                                   // @ts-ignore
                                    topCards.left?.subtext
                                )}
                            </p>
                        </div>
 
                        {/* Right Card */}
-                       {/* @ts-ignore */}
                        <div className={`${topCards.right.colorClass} p-6 rounded-[24px] border border-slate-100 shadow-sm flex flex-col justify-center ${topCards.right.colSpan ? `col-span-${topCards.right.colSpan}` : ''}`}>
-                            {/* @ts-ignore */}
                             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">{topCards.right.label}</p>
                             <h3 className="text-3xl font-bold text-slate-800 mb-1">
-                               {/* @ts-ignore */}
                                {topCards.right.isCurrency && typeof topCards.right.value === 'number' ? formatCurrencyInt(topCards.right.value) : topCards.right.value}
                             </h3>
-                            {/* @ts-ignore */}
                             <p className="text-[10px] text-slate-400">{topCards.right.subtext}</p>
                        </div>
                     </>

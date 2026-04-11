@@ -118,7 +118,7 @@ const CompanySettlementPage: React.FC = () => {
       const updatedRows = [...tempSummaryRows];
       const numValue = parseFloat(value) || 0;
       
-      // @ts-ignore - Dynamic key assignment
+      // @ts-expect-error - Dynamic key assignment
       updatedRows[index][field] = numValue;
       setTempSummaryRows(updatedRows);
   };
@@ -957,10 +957,10 @@ const CompanySettlementPage: React.FC = () => {
                                         ].map((field: any) => (
                                             <td key={field} className={`px-4 py-3 ${['netWeeklyLeaseRental', 'uberWeekOs'].includes(field) ? 'bg-indigo-50/10 font-bold text-indigo-600' : ''}`}>
                                                 {isEditingSummary ? (
-                                                    // @ts-ignore
+                                                    // @ts-expect-error - Dynamic key access
                                                     <input type="number" value={row[field]} onChange={e => handleEditSummaryRowChange(i, field, e.target.value)} className="w-16 p-1 border rounded bg-white focus:ring-2 focus:ring-indigo-500 outline-none" />
                                                 ) : (
-                                                    // @ts-ignore
+                                                    // @ts-expect-error - Dynamic key access
                                                     row[field]
                                                 )}
                                             </td>

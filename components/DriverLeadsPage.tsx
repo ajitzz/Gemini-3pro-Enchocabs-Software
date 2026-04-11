@@ -435,7 +435,11 @@ const DriverLeadsPage: React.FC = () => {
   const toggleExpandedLatest = (leadId: string) => {
     setExpandedLatestUpdates((prev) => {
       const next = new Set(prev);
-      next.has(leadId) ? next.delete(leadId) : next.add(leadId);
+      if (next.has(leadId)) {
+        next.delete(leadId);
+      } else {
+        next.add(leadId);
+      }
       return next;
     });
   };
@@ -443,7 +447,11 @@ const DriverLeadsPage: React.FC = () => {
   const toggleHistory = (leadId: string) => {
     setExpandedHistories((prev) => {
       const next = new Set(prev);
-      next.has(leadId) ? next.delete(leadId) : next.add(leadId);
+      if (next.has(leadId)) {
+        next.delete(leadId);
+      } else {
+        next.add(leadId);
+      }
       return next;
     });
   };

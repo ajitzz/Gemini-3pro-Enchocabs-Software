@@ -8,7 +8,7 @@ const isLocalDev = () => {
   return Boolean(env?.DEV) || isLocalHost();
 };
 
-const stripWrappingQuotes = (value: string) => value.trim().replace(/^['\"]|['\"]$/g, '');
+const stripWrappingQuotes = (value: string) => value.trim().replace(/^['"]|['"]$/g, '');
 
 const normalizeApiUrl = (rawApiUrl: string): string | null => {
   const normalized = stripWrappingQuotes(rawApiUrl).replace(/\/$/, '');

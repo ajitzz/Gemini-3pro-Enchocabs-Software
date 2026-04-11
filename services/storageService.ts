@@ -104,7 +104,7 @@ const api = {
         if (!response.ok) {
           const text = await response.text();
           let msg = `API Error ${response.status}: ${response.statusText}`;
-          try { const json = JSON.parse(text); if(json.error) msg = json.error; } catch(e) {}
+          try { const json = JSON.parse(text); if(json.error) msg = json.error; } catch(e) { console.error(e); }
           throw new Error(msg);
         }
         const payload = await response.json();
@@ -131,7 +131,7 @@ const api = {
       if (!response.ok) {
         const text = await response.text();
         let msg = `API Error ${response.status}: ${response.statusText}`;
-        try { const json = JSON.parse(text); if(json.error) msg = json.error; } catch(e) {}
+        try { const json = JSON.parse(text); if(json.error) msg = json.error; } catch(e) { console.error(e); }
         throw new Error(msg);
       }
       const payload = await response.json();

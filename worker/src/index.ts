@@ -199,7 +199,7 @@ const toISODate = (rawVal: any) => {
     if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return '';
     return dt.toISOString().slice(0, 10);
   };
-  const parts = str.split(/[\/.-]/).filter(Boolean);
+  const parts = str.split(/[/.-]/).filter(Boolean);
   if (parts.length === 3) {
     const nums = parts.map((p) => parseInt(p, 10));
     if (parts[0].length === 4) {

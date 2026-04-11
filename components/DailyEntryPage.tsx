@@ -123,8 +123,7 @@ const ColumnFilter: React.FC<ColumnFilterProps> = ({ columnKey, data, activeFilt
   const uniqueValues = useMemo(() => {
     const values = new Set<string>();
     data.forEach(item => {
-      // @ts-ignore
-      const val = String(item[columnKey] ?? '');
+      const val = String((item as any)[columnKey] ?? '');
       if (val) values.add(val);
     });
     // Sort logic
@@ -888,7 +887,7 @@ const DailyEntryPage: React.FC = () => {
             const selectedValues = val as string[];
             if (selectedValues.length === 0) continue; // No filter active for this column
 
-            // @ts-ignore
+            // @ts-expect-error - Dynamic key access
             const entryVal = String(entry[key] ?? '');
 
             // If entry value is NOT in selected list, exclude it

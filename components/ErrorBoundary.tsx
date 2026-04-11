@@ -40,7 +40,9 @@ class ErrorBoundary extends Component<Props, State> {
           id: error.message
         })
       }).catch(() => {});
-    } catch (e) {}
+    } catch (e) {
+      console.error("Failed to send error metrics", e);
+    }
   }
 
   public render() {
