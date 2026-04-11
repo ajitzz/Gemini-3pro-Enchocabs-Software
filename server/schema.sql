@@ -177,7 +177,8 @@ CREATE TABLE IF NOT EXISTS header_mappings (
   internal_key TEXT PRIMARY KEY,
   label TEXT,
   excel_header TEXT,
-  required BOOLEAN
+  required BOOLEAN,
+  calc_operator TEXT
 );
 
 -- 12. Admin Access Table (Auth)
