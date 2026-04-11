@@ -1,0 +1,306 @@
+import React, { useState, useEffect, lazy, Suspense } from 'react';
+import { BrowserRouter, Routes, Route, NavLink, Navigate, Outlet } from 'react-router-dom';
+import { LayoutDashboard, Calendar, Wallet, Menu, X, Users, Coffee, Upload, Settings, Briefcase, FileText, Calculator, UserCircle, LogOut, Shield, ClipboardList } from 'lucide-react';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+
+
+const HomePage = lazy(() => import('./components/HomePage'));
+const DriversEarningsPublicPage = lazy(() => import('./components/DriversEarningsPublicPage'));
+const LoginPage = lazy(() => import('./components/LoginPage'));
+const DriverPortalPage = lazy(() => import('./components/DriverPortalPage'));
+const DashboardPage = lazy(() => import('./components/DashboardPage'));
+const DailyEntryPage = lazy(() => import('./components/DailyEntryPage'));
+const WeeklyWalletPage = lazy(() => import('./components/WeeklyWalletPage'));
+const RegistrationPage = lazy(() => import('./components/RegistrationPage'));
+const ManageDefaultsPage = lazy(() => import('./components/ManageDefaultsPage'));
+const LeavePage = lazy(() => import('./components/LeavePage'));
+const CompanySettlementPage = lazy(() => import('./components/CompanySettlementPage'));
+const DriverBillingsPage = lazy(() => import('./components/DriverBillingsPage'));
+const RevenuePage = lazy(() => import('./components/RevenuePage'));
+const DriverLeadsPage = lazy(() => import('./components/DriverLeadsPage'));
+const ImportPage = lazy(() => import('./components/ImportPage'));
+const AdminAccessPage = lazy(() => import('./components/AdminAccessPage'));
+const DriverBalanceInsightsPage = lazy(() => import('./components/DriverBalanceInsightsPage'));
+
+
+const routePrefetchers: Record<string, () => Promise<unknown>> = {
+  '/': () => import('./components/HomePage'),
+  '/drivers-earnings': () => import('./components/DriversEarningsPublicPage'),
+  '/staff': () => import('./components/LoginPage'),
+  '/portal': () => import('./components/DriverPortalPage'),
+  '/app': () => import('./components/DashboardPage'),
+  '/app/daily': () => import('./components/DailyEntryPage'),
+  '/app/weekly': () => import('./components/WeeklyWalletPage'),
+  '/app/registration': () => import('./components/RegistrationPage'),
+  '/app/defaults': () => import('./components/ManageDefaultsPage'),
+  '/app/leaves': () => import('./components/LeavePage'),
+  '/app/settlement': () => import('./components/CompanySettlementPage'),
+  '/app/billings': () => import('./components/DriverBillingsPage'),
+  '/app/revenue': () => import('./components/RevenuePage'),
+  '/app/driver-leads': () => import('./components/DriverLeadsPage'),
+  '/app/import': () => import('./components/ImportPage'),
+  '/app/admin-access': () => import('./components/AdminAccessPage'),
+  '/app/driver-balances': () => import('./components/DriverBalanceInsightsPage'),
+};
+
+const prefetchedRoutes = new Set<string>();
+
+const prefetchRoute = (route: string) => {
+  if (!route || prefetchedRoutes.has(route)) return;
+  const prefetcher = routePrefetchers[route];
+  if (!prefetcher) return;
+
+  prefetchedRoutes.add(route);
+  prefetcher().catch(() => {
+    prefetchedRoutes.delete(route);
+  });
+};
+
+const RouteFallback = () => (
+  <div className="min-h-[240px] flex items-center justify-center bg-slate-50 rounded-2xl border border-slate-100">
+    <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+  </div>
+);
+
+const LazyPage = ({ children }: { children: React.ReactNode }) => (
+  <Suspense fallback={<RouteFallback />}>{children}</Suspense>
+);
+
+// --- PROTECTED ROUTE WRAPPER ---
+const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode, allowedRoles: string[] }) => {
+  const { user, loading, refreshSession } = useAuth();
+  const [validatingAccess, setValidatingAccess] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const verifyAccess = async () => {
+      if (user?.role !== 'admin') return;
+
+      const spinnerDelay = window.setTimeout(() => {
+        if (isMounted) setValidatingAccess(true);
+      }, 120);
+
+      try {
+        await refreshSession();
+      } finally {
+        window.clearTimeout(spinnerDelay);
+        if (isMounted) setValidatingAccess(false);
+      }
+    };
+
+    verifyAccess();
+    return () => { isMounted = false; };
+  }, [refreshSession, user]);
+
+  if (loading || validatingAccess) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div></div>;
+
+  if (!user) {
+    return <Navigate to="/staff" replace />;
+  }
+
+  if (!allowedRoles.includes(user.role)) {
+     // Redirect logic based on role mismatch
+     if (user.role === 'driver') return <Navigate to="/portal" replace />;
+     return <Navigate to="/app" replace />;
+  }
+
+  return <>{children}</>;
+};
+
+const Layout: React.FC = () => {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const { user, logout } = useAuth();
+
+  const NavItem = ({ to, icon: Icon, label, end = false }: { to: string, icon: any, label: string, end?: boolean }) => (
+    <NavLink
+      to={to}
+      end={end}
+      onClick={() => setIsMobileMenuOpen(false)}
+      onMouseEnter={() => prefetchRoute(to)}
+      onFocus={() => prefetchRoute(to)}
+      className={({ isActive }) =>
+        `flex items-center justify-between px-4 py-3.5 rounded-xl transition-all duration-300 group cursor-pointer ${
+          isActive
+            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50 translate-x-1'
+            : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+        }`
+      }
+    >
+      {({ isActive }) => (
+        <>
+          <div className="flex items-center space-x-3">
+            <Icon size={20} strokeWidth={isActive ? 2.5 : 2} className={isActive ? 'text-white' : 'text-slate-500 group-hover:text-indigo-400 transition-colors'} />
+            <span className={`font-medium text-sm ${isActive ? 'font-bold' : ''}`}>{label}</span>
+          </div>
+          {isActive && <div className="w-1.5 h-1.5 rounded-full bg-indigo-300 shadow-[0_0_8px_rgba(165,180,252,0.8)]"></div>}
+        </>
+      )}
+    </NavLink>
+  );
+
+  return (
+    <div className="min-h-screen flex flex-col md:flex-row bg-slate-50 font-sans text-slate-900">
+      {/* Sidebar Navigation */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 w-72 bg-slate-900 border-r border-slate-800 transform transition-all duration-300 ease-out md:relative ${
+          isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+        } ${
+          isSidebarCollapsed
+            ? 'md:-translate-x-full md:w-0 md:border-transparent md:opacity-0 md:pointer-events-none'
+            : 'md:translate-x-0 md:w-72 md:opacity-100'
+        } shadow-2xl md:shadow-none`}
+      >
+        {/* Logo Area */}
+        <div className="flex items-center justify-between p-8 border-b border-slate-800/50">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-600/20">
+              <span className="text-white font-bold text-xl tracking-tighter">DT</span>
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-white tracking-tight leading-none">Driver<span className="text-indigo-500">Tracker</span></h1>
+              <p className="text-xs text-slate-500 font-medium tracking-wider uppercase mt-1">Admin Console</p>
+            </div>
+          </div>
+          <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-white transition-colors">
+            <X size={24} />
+          </button>
+        </div>
+        
+        <div className="px-4 py-6 space-y-8 overflow-y-auto h-[calc(100vh-160px)]">
+          <div>
+            <p className="px-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-3">Overview</p>
+            <nav className="space-y-1">
+              <NavItem to="/app" icon={LayoutDashboard} label="Dashboard" end />
+              <NavItem to="/app/daily" icon={Calendar} label="Daily Entries" />
+              <NavItem to="/app/weekly" icon={Wallet} label="Weekly Wallet" />
+            </nav>
+          </div>
+          
+          <div>
+            <p className="px-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-3">Management</p>
+            <nav className="space-y-1">
+              <NavItem to="/app/registration" icon={Users} label="Registration" />
+              <NavItem to="/app/defaults" icon={Settings} label="Manage Defaults" />
+              <NavItem to="/app/leaves" icon={Coffee} label="Leaves" />
+              <NavItem to="/app/settlement" icon={Briefcase} label="Company Settlement" />
+              <NavItem to="/app/billings" icon={FileText} label="Driver Billings" />
+              <NavItem to="/app/revenue" icon={Calculator} label="Revenue Calculation" />
+              <NavItem to="/app/driver-leads" icon={ClipboardList} label="Driver Leads" />
+              <NavItem to="/app/import" icon={Upload} label="Import Data" />
+            </nav>
+          </div>
+
+          <div>
+             <p className="px-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-3">System</p>
+             <nav className="space-y-1">
+                {user?.role === 'super_admin' && (
+                    <NavItem to="/app/admin-access" icon={Shield} label="Admin Access" />
+                )}
+                <NavItem to="/portal" icon={UserCircle} label="Driver View Mode" />
+             </nav>
+          </div>
+        </div>
+
+        <div className="absolute bottom-0 w-full p-4 bg-slate-900 border-t border-slate-800/50">
+          <div className="bg-slate-800/50 rounded-xl p-3 flex items-center gap-3 border border-slate-700/50 mb-2">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xs font-bold shadow-inner">
+              {user?.name.charAt(0)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-white truncate">{user?.name}</p>
+              <p className="text-xs text-slate-500 truncate">{user?.role === 'super_admin' ? 'Super Admin' : 'Administrator'}</p>
+            </div>
+          </div>
+          <button onClick={logout} className="w-full py-2 bg-slate-800 hover:bg-rose-900/30 hover:text-rose-400 text-slate-400 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors">
+              <LogOut size={14}/> Sign Out
+          </button>
+        </div>
+      </aside>
+
+      {/* Mobile Header */}
+      <div className="md:hidden bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-0 z-40 shadow-sm">
+         <div className="flex items-center gap-2">
+           <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
+              <span className="text-white font-bold text-sm">DT</span>
+           </div>
+           <h1 className="text-lg font-bold text-slate-800">Driver Tracker</h1>
+         </div>
+         <button onClick={() => setIsMobileMenuOpen(true)} className="text-slate-600 hover:text-indigo-600 transition-colors p-1">
+           <Menu size={24} />
+         </button>
+      </div>
+
+      {/* Main Content */}
+      <main className="flex-1 overflow-auto p-4 md:p-8 lg:p-10 max-w-[1920px] mx-auto w-full">
+         <div className="hidden md:flex items-center mb-6">
+           <button
+             onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+             className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold bg-white shadow-sm border border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-200 transition-colors"
+           >
+             {isSidebarCollapsed ? <Menu size={18} /> : <X size={18} />}
+             <span>{isSidebarCollapsed ? 'Show navigation' : 'Hide navigation'}</span>
+           </button>
+         </div>
+         <Outlet />
+      </main>
+      
+      {/* Overlay for mobile menu */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 md:hidden animate-fade-in"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+    </div>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+              <Route path="/" element={<LazyPage><HomePage /></LazyPage>} />
+              <Route path="/drivers-earnings" element={<LazyPage><DriversEarningsPublicPage /></LazyPage>} />
+              <Route path="/staff" element={<LazyPage><LoginPage /></LazyPage>} />
+              <Route path="/login" element={<Navigate to="/staff" replace />} />
+
+              {/* Driver Portal Route (Secure) */}
+              <Route path="/portal" element={
+                  <ProtectedRoute allowedRoles={['driver', 'admin', 'super_admin']}>
+                      <LazyPage><DriverPortalPage /></LazyPage>
+                  </ProtectedRoute>
+              } />
+
+              {/* Admin Routes (Wrapped in Layout) */}
+              <Route
+                path="/app"
+                element={
+                  <ProtectedRoute allowedRoles={['admin', 'super_admin']}>
+                    <Layout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<LazyPage><DashboardPage /></LazyPage>} />
+                <Route path="daily" element={<LazyPage><DailyEntryPage /></LazyPage>} />
+                <Route path="weekly" element={<LazyPage><WeeklyWalletPage /></LazyPage>} />
+                <Route path="registration" element={<LazyPage><RegistrationPage /></LazyPage>} />
+                <Route path="defaults" element={<LazyPage><ManageDefaultsPage /></LazyPage>} />
+                <Route path="leaves" element={<LazyPage><LeavePage /></LazyPage>} />
+                <Route path="settlement" element={<LazyPage><CompanySettlementPage /></LazyPage>} />
+                <Route path="billings" element={<LazyPage><DriverBillingsPage /></LazyPage>} />
+                <Route path="revenue" element={<LazyPage><RevenuePage /></LazyPage>} />
+                <Route path="driver-leads" element={<LazyPage><DriverLeadsPage /></LazyPage>} />
+                <Route path="import" element={<LazyPage><ImportPage /></LazyPage>} />
+                <Route path="admin-access" element={<LazyPage><AdminAccessPage /></LazyPage>} />
+                <Route path="driver-balances" element={<LazyPage><DriverBalanceInsightsPage /></LazyPage>} />
+              </Route>
+          </Routes>
+        </BrowserRouter>
+    </AuthProvider>
+  );
+};
+
+export default App;

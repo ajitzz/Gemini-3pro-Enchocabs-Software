@@ -1,0 +1,10 @@
+.hero{
+  min-height:88vh; display:grid; place-items:center; text-align:center; position:relative; overflow:hidden;
+  background:
+    linear-gradient(to bottom, rgba(0,0,0,.35), rgba(0,0,0,.72)),
+    url('https://i.ibb.co/35gNhtCp/Chat-GPT-Image-Sep-15-2025-at-04-22-48-AM.png') center/cover no-repeat;
+}
+.eyebrow{letter-spacing:.18em; text-transform:uppercase; color:var(--muted); font-size:.85rem}
+.h1{font-family:var(--font-poppins), var(--font-inter); font-size:clamp(2rem,6vw,3.75rem); letter-spacing:.04em; margin:.25em 0}
+.accent{color:var(--accent)}
+.lead{color:var(--muted); font-size:clamp(1rem,2vw,1.15rem)}
