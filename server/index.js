@@ -913,8 +913,7 @@ const initDb = async () => {
         internal_key TEXT PRIMARY KEY,
         label TEXT,
         excel_header TEXT,
-        required BOOLEAN,
-        calc_operator TEXT
+        required BOOLEAN
       );
     `);
 
@@ -972,9 +971,6 @@ const initDb = async () => {
           END IF;
           IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='weekly_wallets' AND column_name='adjustments') THEN
               ALTER TABLE weekly_wallets ADD COLUMN adjustments NUMERIC DEFAULT 0;
-          END IF;
-          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='header_mappings' AND column_name='calc_operator') THEN
-              ALTER TABLE header_mappings ADD COLUMN calc_operator TEXT;
           END IF;
           IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='driver_billings' AND column_name='due') THEN
               ALTER TABLE driver_billings ADD COLUMN due NUMERIC DEFAULT 0;
@@ -2854,7 +2850,7 @@ app.post('/api/shifts', async (req, res) => {
 
 app.get('/api/header-mappings', async (req, res) => {
   try {
-    const result = await db.query(`SELECT internal_key as "internalKey", label, excel_header as "excelHeader", required, COALESCE(calc_operator, '') as calc FROM header_mappings`);
+    const result = await db.query(`SELECT internal_key as "internalKey", label, excel_header as "excelHeader", required FROM header_mappings`);
     res.json(result.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -2866,10 +2862,7 @@ app.post('/api/header-mappings', async (req, res) => {
     await client.query('BEGIN');
     await client.query('DELETE FROM header_mappings');
     for (const m of mappings) {
-      await client.query(
-        'INSERT INTO header_mappings (internal_key, label, excel_header, required, calc_operator) VALUES ($1, $2, $3, $4, $5)',
-        [m.internalKey, m.label, m.excelHeader, m.required, m.calc || '']
-      );
+      await client.query('INSERT INTO header_mappings (internal_key, label, excel_header, required) VALUES ($1, $2, $3, $4)', [m.internalKey, m.label, m.excelHeader, m.required]);
     }
     await client.query('COMMIT');
     res.json({ success: true });

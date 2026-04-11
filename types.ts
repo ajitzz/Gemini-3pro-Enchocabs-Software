@@ -176,7 +176,6 @@ export interface HeaderMapping {
   label: string;
   excelHeader: string;
   required: boolean;
-  calc?: '' | '+' | '-' | 'x' | '/' | '%';
 }
 
 export interface AdminAccess {
