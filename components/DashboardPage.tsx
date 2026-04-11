@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { storageService } from '../services/storageService';
-import { DriverSummary, GlobalSummary } from '../types';
+import { DailyEntry, DriverSummary, GlobalSummary } from '../types';
 import { Users, Banknote, Fuel, TrendingDown, AlertCircle, ArrowUpRight, ArrowDownRight, Wallet, ExternalLink } from 'lucide-react';
 import NetCalculationPopup from './NetCalculationPopup';
 import { useNavigate } from 'react-router-dom';
@@ -50,6 +50,8 @@ const DashboardPage: React.FC = () => {
   const [filterDriver, setFilterDriver] = useState('');
   const [showAllDrivers, setShowAllDrivers] = useState(false);
   const [hiddenDrivers, setHiddenDrivers] = useState<string[]>(() => loadHiddenDrivers());
+  const [analyticsPeriod, setAnalyticsPeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+  const [analyticsEntries, setAnalyticsEntries] = useState<DailyEntry[]>([]);
   const [calcPopup, setCalcPopup] = useState<{
     metric: 'netPayout' | 'netBalance';
     netValue: number;
@@ -70,9 +72,11 @@ const DashboardPage: React.FC = () => {
 
     try {
       const { summaries: driverSummaries } = await storageService.getDriverBalanceSummaries();
+      const recentEntries = await storageService.getDailyEntries();
       const computedGlobal = buildGlobalSummary(driverSummaries || []);
 
       setSummaries(driverSummaries || []);
+      setAnalyticsEntries(recentEntries || []);
       setGlobal(computedGlobal);
     } finally {
       setLoading(false);
@@ -164,6 +168,41 @@ const DashboardPage: React.FC = () => {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(val);
   };
 
+  const periodEntries = (() => {
+    const now = new Date();
+    const start = new Date(now);
+    if (analyticsPeriod === 'daily') start.setDate(now.getDate() - 1);
+    if (analyticsPeriod === 'weekly') start.setDate(now.getDate() - 7);
+    if (analyticsPeriod === 'monthly') start.setDate(now.getDate() - 30);
+    const iso = start.toISOString().slice(0, 10);
+    return analyticsEntries.filter((entry) => entry.date >= iso);
+  })();
+
+  const periodMetrics = periodEntries.reduce((acc, entry) => {
+    acc.revenue += Number(entry.collection || 0);
+    acc.cost += Number(entry.rent || 0) + Number(entry.fuel || 0) + Math.max(0, Number(entry.payout || 0));
+    acc.profit += Number(entry.collection || 0) - Number(entry.rent || 0) - Number(entry.fuel || 0) - Number(entry.payout || 0) + Number(entry.due || 0);
+    if (entry.due < 0) acc.lossAlerts += 1;
+    return acc;
+  }, { revenue: 0, cost: 0, profit: 0, lossAlerts: 0 });
+
+  const previousMetrics = (() => {
+    const now = new Date();
+    const windowDays = analyticsPeriod === 'daily' ? 1 : analyticsPeriod === 'weekly' ? 7 : 30;
+    const end = new Date(now);
+    end.setDate(now.getDate() - windowDays);
+    const start = new Date(end);
+    start.setDate(end.getDate() - windowDays);
+    const startIso = start.toISOString().slice(0, 10);
+    const endIso = end.toISOString().slice(0, 10);
+    const entries = analyticsEntries.filter((entry) => entry.date >= startIso && entry.date < endIso);
+    return entries.reduce((acc, entry) => {
+      acc.revenue += Number(entry.collection || 0);
+      acc.profit += Number(entry.collection || 0) - Number(entry.rent || 0) - Number(entry.fuel || 0) - Number(entry.payout || 0) + Number(entry.due || 0);
+      return acc;
+    }, { revenue: 0, profit: 0 });
+  })();
+
   if (loading) return (
     <div className="flex h-full min-h-[400px] items-center justify-center">
       <div className="flex flex-col items-center gap-3">
@@ -195,6 +234,35 @@ const DashboardPage: React.FC = () => {
            Live Data
         </div>
       </div>
+
+      <section className="md:hidden space-y-3 sticky top-16 z-20">
+        <div className="bg-white rounded-2xl border border-slate-200 p-3 shadow-sm">
+          <div className="flex gap-2">
+            {(['daily', 'weekly', 'monthly'] as const).map((period) => (
+              <button key={period} onClick={() => setAnalyticsPeriod(period)} className={`flex-1 min-h-11 rounded-xl text-xs font-bold capitalize border ${analyticsPeriod === period ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-700 border-slate-200'}`}>{period}</button>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
+            <button onClick={() => navigate('/app/revenue')} className="text-left rounded-xl border border-slate-200 p-3">
+              <p className="text-slate-500">Revenue</p><p className="font-bold text-slate-900">{formatCurrency(periodMetrics.revenue)}</p>
+            </button>
+            <button onClick={() => navigate('/app/revenue')} className="text-left rounded-xl border border-slate-200 p-3">
+              <p className="text-slate-500">Cost</p><p className="font-bold text-slate-900">{formatCurrency(periodMetrics.cost)}</p>
+            </button>
+            <button onClick={() => navigate('/app/driver-balances')} className="text-left rounded-xl border border-slate-200 p-3">
+              <p className="text-slate-500">Profit</p><p className={`font-bold ${periodMetrics.profit < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{formatCurrency(periodMetrics.profit)}</p>
+            </button>
+            <button onClick={() => navigate('/app/daily')} className="text-left rounded-xl border border-slate-200 p-3">
+              <p className="text-slate-500">Loss Alerts</p><p className="font-bold text-rose-600">{periodMetrics.lossAlerts}</p>
+            </button>
+          </div>
+          <div className="mt-3 rounded-xl bg-slate-50 border border-slate-200 p-3 text-xs">
+            <p className="font-semibold text-slate-700">What changed?</p>
+            <p className="text-slate-600 mt-1">Revenue {previousMetrics.revenue === 0 ? 'has no previous baseline' : `${periodMetrics.revenue >= previousMetrics.revenue ? 'increased' : 'decreased'} by ${formatCurrency(Math.abs(periodMetrics.revenue - previousMetrics.revenue))}`}</p>
+            <p className="text-slate-600">Profit {previousMetrics.profit === 0 ? 'has no previous baseline' : `${periodMetrics.profit >= previousMetrics.profit ? 'improved' : 'declined'} by ${formatCurrency(Math.abs(periodMetrics.profit - previousMetrics.profit))}`}</p>
+          </div>
+        </div>
+      </section>
 
       {/* Global Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
