@@ -169,23 +169,13 @@ export interface CompanyWeeklySummary {
   importedAt: string;
   note?: string;
   rows: CompanySummaryRow[];
-  mappingSnapshot?: HeaderMapping[];
-  importDiagnostics?: {
-    includedFields: string[];
-    excludedFields: string[];
-    configuredCheckField?: string;
-    configuredCheckTolerance?: number;
-  };
 }
-
-export type CalcOperator = '+' | '-' | 'x' | '%';
 
 export interface HeaderMapping {
   internalKey: string;
   label: string;
   excelHeader: string;
   required: boolean;
-  calc?: CalcOperator | '';
 }
 
 export interface AdminAccess {

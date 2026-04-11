@@ -1,51 +1,14 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { storageService } from '../services/storageService';
-import { RentalSlab, CompanyWeeklySummary, CompanySummaryRow, HeaderMapping, CalcOperator } from '../types';
+import { RentalSlab, CompanyWeeklySummary, CompanySummaryRow, HeaderMapping } from '../types';
 import { Briefcase, Save, Plus, Trash2, Edit3, X, Settings, ChevronDown, ChevronUp, Upload, FileText, AlertTriangle, CheckCircle, Calendar, Eye, Table, RefreshCcw } from 'lucide-react';
 
 declare const XLSX: any;
-let xlsxScriptPromise: Promise<void> | null = null;
-
-const ensureXLSXLoaded = async () => {
-  if (typeof XLSX !== 'undefined') return;
-  if (!xlsxScriptPromise) {
-    xlsxScriptPromise = new Promise<void>((resolve, reject) => {
-      const existingScript = document.querySelector('script[data-xlsx-loader="true"]') as HTMLScriptElement | null;
-      if (existingScript) {
-        existingScript.addEventListener('load', () => resolve(), { once: true });
-        existingScript.addEventListener('error', () => reject(new Error('Failed to load XLSX library')), { once: true });
-        return;
-      }
-      const script = document.createElement('script');
-      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-      script.async = true;
-      script.dataset.xlsxLoader = 'true';
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error('Failed to load XLSX library'));
-      document.head.appendChild(script);
-    });
-  }
-  await xlsxScriptPromise;
-};
-
-const NUMERIC_INTERNAL_KEYS = new Set([
-  'onroadDays', 'dailyRentApplied', 'weeklyIndemnityFees', 'netWeeklyLeaseRental', 'performanceDay', 'uberTrips',
-  'totalEarning', 'uberCashCollection', 'toll', 'driverSubscriptionCharge', 'uberIncentive', 'uberWeekOs',
-  'olaWeekOs', 'vehicleLevelAdjustment', 'tds', 'challan', 'accident', 'deadMile', 'currentOs'
-]);
-
-type MissingValueIssue = {
-  rowNumber: number;
-  vehicleNumber: string;
-  internalKey: keyof CompanySummaryRow;
-  label: string;
-};
 
 const CompanySettlementPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null); // New Error State
-  const [isXLSXReady, setIsXLSXReady] = useState<boolean>(typeof XLSX !== 'undefined');
   const [slabs, setSlabs] = useState<RentalSlab[]>([]);
   const [headerMappings, setHeaderMappings] = useState<HeaderMapping[]>([]);
   
@@ -77,36 +40,14 @@ const CompanySettlementPage: React.FC = () => {
   const [pendingData, setPendingData] = useState<CompanySummaryRow[] | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [canBypassErrors, setCanBypassErrors] = useState(false);
-  const [missingValueIssues, setMissingValueIssues] = useState<MissingValueIssue[]>([]);
-  const [missingValueDraftRows, setMissingValueDraftRows] = useState<CompanySummaryRow[] | null>(null);
 
   // Viewer/Editor State
   const [selectedSummary, setSelectedSummary] = useState<CompanyWeeklySummary | null>(null);
   const [isEditingSummary, setIsEditingSummary] = useState(false);
   const [tempSummaryRows, setTempSummaryRows] = useState<CompanySummaryRow[]>([]);
-  const [latestImportDiagnostics, setLatestImportDiagnostics] = useState<CompanyWeeklySummary['importDiagnostics'] | undefined>(undefined);
 
   useEffect(() => {
     loadData();
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    ensureXLSXLoaded()
-      .then(() => {
-        if (active) setIsXLSXReady(true);
-      })
-      .catch((error: any) => {
-        console.error(error?.message || 'Failed to load XLSX library');
-        if (active) {
-          setErrors(['Excel parser failed to load. Please check your internet connection and refresh.']);
-          setIsXLSXReady(false);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
   }, []);
 
   const loadData = async () => {
@@ -272,42 +213,10 @@ const CompanySettlementPage: React.FC = () => {
       setTempMappings(newM);
   };
 
-  const handleRequiredChange = (index: number, required: boolean) => {
-      const newM = [...tempMappings];
-      newM[index].required = required;
-      if (!required) newM[index].calc = '';
-      setTempMappings(newM);
-  };
-
-  const handleCalcChange = (index: number, calc: '' | CalcOperator) => {
-      const newM = [...tempMappings];
-      newM[index].calc = calc;
-      setTempMappings(newM);
-  };
-
   const saveHeaderConfig = async () => {
-      const configErrors: string[] = [];
-      tempMappings.forEach((m) => {
-          const isNumeric = NUMERIC_INTERNAL_KEYS.has(m.internalKey);
-          const calc = (m.calc || '') as '' | CalcOperator;
-          if (!m.required && calc) {
-              configErrors.push(`${m.label}: Calc must be blank when Required is NO.`);
-          }
-          if (m.required && isNumeric && !calc) {
-              configErrors.push(`${m.label}: Calc is mandatory when Required is YES.`);
-          }
-          if (!isNumeric && calc) {
-              configErrors.push(`${m.label}: Calc is not allowed for non-numeric fields.`);
-          }
-      });
-      if (configErrors.length > 0) {
-          setErrors(configErrors);
-          return;
-      }
       await storageService.saveHeaderMappings(tempMappings);
       setHeaderMappings(tempMappings);
       setIsConfiguringHeaders(false);
-      setErrors([]);
   };
 
   // --- COMPANY SUMMARY HANDLERS ---
@@ -316,75 +225,12 @@ const CompanySettlementPage: React.FC = () => {
       if (e.target.files?.[0]) {
           setCurrentWeekFile(e.target.files[0]);
           setErrors([]); // Clear errors on new file
-          setMissingValueIssues([]);
-          setMissingValueDraftRows(null);
           e.target.value = ''; 
       }
   };
 
-  const hasValue = (val: any) => !(val === null || val === undefined || String(val).trim() === '');
-
-  const applyConfiguredCalculation = (row: CompanySummaryRow) => {
-      let runningTotal = 0;
-      headerMappings.forEach((mapping) => {
-          if (!mapping.required || !mapping.calc || !NUMERIC_INTERNAL_KEYS.has(mapping.internalKey)) return;
-          const value = Number((row as any)[mapping.internalKey] ?? 0);
-          switch (mapping.calc) {
-              case '+': runningTotal += value; break;
-              case '-': runningTotal -= value; break;
-              case 'x': runningTotal *= value; break;
-              case '%': runningTotal += (runningTotal * value) / 100; break;
-              default: break;
-          }
-      });
-      return runningTotal;
-  };
-
-  const buildImportDiagnostics = (): CompanyWeeklySummary['importDiagnostics'] => ({
-      includedFields: headerMappings.filter(m => m.required).map(m => m.label),
-      excludedFields: headerMappings.filter(m => !m.required).map(m => m.label),
-      configuredCheckField: 'Current O/S',
-      configuredCheckTolerance: 2
-  });
-
-  const updateMissingDraftValue = (rowNumber: number, key: keyof CompanySummaryRow, value: string) => {
-      if (!missingValueDraftRows) return;
-      const idx = rowNumber - 1;
-      const next = [...missingValueDraftRows];
-      if (!next[idx]) return;
-      if (key === 'vehicleNumber') {
-          (next[idx] as any)[key] = value;
-      } else {
-          const n = Number(value);
-          (next[idx] as any)[key] = Number.isFinite(n) ? n : 0;
-      }
-      setMissingValueDraftRows(next);
-  };
-
-  const applyMissingValueCorrections = () => {
-      if (!missingValueDraftRows) return;
-      const unresolved = missingValueIssues.filter(issue => {
-          const row = missingValueDraftRows[issue.rowNumber - 1];
-          if (!row) return true;
-          const value = (row as any)[issue.internalKey];
-          return !hasValue(value);
-      });
-      if (unresolved.length > 0) {
-          setErrors(unresolved.map(u => `Row ${u.rowNumber} (${u.vehicleNumber || 'Unknown Vehicle'}): ${u.label} is still missing.`));
-          return;
-      }
-      setErrors([]);
-      setMissingValueIssues([]);
-      setMissingValueDraftRows(null);
-      setPendingData(missingValueDraftRows);
-      continueValidations(missingValueDraftRows);
-  };
-
   const processSummaryFile = async () => {
       if (!currentWeekFile) return;
-      setLatestImportDiagnostics(undefined);
-      setMissingValueIssues([]);
-      setMissingValueDraftRows(null);
       
       // Strict Date Check
       if (!selectedDate || !computedWeek.start) {
@@ -421,10 +267,6 @@ const CompanySettlementPage: React.FC = () => {
   };
 
   const executeFileProcessing = () => {
-      if (!isXLSXReady || typeof XLSX === 'undefined') {
-          setErrors(['Excel parser is still loading. Please wait a moment and try again.']);
-          return;
-      }
       setProcessingSummary(true);
       setErrors([]);
       setCanBypassErrors(false);
@@ -509,36 +351,22 @@ const CompanySettlementPage: React.FC = () => {
           };
 
           // Normalize Data using Mappings
-          const rowIssues: MissingValueIssue[] = [];
           const rows: CompanySummaryRow[] = rawRows
-            .map((r: any, index: number) => {
+            .map((r: any) => {
                 // Check if row is empty/invalid
                 const vehicleKey = headerMappings.find(m => m.internalKey === 'vehicleNumber')?.excelHeader || '';
                 if (!r[vehicleKey]) return null;
+
+                const normalizedRow = new Map<string, any>();
+                Object.keys(r).forEach(key => normalizedRow.set(normalizeHeader(key), r[key]));
 
                 const newRow: any = {};
                 headerMappings.forEach(mapping => {
                     const actualHeader = headerLookup.get(mapping.excelHeader.trim().toLowerCase()) ?? mapping.excelHeader;
                     const rawVal = r[actualHeader];
-                    if (mapping.required && !hasValue(rawVal)) {
-                        rowIssues.push({
-                            rowNumber: index + 1,
-                            vehicleNumber: String(r[vehicleKey] || ''),
-                            internalKey: mapping.internalKey as keyof CompanySummaryRow,
-                            label: mapping.label
-                        });
-                    }
                     if (mapping.internalKey === 'vehicleNumber') {
                          newRow[mapping.internalKey] = String(rawVal || '');
                     } else {
-                         if (mapping.required && NUMERIC_INTERNAL_KEYS.has(mapping.internalKey) && hasValue(rawVal) && isNaN(Number(String(rawVal).replace(/,/g, '')))) {
-                            rowIssues.push({
-                                rowNumber: index + 1,
-                                vehicleNumber: String(r[vehicleKey] || ''),
-                                internalKey: mapping.internalKey as keyof CompanySummaryRow,
-                                label: `${mapping.label} (must be numeric)`
-                            });
-                         }
                          newRow[mapping.internalKey] = getNum(rawVal);
                     }
                 });
@@ -552,16 +380,6 @@ const CompanySettlementPage: React.FC = () => {
               setPendingData(null);
               return;
           }
-
-          if (rowIssues.length > 0) {
-              setMissingValueIssues(rowIssues);
-              setMissingValueDraftRows(rows);
-              setErrors(rowIssues.map(i => `Row ${i.rowNumber} (${i.vehicleNumber || 'Unknown Vehicle'}) → Missing required value: ${i.label}`));
-              setProcessingSummary(false);
-              return;
-          }
-
-          setLatestImportDiagnostics(buildImportDiagnostics());
 
           // --- VALIDATION 2: PENALTY CHECK (SOFT) ---
           const penaltyRows = rows.filter(r => r.tds > 0 || r.challan > 0 || r.accident > 0 || r.deadMile > 0);
@@ -634,13 +452,6 @@ const CompanySettlementPage: React.FC = () => {
                Formula: ${row.netWeeklyLeaseRental} (Rent) + ${row.uberWeekOs} (Uber) + ${row.olaWeekOs || 0} (Ola)
                Expected: ${expectedCurrentOs.toFixed(2)}, Found: ${row.currentOs}`);
           }
-
-          const configuredTotal = applyConfiguredCalculation(row);
-          if (Math.abs(configuredTotal - row.currentOs) > 2) {
-              newErrors.push(`Configured Calc Mismatch for ${row.vehicleNumber}:
-                Required fields calc result: ${configuredTotal.toFixed(2)}
-                Current O/S in file: ${Number(row.currentOs || 0).toFixed(2)}`);
-          }
       });
 
       if (newErrors.length > 0) {
@@ -683,10 +494,6 @@ const CompanySettlementPage: React.FC = () => {
           const expectedCurrentOs = row.netWeeklyLeaseRental + row.uberWeekOs + (row.olaWeekOs || 0);
           if (Math.abs(expectedCurrentOs - row.currentOs) > 5) 
               newErrors.push(`Current O/S Error ${row.vehicleNumber}: ${row.netWeeklyLeaseRental} + ${row.uberWeekOs} + ${row.olaWeekOs||0} = ${expectedCurrentOs} vs ${row.currentOs}`);
-
-          const configuredTotal = applyConfiguredCalculation(row);
-          if (Math.abs(configuredTotal - row.currentOs) > 2)
-              newErrors.push(`Configured Calc Error ${row.vehicleNumber}: Required fields result ${configuredTotal.toFixed(2)} vs Current O/S ${Number(row.currentOs || 0).toFixed(2)}`);
       });
 
       if (newErrors.length > 0) {
@@ -713,8 +520,6 @@ const CompanySettlementPage: React.FC = () => {
       setProcessingSummary(false);
       setPendingData(null);
       setCanBypassErrors(false);
-      setMissingValueIssues([]);
-      setMissingValueDraftRows(null);
       setCurrentWeekFile(null);
       if (fileInputRef.current) {
           fileInputRef.current.value = '';
@@ -730,18 +535,13 @@ const CompanySettlementPage: React.FC = () => {
           fileName: currentWeekFile?.name || 'Unknown',
           importedAt: new Date().toISOString(),
           note: currentWeekNote,
-          rows: rows,
-          mappingSnapshot: JSON.parse(JSON.stringify(headerMappings)),
-          importDiagnostics: latestImportDiagnostics || buildImportDiagnostics()
+          rows: rows
       };
       
       await storageService.saveCompanySummary(newSummary);
       setProcessingSummary(false);
       setPendingData(null);
       setCanBypassErrors(false);
-      setMissingValueIssues([]);
-      setMissingValueDraftRows(null);
-      setLatestImportDiagnostics(undefined);
 
       // RESET FORM STATE COMPLETELY
       setCurrentWeekFile(null);
@@ -819,7 +619,6 @@ const CompanySettlementPage: React.FC = () => {
                                   <th className="px-4 py-3 border-b">Standard Name (Internal)</th>
                                   <th className="px-4 py-3 border-b">Excel Header Name (Editable)</th>
                                   <th className="px-4 py-3 border-b text-center">Required</th>
-                                  <th className="px-4 py-3 border-b text-center">Calc</th>
                               </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
@@ -835,31 +634,9 @@ const CompanySettlementPage: React.FC = () => {
                                           />
                                       </td>
                                       <td className="px-4 py-3 text-center">
-                                          <label className="inline-flex items-center gap-2 cursor-pointer">
-                                              <input
-                                                type="checkbox"
-                                                checked={m.required}
-                                                onChange={e => handleRequiredChange(i, e.target.checked)}
-                                                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              {m.required ?
-                                                  <span className="bg-rose-100 text-rose-700 px-2 py-0.5 rounded text-[10px] font-bold">YES</span>
-                                                  : <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded text-[10px]">NO</span>}
-                                          </label>
-                                      </td>
-                                      <td className="px-4 py-3 text-center">
-                                          <select
-                                            value={m.calc || ''}
-                                            onChange={e => handleCalcChange(i, e.target.value as '' | CalcOperator)}
-                                            disabled={!m.required || !NUMERIC_INTERNAL_KEYS.has(m.internalKey)}
-                                            className="px-2 py-1.5 border border-slate-300 rounded-lg text-xs bg-white disabled:bg-slate-100 disabled:text-slate-400"
-                                          >
-                                            <option value="">Blank</option>
-                                            <option value="+">+</option>
-                                            <option value="-">-</option>
-                                            <option value="x">x</option>
-                                            <option value="%">%</option>
-                                          </select>
+                                          {m.required ? 
+                                              <span className="bg-rose-100 text-rose-700 px-2 py-0.5 rounded text-[10px] font-bold">YES</span> 
+                                              : <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded text-[10px]">NO</span>}
                                       </td>
                                   </tr>
                               ))}
@@ -1020,17 +797,12 @@ const CompanySettlementPage: React.FC = () => {
                       </div>
                       <button 
                           onClick={processSummaryFile}
-                          disabled={!currentWeekFile || processingSummary || !selectedDate || weekExists || !isXLSXReady}
-                          className={`w-full py-3 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all ${(!currentWeekFile || !selectedDate || weekExists || !isXLSXReady) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200'}`}
+                          disabled={!currentWeekFile || processingSummary || !selectedDate || weekExists}
+                          className={`w-full py-3 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all ${(!currentWeekFile || !selectedDate || weekExists) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200'}`}
                       >
                           {processingSummary ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"/> : <CheckCircle size={20} />}
                           Import & Validate
                       </button>
-                      {!isXLSXReady && (
-                          <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 text-center font-medium">
-                              Loading Excel parser… please wait.
-                          </div>
-                      )}
                       {weekExists && (
                           <div className="flex items-center gap-2 text-rose-600 text-xs font-bold bg-rose-50 p-2 rounded-lg justify-center">
                               <AlertTriangle size={14}/>
@@ -1061,47 +833,6 @@ const CompanySettlementPage: React.FC = () => {
                               >
                                   Terminate Import
                               </button>
-                          </div>
-                      )}
-                      {missingValueIssues.length > 0 && missingValueDraftRows && (
-                          <div className="mt-4 border border-amber-200 bg-amber-50 rounded-lg p-3">
-                              <p className="text-xs font-bold text-amber-800 mb-3">
-                                Required values are missing. Add values manually below or terminate import.
-                              </p>
-                              <div className="space-y-2 max-h-56 overflow-auto">
-                                {missingValueIssues.slice(0, 60).map((issue, idx) => {
-                                  const row = missingValueDraftRows[issue.rowNumber - 1];
-                                  const currentValue = row ? (row as any)[issue.internalKey] : '';
-                                  return (
-                                    <div key={`${issue.rowNumber}-${String(issue.internalKey)}-${idx}`} className="grid grid-cols-1 md:grid-cols-[1.3fr_1fr_auto] gap-2 items-center">
-                                      <div className="text-[11px] text-amber-900">
-                                        Row {issue.rowNumber} · {issue.vehicleNumber || 'Unknown Vehicle'} · {issue.label}
-                                      </div>
-                                      <input
-                                        type={issue.internalKey === 'vehicleNumber' ? 'text' : 'number'}
-                                        value={currentValue ?? ''}
-                                        onChange={(e) => updateMissingDraftValue(issue.rowNumber, issue.internalKey, e.target.value)}
-                                        className="px-2 py-1 text-xs border border-amber-300 rounded bg-white"
-                                      />
-                                      <span className="text-[10px] text-amber-700 font-semibold">Required</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                              <div className="mt-3 flex flex-col sm:flex-row gap-2">
-                                <button
-                                  onClick={applyMissingValueCorrections}
-                                  className="flex-1 px-4 py-2 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 transition-colors"
-                                >
-                                  Save Values & Continue
-                                </button>
-                                <button
-                                  onClick={() => handleErrorResolution('terminate')}
-                                  className="flex-1 px-4 py-2 bg-white border border-amber-300 text-amber-800 font-bold rounded-lg hover:bg-amber-100 transition-colors"
-                                >
-                                  Terminate Import
-                                </button>
-                              </div>
                           </div>
                       )}
                   </div>
@@ -1185,18 +916,6 @@ const CompanySettlementPage: React.FC = () => {
                         <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-xl mb-4 text-sm font-medium flex items-center gap-2">
                             <AlertTriangle size={16} />
                             Warning: Editing raw values may break calculated fields (Net Lease, Wallet O/S). Ensure consistency manually.
-                        </div>
-                    )}
-                    {selectedSummary.importDiagnostics && (
-                        <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <div className="p-3 rounded-xl border border-emerald-100 bg-emerald-50">
-                                <p className="text-[11px] uppercase tracking-wide text-emerald-700 font-bold mb-1">Included in Calculation</p>
-                                <p className="text-xs text-emerald-900">{selectedSummary.importDiagnostics.includedFields.join(', ') || 'None'}</p>
-                            </div>
-                            <div className="p-3 rounded-xl border border-slate-200 bg-slate-50">
-                                <p className="text-[11px] uppercase tracking-wide text-slate-700 font-bold mb-1">Ghosted / Excluded</p>
-                                <p className="text-xs text-slate-700">{selectedSummary.importDiagnostics.excludedFields.join(', ') || 'None'}</p>
-                            </div>
                         </div>
                     )}
                     <div className="overflow-x-auto">
