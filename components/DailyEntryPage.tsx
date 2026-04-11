@@ -5,9 +5,10 @@ import { storageService } from '../services/storageService';
 import { useLiveUpdates } from '../lib/useLiveUpdates';
 import { isDriverUnavailableOnDate } from '../lib/leaveUtils';
 import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check, AlertOctagon, FileDown } from 'lucide-react';
+import { clearDraft, getCompleteness, getTodayISODate, queueEntry, readDraft, readQueuedEntries, saveDraft, validateEntry } from '../lib/mobileAdmin';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
-const InputField = ({ label, name, type = "text", value, onChange, onKeyDown, placeholder, required = false, className = "", readOnly = false, inputMode }: any) => (
+const InputField = ({ label, name, type = "text", value, onChange, onKeyDown, placeholder, required = false, className = "", readOnly = false, inputMode, onFocus, inputRef }: any) => (
   <div className="flex flex-col gap-1.5">
      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">{label}</label>
      <input 
@@ -18,6 +19,8 @@ const InputField = ({ label, name, type = "text", value, onChange, onKeyDown, pl
        value={value ?? ''}
        onChange={onChange}
        onKeyDown={onKeyDown}
+       onFocus={onFocus}
+       ref={inputRef}
        placeholder={placeholder}
        readOnly={readOnly}
        step="0.01"
@@ -270,13 +273,6 @@ const ColumnFilter: React.FC<ColumnFilterProps> = ({ columnKey, data, activeFilt
 const DailyEntryPage: React.FC = () => {
   const RECENT_DAYS = 60;
   const FALLBACK_LIVE_REFRESH_MS = 60000;
-  const getTodayISODate = () => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
   const normalizeDateValue = (raw?: string | null) => {
     if (!raw) return '';
     const direct = String(raw).trim();
@@ -336,6 +332,13 @@ const DailyEntryPage: React.FC = () => {
   };
   const [formData, setFormData] = useState<Partial<DailyEntry>>(initialFormState);
   const liveRefreshTimerRef = useRef<number | null>(null);
+  const [quickEntryMode, setQuickEntryMode] = useState(true);
+  const [saveAndAddNext, setSaveAndAddNext] = useState(true);
+  const [inlineIssues, setInlineIssues] = useState<ReturnType<typeof validateEntry>>([]);
+  const [syncState, setSyncState] = useState<'synced' | 'pending' | 'failed' | 'offline'>(() => navigator.onLine ? 'synced' : 'offline');
+  const [showRecoveryNotice, setShowRecoveryNotice] = useState(false);
+  const [showConfirmSummary, setShowConfirmSummary] = useState(false);
+  const firstInputRef = useRef<HTMLInputElement>(null);
 
   const getISODateDaysAgo = (days: number) => {
     const date = new Date();
@@ -458,6 +461,62 @@ const DailyEntryPage: React.FC = () => {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    const savedDraft = readDraft();
+    if (savedDraft?.driver || savedDraft?.collection || savedDraft?.rent) {
+      setFormData(prev => ({ ...prev, ...savedDraft }));
+      setIsFormOpen(true);
+      setShowRecoveryNotice(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isFormOpen) return;
+    saveDraft(formData);
+  }, [formData, isFormOpen]);
+
+  useEffect(() => {
+    if (!isFormOpen || !quickEntryMode) return;
+    const timer = window.setTimeout(() => firstInputRef.current?.focus(), 80);
+    return () => window.clearTimeout(timer);
+  }, [isFormOpen, quickEntryMode]);
+
+  const flushQueuedEntries = useCallback(async () => {
+    if (!navigator.onLine) return;
+    const queued = readQueuedEntries();
+    if (!queued.length) {
+      setSyncState('synced');
+      return;
+    }
+    setSyncState('pending');
+    try {
+      for (const queuedEntry of queued) {
+        await storageService.saveDailyEntry(queuedEntry);
+      }
+      localStorage.removeItem('daily_entry_mobile_queue_v1');
+      setSyncState('synced');
+      refreshEntriesOnly();
+    } catch (error) {
+      console.warn('Sync queue failed:', error);
+      setSyncState('failed');
+    }
+  }, [refreshEntriesOnly]);
+
+  useEffect(() => {
+    const onOnline = () => {
+      setSyncState('pending');
+      flushQueuedEntries();
+    };
+    const onOffline = () => setSyncState('offline');
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    flushQueuedEntries();
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, [flushQueuedEntries]);
+
   const { connected: liveUpdatesConnected } = useLiveUpdates((event) => {
     const type = event?.type;
     if (!type || !['daily_entries_changed', 'weekly_wallets_changed', 'drivers_changed', 'leaves_changed'].includes(type)) {
@@ -579,27 +638,43 @@ const DailyEntryPage: React.FC = () => {
     }
   };
 
+  const saveEntryPayload = async (newEntry: DailyEntry, normalizedDate: string) => {
+    try {
+      const savedEntry = await storageService.saveDailyEntry(newEntry);
+      setSyncState('synced');
+      if (editingId || !saveAndAddNext) {
+        resetForm();
+      } else {
+        resetFormAfterSave(normalizedDate);
+      }
+      clearDraft();
+      upsertEntry({ ...newEntry, ...savedEntry });
+    } catch (error: any) {
+      console.error('Save daily entry failed:', error);
+      if (!navigator.onLine || /network|failed to fetch/i.test(error?.message || '')) {
+        queueEntry(newEntry);
+        setSyncState('pending');
+        upsertEntry(newEntry);
+        if (editingId || !saveAndAddNext) {
+          resetForm();
+        } else {
+          resetFormAfterSave(normalizedDate);
+        }
+        return;
+      }
+      setSyncState('failed');
+      alert(error?.message || 'Failed to save daily entry. Ensure the driver has only one entry per day.');
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent | React.KeyboardEvent) => {
     if (e.type === 'submit' || (e as React.KeyboardEvent).key === 'Enter') {
         e.preventDefault();
         
         const normalizedDate = normalizeDateValue(formData.date);
-        if (!normalizedDate || !formData.driver) {
-          alert('Date and Driver are mandatory fields.');
-          return;
-        }
-
-        // Explicit Validation for Mandatory Numbers
-        if (formData.collection === undefined || formData.rent === undefined) {
-            alert("Collection and Rent are mandatory fields.");
-            return;
-        }
-
-        const payoutEntered = formData.payout !== undefined && formData.payout !== null && formData.payout !== 0;
-        if (payoutEntered && !formData.payoutDate) {
-            alert('Payout Date is required when a payout amount is entered.');
-            return;
-        }
+        const issues = validateEntry({ ...formData, date: normalizedDate || formData.date }, entries);
+        setInlineIssues(issues);
+        if (issues.some(issue => issue.severity === 'error')) return;
 
         // Check for duplicate entry on same day
         const duplicateEntry = entries.find(entry => 
@@ -638,19 +713,13 @@ const DailyEntryPage: React.FC = () => {
           return;
         }
 
-        try {
-          const savedEntry = await storageService.saveDailyEntry(newEntry);
-
-          if (editingId) {
-            resetForm();
-          } else {
-            resetFormAfterSave(normalizedDate);
-          }
-          upsertEntry({ ...newEntry, ...savedEntry });
-        } catch (error: any) {
-          console.error('Save daily entry failed:', error);
-          alert(error?.message || 'Failed to save daily entry. Ensure the driver has only one entry per day.');
+        if (quickEntryMode && !editingId && (Number(newEntry.collection) > 0 || Number(newEntry.rent) > 0)) {
+          setShowConfirmSummary(true);
+          setFormData(newEntry);
+          return;
         }
+
+        await saveEntryPayload(newEntry, normalizedDate);
     }
   };
 
@@ -689,6 +758,30 @@ const DailyEntryPage: React.FC = () => {
     }
   };
 
+  const handleConfirmAndSave = async () => {
+    const normalizedDate = normalizeDateValue(formData.date);
+    if (!normalizedDate) return;
+    const dayName = new Date(normalizedDate).toLocaleDateString('en-US', { weekday: 'long' });
+    const payload: DailyEntry = {
+      id: formData.id || crypto.randomUUID(),
+      date: normalizedDate,
+      day: dayName,
+      vehicle: formData.vehicle || 'Unknown',
+      driver: formData.driver || 'Unknown',
+      shift: formData.shift || 'Day',
+      rent: Number(formData.rent),
+      collection: Number(formData.collection),
+      fuel: Number(formData.fuel || 0),
+      due: Number(formData.due || 0),
+      payout: Number(formData.payout || 0),
+      payoutDate: formData.payoutDate || undefined,
+      qrCode: formData.qrCode,
+      notes: formData.notes
+    };
+    setShowConfirmSummary(false);
+    await saveEntryPayload(payload, normalizedDate);
+  };
+
   const resetFormAfterSave = (preserveDate: string) => {
     setFormData({
       ...initialFormState,
@@ -719,6 +812,8 @@ const DailyEntryPage: React.FC = () => {
     setFormData(initialFormState);
     setEditingId(null);
     setShowOptionalFields(false);
+    setInlineIssues([]);
+    clearDraft();
     setIsFormOpen(false); 
   };
 
@@ -816,6 +911,23 @@ const DailyEntryPage: React.FC = () => {
       return true;
     });
   }, [drivers, existingDriversForDate, formData.date, formData.driver, leaves]);
+
+  useEffect(() => {
+    if (!quickEntryMode || editingId) return;
+    const lastEntry = entries.find(entry => entry.driver === formData.driver) || entries[0];
+    if (!lastEntry) return;
+    setFormData(prev => ({
+      ...prev,
+      date: prev.date || getTodayISODate(),
+      shift: prev.shift || lastEntry.shift || 'Day',
+      rent: prev.rent ?? lastEntry.rent,
+      fuel: prev.fuel ?? 0,
+      due: prev.due ?? 0,
+      payout: prev.payout ?? 0,
+      vehicle: prev.vehicle || lastEntry.vehicle || '',
+      qrCode: prev.qrCode || lastEntry.qrCode || '',
+    }));
+  }, [quickEntryMode, editingId, entries, formData.driver]);
 
   const handleColumnFilterChange = (key: string, values: string[]) => {
     setColumnFilters(prev => ({
@@ -1016,14 +1128,18 @@ const DailyEntryPage: React.FC = () => {
       setColumnFilters({});
   };
 
+  const completeness = getCompleteness(formData);
+  const warningIssues = inlineIssues.filter(issue => issue.severity === 'warning');
+
   return (
-    <div className="max-w-[1920px] mx-auto space-y-8 pb-20">
+    <div className="max-w-[1920px] mx-auto space-y-5 md:space-y-8 pb-28 md:pb-20">
+      <div className="sticky top-16 md:top-0 z-30 bg-slate-50/95 backdrop-blur border border-slate-100 rounded-2xl p-3 md:p-0 md:border-0 md:bg-transparent md:backdrop-blur-none">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Daily Entries</h2>
-          <p className="text-slate-500 mt-1">Record daily collections and expenses.</p>
+          <h2 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">Daily Entries</h2>
+          <p className="text-slate-500 mt-1 text-sm md:text-base">Quick mobile-first entry with validation guardrails.</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="hidden md:flex items-center gap-3">
           <button
             onClick={handleExportDailyEntries}
             className="bg-white text-indigo-600 border border-indigo-100 px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all hover:border-indigo-200 hover:shadow-md"
@@ -1040,9 +1156,15 @@ const DailyEntryPage: React.FC = () => {
           </button>
         </div>
       </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button onClick={() => setQuickEntryMode(prev => !prev)} className={`px-3 py-2 rounded-full text-xs font-semibold border ${quickEntryMode ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-700 border-slate-200'}`}>Quick Entry {quickEntryMode ? 'On' : 'Off'}</button>
+        <span className="px-3 py-2 rounded-full text-xs font-semibold bg-white border border-slate-200 text-slate-600">Completion {completeness.percent}%</span>
+        <span className={`px-3 py-2 rounded-full text-xs font-semibold border ${syncState === 'synced' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : syncState === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-100' : syncState === 'offline' ? 'bg-slate-100 text-slate-700 border-slate-200' : 'bg-rose-50 text-rose-700 border-rose-100'}`}>Sync: {syncState}</span>
+      </div>
+      </div>
 
       {/* Entry Form */}
-      <div className={`${isFormOpen ? 'block' : 'hidden'} bg-white p-8 rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100 animate-fade-in`}>
+      <div className={`${isFormOpen ? 'block' : 'hidden'} bg-white p-4 md:p-8 rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100 animate-fade-in`}>
         <div className="flex justify-between items-center mb-8 pb-4 border-b border-slate-100">
            <div>
              <h3 className="text-xl font-bold text-slate-800">
@@ -1055,7 +1177,14 @@ const DailyEntryPage: React.FC = () => {
            )}
         </div>
         
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {showRecoveryNotice && (
+          <div className="mb-4 p-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 text-xs font-semibold flex items-center justify-between gap-2">
+            <span>Recovered unsaved draft from this device.</span>
+            <button type="button" onClick={() => { setShowRecoveryNotice(false); clearDraft(); }} className="underline">Discard</button>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
           <InputField label="Date" name="date" type="date" value={formData.date} onChange={handleInputChange} required />
           
           <div className="flex flex-col gap-1.5">
@@ -1138,7 +1267,7 @@ const DailyEntryPage: React.FC = () => {
           <div className="lg:col-span-4 h-px bg-slate-100 my-2"></div>
 
           {/* Primary Financials */}
-          <InputField label="Collection (₹)" name="collection" type="number" value={formData.collection} onChange={handleInputChange} onKeyDown={handleSubmit} required className="font-bold text-emerald-700 text-lg" placeholder="Enter Amount" />
+          <InputField label="Collection (₹)" name="collection" type="number" value={formData.collection} onChange={handleInputChange} onKeyDown={handleSubmit} required className="font-bold text-emerald-700 text-lg" placeholder="Enter Amount" inputRef={firstInputRef} onFocus={(event: React.FocusEvent<HTMLInputElement>) => event.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'center' })} />
           
           <div className="relative">
              <InputField label="Rent (₹)" name="rent" type="number" value={formData.rent} onChange={handleInputChange} required placeholder="Enter Rent" />
@@ -1187,7 +1316,16 @@ const DailyEntryPage: React.FC = () => {
              <textarea name="notes" placeholder="Optional notes for this entry..." value={formData.notes || ''} onChange={handleInputChange} className="w-full px-4 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-base text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none resize-none h-24" />
           </div>
 
-          <div className="lg:col-span-4 flex justify-end gap-3 mt-6 pt-6 border-t border-slate-100">
+          {inlineIssues.length > 0 && (
+            <div className="lg:col-span-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+              <p className="font-bold mb-1">Review before saving:</p>
+              <ul className="list-disc ml-4 space-y-1">
+                {inlineIssues.map(issue => <li key={`${issue.field}-${issue.message}`}>{issue.message}</li>)}
+              </ul>
+            </div>
+          )}
+
+          <div className="hidden md:flex lg:col-span-4 justify-end gap-3 mt-6 pt-6 border-t border-slate-100">
             <button type="button" onClick={resetForm} className="px-5 py-2.5 text-slate-600 font-medium hover:bg-slate-100 rounded-xl transition-colors">Cancel</button>
             <button type="submit" className="px-8 py-2.5 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all active:scale-95">
               {editingId ? 'Update Record' : 'Save Record'}
@@ -1195,6 +1333,24 @@ const DailyEntryPage: React.FC = () => {
           </div>
         </form>
       </div>
+
+      {showConfirmSummary && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-end md:items-center justify-center p-3">
+          <div className="w-full md:max-w-md bg-white rounded-2xl p-5 space-y-3">
+            <h4 className="font-bold text-slate-900">Confirm Entry</h4>
+            <div className="text-sm text-slate-600 space-y-1">
+              <p><strong>{formData.driver}</strong> • {formatDate(String(formData.date || ''))}</p>
+              <p>Collection: ₹{Number(formData.collection || 0)}</p>
+              <p>Rent: ₹{Number(formData.rent || 0)} • Fuel: ₹{Number(formData.fuel || 0)}</p>
+              <p>Due: ₹{Number(formData.due || 0)} • Payout: ₹{Number(formData.payout || 0)}</p>
+            </div>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setShowConfirmSummary(false)} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-semibold">Edit</button>
+              <button type="button" onClick={handleConfirmAndSave} className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-semibold">Confirm & Save</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* DUPLICATE WARNING MODAL */}
       {duplicateWarning && (
@@ -1228,6 +1384,21 @@ const DailyEntryPage: React.FC = () => {
               </div>
           </div>
       )}
+
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+12px)]">
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={() => setIsFormOpen(prev => !prev)} className="min-h-11 px-4 rounded-xl border border-slate-200 text-slate-700 font-semibold text-sm">
+            {isFormOpen ? 'Hide' : 'Quick Entry'}
+          </button>
+          <button type="button" onClick={() => setSaveAndAddNext(prev => !prev)} className={`min-h-11 px-3 rounded-xl border text-xs font-semibold ${saveAndAddNext ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-white text-slate-600 border-slate-200'}`}>
+            Save & Add Next
+          </button>
+          <button type="button" onClick={(event) => { setIsFormOpen(true); handleSubmit(event as any); }} className="min-h-11 flex-1 rounded-xl bg-indigo-600 text-white font-semibold">
+            {editingId ? 'Update' : 'Save Entry'}
+          </button>
+        </div>
+        {warningIssues.length > 0 && <p className="mt-2 text-[11px] text-amber-700 font-medium">{warningIssues[0].message}</p>}
+      </div>
 
       {/* Global Filter Bar */}
       <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row gap-5 items-center justify-between">
