@@ -5,6 +5,29 @@ import { RentalSlab, CompanyWeeklySummary, CompanySummaryRow, HeaderMapping, Cal
 import { Briefcase, Save, Plus, Trash2, Edit3, X, Settings, ChevronDown, ChevronUp, Upload, FileText, AlertTriangle, CheckCircle, Calendar, Eye, Table, RefreshCcw } from 'lucide-react';
 
 declare const XLSX: any;
+let xlsxScriptPromise: Promise<void> | null = null;
+
+const ensureXLSXLoaded = async () => {
+  if (typeof XLSX !== 'undefined') return;
+  if (!xlsxScriptPromise) {
+    xlsxScriptPromise = new Promise<void>((resolve, reject) => {
+      const existingScript = document.querySelector('script[data-xlsx-loader="true"]') as HTMLScriptElement | null;
+      if (existingScript) {
+        existingScript.addEventListener('load', () => resolve(), { once: true });
+        existingScript.addEventListener('error', () => reject(new Error('Failed to load XLSX library')), { once: true });
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      script.async = true;
+      script.dataset.xlsxLoader = 'true';
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Failed to load XLSX library'));
+      document.head.appendChild(script);
+    });
+  }
+  await xlsxScriptPromise;
+};
 
 const NUMERIC_INTERNAL_KEYS = new Set([
   'onroadDays', 'dailyRentApplied', 'weeklyIndemnityFees', 'netWeeklyLeaseRental', 'performanceDay', 'uberTrips',
@@ -22,6 +45,7 @@ type MissingValueIssue = {
 const CompanySettlementPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null); // New Error State
+  const [isXLSXReady, setIsXLSXReady] = useState<boolean>(typeof XLSX !== 'undefined');
   const [slabs, setSlabs] = useState<RentalSlab[]>([]);
   const [headerMappings, setHeaderMappings] = useState<HeaderMapping[]>([]);
   
@@ -64,6 +88,25 @@ const CompanySettlementPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    ensureXLSXLoaded()
+      .then(() => {
+        if (active) setIsXLSXReady(true);
+      })
+      .catch((error: any) => {
+        console.error(error?.message || 'Failed to load XLSX library');
+        if (active) {
+          setErrors(['Excel parser failed to load. Please check your internet connection and refresh.']);
+          setIsXLSXReady(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const loadData = async () => {
@@ -378,6 +421,10 @@ const CompanySettlementPage: React.FC = () => {
   };
 
   const executeFileProcessing = () => {
+      if (!isXLSXReady || typeof XLSX === 'undefined') {
+          setErrors(['Excel parser is still loading. Please wait a moment and try again.']);
+          return;
+      }
       setProcessingSummary(true);
       setErrors([]);
       setCanBypassErrors(false);
@@ -973,12 +1020,17 @@ const CompanySettlementPage: React.FC = () => {
                       </div>
                       <button 
                           onClick={processSummaryFile}
-                          disabled={!currentWeekFile || processingSummary || !selectedDate || weekExists}
-                          className={`w-full py-3 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all ${(!currentWeekFile || !selectedDate || weekExists) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200'}`}
+                          disabled={!currentWeekFile || processingSummary || !selectedDate || weekExists || !isXLSXReady}
+                          className={`w-full py-3 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all ${(!currentWeekFile || !selectedDate || weekExists || !isXLSXReady) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200'}`}
                       >
                           {processingSummary ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"/> : <CheckCircle size={20} />}
                           Import & Validate
                       </button>
+                      {!isXLSXReady && (
+                          <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 text-center font-medium">
+                              Loading Excel parser… please wait.
+                          </div>
+                      )}
                       {weekExists && (
                           <div className="flex items-center gap-2 text-rose-600 text-xs font-bold bg-rose-50 p-2 rounded-lg justify-center">
                               <AlertTriangle size={14}/>
