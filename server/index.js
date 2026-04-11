@@ -913,9 +913,13 @@ const initDb = async () => {
         internal_key TEXT PRIMARY KEY,
         label TEXT,
         excel_header TEXT,
-        required BOOLEAN
+        required BOOLEAN,
+        calc_op TEXT
       );
     `);
+    await db.query(`ALTER TABLE header_mappings ADD COLUMN IF NOT EXISTS calc_op TEXT;`);
+    await db.query(`ALTER TABLE company_summaries ADD COLUMN IF NOT EXISTS mapping_snapshot JSONB;`);
+    await db.query(`ALTER TABLE company_summaries ADD COLUMN IF NOT EXISTS import_diagnostics JSONB;`);
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS admin_access (
@@ -2674,7 +2678,7 @@ app.post('/api/rental-slabs/:type', async (req, res) => {
 // --- COMPANY SUMMARIES ---
 app.get('/api/company-summaries', async (req, res) => {
   try {
-    const summaries = await db.query(`SELECT id, to_char(start_date, 'YYYY-MM-DD') as "startDate", to_char(end_date, 'YYYY-MM-DD') as "endDate", file_name as "fileName", imported_at as "importedAt", note FROM company_summaries`);
+    const summaries = await db.query(`SELECT id, to_char(start_date, 'YYYY-MM-DD') as "startDate", to_char(end_date, 'YYYY-MM-DD') as "endDate", file_name as "fileName", imported_at as "importedAt", note, mapping_snapshot as "mappingSnapshot", import_diagnostics as "importDiagnostics" FROM company_summaries`);
     const fullData = await Promise.all(summaries.rows.map(async (s) => {
       try {
           const rows = await db.query(`
@@ -2726,8 +2730,8 @@ app.post('/api/company-summaries', async (req, res) => {
     await client.query('BEGIN');
     await client.query('DELETE FROM company_summaries WHERE id = $1', [s.id]);
     await client.query(
-      'INSERT INTO company_summaries (id, start_date, end_date, file_name, imported_at, note) VALUES ($1, $2, $3, $4, $5, $6)',
-      [s.id, s.startDate, s.endDate, s.fileName, s.importedAt, s.note]
+      'INSERT INTO company_summaries (id, start_date, end_date, file_name, imported_at, note, mapping_snapshot, import_diagnostics) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb)',
+      [s.id, s.startDate, s.endDate, s.fileName, s.importedAt, s.note, JSON.stringify(s.mappingSnapshot || []), JSON.stringify(s.importDiagnostics || {})]
     );
     for (const r of s.rows) {
       await client.query(`
@@ -2850,7 +2854,7 @@ app.post('/api/shifts', async (req, res) => {
 
 app.get('/api/header-mappings', async (req, res) => {
   try {
-    const result = await db.query(`SELECT internal_key as "internalKey", label, excel_header as "excelHeader", required FROM header_mappings`);
+    const result = await db.query(`SELECT internal_key as "internalKey", label, excel_header as "excelHeader", required, calc_op as "calc" FROM header_mappings`);
     res.json(result.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -2858,11 +2862,30 @@ app.get('/api/header-mappings', async (req, res) => {
 app.post('/api/header-mappings', async (req, res) => {
   const mappings = req.body;
   const client = await db.pool.connect();
+  const validOps = new Set(['+', '-', 'x', '%', '']);
+  const numericKeys = new Set([
+    'onroadDays','dailyRentApplied','weeklyIndemnityFees','netWeeklyLeaseRental','performanceDay','uberTrips','totalEarning',
+    'uberCashCollection','toll','driverSubscriptionCharge','uberIncentive','uberWeekOs','olaWeekOs','vehicleLevelAdjustment',
+    'tds','challan','accident','deadMile','currentOs'
+  ]);
   try {
     await client.query('BEGIN');
     await client.query('DELETE FROM header_mappings');
     for (const m of mappings) {
-      await client.query('INSERT INTO header_mappings (internal_key, label, excel_header, required) VALUES ($1, $2, $3, $4)', [m.internalKey, m.label, m.excelHeader, m.required]);
+      const calc = (m.calc || '').trim();
+      if (!validOps.has(calc)) {
+        throw new Error(`Invalid calc operator for "${m.label}". Allowed values are +, -, x, % or blank.`);
+      }
+      if (!m.required && calc) {
+        throw new Error(`Calc must be blank when "${m.label}" is not required.`);
+      }
+      if (m.required && numericKeys.has(m.internalKey) && !calc) {
+        throw new Error(`Calc is mandatory for required numeric field "${m.label}".`);
+      }
+      if (!numericKeys.has(m.internalKey) && calc) {
+        throw new Error(`Calc is not allowed for non-numeric field "${m.label}".`);
+      }
+      await client.query('INSERT INTO header_mappings (internal_key, label, excel_header, required, calc_op) VALUES ($1, $2, $3, $4, $5)', [m.internalKey, m.label, m.excelHeader, m.required, calc || null]);
     }
     await client.query('COMMIT');
     res.json({ success: true });
