@@ -6,19 +6,6 @@ import { Briefcase, Save, Plus, Trash2, Edit3, X, Settings, ChevronDown, Chevron
 
 declare const XLSX: any;
 
-type CalcOperator = '' | '+' | '-' | 'x' | '/' | '%';
-
-interface MissingRequiredValue {
-  id: string;
-  rowIndex: number;
-  excelRowNumber: number;
-  vehicleNumber: string;
-  internalKey: keyof CompanySummaryRow;
-  label: string;
-  excelHeader: string;
-  value: string;
-}
-
 const CompanySettlementPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null); // New Error State
@@ -53,7 +40,6 @@ const CompanySettlementPage: React.FC = () => {
   const [pendingData, setPendingData] = useState<CompanySummaryRow[] | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [canBypassErrors, setCanBypassErrors] = useState(false);
-  const [missingRequiredValues, setMissingRequiredValues] = useState<MissingRequiredValue[]>([]);
 
   // Viewer/Editor State
   const [selectedSummary, setSelectedSummary] = useState<CompanyWeeklySummary | null>(null);
@@ -215,42 +201,6 @@ const CompanySettlementPage: React.FC = () => {
 
   const handleInputChange = (field: keyof RentalSlab, value: any) => setTempSlab(prev => ({ ...prev, [field]: value }));
 
-  const numericKeys = new Set<keyof CompanySummaryRow>([
-      'onroadDays', 'dailyRentApplied', 'weeklyIndemnityFees', 'netWeeklyLeaseRental', 'performanceDay',
-      'uberTrips', 'totalEarning', 'uberCashCollection', 'toll', 'driverSubscriptionCharge', 'uberIncentive',
-      'uberWeekOs', 'olaWeekOs', 'vehicleLevelAdjustment', 'tds', 'challan', 'accident', 'deadMile', 'currentOs'
-  ]);
-
-  const calcOptions: CalcOperator[] = ['', '+', '-', 'x', '/', '%'];
-  const isNumericMapping = (internalKey: string) => numericKeys.has(internalKey as keyof CompanySummaryRow);
-
-  const validateMappingRules = (mappings: HeaderMapping[]): string[] => {
-      const mappingErrors: string[] = [];
-
-      mappings.forEach(mapping => {
-          const calc = (mapping.calc || '').trim() as CalcOperator;
-          const numeric = isNumericMapping(mapping.internalKey);
-
-          if (!mapping.excelHeader.trim()) {
-              mappingErrors.push(`${mapping.label}: Excel Header Name cannot be blank.`);
-          }
-
-          if (!numeric && calc) {
-              mappingErrors.push(`${mapping.label}: Calc is allowed only for numeric fields.`);
-          }
-
-          if (!mapping.required && calc) {
-              mappingErrors.push(`${mapping.label}: Calc must be blank when Required is NO.`);
-          }
-
-          if (mapping.required && numeric && !calc) {
-              mappingErrors.push(`${mapping.label}: Calc is mandatory when Required is YES for numeric fields.`);
-          }
-      });
-
-      return mappingErrors;
-  };
-
   // --- HEADER CONFIGURATION HANDLERS ---
   const openHeaderConfig = () => {
       setTempMappings(JSON.parse(JSON.stringify(headerMappings))); // Deep copy
@@ -263,31 +213,10 @@ const CompanySettlementPage: React.FC = () => {
       setTempMappings(newM);
   };
 
-  const handleRequiredChange = (index: number, required: boolean) => {
-      const newM = [...tempMappings];
-      newM[index].required = required;
-      if (!required) {
-          newM[index].calc = '';
-      }
-      setTempMappings(newM);
-  };
-
-  const handleCalcChange = (index: number, calc: CalcOperator) => {
-      const newM = [...tempMappings];
-      newM[index].calc = calc;
-      setTempMappings(newM);
-  };
-
   const saveHeaderConfig = async () => {
-      const mappingErrors = validateMappingRules(tempMappings);
-      if (mappingErrors.length > 0) {
-          setErrors(mappingErrors);
-          return;
-      }
       await storageService.saveHeaderMappings(tempMappings);
       setHeaderMappings(tempMappings);
       setIsConfiguringHeaders(false);
-      setErrors([]);
   };
 
   // --- COMPANY SUMMARY HANDLERS ---
@@ -323,12 +252,6 @@ const CompanySettlementPage: React.FC = () => {
            return;
       }
 
-      const mappingErrors = validateMappingRules(headerMappings);
-      if (mappingErrors.length > 0) {
-          setErrors(mappingErrors);
-          return;
-      }
-
       executeFileProcessing();
   };
 
@@ -340,7 +263,6 @@ const CompanySettlementPage: React.FC = () => {
           // Terminate
           setCurrentWeekFile(null);
           setErrors([]);
-          setMissingRequiredValues([]);
       }
   };
 
@@ -428,42 +350,22 @@ const CompanySettlementPage: React.FC = () => {
               return isNaN(n) ? 0 : n;
           };
 
-          const hasValue = (val: any) => {
-              if (val === undefined || val === null) return false;
-              if (typeof val === 'string') return val.trim() !== '';
-              return true;
-          };
-
-          const missingIssues: MissingRequiredValue[] = [];
-
           // Normalize Data using Mappings
           const rows: CompanySummaryRow[] = rawRows
-            .map((r: any, rowIdx: number) => {
+            .map((r: any) => {
                 // Check if row is empty/invalid
                 const vehicleKey = headerMappings.find(m => m.internalKey === 'vehicleNumber')?.excelHeader || '';
                 if (!r[vehicleKey]) return null;
+
+                const normalizedRow = new Map<string, any>();
+                Object.keys(r).forEach(key => normalizedRow.set(normalizeHeader(key), r[key]));
 
                 const newRow: any = {};
                 headerMappings.forEach(mapping => {
                     const actualHeader = headerLookup.get(mapping.excelHeader.trim().toLowerCase()) ?? mapping.excelHeader;
                     const rawVal = r[actualHeader];
-                    const internalKey = mapping.internalKey as keyof CompanySummaryRow;
-
-                    if (mapping.required && !hasValue(rawVal)) {
-                        missingIssues.push({
-                            id: `${rowIdx}-${mapping.internalKey}`,
-                            rowIndex: rowIdx,
-                            excelRowNumber: headerRowIndex + rowIdx + 2,
-                            vehicleNumber: String(r[vehicleKey] || `Row ${headerRowIndex + rowIdx + 2}`),
-                            internalKey,
-                            label: mapping.label,
-                            excelHeader: mapping.excelHeader,
-                            value: ''
-                        });
-                    }
-
                     if (mapping.internalKey === 'vehicleNumber') {
-                         newRow[mapping.internalKey] = String(rawVal || '').trim();
+                         newRow[mapping.internalKey] = String(rawVal || '');
                     } else {
                          newRow[mapping.internalKey] = getNum(rawVal);
                     }
@@ -476,16 +378,6 @@ const CompanySettlementPage: React.FC = () => {
               setErrors(["No valid vehicle data found."]);
               setProcessingSummary(false);
               setPendingData(null);
-              return;
-          }
-
-          if (missingIssues.length > 0) {
-              setMissingRequiredValues(missingIssues);
-              setPendingData(rows);
-              setErrors([
-                `Required values are missing in ${missingIssues.length} field(s). Fill them manually to continue or terminate import.`
-              ]);
-              setProcessingSummary(false);
               return;
           }
 
@@ -628,52 +520,10 @@ const CompanySettlementPage: React.FC = () => {
       setProcessingSummary(false);
       setPendingData(null);
       setCanBypassErrors(false);
-      setMissingRequiredValues([]);
       setCurrentWeekFile(null);
       if (fileInputRef.current) {
           fileInputRef.current.value = '';
       }
-  };
-
-  const handleMissingRequiredValueChange = (id: string, value: string) => {
-      setMissingRequiredValues(prev => prev.map(item => item.id === id ? { ...item, value } : item));
-  };
-
-  const applyManualMissingValues = () => {
-      if (!pendingData) return;
-
-      const nextErrors: string[] = [];
-      const updatedRows = [...pendingData];
-
-      missingRequiredValues.forEach(item => {
-          const val = item.value.trim();
-          if (!val) {
-              nextErrors.push(`Row ${item.excelRowNumber} (${item.vehicleNumber}) - ${item.label} cannot be blank.`);
-              return;
-          }
-
-          const isNumeric = numericKeys.has(item.internalKey);
-          if (isNumeric) {
-              const parsed = Number(val);
-              if (Number.isNaN(parsed)) {
-                  nextErrors.push(`Row ${item.excelRowNumber} (${item.vehicleNumber}) - ${item.label} must be numeric.`);
-                  return;
-              }
-              (updatedRows[item.rowIndex] as any)[item.internalKey] = parsed;
-          } else {
-              (updatedRows[item.rowIndex] as any)[item.internalKey] = val;
-          }
-      });
-
-      if (nextErrors.length > 0) {
-          setErrors(nextErrors);
-          return;
-      }
-
-      setMissingRequiredValues([]);
-      setErrors([]);
-      setPendingData(updatedRows);
-      continueValidations(updatedRows);
   };
 
   const finalizeSummarySave = async (rows: CompanySummaryRow[]) => {
@@ -761,7 +611,7 @@ const CompanySettlementPage: React.FC = () => {
                   </div>
                   <div className="flex-1 overflow-auto p-6">
                       <p className="text-sm text-slate-500 mb-4 bg-blue-50 p-3 rounded-lg border border-blue-100">
-                         <strong>Instructions:</strong> Match internal names with Excel headers. Required=YES enforces header + every row value. Calc works only for numeric required fields.
+                         <strong>Instructions:</strong> Match the internal "Standard Name" used in code with the exact "Header Name" found in your Excel files.
                       </p>
                       <table className="w-full text-sm text-left">
                           <thead className="bg-white text-slate-500 uppercase font-bold text-xs sticky top-0">
@@ -769,7 +619,6 @@ const CompanySettlementPage: React.FC = () => {
                                   <th className="px-4 py-3 border-b">Standard Name (Internal)</th>
                                   <th className="px-4 py-3 border-b">Excel Header Name (Editable)</th>
                                   <th className="px-4 py-3 border-b text-center">Required</th>
-                                  <th className="px-4 py-3 border-b text-center">Calc</th>
                               </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
@@ -785,28 +634,9 @@ const CompanySettlementPage: React.FC = () => {
                                           />
                                       </td>
                                       <td className="px-4 py-3 text-center">
-                                          <select
-                                            value={m.required ? 'yes' : 'no'}
-                                            onChange={e => handleRequiredChange(i, e.target.value === 'yes')}
-                                            className="px-2 py-1 border border-slate-300 rounded-md text-xs font-bold"
-                                          >
-                                            <option value="yes">YES</option>
-                                            <option value="no">NO</option>
-                                          </select>
-                                      </td>
-                                      <td className="px-4 py-3 text-center">
-                                          <select
-                                            value={m.calc || ''}
-                                            onChange={e => handleCalcChange(i, e.target.value as CalcOperator)}
-                                            disabled={!m.required || !isNumericMapping(m.internalKey)}
-                                            className="px-2 py-1 border border-slate-300 rounded-md text-xs font-bold disabled:bg-slate-100 disabled:text-slate-400"
-                                          >
-                                            {calcOptions.map(op => (
-                                              <option key={`${m.internalKey}-${op || 'blank'}`} value={op}>
-                                                {op || 'Blank'}
-                                              </option>
-                                            ))}
-                                          </select>
+                                          {m.required ? 
+                                              <span className="bg-rose-100 text-rose-700 px-2 py-0.5 rounded text-[10px] font-bold">YES</span> 
+                                              : <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded text-[10px]">NO</span>}
                                       </td>
                                   </tr>
                               ))}
@@ -1005,58 +835,6 @@ const CompanySettlementPage: React.FC = () => {
                               </button>
                           </div>
                       )}
-                  </div>
-              )}
-
-              {missingRequiredValues.length > 0 && (
-                  <div className="mt-6 border border-amber-200 bg-amber-50 rounded-xl p-4">
-                      <h5 className="text-amber-800 font-bold mb-3 flex items-center gap-2">
-                        <AlertTriangle size={16} />
-                        Missing required values detected
-                      </h5>
-                      <div className="max-h-64 overflow-auto rounded-lg border border-amber-200 bg-white">
-                          <table className="w-full text-xs">
-                              <thead className="bg-amber-100 text-amber-900 sticky top-0">
-                                  <tr>
-                                      <th className="px-2 py-2 text-left">Excel Row</th>
-                                      <th className="px-2 py-2 text-left">Vehicle</th>
-                                      <th className="px-2 py-2 text-left">Header</th>
-                                      <th className="px-2 py-2 text-left">Value</th>
-                                  </tr>
-                              </thead>
-                              <tbody>
-                                  {missingRequiredValues.map(item => (
-                                      <tr key={item.id} className="border-t border-amber-100">
-                                          <td className="px-2 py-2">{item.excelRowNumber}</td>
-                                          <td className="px-2 py-2 font-semibold">{item.vehicleNumber}</td>
-                                          <td className="px-2 py-2">{item.label} ({item.excelHeader})</td>
-                                          <td className="px-2 py-2">
-                                              <input
-                                                value={item.value}
-                                                onChange={e => handleMissingRequiredValueChange(item.id, e.target.value)}
-                                                className="w-full px-2 py-1 border border-amber-300 rounded"
-                                                placeholder="Enter value"
-                                              />
-                                          </td>
-                                      </tr>
-                                  ))}
-                              </tbody>
-                          </table>
-                      </div>
-                      <div className="mt-3 flex gap-2">
-                          <button
-                            onClick={applyManualMissingValues}
-                            className="px-4 py-2 bg-amber-600 text-white rounded-lg font-bold hover:bg-amber-700"
-                          >
-                            Add Values Manually & Continue
-                          </button>
-                          <button
-                            onClick={() => handleErrorResolution('terminate')}
-                            className="px-4 py-2 bg-white border border-amber-300 text-amber-800 rounded-lg font-bold hover:bg-amber-100"
-                          >
-                            Terminate Import
-                          </button>
-                      </div>
                   </div>
               )}
           </div>
