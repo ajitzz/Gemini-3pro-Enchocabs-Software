@@ -812,13 +812,13 @@ const ImportPage: React.FC = () => {
                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
                     <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Quick Register & Continue</p>
                     <input 
-                      className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
+                      className="w-full p-2.5 border border-slate-300 rounded-lg text-base focus:ring-2 focus:ring-indigo-500 outline-none" 
                       placeholder="Driver Name" 
                       value={newDriverName} 
                       onChange={e => setNewDriverName(e.target.value)} 
                     />
                     <input 
-                      className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
+                      className="w-full p-2.5 border border-slate-300 rounded-lg text-base focus:ring-2 focus:ring-indigo-500 outline-none" 
                       placeholder="Mobile (Optional)" 
                       value={newDriverMobile} 
                       onChange={e => setNewDriverMobile(e.target.value)} 

@@ -1854,7 +1854,7 @@ const DriverPortalPage: React.FC = () => {
                               type="date"
                               value={fromDate}
                               onChange={(e) => setFromDate(e.target.value)}
-                              className="text-xs font-semibold border border-slate-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                              className="text-base font-semibold border border-slate-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200"
                           />
                       </div>
                       <div className="flex items-center gap-2">
@@ -1863,7 +1863,7 @@ const DriverPortalPage: React.FC = () => {
                               type="date"
                               value={toDate}
                               onChange={(e) => setToDate(e.target.value)}
-                              className="text-xs font-semibold border border-slate-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                              className="text-base font-semibold border border-slate-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200"
                           />
                       </div>
                       {(fromDate || toDate) && (

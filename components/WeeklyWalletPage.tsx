@@ -19,7 +19,7 @@ const InputField = ({ label, name, type = "text", value, onChange, placeholder, 
        onChange={onChange}
        placeholder={placeholder || "0.00"}
        step="0.01"
-       className={`w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-900 font-medium placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none ${className}`}
+       className={`w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-base text-slate-900 font-medium placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none ${className}`}
      />
   </div>
 );
@@ -438,7 +438,7 @@ const WeeklyWalletPage: React.FC = () => {
                  <div className="lg:col-span-4">
                     <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1 mb-1.5 block">Driver</label>
                     <div className="relative">
-                       <select required name="driver" value={formData.driver} onChange={handleInputChange} className="w-full pl-4 pr-10 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-900 font-bold focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer">
+                       <select required name="driver" value={formData.driver} onChange={handleInputChange} className="w-full pl-4 pr-10 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-900 text-base font-bold focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer">
                           <option value="">Select Driver...</option>
                           {drivers.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
                        </select>
@@ -453,7 +453,7 @@ const WeeklyWalletPage: React.FC = () => {
                          value={selectedDate} 
                          onChange={handleDateChange} 
                          required 
-                         className="flex-1 pl-4 pr-4 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-900 font-medium focus:ring-2 focus:ring-indigo-500 outline-none" 
+                         className="flex-1 pl-4 pr-4 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-900 text-base font-medium focus:ring-2 focus:ring-indigo-500 outline-none" 
                        />
                        <div className="bg-indigo-50 px-3 py-2 rounded-lg border border-indigo-100 min-w-[140px] text-center">
                           <span className="text-[10px] text-indigo-400 font-bold uppercase block">Week Range</span>
@@ -615,7 +615,7 @@ const WeeklyWalletPage: React.FC = () => {
                     <select
                       value={currentWeekIndex}
                       onChange={(e) => setCurrentWeekIndex(Number(e.target.value))}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer appearance-none"
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer appearance-none text-base"
                       title="Select Week"
                     >
                       {weekOptions.map((opt) => (
@@ -646,7 +646,7 @@ const WeeklyWalletPage: React.FC = () => {
               placeholder="Search driver in selected week..."
               value={filterDriver}
               onChange={(e) => setFilterDriver(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
+              className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
             />
             <Search size={18} className="absolute left-3.5 top-3.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
           </div>

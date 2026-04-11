@@ -7,20 +7,21 @@ import { isDriverUnavailableOnDate } from '../lib/leaveUtils';
 import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check, AlertOctagon, FileDown } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
-const InputField = ({ label, name, type = "text", value, onChange, onKeyDown, placeholder, required = false, className = "", readOnly = false }: any) => (
+const InputField = ({ label, name, type = "text", value, onChange, onKeyDown, placeholder, required = false, className = "", readOnly = false, inputMode }: any) => (
   <div className="flex flex-col gap-1.5">
      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">{label}</label>
      <input 
        required={required}
        name={name}
        type={type}
+       inputMode={inputMode || (type === 'number' ? 'decimal' : undefined)}
        value={value ?? ''}
        onChange={onChange}
        onKeyDown={onKeyDown}
        placeholder={placeholder}
        readOnly={readOnly}
        step="0.01"
-       className={`w-full px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none ${className}`}
+       className={`w-full px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 text-base placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none ${className}`}
      />
   </div>
 );
@@ -74,7 +75,7 @@ const GlobalDriverFilter: React.FC<DriverFilterProps> = ({ drivers, selected, on
                   placeholder="Type to search..."
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  className="w-full px-2 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-2 py-1.5 text-base bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
                 />
              </div>
              <div className="max-h-60 overflow-y-auto p-1">
@@ -204,7 +205,7 @@ const ColumnFilter: React.FC<ColumnFilterProps> = ({ columnKey, data, activeFilt
                 placeholder={`Search ${label}...`} 
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-base focus:ring-2 focus:ring-indigo-500 outline-none"
               />
            </div>
            
@@ -1060,7 +1061,7 @@ const DailyEntryPage: React.FC = () => {
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">Driver Name</label>
             <div className="relative">
-              <select required name="driver" value={formData.driver} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none appearance-none cursor-pointer">
+              <select required name="driver" value={formData.driver} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 text-base focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none appearance-none cursor-pointer">
                   <option value="">-- Select Driver --</option>
                   {availableDrivers.map(d => {
                       const onLeave = isDriverOnLeave(d.id);
@@ -1080,7 +1081,7 @@ const DailyEntryPage: React.FC = () => {
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">Shift</label>
             <div className="relative">
-              <select name="shift" value={formData.shift} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none appearance-none cursor-pointer">
+              <select name="shift" value={formData.shift} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 text-base focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none appearance-none cursor-pointer">
                 <option value="Day">Day</option>
                 <option value="Night">Night</option>
               </select>
@@ -1183,7 +1184,7 @@ const DailyEntryPage: React.FC = () => {
 
           <div className="lg:col-span-4 mt-2">
              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1 mb-1.5 block">Notes</label>
-             <textarea name="notes" placeholder="Optional notes for this entry..." value={formData.notes || ''} onChange={handleInputChange} className="w-full px-4 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none resize-none h-24" />
+             <textarea name="notes" placeholder="Optional notes for this entry..." value={formData.notes || ''} onChange={handleInputChange} className="w-full px-4 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-base text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none resize-none h-24" />
           </div>
 
           <div className="lg:col-span-4 flex justify-end gap-3 mt-6 pt-6 border-t border-slate-100">
@@ -1250,14 +1251,14 @@ const DailyEntryPage: React.FC = () => {
                   type="date" 
                   value={filterDateStart} 
                   onChange={e => setFilterDateStart(e.target.value)} 
-                  className="bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl px-3 py-2.5 text-base text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
                 />
                 <span className="text-slate-300">-</span>
                 <input 
                   type="date" 
                   value={filterDateEnd} 
                   onChange={e => setFilterDateEnd(e.target.value)} 
-                  className="bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl px-3 py-2.5 text-base text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
                 />
              </div>
 

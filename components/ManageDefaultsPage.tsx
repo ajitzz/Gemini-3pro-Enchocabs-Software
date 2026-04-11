@@ -216,7 +216,7 @@ const ManageDefaultsPage: React.FC = () => {
                       placeholder="Add Vehicle No." 
                       value={newAssetValue} 
                       onChange={e => setNewAssetValue(e.target.value)} 
-                      className="flex-1 px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                      className="flex-1 px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-base focus:ring-2 focus:ring-indigo-500 outline-none"
                    />
                    <button onClick={() => handleAddAsset('vehicles')} className="bg-slate-900 text-white p-2.5 rounded-xl hover:bg-black transition-colors shadow-lg shadow-slate-900/20"><Plus size={20}/></button>
                 </div>
@@ -241,7 +241,7 @@ const ManageDefaultsPage: React.FC = () => {
                       placeholder="Add QR ID" 
                       value={newAssetValue} 
                       onChange={e => setNewAssetValue(e.target.value)} 
-                      className="flex-1 px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                      className="flex-1 px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-base focus:ring-2 focus:ring-indigo-500 outline-none"
                    />
                    <button onClick={() => handleAddAsset('qrcodes')} className="bg-slate-900 text-white p-2.5 rounded-xl hover:bg-black transition-colors shadow-lg shadow-slate-900/20"><Plus size={20}/></button>
                 </div>
@@ -293,7 +293,7 @@ const ManageDefaultsPage: React.FC = () => {
                                      <select 
                                         value={displayVehicle} 
                                         onChange={e => handleEditChange(d.id, 'vehicle', e.target.value)}
-                                        className="w-full pl-3 pr-8 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
+                                        className="w-full pl-3 pr-8 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-base font-medium focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
                                      >
                                         <option value="">-- None --</option>
                                         {assets.vehicles.map(v => (
@@ -308,7 +308,7 @@ const ManageDefaultsPage: React.FC = () => {
                                      <select 
                                         value={displayQr} 
                                         onChange={e => handleEditChange(d.id, 'qrCode', e.target.value)}
-                                        className="w-full pl-3 pr-8 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
+                                        className="w-full pl-3 pr-8 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-base font-medium focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
                                      >
                                         <option value="">-- None --</option>
                                         {assets.qrCodes.map(q => (
@@ -323,7 +323,7 @@ const ManageDefaultsPage: React.FC = () => {
                                      <select 
                                         value={displayShift} 
                                         onChange={e => handleEditChange(d.id, 'currentShift', e.target.value)}
-                                        className="w-full pl-3 pr-8 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
+                                        className="w-full pl-3 pr-8 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-base font-medium focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
                                      >
                                         <option value="Day">Day</option>
                                         <option value="Night">Night</option>
@@ -337,10 +337,11 @@ const ManageDefaultsPage: React.FC = () => {
                                <td className="px-6 py-4">
                                   <input 
                                      type="number" 
+                                     inputMode="decimal"
                                      value={displayRent || ''} 
                                      placeholder="0"
                                      onChange={e => handleEditChange(d.id, 'defaultRent', parseFloat(e.target.value))}
-                                     className="w-24 px-3 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-sm font-medium text-right focus:ring-2 focus:ring-indigo-500 outline-none"
+                                     className="w-24 px-3 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-base font-medium text-right focus:ring-2 focus:ring-indigo-500 outline-none"
                                   />
                                </td>
                                <td className="px-6 py-4 text-right">

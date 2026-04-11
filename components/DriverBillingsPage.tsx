@@ -634,7 +634,7 @@ const DriverBillingsPage: React.FC = () => {
                       placeholder="Filter drivers..." 
                       value={filterDriver}
                       onChange={(e) => setFilterDriver(e.target.value)}
-                      className="pl-9 pr-4 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all w-full"
+                      className="pl-9 pr-4 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all w-full"
                     />
                     <Search size={14} className="absolute left-3 top-2.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
                   </div>
@@ -793,7 +793,7 @@ const DriverBillingsPage: React.FC = () => {
                                     <select
                                         value={currentWeekIndex}
                                         onChange={(e) => setCurrentWeekIndex(Number(e.target.value))}
-                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer appearance-none"
+                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer appearance-none text-base"
                                         title="Select Week"
                                     >
                                         {weekOptions.map((opt) => (
@@ -824,7 +824,7 @@ const DriverBillingsPage: React.FC = () => {
                           placeholder="Search driver in selected week..." 
                           value={filterDriver}
                           onChange={(e) => setFilterDriver(e.target.value)}
-                          className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
+                          className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
                         />
                         <Search size={18} className="absolute left-3.5 top-3.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
                     </div>
@@ -1048,9 +1048,10 @@ const DriverBillingsPage: React.FC = () => {
                           <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Days Worked</label>
                           <input 
                               type="number" 
+                              inputMode="decimal"
                               value={editFormData.daysWorked}
                               onChange={(e) => setEditFormData({...editFormData, daysWorked: parseFloat(e.target.value) || 0})}
-                              className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
+                              className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 text-base focus:ring-2 focus:ring-indigo-500 outline-none"
                           />
                       </div>
                       
@@ -1058,9 +1059,10 @@ const DriverBillingsPage: React.FC = () => {
                           <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Rent / Day (₹)</label>
                           <input
                               type="number"
+                              inputMode="decimal"
                               value={editFormData.rentPerDay}
                               onChange={(e) => setEditFormData({...editFormData, rentPerDay: parseFloat(e.target.value) || 0})}
-                              className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
+                              className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 text-base focus:ring-2 focus:ring-indigo-500 outline-none"
                           />
                           <p className="text-[10px] text-amber-600 mt-1">This will override standard slab calculations.</p>
                       </div>
@@ -1069,9 +1071,10 @@ const DriverBillingsPage: React.FC = () => {
                           <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Adjustment (₹)</label>
                           <input
                               type="number"
+                              inputMode="decimal"
                               value={editFormData.adjustments}
                               onChange={(e) => setEditFormData({ ...editFormData, adjustments: parseFloat(e.target.value) || 0 })}
-                              className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
+                              className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 text-base focus:ring-2 focus:ring-indigo-500 outline-none"
                           />
                           <p className="text-[10px] text-slate-500 mt-1">Adjustment will be added to the weekly due total.</p>
                       </div>

@@ -5,16 +5,17 @@ import { storageService } from '../services/storageService';
 import { UserPlus, Edit2, Clock, FileText, X, AlertTriangle, ShieldCheck, Users, CheckSquare, Square, AlertOctagon, Utensils, Loader2, Trash2, Archive, RefreshCcw, FileDown, Mail, Eye, EyeOff } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
-const InputField = ({ label, value, onChange, placeholder, type = "text", required = false, className = "" }: any) => (
+const InputField = ({ label, value, onChange, placeholder, type = "text", required = false, className = "", inputMode }: any) => (
   <div className="flex flex-col gap-1.5">
      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">{label}</label>
      <input 
        required={required}
        type={type}
+       inputMode={inputMode || (type === 'number' ? 'decimal' : undefined)}
        value={value}
        onChange={onChange}
        placeholder={placeholder}
-       className={`w-full px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none ${className}`}
+       className={`w-full px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 text-base placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none ${className}`}
      />
   </div>
 );
@@ -507,7 +508,7 @@ const RegistrationPage: React.FC = () => {
                 <textarea 
                     value={driverForm.notes || ''} 
                     onChange={e => setDriverForm({...driverForm, notes: e.target.value})} 
-                    className="w-full px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none resize-none h-24" 
+                    className="w-full px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-base text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none resize-none h-24" 
                     placeholder="General notes about the employee..."
                 />
               </div>
@@ -589,7 +590,7 @@ const RegistrationPage: React.FC = () => {
                   type="date" 
                   value={driverForm.terminationDate || ''} 
                   onChange={e => setDriverForm({...driverForm, terminationDate: e.target.value || undefined})} 
-                  className="w-full px-4 py-2.5 bg-white border border-rose-200 rounded-xl text-rose-700 focus:ring-2 focus:ring-rose-500 outline-none" 
+                  className="w-full px-4 py-2.5 bg-white border border-rose-200 rounded-xl text-rose-700 text-base focus:ring-2 focus:ring-rose-500 outline-none" 
                 />
                 {getLastDailyEntryForFormDriver()?.date ? (
                   <p className="text-[11px] text-rose-500 mt-2 font-medium">
@@ -735,7 +736,7 @@ const RegistrationPage: React.FC = () => {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search by name, mobile, Gmail, vehicle..."
-            className="w-full md:w-96 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full md:w-96 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-base focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
         </div>
         <div className="overflow-x-auto">

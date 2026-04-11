@@ -755,7 +755,7 @@ const DriverLeadsPage: React.FC = () => {
                       value={statusDraft}
                       onChange={(e) => setStatusDraft(e.target.value)}
                       placeholder="Add status"
-                      className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                      className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-indigo-200"
                     />
                     <button onClick={addStatus} className="px-3 rounded-lg bg-slate-900 text-white text-sm hover:bg-indigo-700">
                       Add
@@ -893,13 +893,13 @@ const DriverLeadsPage: React.FC = () => {
                 value={sheetForm.name}
                 onChange={(e) => setSheetForm((prev) => ({ ...prev, name: e.target.value }))}
                 placeholder="List name (e.g., Kochi — January)"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-base"
               />
               <textarea
                 value={sheetForm.description}
                 onChange={(e) => setSheetForm((prev) => ({ ...prev, description: e.target.value }))}
                 placeholder="Description"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-base"
                 rows={2}
               />
             </div>
@@ -1001,13 +1001,13 @@ const DriverLeadsPage: React.FC = () => {
                     value={filterText}
                     onChange={(e) => setFilterText(e.target.value)}
                     placeholder="Search name, phone, city, status"
-                    className="w-52 md:w-72 text-sm bg-transparent focus:outline-none"
+                    className="w-52 md:w-72 text-base bg-transparent focus:outline-none"
                   />
                 </div>
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="text-sm rounded-lg border border-slate-200 px-3 py-2 bg-white"
+                  className="text-base rounded-lg border border-slate-200 px-3 py-2 bg-white"
                 >
                   <option value="all">All statuses</option>
                   {activeSheet?.statuses.map((status) => (
@@ -1019,7 +1019,7 @@ const DriverLeadsPage: React.FC = () => {
                 <select
                   value={sortOption}
                   onChange={(e) => setSortOption(e.target.value as any)}
-                  className="text-sm rounded-lg border border-slate-200 px-3 py-2 bg-white"
+                  className="text-base rounded-lg border border-slate-200 px-3 py-2 bg-white"
                 >
                   <option value="recent">Recent touch</option>
                   <option value="oldest">Oldest touch</option>
@@ -1053,30 +1053,30 @@ const DriverLeadsPage: React.FC = () => {
                   value={leadForm.fullName}
                   onChange={(e) => setLeadForm((prev) => ({ ...prev, fullName: e.target.value }))}
                   placeholder="Full name"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-base"
                 />
                 <input
                   value={leadForm.phone}
                   onChange={(e) => setLeadForm((prev) => ({ ...prev, phone: e.target.value }))}
                   placeholder="Phone"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-base"
                 />
                 <input
                   value={leadForm.city}
                   onChange={(e) => setLeadForm((prev) => ({ ...prev, city: e.target.value }))}
                   placeholder="City"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-base"
                 />
                 <input
                   value={leadForm.platform}
                   onChange={(e) => setLeadForm((prev) => ({ ...prev, platform: e.target.value }))}
                   placeholder="Platform"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-base"
                 />
                 <select
                   value={leadForm.statusId}
                   onChange={(e) => setLeadForm((prev) => ({ ...prev, statusId: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-base"
                 >
                   {activeSheet?.statuses.map((status) => (
                     <option key={status.id} value={status.id}>
@@ -1088,19 +1088,19 @@ const DriverLeadsPage: React.FC = () => {
                   type="date"
                   value={leadForm.createdTime}
                   onChange={(e) => setLeadForm((prev) => ({ ...prev, createdTime: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-base"
                 />
                 <input
                   value={leadForm.admin}
                   onChange={(e) => setLeadForm((prev) => ({ ...prev, admin: e.target.value }))}
                   placeholder="Admin"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-base"
                 />
                 <input
                   value={leadForm.note}
                   onChange={(e) => setLeadForm((prev) => ({ ...prev, note: e.target.value }))}
                   placeholder="Note / Update"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-base"
                 />
                 <button
                   onClick={addLead}
@@ -1167,7 +1167,7 @@ const DriverLeadsPage: React.FC = () => {
                         <select
                           value={lead.statusId}
                           onChange={(e) => updateLeadStatus(lead.id, e.target.value)}
-                          className="w-full sm:w-auto rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                          className="w-full sm:w-auto rounded-lg border border-slate-200 px-3 py-2 text-base"
                         >
                           {activeSheet?.statuses.map((status) => (
                             <option key={status.id} value={status.id}>
@@ -1253,7 +1253,7 @@ const DriverLeadsPage: React.FC = () => {
                           value={quickNotes[lead.id] || ''}
                           onChange={(e) => setQuickNotes((prev) => ({ ...prev, [lead.id]: e.target.value }))}
                           placeholder="Add a quick note to log follow-ups"
-                          className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                          className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-indigo-200"
                         />
                         <div className="text-[11px] text-slate-500 sm:w-48">
                           Latest: {update ? `${update.date} — ${update.text}` : 'No updates yet'}
@@ -1312,7 +1312,7 @@ const DriverLeadsPage: React.FC = () => {
                 <input
                   value={sheetEditor.name}
                   onChange={(e) => setSheetEditor((prev) => (prev ? { ...prev, name: e.target.value } : prev))}
-                  className="w-full mt-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  className="w-full mt-1 rounded-lg border border-slate-200 px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-indigo-200"
                 />
               </div>
               <div>
@@ -1320,7 +1320,7 @@ const DriverLeadsPage: React.FC = () => {
                 <textarea
                   value={sheetEditor.description}
                   onChange={(e) => setSheetEditor((prev) => (prev ? { ...prev, description: e.target.value } : prev))}
-                  className="w-full mt-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  className="w-full mt-1 rounded-lg border border-slate-200 px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-indigo-200"
                   rows={3}
                 />
               </div>
@@ -1465,13 +1465,13 @@ const DriverLeadsPage: React.FC = () => {
                 type="date"
                 value={updateEditor.date}
                 onChange={(e) => setUpdateEditor((prev) => (prev ? { ...prev, date: e.target.value } : prev))}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-base"
               />
               <textarea
                 value={updateEditor.text}
                 onChange={(e) => setUpdateEditor((prev) => (prev ? { ...prev, text: e.target.value } : prev))}
                 placeholder="What changed?"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-base"
                 rows={4}
               />
               <div className="flex items-center justify-end gap-2">

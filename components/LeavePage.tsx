@@ -121,7 +121,7 @@ const LeavePage: React.FC = () => {
            <form onSubmit={handleSave} className="space-y-6">
              <div className="flex flex-col gap-1.5">
                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">Start Date</label>
-               <input type="date" required value={form.startDate} onChange={e => setForm({...form, startDate: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 focus:ring-2 focus:ring-amber-500 focus:bg-white outline-none transition-all" />
+               <input type="date" required value={form.startDate} onChange={e => setForm({...form, startDate: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 text-base focus:ring-2 focus:ring-amber-500 focus:bg-white outline-none transition-all" />
              </div>
 
              <div className="flex flex-col gap-1.5">
@@ -131,7 +131,7 @@ const LeavePage: React.FC = () => {
                    required 
                    value={form.driverId} 
                    onChange={e => setForm({...form, driverId: e.target.value})} 
-                   className="w-full pl-4 pr-8 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 font-medium focus:ring-2 focus:ring-amber-500 focus:bg-white outline-none appearance-none cursor-pointer transition-all"
+                   className="w-full pl-4 pr-8 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 text-base font-medium focus:ring-2 focus:ring-amber-500 focus:bg-white outline-none appearance-none cursor-pointer transition-all"
                  >
                    <option value="">-- Select Driver --</option>
                    {drivers.map(d => {
@@ -152,12 +152,12 @@ const LeavePage: React.FC = () => {
              
              <div className="flex flex-col gap-1.5">
                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">Planned End</label>
-                 <input type="date" required value={form.endDate} onChange={e => setForm({...form, endDate: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 focus:ring-2 focus:ring-amber-500 focus:bg-white outline-none transition-all" />
+                 <input type="date" required value={form.endDate} onChange={e => setForm({...form, endDate: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 text-base focus:ring-2 focus:ring-amber-500 focus:bg-white outline-none transition-all" />
              </div>
 
              <div className="flex flex-col gap-1.5">
                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">Reason (Optional)</label>
-               <input value={form.reason} onChange={e => setForm({...form, reason: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 focus:ring-2 focus:ring-amber-500 focus:bg-white outline-none transition-all" placeholder="Sick, Vacation, etc." />
+               <input value={form.reason} onChange={e => setForm({...form, reason: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 text-base focus:ring-2 focus:ring-amber-500 focus:bg-white outline-none transition-all" placeholder="Sick, Vacation, etc." />
              </div>
 
              <button type="submit" className="w-full bg-amber-500 text-white py-3 rounded-xl hover:bg-amber-600 transition-all font-bold shadow-lg shadow-amber-500/20 active:scale-95 mt-4">
@@ -211,7 +211,7 @@ const LeavePage: React.FC = () => {
                                     type="date" 
                                     value={returnDateInput} 
                                     onChange={e => setReturnDateInput(e.target.value)}
-                                    className="p-1 border rounded text-xs w-32"
+                                    className="p-1 border rounded text-base w-32"
                                  />
                                  <button onClick={() => handleUpdateReturnDate(l)} className="text-emerald-600 hover:bg-emerald-50 p-1 rounded"><CheckCircle size={16}/></button>
                                  <button onClick={() => setEditingReturnId(null)} className="text-slate-400 hover:bg-slate-50 p-1 rounded"><Trash2 size={16}/></button>
