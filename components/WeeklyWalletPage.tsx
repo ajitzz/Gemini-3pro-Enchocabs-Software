@@ -665,7 +665,78 @@ const WeeklyWalletPage: React.FC = () => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
+          {/* Mobile Card View */}
+          <div className="md:hidden flex-1 overflow-y-auto bg-slate-50/50 p-4 space-y-4">
+            {loading ? (
+              <div className="p-12 text-center text-slate-400">Loading wallet data...</div>
+            ) : filteredWallets.length === 0 ? (
+              <div className="p-12 text-center text-slate-400">No records found.</div>
+            ) : (
+              filteredWallets.map(w => {
+                const walletWeek = calculateWalletWeek(w);
+                const deductions = calculateDeductions(w);
+                const walletAfterCharges = calculateWalletAfterCharges(w);
+                return (
+                  <div key={w.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 relative">
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <h4 className="font-bold text-slate-800 text-lg">{w.driver}</h4>
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
+                          <Calendar size={12} />
+                          {formatWeekRange(w.weekStartDate, w.weekEndDate)}
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-1">
+                        <button onClick={() => handleEdit(w)} className="text-slate-400 hover:text-indigo-600 p-2 hover:bg-indigo-50 rounded-lg"><Edit2 size={16} /></button>
+                        <button onClick={() => handleDelete(w.id)} className="text-slate-400 hover:text-rose-600 p-2 hover:bg-rose-50 rounded-lg"><Trash2 size={16} /></button>
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm mb-4">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Trips</p>
+                        <p className="font-medium text-slate-700">{w.trips || 0}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider text-emerald-600 font-semibold">Earnings</p>
+                        <p className="font-medium text-emerald-700">+₹{w.earnings}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider text-emerald-600 font-semibold">Refund</p>
+                        <p className="font-medium text-emerald-700">+₹{w.refund}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider text-rose-500 font-semibold">Deductions</p>
+                        <p className="font-medium text-rose-600">-₹{deductions.toFixed(2)}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3 pt-3 border-t border-slate-100">
+                      <div className="flex-1 bg-slate-50 p-3 rounded-xl">
+                        <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">Wallet Week</p>
+                        <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-bold ${
+                          walletWeek < 0 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
+                        }`}>
+                          {walletWeek < 0 ? '' : '+'}₹{walletWeek.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="flex-1 bg-slate-50 p-3 rounded-xl">
+                        <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">Wallet /+ Charges</p>
+                        <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-bold ${
+                          walletAfterCharges < 0 ? 'bg-rose-100 text-rose-700' : 'bg-indigo-100 text-indigo-700'
+                        }`}>
+                          {walletAfterCharges < 0 ? '' : '+'}₹{walletAfterCharges.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Desktop Table View */}
+          <table className="hidden md:table w-full text-sm text-left">
             <thead className="text-xs text-slate-500 uppercase bg-slate-50/50 border-b border-slate-100">
               <tr>
                 <th className="px-6 py-4 font-semibold tracking-wider">Week Range</th>

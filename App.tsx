@@ -233,7 +233,7 @@ const Layout: React.FC = () => {
       </div>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto p-4 md:p-8 lg:p-10 max-w-[1920px] mx-auto w-full">
+      <main className="flex-1 overflow-auto p-4 pb-24 md:p-8 lg:p-10 max-w-[1920px] mx-auto w-full">
          <div className="hidden md:flex items-center mb-6">
            <button
              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
@@ -246,6 +246,26 @@ const Layout: React.FC = () => {
          <Outlet />
       </main>
       
+      {/* Mobile Bottom Navigation */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex justify-around items-center pb-safe z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+        <NavLink to="/app" end className={({ isActive }) => `flex flex-col items-center py-3 px-4 w-full ${isActive ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-800'}`}>
+          <LayoutDashboard size={22} strokeWidth={2.5} />
+          <span className="text-[10px] font-bold mt-1">Home</span>
+        </NavLink>
+        <NavLink to="/app/daily" className={({ isActive }) => `flex flex-col items-center py-3 px-4 w-full ${isActive ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-800'}`}>
+          <Calendar size={22} strokeWidth={2.5} />
+          <span className="text-[10px] font-bold mt-1">Entry</span>
+        </NavLink>
+        <NavLink to="/app/weekly" className={({ isActive }) => `flex flex-col items-center py-3 px-4 w-full ${isActive ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-800'}`}>
+          <Wallet size={22} strokeWidth={2.5} />
+          <span className="text-[10px] font-bold mt-1">Wallet</span>
+        </NavLink>
+        <button onClick={() => setIsMobileMenuOpen(true)} className="flex flex-col items-center py-3 px-4 w-full text-slate-500 hover:text-slate-800">
+          <Menu size={22} strokeWidth={2.5} />
+          <span className="text-[10px] font-bold mt-1">More</span>
+        </button>
+      </nav>
+
       {/* Overlay for mobile menu */}
       {isMobileMenuOpen && (
         <div 

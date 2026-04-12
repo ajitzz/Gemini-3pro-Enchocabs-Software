@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { storageService } from '../services/storageService';
-import { DailyEntry, DriverSummary, GlobalSummary } from '../types';
+import { DriverSummary, GlobalSummary } from '../types';
 import { Users, Banknote, Fuel, TrendingDown, AlertCircle, ArrowUpRight, ArrowDownRight, Wallet, ExternalLink } from 'lucide-react';
 import NetCalculationPopup from './NetCalculationPopup';
 import { useNavigate } from 'react-router-dom';
@@ -50,8 +50,6 @@ const DashboardPage: React.FC = () => {
   const [filterDriver, setFilterDriver] = useState('');
   const [showAllDrivers, setShowAllDrivers] = useState(false);
   const [hiddenDrivers, setHiddenDrivers] = useState<string[]>(() => loadHiddenDrivers());
-  const [analyticsPeriod, setAnalyticsPeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily');
-  const [analyticsEntries, setAnalyticsEntries] = useState<DailyEntry[]>([]);
   const [calcPopup, setCalcPopup] = useState<{
     metric: 'netPayout' | 'netBalance';
     netValue: number;
@@ -72,11 +70,9 @@ const DashboardPage: React.FC = () => {
 
     try {
       const { summaries: driverSummaries } = await storageService.getDriverBalanceSummaries();
-      const recentEntries = await storageService.getDailyEntries();
       const computedGlobal = buildGlobalSummary(driverSummaries || []);
 
       setSummaries(driverSummaries || []);
-      setAnalyticsEntries(recentEntries || []);
       setGlobal(computedGlobal);
     } finally {
       setLoading(false);
@@ -168,41 +164,6 @@ const DashboardPage: React.FC = () => {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(val);
   };
 
-  const periodEntries = (() => {
-    const now = new Date();
-    const start = new Date(now);
-    if (analyticsPeriod === 'daily') start.setDate(now.getDate() - 1);
-    if (analyticsPeriod === 'weekly') start.setDate(now.getDate() - 7);
-    if (analyticsPeriod === 'monthly') start.setDate(now.getDate() - 30);
-    const iso = start.toISOString().slice(0, 10);
-    return analyticsEntries.filter((entry) => entry.date >= iso);
-  })();
-
-  const periodMetrics = periodEntries.reduce((acc, entry) => {
-    acc.revenue += Number(entry.collection || 0);
-    acc.cost += Number(entry.rent || 0) + Number(entry.fuel || 0) + Math.max(0, Number(entry.payout || 0));
-    acc.profit += Number(entry.collection || 0) - Number(entry.rent || 0) - Number(entry.fuel || 0) - Number(entry.payout || 0) + Number(entry.due || 0);
-    if (entry.due < 0) acc.lossAlerts += 1;
-    return acc;
-  }, { revenue: 0, cost: 0, profit: 0, lossAlerts: 0 });
-
-  const previousMetrics = (() => {
-    const now = new Date();
-    const windowDays = analyticsPeriod === 'daily' ? 1 : analyticsPeriod === 'weekly' ? 7 : 30;
-    const end = new Date(now);
-    end.setDate(now.getDate() - windowDays);
-    const start = new Date(end);
-    start.setDate(end.getDate() - windowDays);
-    const startIso = start.toISOString().slice(0, 10);
-    const endIso = end.toISOString().slice(0, 10);
-    const entries = analyticsEntries.filter((entry) => entry.date >= startIso && entry.date < endIso);
-    return entries.reduce((acc, entry) => {
-      acc.revenue += Number(entry.collection || 0);
-      acc.profit += Number(entry.collection || 0) - Number(entry.rent || 0) - Number(entry.fuel || 0) - Number(entry.payout || 0) + Number(entry.due || 0);
-      return acc;
-    }, { revenue: 0, profit: 0 });
-  })();
-
   if (loading) return (
     <div className="flex h-full min-h-[400px] items-center justify-center">
       <div className="flex flex-col items-center gap-3">
@@ -234,35 +195,6 @@ const DashboardPage: React.FC = () => {
            Live Data
         </div>
       </div>
-
-      <section className="md:hidden space-y-3 sticky top-16 z-20">
-        <div className="bg-white rounded-2xl border border-slate-200 p-3 shadow-sm">
-          <div className="flex gap-2">
-            {(['daily', 'weekly', 'monthly'] as const).map((period) => (
-              <button key={period} onClick={() => setAnalyticsPeriod(period)} className={`flex-1 min-h-11 rounded-xl text-xs font-bold capitalize border ${analyticsPeriod === period ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-700 border-slate-200'}`}>{period}</button>
-            ))}
-          </div>
-          <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
-            <button onClick={() => navigate('/app/revenue')} className="text-left rounded-xl border border-slate-200 p-3">
-              <p className="text-slate-500">Revenue</p><p className="font-bold text-slate-900">{formatCurrency(periodMetrics.revenue)}</p>
-            </button>
-            <button onClick={() => navigate('/app/revenue')} className="text-left rounded-xl border border-slate-200 p-3">
-              <p className="text-slate-500">Cost</p><p className="font-bold text-slate-900">{formatCurrency(periodMetrics.cost)}</p>
-            </button>
-            <button onClick={() => navigate('/app/driver-balances')} className="text-left rounded-xl border border-slate-200 p-3">
-              <p className="text-slate-500">Profit</p><p className={`font-bold ${periodMetrics.profit < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{formatCurrency(periodMetrics.profit)}</p>
-            </button>
-            <button onClick={() => navigate('/app/daily')} className="text-left rounded-xl border border-slate-200 p-3">
-              <p className="text-slate-500">Loss Alerts</p><p className="font-bold text-rose-600">{periodMetrics.lossAlerts}</p>
-            </button>
-          </div>
-          <div className="mt-3 rounded-xl bg-slate-50 border border-slate-200 p-3 text-xs">
-            <p className="font-semibold text-slate-700">What changed?</p>
-            <p className="text-slate-600 mt-1">Revenue {previousMetrics.revenue === 0 ? 'has no previous baseline' : `${periodMetrics.revenue >= previousMetrics.revenue ? 'increased' : 'decreased'} by ${formatCurrency(Math.abs(periodMetrics.revenue - previousMetrics.revenue))}`}</p>
-            <p className="text-slate-600">Profit {previousMetrics.profit === 0 ? 'has no previous baseline' : `${periodMetrics.profit >= previousMetrics.profit ? 'improved' : 'declined'} by ${formatCurrency(Math.abs(periodMetrics.profit - previousMetrics.profit))}`}</p>
-          </div>
-        </div>
-      </section>
 
       {/* Global Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -364,7 +296,76 @@ const DashboardPage: React.FC = () => {
             Net Balance = Collection - Rent - Fuel + Due + Wallet Week - Payout · Net Payout = min(Net Balance, latest wallet cutoff balance).
           </div>
           
-          <div className="overflow-x-auto flex-1 scrollbar-thin">
+          {/* Mobile Card View */}
+          <div className="md:hidden flex-1 overflow-y-auto bg-slate-50/50 p-4 space-y-4">
+            {visibleSummaries.map((driver) => (
+              <div key={driver.driver} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+                <div className="flex justify-between items-start mb-3">
+                  <h4 className="font-bold text-slate-800 text-lg">{driver.driver}</h4>
+                  <button
+                    type="button"
+                    onClick={() => setHiddenDrivers((prev) => [...new Set([...prev, driver.driver])])}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  >
+                    Hide
+                  </button>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm mb-4">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Collection</p>
+                    <p className="font-medium text-slate-700">{formatCurrency(driver.totalCollection)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Rent</p>
+                    <p className="font-medium text-slate-700">{formatCurrency(driver.totalRent)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Fuel</p>
+                    <p className="font-medium text-slate-700">{formatCurrency(driver.totalFuel)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Wallet Week</p>
+                    <p className="font-medium text-slate-700">{formatCurrency(driver.totalWalletWeek)}</p>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-3 border-t border-slate-100">
+                  <div 
+                    className="flex-1 bg-slate-50 p-3 rounded-xl cursor-pointer active:scale-95 transition-transform"
+                    onClick={() => openCalcPopup(driver, 'netPayout')}
+                  >
+                    <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">Net Payout</p>
+                    <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-bold ${
+                      driver.netPayout < 0 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
+                    }`}>
+                      {formatCurrency(driver.netPayout)}
+                    </span>
+                  </div>
+                  <div 
+                    className="flex-1 bg-slate-50 p-3 rounded-xl cursor-pointer active:scale-95 transition-transform"
+                    onClick={() => openCalcPopup(driver, 'netBalance')}
+                  >
+                    <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">Net Balance</p>
+                    <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-bold ${
+                      driver.finalTotal < 0 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
+                    }`}>
+                      {formatCurrency(driver.finalTotal)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {visibleSummaries.length === 0 && (
+              <div className="py-12 text-center text-slate-400">
+                <Users size={32} className="opacity-20 mx-auto mb-2" />
+                <p>No drivers found matching "{filterDriver}"</p>
+              </div>
+            )}
+          </div>
+
+          {/* Desktop Table View */}
+          <div className="hidden md:block overflow-x-auto flex-1 scrollbar-thin">
             <table className="w-full text-sm text-left">
               <thead className="text-xs text-slate-500 uppercase bg-slate-50/80 sticky top-0 backdrop-blur-sm z-10 border-b border-slate-200">
                 <tr>

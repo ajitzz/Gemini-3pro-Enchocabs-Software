@@ -5,10 +5,9 @@ import { storageService } from '../services/storageService';
 import { useLiveUpdates } from '../lib/useLiveUpdates';
 import { isDriverUnavailableOnDate } from '../lib/leaveUtils';
 import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check, AlertOctagon, FileDown } from 'lucide-react';
-import { clearDraft, getCompleteness, getTodayISODate, queueEntry, readDraft, readQueuedEntries, saveDraft, validateEntry } from '../lib/mobileAdmin';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
-const InputField = ({ label, name, type = "text", value, onChange, onKeyDown, placeholder, required = false, className = "", readOnly = false, inputMode, onFocus, inputRef }: any) => (
+const InputField = ({ label, name, type = "text", value, onChange, onKeyDown, placeholder, required = false, className = "", readOnly = false, inputMode }: any) => (
   <div className="flex flex-col gap-1.5">
      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">{label}</label>
      <input 
@@ -19,8 +18,6 @@ const InputField = ({ label, name, type = "text", value, onChange, onKeyDown, pl
        value={value ?? ''}
        onChange={onChange}
        onKeyDown={onKeyDown}
-       onFocus={onFocus}
-       ref={inputRef}
        placeholder={placeholder}
        readOnly={readOnly}
        step="0.01"
@@ -273,6 +270,13 @@ const ColumnFilter: React.FC<ColumnFilterProps> = ({ columnKey, data, activeFilt
 const DailyEntryPage: React.FC = () => {
   const RECENT_DAYS = 60;
   const FALLBACK_LIVE_REFRESH_MS = 60000;
+  const getTodayISODate = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
   const normalizeDateValue = (raw?: string | null) => {
     if (!raw) return '';
     const direct = String(raw).trim();
@@ -314,6 +318,7 @@ const DailyEntryPage: React.FC = () => {
 
   // Duplicate Warning State
   const [duplicateWarning, setDuplicateWarning] = useState<{ active: boolean, existingId: string, payload: DailyEntry } | null>(null);
+  const closeAfterSaveRef = useRef(true);
 
   // Form State
   const initialFormState: Partial<DailyEntry> = {
@@ -325,20 +330,78 @@ const DailyEntryPage: React.FC = () => {
     collection: undefined,
     fuel: 0,
     due: 0,
-    payout: 0, // New field
+    payout: 0,
     payoutDate: '',
     qrCode: '',
     notes: ''
   };
-  const [formData, setFormData] = useState<Partial<DailyEntry>>(initialFormState);
+  const [formData, setFormData] = useState<Partial<DailyEntry>>(() => {
+    try {
+      const draft = localStorage.getItem('daily_entry_draft');
+      if (draft) {
+        return JSON.parse(draft);
+      }
+    } catch (e) {
+      console.warn('Failed to load draft', e);
+    }
+    return initialFormState;
+  });
+  const [offlineQueue, setOfflineQueue] = useState<DailyEntry[]>(() => {
+    try {
+      const queue = localStorage.getItem('daily_entry_offline_queue');
+      return queue ? JSON.parse(queue) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+  const [isSyncing, setIsSyncing] = useState(false);
   const liveRefreshTimerRef = useRef<number | null>(null);
-  const [quickEntryMode, setQuickEntryMode] = useState(true);
-  const [saveAndAddNext, setSaveAndAddNext] = useState(true);
-  const [inlineIssues, setInlineIssues] = useState<ReturnType<typeof validateEntry>>([]);
-  const [syncState, setSyncState] = useState<'synced' | 'pending' | 'failed' | 'offline'>(() => navigator.onLine ? 'synced' : 'offline');
-  const [showRecoveryNotice, setShowRecoveryNotice] = useState(false);
-  const [showConfirmSummary, setShowConfirmSummary] = useState(false);
-  const firstInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('daily_entry_draft', JSON.stringify(formData));
+    } catch (e) {
+      console.warn('Failed to save draft', e);
+    }
+  }, [formData]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('daily_entry_offline_queue', JSON.stringify(offlineQueue));
+    } catch (e) {
+      console.warn('Failed to save offline queue', e);
+    }
+  }, [offlineQueue]);
+
+  const syncOfflineQueue = useCallback(async () => {
+    if (offlineQueue.length === 0 || isSyncing || !navigator.onLine) return;
+    setIsSyncing(true);
+    const remainingQueue = [...offlineQueue];
+    let syncedCount = 0;
+
+    for (const entry of offlineQueue) {
+      try {
+        const savedEntry = await storageService.saveDailyEntry(entry);
+        upsertEntry({ ...entry, ...savedEntry });
+        remainingQueue.shift(); // Remove successful entry
+        syncedCount++;
+      } catch (error) {
+        console.error('Failed to sync entry', entry, error);
+        break; // Stop syncing on first failure to preserve order
+      }
+    }
+
+    setOfflineQueue(remainingQueue);
+    setIsSyncing(false);
+    if (syncedCount > 0) {
+      alert(`Successfully synced ${syncedCount} offline entries.`);
+    }
+  }, [offlineQueue, isSyncing]);
+
+  useEffect(() => {
+    window.addEventListener('online', syncOfflineQueue);
+    return () => window.removeEventListener('online', syncOfflineQueue);
+  }, [syncOfflineQueue]);
 
   const getISODateDaysAgo = (days: number) => {
     const date = new Date();
@@ -461,62 +524,6 @@ const DailyEntryPage: React.FC = () => {
     loadData();
   }, [loadData]);
 
-  useEffect(() => {
-    const savedDraft = readDraft();
-    if (savedDraft?.driver || savedDraft?.collection || savedDraft?.rent) {
-      setFormData(prev => ({ ...prev, ...savedDraft }));
-      setIsFormOpen(true);
-      setShowRecoveryNotice(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!isFormOpen) return;
-    saveDraft(formData);
-  }, [formData, isFormOpen]);
-
-  useEffect(() => {
-    if (!isFormOpen || !quickEntryMode) return;
-    const timer = window.setTimeout(() => firstInputRef.current?.focus(), 80);
-    return () => window.clearTimeout(timer);
-  }, [isFormOpen, quickEntryMode]);
-
-  const flushQueuedEntries = useCallback(async () => {
-    if (!navigator.onLine) return;
-    const queued = readQueuedEntries();
-    if (!queued.length) {
-      setSyncState('synced');
-      return;
-    }
-    setSyncState('pending');
-    try {
-      for (const queuedEntry of queued) {
-        await storageService.saveDailyEntry(queuedEntry);
-      }
-      localStorage.removeItem('daily_entry_mobile_queue_v1');
-      setSyncState('synced');
-      refreshEntriesOnly();
-    } catch (error) {
-      console.warn('Sync queue failed:', error);
-      setSyncState('failed');
-    }
-  }, [refreshEntriesOnly]);
-
-  useEffect(() => {
-    const onOnline = () => {
-      setSyncState('pending');
-      flushQueuedEntries();
-    };
-    const onOffline = () => setSyncState('offline');
-    window.addEventListener('online', onOnline);
-    window.addEventListener('offline', onOffline);
-    flushQueuedEntries();
-    return () => {
-      window.removeEventListener('online', onOnline);
-      window.removeEventListener('offline', onOffline);
-    };
-  }, [flushQueuedEntries]);
-
   const { connected: liveUpdatesConnected } = useLiveUpdates((event) => {
     const type = event?.type;
     if (!type || !['daily_entries_changed', 'weekly_wallets_changed', 'drivers_changed', 'leaves_changed'].includes(type)) {
@@ -638,43 +645,27 @@ const DailyEntryPage: React.FC = () => {
     }
   };
 
-  const saveEntryPayload = async (newEntry: DailyEntry, normalizedDate: string) => {
-    try {
-      const savedEntry = await storageService.saveDailyEntry(newEntry);
-      setSyncState('synced');
-      if (editingId || !saveAndAddNext) {
-        resetForm();
-      } else {
-        resetFormAfterSave(normalizedDate);
-      }
-      clearDraft();
-      upsertEntry({ ...newEntry, ...savedEntry });
-    } catch (error: any) {
-      console.error('Save daily entry failed:', error);
-      if (!navigator.onLine || /network|failed to fetch/i.test(error?.message || '')) {
-        queueEntry(newEntry);
-        setSyncState('pending');
-        upsertEntry(newEntry);
-        if (editingId || !saveAndAddNext) {
-          resetForm();
-        } else {
-          resetFormAfterSave(normalizedDate);
-        }
-        return;
-      }
-      setSyncState('failed');
-      alert(error?.message || 'Failed to save daily entry. Ensure the driver has only one entry per day.');
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent | React.KeyboardEvent) => {
     if (e.type === 'submit' || (e as React.KeyboardEvent).key === 'Enter') {
         e.preventDefault();
         
         const normalizedDate = normalizeDateValue(formData.date);
-        const issues = validateEntry({ ...formData, date: normalizedDate || formData.date }, entries);
-        setInlineIssues(issues);
-        if (issues.some(issue => issue.severity === 'error')) return;
+        if (!normalizedDate || !formData.driver) {
+          alert('Date and Driver are mandatory fields.');
+          return;
+        }
+
+        // Explicit Validation for Mandatory Numbers
+        if (formData.collection === undefined || formData.rent === undefined) {
+            alert("Collection and Rent are mandatory fields.");
+            return;
+        }
+
+        const payoutEntered = formData.payout !== undefined && formData.payout !== null && formData.payout !== 0;
+        if (payoutEntered && !formData.payoutDate) {
+            alert('Payout Date is required when a payout amount is entered.');
+            return;
+        }
 
         // Check for duplicate entry on same day
         const duplicateEntry = entries.find(entry => 
@@ -713,13 +704,37 @@ const DailyEntryPage: React.FC = () => {
           return;
         }
 
-        if (quickEntryMode && !editingId && (Number(newEntry.collection) > 0 || Number(newEntry.rent) > 0)) {
-          setShowConfirmSummary(true);
-          setFormData(newEntry);
+        if (!navigator.onLine) {
+          setOfflineQueue(prev => [...prev, newEntry]);
+          upsertEntry({ ...newEntry, id: `offline-${newEntry.id}` }); // Optimistic UI update
+          if (editingId) {
+            resetForm();
+          } else {
+            resetFormAfterSave(normalizedDate);
+            if (closeAfterSaveRef.current) {
+              setIsFormOpen(false);
+            }
+          }
+          alert('You are offline. Entry saved locally and will sync when online.');
           return;
         }
 
-        await saveEntryPayload(newEntry, normalizedDate);
+        try {
+          const savedEntry = await storageService.saveDailyEntry(newEntry);
+
+          if (editingId) {
+            resetForm();
+          } else {
+            resetFormAfterSave(normalizedDate);
+            if (closeAfterSaveRef.current) {
+              setIsFormOpen(false);
+            }
+          }
+          upsertEntry({ ...newEntry, ...savedEntry });
+        } catch (error: any) {
+          console.error('Save daily entry failed:', error);
+          alert(error?.message || 'Failed to save daily entry. Ensure the driver has only one entry per day.');
+        }
     }
   };
 
@@ -755,38 +770,19 @@ const DailyEntryPage: React.FC = () => {
         resetForm();
     } else {
         resetFormAfterSave(entryToSave.date);
+        if (closeAfterSaveRef.current) {
+          setIsFormOpen(false);
+        }
     }
   };
 
-  const handleConfirmAndSave = async () => {
-    const normalizedDate = normalizeDateValue(formData.date);
-    if (!normalizedDate) return;
-    const dayName = new Date(normalizedDate).toLocaleDateString('en-US', { weekday: 'long' });
-    const payload: DailyEntry = {
-      id: formData.id || crypto.randomUUID(),
-      date: normalizedDate,
-      day: dayName,
-      vehicle: formData.vehicle || 'Unknown',
-      driver: formData.driver || 'Unknown',
-      shift: formData.shift || 'Day',
-      rent: Number(formData.rent),
-      collection: Number(formData.collection),
-      fuel: Number(formData.fuel || 0),
-      due: Number(formData.due || 0),
-      payout: Number(formData.payout || 0),
-      payoutDate: formData.payoutDate || undefined,
-      qrCode: formData.qrCode,
-      notes: formData.notes
-    };
-    setShowConfirmSummary(false);
-    await saveEntryPayload(payload, normalizedDate);
-  };
-
   const resetFormAfterSave = (preserveDate: string) => {
-    setFormData({
+    const newState = {
       ...initialFormState,
       date: normalizeDateValue(preserveDate) || getTodayISODate(),
-    });
+    };
+    setFormData(newState);
+    localStorage.removeItem('daily_entry_draft');
     setEditingId(null);
     setShowOptionalFields(false);
   };
@@ -810,10 +806,9 @@ const DailyEntryPage: React.FC = () => {
 
   const resetForm = () => {
     setFormData(initialFormState);
+    localStorage.removeItem('daily_entry_draft');
     setEditingId(null);
     setShowOptionalFields(false);
-    setInlineIssues([]);
-    clearDraft();
     setIsFormOpen(false); 
   };
 
@@ -911,23 +906,6 @@ const DailyEntryPage: React.FC = () => {
       return true;
     });
   }, [drivers, existingDriversForDate, formData.date, formData.driver, leaves]);
-
-  useEffect(() => {
-    if (!quickEntryMode || editingId) return;
-    const lastEntry = entries.find(entry => entry.driver === formData.driver) || entries[0];
-    if (!lastEntry) return;
-    setFormData(prev => ({
-      ...prev,
-      date: prev.date || getTodayISODate(),
-      shift: prev.shift || lastEntry.shift || 'Day',
-      rent: prev.rent ?? lastEntry.rent,
-      fuel: prev.fuel ?? 0,
-      due: prev.due ?? 0,
-      payout: prev.payout ?? 0,
-      vehicle: prev.vehicle || lastEntry.vehicle || '',
-      qrCode: prev.qrCode || lastEntry.qrCode || '',
-    }));
-  }, [quickEntryMode, editingId, entries, formData.driver]);
 
   const handleColumnFilterChange = (key: string, values: string[]) => {
     setColumnFilters(prev => ({
@@ -1128,24 +1106,30 @@ const DailyEntryPage: React.FC = () => {
       setColumnFilters({});
   };
 
-  const completeness = getCompleteness(formData);
-  const warningIssues = inlineIssues.filter(issue => issue.severity === 'warning');
-
   return (
-    <div className="max-w-[1920px] mx-auto space-y-5 md:space-y-8 pb-28 md:pb-20">
-      <div className="sticky top-16 md:top-0 z-30 bg-slate-50/95 backdrop-blur border border-slate-100 rounded-2xl p-3 md:p-0 md:border-0 md:bg-transparent md:backdrop-blur-none">
+    <div className="max-w-[1920px] mx-auto space-y-8 pb-20">
+      {/* Header / Actions */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h2 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">Daily Entries</h2>
-          <p className="text-slate-500 mt-1 text-sm md:text-base">Quick mobile-first entry with validation guardrails.</p>
+          <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Daily Entries</h2>
+          <p className="text-slate-500 mt-1">Record daily collections and expenses.</p>
         </div>
-        <div className="hidden md:flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          {offlineQueue.length > 0 && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-xs font-bold">
+              <AlertTriangle size={14} />
+              {offlineQueue.length} Pending Sync
+              <button onClick={syncOfflineQueue} disabled={isSyncing || !navigator.onLine} className="ml-2 underline hover:text-amber-900 disabled:opacity-50">
+                {isSyncing ? 'Syncing...' : 'Sync Now'}
+              </button>
+            </div>
+          )}
           <button
             onClick={handleExportDailyEntries}
             className="bg-white text-indigo-600 border border-indigo-100 px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all hover:border-indigo-200 hover:shadow-md"
           >
             <FileDown size={18} />
-            <span>Export CSV</span>
+            <span className="hidden md:inline">Export CSV</span>
           </button>
           <button
             onClick={() => setIsFormOpen(!isFormOpen)}
@@ -1156,69 +1140,47 @@ const DailyEntryPage: React.FC = () => {
           </button>
         </div>
       </div>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button onClick={() => setQuickEntryMode(prev => !prev)} className={`px-3 py-2 rounded-full text-xs font-semibold border ${quickEntryMode ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-700 border-slate-200'}`}>Quick Entry {quickEntryMode ? 'On' : 'Off'}</button>
-        <span className="px-3 py-2 rounded-full text-xs font-semibold bg-white border border-slate-200 text-slate-600">Completion {completeness.percent}%</span>
-        <span className={`px-3 py-2 rounded-full text-xs font-semibold border ${syncState === 'synced' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : syncState === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-100' : syncState === 'offline' ? 'bg-slate-100 text-slate-700 border-slate-200' : 'bg-rose-50 text-rose-700 border-rose-100'}`}>Sync: {syncState}</span>
-      </div>
-      </div>
 
       {/* Entry Form */}
-      <div className={`${isFormOpen ? 'block' : 'hidden'} bg-white p-4 md:p-8 rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100 animate-fade-in`}>
-        <div className="flex justify-between items-center mb-8 pb-4 border-b border-slate-100">
+      <div className={`${isFormOpen ? 'block' : 'hidden'} bg-white p-4 md:p-8 rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100 animate-fade-in mb-8`}>
+        <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-100">
            <div>
              <h3 className="text-xl font-bold text-slate-800">
-               {editingId ? 'Edit Daily Record' : 'Add New Daily Record'}
+               {editingId ? 'Edit Daily Record' : 'Quick Entry'}
              </h3>
-             <p className="text-sm text-slate-400 mt-1">Fill in the details below. Most fields auto-fill based on driver selection.</p>
+             <p className="text-sm text-slate-400 mt-1 hidden md:block">Fill in the details below. Most fields auto-fill based on driver selection.</p>
            </div>
            {editingId && (
              <span className="text-xs px-3 py-1 bg-amber-50 text-amber-700 border border-amber-100 rounded-full font-bold uppercase tracking-wider">Editing Mode</span>
            )}
         </div>
         
-        {showRecoveryNotice && (
-          <div className="mb-4 p-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 text-xs font-semibold flex items-center justify-between gap-2">
-            <span>Recovered unsaved draft from this device.</span>
-            <button type="button" onClick={() => { setShowRecoveryNotice(false); clearDraft(); }} className="underline">Discard</button>
-          </div>
-        )}
+        <form onSubmit={(e) => { closeAfterSaveRef.current = true; handleSubmit(e); }} className="flex flex-col gap-5">
+           {/* Row 1: Date & Driver */}
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <InputField label="Date" name="date" type="date" value={formData.date} onChange={handleInputChange} required />
+              
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">Driver Name</label>
+                <div className="relative">
+                  <select required name="driver" value={formData.driver} onChange={handleInputChange} className="w-full px-4 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 text-base focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none appearance-none cursor-pointer">
+                      <option value="">-- Select Driver --</option>
+                      {availableDrivers.map(d => {
+                          const onLeave = isDriverOnLeave(d.id);
+                          return (
+                            <option key={d.id} value={d.name}>
+                                {d.name} {onLeave ? '(On Leave)' : ''}
+                            </option>
+                          );
+                      })}
+                  </select>
+                  <ChevronDown className="absolute right-4 top-3.5 text-slate-400 pointer-events-none" size={16} />
+                </div>
+              </div>
+           </div>
 
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-          <InputField label="Date" name="date" type="date" value={formData.date} onChange={handleInputChange} required />
-          
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">Driver Name</label>
-            <div className="relative">
-              <select required name="driver" value={formData.driver} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 text-base focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none appearance-none cursor-pointer">
-                  <option value="">-- Select Driver --</option>
-                  {availableDrivers.map(d => {
-                      const onLeave = isDriverOnLeave(d.id);
-                      return (
-                        <option key={d.id} value={d.name}>
-                            {d.name} {onLeave ? '(On Leave)' : ''}
-                        </option>
-                      );
-                  })}
-              </select>
-              <ChevronDown className="absolute right-4 top-3 text-slate-400 pointer-events-none" size={16} />
-            </div>
-          </div>
-          
-          <InputField label="Vehicle" name="vehicle" value={formData.vehicle} onChange={handleInputChange} className="bg-slate-100 text-slate-500" />
-          
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">Shift</label>
-            <div className="relative">
-              <select name="shift" value={formData.shift} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 text-base focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none appearance-none cursor-pointer">
-                <option value="Day">Day</option>
-                <option value="Night">Night</option>
-              </select>
-              <ChevronDown className="absolute right-4 top-3 text-slate-400 pointer-events-none" size={16} />
-            </div>
-          </div>
-
-          <div className="lg:col-span-4 bg-indigo-50/60 border border-indigo-100 rounded-2xl p-4">
+           {/* Missing Entries Info */}
+           <div className="bg-indigo-50/60 border border-indigo-100 rounded-2xl p-4">
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div className="flex-1">
                 <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-2">Missing Daily Entries</h4>
@@ -1263,94 +1225,85 @@ const DailyEntryPage: React.FC = () => {
               </div>
             </div>
           </div>
-          
-          <div className="lg:col-span-4 h-px bg-slate-100 my-2"></div>
 
-          {/* Primary Financials */}
-          <InputField label="Collection (₹)" name="collection" type="number" value={formData.collection} onChange={handleInputChange} onKeyDown={handleSubmit} required className="font-bold text-emerald-700 text-lg" placeholder="Enter Amount" inputRef={firstInputRef} onFocus={(event: React.FocusEvent<HTMLInputElement>) => event.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'center' })} />
-          
-          <div className="relative">
-             <InputField label="Rent (₹)" name="rent" type="number" value={formData.rent} onChange={handleInputChange} required placeholder="Enter Rent" />
-             <p className="absolute -bottom-5 left-1 text-[10px] text-slate-400 font-medium">Auto-filled if default set</p>
-          </div>
-          
-          <div className="lg:col-span-2">
-             <InputField label="QR Code" name="qrCode" value={formData.qrCode} onChange={handleInputChange} className="bg-slate-100 text-slate-500" />
-          </div>
-
-          {/* Optional Toggle */}
-          <div className="lg:col-span-4 flex justify-start pt-4">
-             <button 
-               type="button" 
-               onClick={() => setShowOptionalFields(!showOptionalFields)}
-               className="text-sm font-medium text-indigo-600 flex items-center gap-1.5 hover:text-indigo-800 transition-colors focus:outline-none bg-indigo-50 px-3 py-1.5 rounded-lg"
-             >
-               {showOptionalFields ? <ChevronUp size={16}/> : <ChevronDown size={16} />}
-               <span>{showOptionalFields ? 'Hide' : 'Add'} Fuel, Due & Payout</span>
-             </button>
-          </div>
-
-          {/* Optional Fields (Fuel / Due / Payout) */}
-          {showOptionalFields && (
-            <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 bg-slate-50 p-6 rounded-2xl border border-slate-100 animate-fade-in">
-              <InputField label="Fuel Given (₹)" name="fuel" type="number" value={formData.fuel === 0 ? '' : formData.fuel} onChange={handleInputChange} className="border-amber-200 focus:ring-amber-500 text-amber-700" placeholder="0" />
-              <div className="lg:col-span-1">
-                 <InputField label="Due (+/-)" name="due" type="number" value={formData.due === 0 ? '' : formData.due} onChange={handleInputChange} placeholder="0" />
-                 <p className="text-[10px] text-slate-400 mt-1 ml-1">+ Driver Owes / - You Owe</p>
+           {/* Row 2: Shift & Vehicle */}
+           <div className="grid grid-cols-2 gap-5">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">Shift</label>
+                <div className="relative">
+                  <select name="shift" value={formData.shift} onChange={handleInputChange} className="w-full px-4 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 text-base focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none appearance-none cursor-pointer">
+                    <option value="Day">Day</option>
+                    <option value="Night">Night</option>
+                  </select>
+                  <ChevronDown className="absolute right-4 top-3.5 text-slate-400 pointer-events-none" size={16} />
+                </div>
               </div>
-              <div className="lg:col-span-1">
-                 <InputField label="Payout (Paid to Driver)" name="payout" type="number" value={formData.payout === 0 ? '' : formData.payout} onChange={handleInputChange} className="border-emerald-200 focus:ring-emerald-500 text-emerald-700" placeholder="0" />
-              </div>
-              <div className="lg:col-span-1">
-                 <InputField label="Payout Date" name="payoutDate" type="date" value={formData.payoutDate} onChange={handleInputChange} required={!!(formData.payout && formData.payout !== 0)} />
-                 <p className="text-[10px] text-emerald-600 mt-1 ml-1 font-semibold">Required when payout entered</p>
-              </div>
-              <div className="lg:col-span-1 flex items-center">
-                 <p className="text-xs text-slate-400 leading-relaxed">Use these fields for specific adjustments or payments made directly.</p>
-              </div>
-            </div>
-          )}
+              <InputField label="Vehicle" name="vehicle" value={formData.vehicle} onChange={handleInputChange} className="bg-slate-100 text-slate-500" />
+           </div>
+           
+           <div className="h-px bg-slate-100 my-1"></div>
 
-          <div className="lg:col-span-4 mt-2">
-             <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1 mb-1.5 block">Notes</label>
-             <textarea name="notes" placeholder="Optional notes for this entry..." value={formData.notes || ''} onChange={handleInputChange} className="w-full px-4 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-base text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none resize-none h-24" />
-          </div>
+           {/* Primary Financials */}
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <InputField label="Collection (₹)" name="collection" type="number" inputMode="decimal" value={formData.collection} onChange={handleInputChange} onKeyDown={(e: any) => { if (e.key === 'Enter') { closeAfterSaveRef.current = true; handleSubmit(e); } }} required className="font-bold text-emerald-700 text-xl py-4" placeholder="Enter Amount" />
+              
+              <div className="relative">
+                 <InputField label="Rent (₹)" name="rent" type="number" inputMode="decimal" value={formData.rent} onChange={handleInputChange} required className="py-4 text-lg" placeholder="Enter Rent" />
+                 <p className="absolute -bottom-5 left-1 text-[10px] text-slate-400 font-medium">Auto-filled if default set</p>
+              </div>
+           </div>
+           
+           <InputField label="QR Code" name="qrCode" value={formData.qrCode} onChange={handleInputChange} className="bg-slate-100 text-slate-500 mt-2" />
 
-          {inlineIssues.length > 0 && (
-            <div className="lg:col-span-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-              <p className="font-bold mb-1">Review before saving:</p>
-              <ul className="list-disc ml-4 space-y-1">
-                {inlineIssues.map(issue => <li key={`${issue.field}-${issue.message}`}>{issue.message}</li>)}
-              </ul>
-            </div>
-          )}
+           {/* Optional Toggle */}
+           <div className="flex justify-start pt-2">
+              <button 
+                type="button" 
+                onClick={() => setShowOptionalFields(!showOptionalFields)}
+                className="text-sm font-medium text-indigo-600 flex items-center gap-1.5 hover:text-indigo-800 transition-colors focus:outline-none bg-indigo-50 px-4 py-2.5 rounded-xl w-full md:w-auto justify-center"
+              >
+                {showOptionalFields ? <ChevronUp size={18}/> : <ChevronDown size={18} />}
+                <span>{showOptionalFields ? 'Hide' : 'Add'} Fuel, Due & Payout</span>
+              </button>
+           </div>
 
-          <div className="hidden md:flex lg:col-span-4 justify-end gap-3 mt-6 pt-6 border-t border-slate-100">
-            <button type="button" onClick={resetForm} className="px-5 py-2.5 text-slate-600 font-medium hover:bg-slate-100 rounded-xl transition-colors">Cancel</button>
-            <button type="submit" className="px-8 py-2.5 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all active:scale-95">
-              {editingId ? 'Update Record' : 'Save Record'}
-            </button>
-          </div>
+           {/* Optional Fields */}
+           {showOptionalFields && (
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 bg-slate-50 p-5 rounded-2xl border border-slate-100 animate-fade-in">
+               <InputField label="Fuel Given (₹)" name="fuel" type="number" inputMode="decimal" value={formData.fuel === 0 ? '' : formData.fuel} onChange={handleInputChange} className="border-amber-200 focus:ring-amber-500 text-amber-700" placeholder="0" />
+               <div className="relative">
+                  <InputField label="Due (+/-)" name="due" type="number" inputMode="decimal" value={formData.due === 0 ? '' : formData.due} onChange={handleInputChange} placeholder="0" />
+                  <p className="text-[10px] text-slate-400 mt-1 ml-1">+ Driver Owes / - You Owe</p>
+               </div>
+               <InputField label="Payout (Paid to Driver)" name="payout" type="number" inputMode="decimal" value={formData.payout === 0 ? '' : formData.payout} onChange={handleInputChange} className="border-emerald-200 focus:ring-emerald-500 text-emerald-700" placeholder="0" />
+               <div className="relative">
+                  <InputField label="Payout Date" name="payoutDate" type="date" value={formData.payoutDate} onChange={handleInputChange} required={!!(formData.payout && formData.payout !== 0)} />
+                  <p className="text-[10px] text-emerald-600 mt-1 ml-1 font-semibold">Required when payout entered</p>
+               </div>
+             </div>
+           )}
+
+           <div className="mt-2">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1 mb-1.5 block">Notes</label>
+              <textarea name="notes" placeholder="Optional notes for this entry..." value={formData.notes || ''} onChange={handleInputChange} className="w-full px-4 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-base text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none resize-none h-24" />
+           </div>
+
+           {/* Sticky Action Bar for Mobile */}
+           <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-slate-200 shadow-[0_-10px_20px_rgba(0,0,0,0.05)] md:relative md:bg-transparent md:border-t-0 md:shadow-none md:p-0 md:mt-4 z-40 pb-safe">
+             <div className="flex flex-col md:flex-row justify-end gap-3 max-w-[1920px] mx-auto">
+               <button type="button" onClick={resetForm} className="px-5 py-3.5 md:py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-xl transition-colors w-full md:w-auto text-center order-2 md:order-1">Cancel</button>
+               {!editingId && (
+                 <button type="button" onClick={(e) => { closeAfterSaveRef.current = false; handleSubmit(e); }} className="px-5 py-3.5 md:py-2.5 bg-indigo-100 text-indigo-700 font-bold rounded-xl hover:bg-indigo-200 transition-all active:scale-95 w-full md:w-auto text-center order-1 md:order-2">
+                   Save & Add Next
+                 </button>
+               )}
+               <button type="submit" className="px-8 py-3.5 md:py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all active:scale-95 w-full md:w-auto text-center order-1 md:order-3">
+                 {editingId ? 'Update Record' : 'Save Record'}
+               </button>
+             </div>
+           </div>
         </form>
       </div>
-
-      {showConfirmSummary && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-end md:items-center justify-center p-3">
-          <div className="w-full md:max-w-md bg-white rounded-2xl p-5 space-y-3">
-            <h4 className="font-bold text-slate-900">Confirm Entry</h4>
-            <div className="text-sm text-slate-600 space-y-1">
-              <p><strong>{formData.driver}</strong> • {formatDate(String(formData.date || ''))}</p>
-              <p>Collection: ₹{Number(formData.collection || 0)}</p>
-              <p>Rent: ₹{Number(formData.rent || 0)} • Fuel: ₹{Number(formData.fuel || 0)}</p>
-              <p>Due: ₹{Number(formData.due || 0)} • Payout: ₹{Number(formData.payout || 0)}</p>
-            </div>
-            <div className="flex gap-2">
-              <button type="button" onClick={() => setShowConfirmSummary(false)} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-semibold">Edit</button>
-              <button type="button" onClick={handleConfirmAndSave} className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-semibold">Confirm & Save</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* DUPLICATE WARNING MODAL */}
       {duplicateWarning && (
@@ -1384,21 +1337,6 @@ const DailyEntryPage: React.FC = () => {
               </div>
           </div>
       )}
-
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+12px)]">
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={() => setIsFormOpen(prev => !prev)} className="min-h-11 px-4 rounded-xl border border-slate-200 text-slate-700 font-semibold text-sm">
-            {isFormOpen ? 'Hide' : 'Quick Entry'}
-          </button>
-          <button type="button" onClick={() => setSaveAndAddNext(prev => !prev)} className={`min-h-11 px-3 rounded-xl border text-xs font-semibold ${saveAndAddNext ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-white text-slate-600 border-slate-200'}`}>
-            Save & Add Next
-          </button>
-          <button type="button" onClick={(event) => { setIsFormOpen(true); handleSubmit(event as any); }} className="min-h-11 flex-1 rounded-xl bg-indigo-600 text-white font-semibold">
-            {editingId ? 'Update' : 'Save Entry'}
-          </button>
-        </div>
-        {warningIssues.length > 0 && <p className="mt-2 text-[11px] text-amber-700 font-medium">{warningIssues[0].message}</p>}
-      </div>
 
       {/* Global Filter Bar */}
       <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row gap-5 items-center justify-between">
