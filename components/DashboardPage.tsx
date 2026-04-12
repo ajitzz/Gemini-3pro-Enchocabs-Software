@@ -2,7 +2,7 @@
 import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { storageService } from '../services/storageService';
 import { DriverSummary, GlobalSummary } from '../types';
-import { Users, Banknote, Fuel, TrendingDown, AlertCircle, ArrowUpRight, ArrowDownRight, Wallet, ExternalLink } from 'lucide-react';
+import { Users, Banknote, Fuel, TrendingDown, AlertCircle, ArrowUpRight, ArrowDownRight, Wallet, ExternalLink, X, ArrowRight } from 'lucide-react';
 import NetCalculationPopup from './NetCalculationPopup';
 import { useNavigate } from 'react-router-dom';
 
@@ -140,22 +140,23 @@ const DashboardPage: React.FC = () => {
   );
 
   const StatCard = ({ title, value, colorClass, icon: Icon, subtext, trend }: any) => (
-    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 transition-all hover:shadow-md group">
-      <div className="flex justify-between items-start mb-4">
-        <div className={`p-3.5 rounded-2xl ${colorClass.bg} ${colorClass.text} transition-transform group-hover:scale-110 duration-300`}>
-          <Icon size={24} />
+    <div className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-slate-100 transition-all hover:shadow-md group relative overflow-hidden">
+      <div className={`absolute top-0 right-0 w-24 h-24 -mr-8 -mt-8 rounded-full opacity-[0.03] transition-transform group-hover:scale-110 duration-500 ${colorClass.bg}`}></div>
+      <div className="flex justify-between items-start mb-4 relative z-10">
+        <div className={`p-3 rounded-xl ${colorClass.bg} ${colorClass.text} transition-transform group-hover:scale-110 duration-300`}>
+          <Icon size={20} md={24} />
         </div>
         {trend && (
-           <span className={`text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 border ${trend === 'up' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
-             {trend === 'up' ? <ArrowUpRight size={12} strokeWidth={3}/> : <ArrowDownRight size={12} strokeWidth={3}/>}
-             <span className="uppercase tracking-wider text-[10px]">{trend === 'up' ? 'Payable' : 'Pending'}</span>
+           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border ${trend === 'up' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
+             {trend === 'up' ? <ArrowUpRight size={10} strokeWidth={3}/> : <ArrowDownRight size={10} strokeWidth={3}/>}
+             <span className="uppercase tracking-wider">{trend === 'up' ? 'Payable' : 'Pending'}</span>
            </span>
         )}
       </div>
-      <div>
-        <p className="text-sm font-semibold text-slate-400 mb-1 tracking-wide uppercase text-[11px]">{title}</p>
-        <h3 className="text-3xl font-bold text-slate-800 tracking-tight">{value}</h3>
-        {subtext && <p className="text-xs text-slate-400 mt-2 font-medium flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span> {subtext}</p>}
+      <div className="relative z-10">
+        <p className="text-[10px] font-bold text-slate-400 mb-1 tracking-wider uppercase">{title}</p>
+        <h3 className="text-2xl md:text-3xl font-bold text-slate-800 tracking-tight">{value}</h3>
+        {subtext && <p className="text-[10px] text-slate-400 mt-2 font-medium flex items-center gap-1.5"><span className={`w-1.5 h-1.5 rounded-full ${colorClass.text} opacity-40`}></span> {subtext}</p>}
       </div>
     </div>
   );
@@ -298,69 +299,92 @@ const DashboardPage: React.FC = () => {
           
           {/* Mobile Card View */}
           <div className="md:hidden flex-1 overflow-y-auto bg-slate-50/50 p-4 space-y-4">
-            {visibleSummaries.map((driver) => (
-              <div key={driver.driver} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                <div className="flex justify-between items-start mb-3">
-                  <h4 className="font-bold text-slate-800 text-lg">{driver.driver}</h4>
-                  <button
-                    type="button"
-                    onClick={() => setHiddenDrivers((prev) => [...new Set([...prev, driver.driver])])}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200"
-                  >
-                    Hide
-                  </button>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm mb-4">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Collection</p>
-                    <p className="font-medium text-slate-700">{formatCurrency(driver.totalCollection)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Rent</p>
-                    <p className="font-medium text-slate-700">{formatCurrency(driver.totalRent)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Fuel</p>
-                    <p className="font-medium text-slate-700">{formatCurrency(driver.totalFuel)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Wallet Week</p>
-                    <p className="font-medium text-slate-700">{formatCurrency(driver.totalWalletWeek)}</p>
-                  </div>
-                </div>
-
-                <div className="flex gap-3 pt-3 border-t border-slate-100">
-                  <div 
-                    className="flex-1 bg-slate-50 p-3 rounded-xl cursor-pointer active:scale-95 transition-transform"
-                    onClick={() => openCalcPopup(driver, 'netPayout')}
-                  >
-                    <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">Net Payout</p>
-                    <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-bold ${
-                      driver.netPayout < 0 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
-                    }`}>
-                      {formatCurrency(driver.netPayout)}
-                    </span>
-                  </div>
-                  <div 
-                    className="flex-1 bg-slate-50 p-3 rounded-xl cursor-pointer active:scale-95 transition-transform"
-                    onClick={() => openCalcPopup(driver, 'netBalance')}
-                  >
-                    <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">Net Balance</p>
-                    <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-bold ${
-                      driver.finalTotal < 0 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
-                    }`}>
-                      {formatCurrency(driver.finalTotal)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))}
-            {visibleSummaries.length === 0 && (
+            {visibleSummaries.length === 0 ? (
               <div className="py-12 text-center text-slate-400">
-                <Users size={32} className="opacity-20 mx-auto mb-2" />
-                <p>No drivers found matching "{filterDriver}"</p>
+                <div className="bg-white w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
+                  <Users size={24} className="opacity-20" />
+                </div>
+                <p className="font-medium">No drivers found</p>
+                {filterDriver && (
+                  <button onClick={() => setFilterDriver('')} className="mt-2 text-indigo-600 text-sm font-bold">Clear Filter</button>
+                )}
               </div>
+            ) : (
+              visibleSummaries.map((driver) => (
+                <div key={driver.driver} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 active:scale-[0.98] transition-all">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h4 className="font-bold text-slate-900 text-lg leading-tight">{driver.driver}</h4>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Driver Profile</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setHiddenDrivers((prev) => [...new Set([...prev, driver.driver])])}
+                      className="p-2 rounded-xl bg-slate-50 text-slate-400 hover:text-slate-600 active:bg-slate-100 transition-colors"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3 mb-5">
+                    <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-100/50">
+                      <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold mb-1">Collection</p>
+                      <p className="font-bold text-slate-800 text-sm">{formatCurrency(driver.totalCollection)}</p>
+                    </div>
+                    <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-100/50">
+                      <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold mb-1">Rent</p>
+                      <p className="font-bold text-slate-800 text-sm">{formatCurrency(driver.totalRent)}</p>
+                    </div>
+                    <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-100/50">
+                      <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold mb-1">Fuel</p>
+                      <p className="font-bold text-amber-600 text-sm">{formatCurrency(driver.totalFuel)}</p>
+                    </div>
+                    <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-100/50">
+                      <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold mb-1">Wallet Week</p>
+                      <p className="font-bold text-indigo-600 text-sm">{formatCurrency(driver.totalWalletWeek)}</p>
+                    </div>
+                  </div>
+  
+                  <div className="grid grid-cols-2 gap-3 pt-4 border-t border-slate-50">
+                    <div 
+                      className={`p-3 rounded-2xl cursor-pointer transition-all active:scale-95 border ${
+                        driver.netPayout < 0 ? 'bg-rose-50 border-rose-100' : 'bg-emerald-50 border-emerald-100'
+                      }`}
+                      onClick={() => openCalcPopup(driver, 'netPayout')}
+                    >
+                      <p className={`text-[9px] uppercase tracking-wider font-bold mb-1 ${
+                        driver.netPayout < 0 ? 'text-rose-400' : 'text-emerald-400'
+                      }`}>Net Payout</p>
+                      <div className="flex items-center justify-between">
+                        <span className={`text-sm font-black ${
+                          driver.netPayout < 0 ? 'text-rose-700' : 'text-emerald-700'
+                        }`}>
+                          {formatCurrency(driver.netPayout)}
+                        </span>
+                        <ArrowRight size={14} className={driver.netPayout < 0 ? 'text-rose-300' : 'text-emerald-300'} />
+                      </div>
+                    </div>
+                    <div 
+                      className={`p-3 rounded-2xl cursor-pointer transition-all active:scale-95 border ${
+                        driver.finalTotal < 0 ? 'bg-rose-50 border-rose-100' : 'bg-indigo-50 border-indigo-100'
+                      }`}
+                      onClick={() => openCalcPopup(driver, 'netBalance')}
+                    >
+                      <p className={`text-[9px] uppercase tracking-wider font-bold mb-1 ${
+                        driver.finalTotal < 0 ? 'text-rose-400' : 'text-indigo-400'
+                      }`}>Net Balance</p>
+                      <div className="flex items-center justify-between">
+                        <span className={`text-sm font-black ${
+                          driver.finalTotal < 0 ? 'text-rose-700' : 'text-indigo-700'
+                        }`}>
+                          {formatCurrency(driver.finalTotal)}
+                        </span>
+                        <ArrowRight size={14} className={driver.finalTotal < 0 ? 'text-rose-300' : 'text-indigo-300'} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))
             )}
           </div>
 

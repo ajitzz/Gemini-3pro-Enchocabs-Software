@@ -4,7 +4,7 @@ import { DailyEntry, Driver, LeaveRecord, WeeklyWallet } from '../types';
 import { storageService } from '../services/storageService';
 import { useLiveUpdates } from '../lib/useLiveUpdates';
 import { isDriverUnavailableOnDate } from '../lib/leaveUtils';
-import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check, AlertOctagon, FileDown } from 'lucide-react';
+import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check, AlertOctagon, FileDown, AlertCircle, ChevronLeft, ChevronRight, Car, QrCode } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
 const InputField = ({ label, name, type = "text", value, onChange, onKeyDown, placeholder, required = false, className = "", readOnly = false, inputMode }: any) => (
@@ -318,6 +318,7 @@ const DailyEntryPage: React.FC = () => {
 
   // Duplicate Warning State
   const [duplicateWarning, setDuplicateWarning] = useState<{ active: boolean, existingId: string, payload: DailyEntry } | null>(null);
+  const [outlierWarning, setOutlierWarning] = useState<{ message: string, payload: DailyEntry } | null>(null);
   const closeAfterSaveRef = useRef(true);
 
   // Form State
@@ -645,6 +646,60 @@ const DailyEntryPage: React.FC = () => {
     }
   };
 
+  const checkOutliers = (newEntry: DailyEntry) => {
+    const driverEntries = entries.filter(e => e.driver === newEntry.driver);
+    if (driverEntries.length < 3) return null;
+
+    const avgCollection = driverEntries.reduce((sum, e) => sum + e.collection, 0) / driverEntries.length;
+    if (newEntry.collection > avgCollection * 2.5) {
+      return `Collection (₹${newEntry.collection}) is much higher than ${newEntry.driver}'s average (₹${Math.round(avgCollection)}).`;
+    }
+    if (newEntry.collection < avgCollection * 0.3 && newEntry.collection > 0) {
+      return `Collection (₹${newEntry.collection}) is much lower than ${newEntry.driver}'s average (₹${Math.round(avgCollection)}).`;
+    }
+    return null;
+  };
+
+  const handleOutlierConfirm = async () => {
+    if (!outlierWarning) return;
+    const { payload } = outlierWarning;
+    setOutlierWarning(null);
+    await saveEntry(payload);
+  };
+
+  const saveEntry = async (newEntry: DailyEntry) => {
+    if (!navigator.onLine) {
+      setOfflineQueue(prev => [...prev, newEntry]);
+      upsertEntry({ ...newEntry, id: `offline-${newEntry.id}` }); // Optimistic UI update
+      if (editingId) {
+        resetForm();
+      } else {
+        resetFormAfterSave(newEntry.date);
+        if (closeAfterSaveRef.current) {
+          setIsFormOpen(false);
+        }
+      }
+      alert('You are offline. Entry saved locally and will sync when online.');
+      return;
+    }
+
+    try {
+      const savedEntry = await storageService.saveDailyEntry(newEntry);
+      upsertEntry({ ...newEntry, ...savedEntry });
+      if (editingId) {
+        resetForm();
+      } else {
+        resetFormAfterSave(newEntry.date);
+        if (closeAfterSaveRef.current) {
+          setIsFormOpen(false);
+        }
+      }
+    } catch (error: any) {
+      console.error('Save daily entry failed:', error);
+      alert(error?.message || 'Failed to save daily entry. Ensure the driver has only one entry per day.');
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent | React.KeyboardEvent) => {
     if (e.type === 'submit' || (e as React.KeyboardEvent).key === 'Enter') {
         e.preventDefault();
@@ -667,19 +722,11 @@ const DailyEntryPage: React.FC = () => {
             return;
         }
 
-        // Check for duplicate entry on same day
-        const duplicateEntry = entries.find(entry => 
-          entry.date === normalizedDate && 
-          entry.driver === formData.driver && 
-          entry.id !== editingId
-        );
-
         const dateObj = new Date(normalizedDate);
         const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'long' });
 
-        // Use existing ID if editing, otherwise generate new one (but will be overridden if duplicate exists)
         const newEntry: DailyEntry = {
-          id: formData.id || crypto.randomUUID(),
+          id: editingId || crypto.randomUUID(),
           date: normalizedDate,
           day: dayName,
           vehicle: formData.vehicle || 'Unknown',
@@ -695,6 +742,13 @@ const DailyEntryPage: React.FC = () => {
           notes: formData.notes
         };
 
+        // 1. Duplicate Check
+        const duplicateEntry = entries.find(entry => 
+          entry.date === normalizedDate && 
+          entry.driver === formData.driver && 
+          entry.id !== editingId
+        );
+
         if (duplicateEntry) {
           setDuplicateWarning({
             active: true,
@@ -704,76 +758,40 @@ const DailyEntryPage: React.FC = () => {
           return;
         }
 
-        if (!navigator.onLine) {
-          setOfflineQueue(prev => [...prev, newEntry]);
-          upsertEntry({ ...newEntry, id: `offline-${newEntry.id}` }); // Optimistic UI update
-          if (editingId) {
-            resetForm();
-          } else {
-            resetFormAfterSave(normalizedDate);
-            if (closeAfterSaveRef.current) {
-              setIsFormOpen(false);
-            }
-          }
-          alert('You are offline. Entry saved locally and will sync when online.');
+        // 2. Outlier Check
+        const outlierMsg = checkOutliers(newEntry);
+        if (outlierMsg) {
+          setOutlierWarning({ message: outlierMsg, payload: newEntry });
           return;
         }
 
-        try {
-          const savedEntry = await storageService.saveDailyEntry(newEntry);
-
-          if (editingId) {
-            resetForm();
-          } else {
-            resetFormAfterSave(normalizedDate);
-            if (closeAfterSaveRef.current) {
-              setIsFormOpen(false);
-            }
-          }
-          upsertEntry({ ...newEntry, ...savedEntry });
-        } catch (error: any) {
-          console.error('Save daily entry failed:', error);
-          alert(error?.message || 'Failed to save daily entry. Ensure the driver has only one entry per day.');
-        }
+        await saveEntry(newEntry);
     }
   };
 
   const handleOverrideConfirm = async () => {
     if (!duplicateWarning) return;
 
-    // If we are overriding, we are essentially updating the *existing* duplicate entry
-    // with the values from our form.
     const entryToSave = {
         ...duplicateWarning.payload,
         id: duplicateWarning.existingId // Force ID to match existing
     };
 
-    // Edge case: If we were "Editing" a different entry (Entry A) and changed its date/driver
-    // to clash with Entry B, and chose to Override, we are essentially merging A into B.
-    // So we should delete A to avoid duplicates, and update B.
     if (editingId && editingId !== duplicateWarning.existingId) {
        await storageService.deleteDailyEntry(editingId);
        setEntries(prev => prev.filter(entry => entry.id !== editingId));
     }
 
-    try {
-      const savedEntry = await storageService.saveDailyEntry(entryToSave);
-      upsertEntry({ ...entryToSave, ...savedEntry });
-    } catch (error: any) {
-      console.error('Duplicate override failed:', error);
-      alert(error?.message || 'Unable to override the existing entry.');
+    setDuplicateWarning(null);
+
+    // Check for outliers after duplicate check
+    const outlierMsg = checkOutliers(entryToSave);
+    if (outlierMsg) {
+      setOutlierWarning({ message: outlierMsg, payload: entryToSave });
       return;
     }
-    setDuplicateWarning(null);
-    
-    if (editingId) {
-        resetForm();
-    } else {
-        resetFormAfterSave(entryToSave.date);
-        if (closeAfterSaveRef.current) {
-          setIsFormOpen(false);
-        }
-    }
+
+    await saveEntry(entryToSave);
   };
 
   const resetFormAfterSave = (preserveDate: string) => {
@@ -1335,89 +1353,194 @@ const DailyEntryPage: React.FC = () => {
                       </div>
                   </div>
               </div>
+            </div>
+        )}
+
+        {/* OUTLIER WARNING MODAL */}
+      {outlierWarning && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden ring-4 ring-indigo-50">
+                  <div className="bg-indigo-50 p-6 border-b border-indigo-100 flex items-center gap-3">
+                      <div className="bg-white p-2 rounded-full text-indigo-500 shadow-sm"><AlertCircle size={28} /></div>
+                      <div>
+                          <h3 className="font-bold text-indigo-900 text-lg">Unusual Entry</h3>
+                      </div>
+                  </div>
+                  <div className="p-6">
+                      <p className="text-slate-600 font-medium leading-relaxed mb-4">
+                          {outlierWarning.message}
+                      </p>
+                      <div className="flex gap-3">
+                          <button 
+                            onClick={() => setOutlierWarning(null)}
+                            className="flex-1 py-3 border border-slate-200 text-slate-600 rounded-xl font-bold hover:bg-slate-50 transition-colors"
+                          >
+                              Edit Data
+                          </button>
+                          <button 
+                            onClick={handleOutlierConfirm}
+                            className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all active:scale-95"
+                          >
+                              Confirm
+                          </button>
+                      </div>
+                  </div>
+              </div>
           </div>
       )}
 
       {/* Global Filter Bar */}
-      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row gap-5 items-center justify-between">
-        <div className="flex items-center gap-3 text-slate-500">
-          <Filter size={18} />
-          <span className="text-sm font-semibold uppercase tracking-wide">Data View</span>
+      <div className="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 text-slate-500">
+            <Filter size={18} />
+            <span className="text-sm font-semibold uppercase tracking-wide">Data View</span>
+          </div>
           {isAnyFilterActive && (
              <button onClick={clearAllFilters} className="text-xs font-bold text-rose-500 bg-rose-50 px-2 py-1 rounded-lg hover:bg-rose-100 transition-colors">
-                Reset All Filters
+                Reset Filters
              </button>
           )}
         </div>
-        <div className="flex items-center gap-4 flex-wrap">
-             <GlobalDriverFilter drivers={enteredDrivers} selected={filterDriver} onChange={setFilterDriver} />
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:items-center gap-4">
+             <div className="w-full lg:w-64">
+                <GlobalDriverFilter drivers={enteredDrivers} selected={filterDriver} onChange={setFilterDriver} />
+             </div>
              
-             <div className="h-8 w-px bg-slate-200 hidden md:block"></div>
-
-             <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-400 uppercase mr-2">Global Date Range</span>
-                <input 
-                  type="date" 
-                  value={filterDateStart} 
-                  onChange={e => setFilterDateStart(e.target.value)} 
-                  className="bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl px-3 py-2.5 text-base text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-                <span className="text-slate-300">-</span>
-                <input 
-                  type="date" 
-                  value={filterDateEnd} 
-                  onChange={e => setFilterDateEnd(e.target.value)} 
-                  className="bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl px-3 py-2.5 text-base text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
-                />
+             <div className="flex flex-col gap-1.5 flex-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase ml-1">Date Range</span>
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="date" 
+                    value={filterDateStart} 
+                    onChange={e => setFilterDateStart(e.target.value)} 
+                    className="flex-1 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl px-3 py-2 text-sm text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <span className="text-slate-300">-</span>
+                  <input 
+                    type="date" 
+                    value={filterDateEnd} 
+                    onChange={e => setFilterDateEnd(e.target.value)} 
+                    className="flex-1 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl px-3 py-2 text-sm text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
              </div>
 
-             <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-400 uppercase">History</span>
-                <button
-                  onClick={() => setShowFullHistory(prev => !prev)}
-                  className="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-2 rounded-lg hover:bg-indigo-100 transition-colors"
-                >
-                  {showFullHistory ? `Show last ${RECENT_DAYS} days` : 'Load full history'}
-                </button>
-                {!showFullHistory && recentFromDate && (
-                  <span className="text-[11px] text-slate-400">Since {formatDate(recentFromDate)}</span>
-                )}
+             <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase ml-1">History</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowFullHistory(prev => !prev)}
+                    className="text-xs font-bold text-indigo-600 bg-indigo-50 px-4 py-2 rounded-xl hover:bg-indigo-100 transition-colors whitespace-nowrap h-[38px]"
+                  >
+                    {showFullHistory ? `Last ${RECENT_DAYS}d` : 'Full History'}
+                  </button>
+                  {!showFullHistory && recentFromDate && (
+                    <span className="text-[10px] text-slate-400 whitespace-nowrap">Since {formatDate(recentFromDate)}</span>
+                  )}
+                </div>
              </div>
         </div>
       </div>
 
-      {/* Table */}
+      {/* Mobile Summary Cards */}
+      <div className="grid grid-cols-2 md:hidden gap-3">
+        <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+          <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Total Collection</p>
+          <p className="text-lg font-bold text-indigo-600">₹{totals.collection.toLocaleString()}</p>
+        </div>
+        <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+          <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Total Rent</p>
+          <p className="text-lg font-bold text-slate-800">₹{totals.rent.toLocaleString()}</p>
+        </div>
+      </div>
+
+      {/* Table / Card View */}
       <div className="bg-white rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100 overflow-hidden">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 px-6 py-4 border-b border-slate-100 bg-slate-50/60">
             <div>
                 <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Records Window</p>
                 <p className="text-sm font-bold text-slate-800">{currentPageLabel}</p>
                 {currentPageRange && <p className="text-xs text-slate-400">{currentPageRange}</p>}
-                {currentPageMeta?.hasSpillover && (
-                    <p className="text-[11px] text-amber-600 font-semibold">Includes next month dates to complete the week.</p>
-                )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between md:justify-end gap-3">
                 <button
                   onClick={goToPreviousPage}
                   disabled={currentPageIndex === 0 || paginatedPages.length === 0}
-                  className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold disabled:opacity-50 hover:border-indigo-200 hover:text-indigo-600 transition-colors"
+                  className="p-2 rounded-xl border border-slate-200 text-slate-600 disabled:opacity-30 hover:bg-white transition-all active:scale-90"
                 >
-                    Prev
+                    <ChevronLeft size={20} />
                 </button>
-                <span className="text-xs text-slate-500 font-semibold">
-                    Page {paginatedPages.length === 0 ? 0 : currentPageIndex + 1} of {paginatedPages.length}
+                <span className="text-xs text-slate-500 font-bold bg-white px-3 py-1.5 rounded-lg border border-slate-100">
+                    {paginatedPages.length === 0 ? 0 : currentPageIndex + 1} / {paginatedPages.length}
                 </span>
                 <button
                   onClick={goToNextPage}
                   disabled={paginatedPages.length === 0 || currentPageIndex >= paginatedPages.length - 1}
-                  className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold disabled:opacity-50 hover:border-indigo-200 hover:text-indigo-600 transition-colors"
+                  className="p-2 rounded-xl border border-slate-200 text-slate-600 disabled:opacity-30 hover:bg-white transition-all active:scale-90"
                 >
-                    Next
+                    <ChevronRight size={20} />
                 </button>
             </div>
         </div>
-        <div className="overflow-x-auto min-h-[400px]">
+
+        {/* Mobile Card View */}
+        <div className="md:hidden divide-y divide-slate-100">
+          {displayedEntries.length === 0 ? (
+            <div className="p-12 text-center text-slate-400">
+              <div className="bg-slate-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Filter size={24} className="opacity-20" />
+              </div>
+              <p className="font-medium">No entries found</p>
+            </div>
+          ) : (
+            displayedEntries.map((entry: any) => (
+              <div key={entry.id} className="p-4 bg-white active:bg-slate-50 transition-colors">
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <p className="text-sm font-bold text-slate-900">{entry.driver}</p>
+                    <p className="text-[11px] text-slate-500 font-medium">{formatDate(entry.date)} • {entry.shift}</p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => handleEdit(entry)} className="p-2 text-indigo-600 bg-indigo-50 rounded-lg active:scale-90 transition-transform">
+                      <Edit2 size={16} />
+                    </button>
+                    <button onClick={() => handleDelete(entry.id)} className="p-2 text-rose-600 bg-rose-50 rounded-lg active:scale-90 transition-transform">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  <div className="bg-slate-50 p-2 rounded-lg">
+                    <p className="text-[9px] font-bold text-slate-400 uppercase mb-0.5">Collection</p>
+                    <p className="text-xs font-bold text-slate-800">₹{entry.collection}</p>
+                  </div>
+                  <div className="bg-slate-50 p-2 rounded-lg">
+                    <p className="text-[9px] font-bold text-slate-400 uppercase mb-0.5">Rent</p>
+                    <p className="text-xs font-bold text-slate-800">₹{entry.rent}</p>
+                  </div>
+                  <div className="bg-slate-50 p-2 rounded-lg">
+                    <p className="text-[9px] font-bold text-slate-400 uppercase mb-0.5">Fuel</p>
+                    <p className="text-xs font-bold text-amber-600">₹{entry.fuel || 0}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium">
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center gap-1"><Car size={10} /> {entry.vehicle}</span>
+                    {entry.qrCode && <span className="flex items-center gap-1"><QrCode size={10} /> {entry.qrCode}</span>}
+                  </div>
+                  {entry.notes && <span className="italic truncate max-w-[100px]">{entry.notes}</span>}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Desktop Table View */}
+        <div className="hidden md:block overflow-x-auto min-h-[400px]">
           <table className="w-full text-sm text-left">
             <thead className="text-xs text-slate-500 uppercase bg-slate-50/50 border-b border-slate-100">
               <tr>

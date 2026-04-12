@@ -588,142 +588,169 @@ const WeeklyWalletPage: React.FC = () => {
           </div>
       )}
 
-      {/* Records */}
-      <div className="bg-white rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100 overflow-hidden">
-        <div className="px-6 py-6 bg-slate-50 border-b border-slate-100 flex flex-col items-center gap-6">
-          <div className="flex items-center bg-white rounded-2xl border border-slate-200 shadow-sm p-1.5 w-full max-w-md mx-auto justify-between">
-            <button
-              onClick={goToPreviousWeek}
-              disabled={currentWeekIndex === -1 || currentWeekIndex >= weekOptions.length - 1}
-              className="p-3 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl disabled:opacity-30 disabled:hover:bg-transparent transition-colors flex-shrink-0"
-            >
-              <ChevronLeft size={24} />
-            </button>
+      {/* Filter Bar */}
+      <div className="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 text-slate-500">
+            <Search size={18} />
+            <span className="text-sm font-semibold uppercase tracking-wide">Search & Filter</span>
+          </div>
+          {filterDriver && (
+             <button onClick={() => setFilterDriver('')} className="text-xs font-bold text-rose-500 bg-rose-50 px-2 py-1 rounded-lg hover:bg-rose-100 transition-colors">
+                Reset
+             </button>
+          )}
+        </div>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:items-center gap-4">
+             <div className="relative group flex-1">
+                <input 
+                  type="text" 
+                  placeholder="Search driver name..." 
+                  value={filterDriver}
+                  onChange={(e) => setFilterDriver(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all"
+                />
+                <Search size={18} className="absolute left-3.5 top-3.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+             </div>
 
-            <div className="px-4 text-center flex-1 relative group cursor-pointer">
-              {selectedWeek || currentWeekIndex === -1 ? (
-                <>
-                  <div className="flex flex-col items-center pointer-events-none">
-                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Wallet Period</span>
-                    <span className="text-base md:text-lg font-bold text-slate-800 flex items-center justify-center gap-2 group-hover:text-indigo-600 transition-colors">
-                      <Calendar size={18} className="text-indigo-500 mb-0.5" />
-                      {selectedWeek ? selectedWeek.label : 'No Data Available'}
-                      {weekOptions.length > 0 && <ChevronDown size={14} className="text-slate-300 group-hover:text-indigo-400 transition-colors" />}
-                    </span>
-                  </div>
-                  {weekOptions.length > 0 && (
-                    <select
-                      value={currentWeekIndex}
-                      onChange={(e) => setCurrentWeekIndex(Number(e.target.value))}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer appearance-none text-base"
-                      title="Select Week"
-                    >
-                      {weekOptions.map((opt) => (
-                        <option key={opt.index} value={opt.index}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
+             <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase ml-1">History Limit</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowFullHistory(prev => !prev)}
+                    className="text-xs font-bold text-indigo-600 bg-indigo-50 px-4 py-2 rounded-xl hover:bg-indigo-100 transition-colors whitespace-nowrap h-[46px] flex-1 sm:flex-none"
+                  >
+                    {showFullHistory ? `Last ${RECENT_WEEKS}w` : 'Full History'}
+                  </button>
+                  {!showFullHistory && recentFromDate && (
+                    <span className="text-[10px] text-slate-400 whitespace-nowrap hidden sm:inline">Since {recentFromDate.split('-').reverse().join('-')}</span>
                   )}
-                </>
-              ) : (
-                <span className="text-sm text-slate-400 font-medium">No Data Available</span>
-              )}
+                </div>
+             </div>
+        </div>
+      </div>
+
+      {/* Mobile Summary Cards */}
+      <div className="grid grid-cols-2 md:hidden gap-3">
+        <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+          <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Total Earnings</p>
+          <p className="text-lg font-bold text-emerald-600">₹{weekTotals.earnings.toLocaleString()}</p>
+        </div>
+        <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+          <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Total Wallet</p>
+          <p className="text-lg font-bold text-indigo-600">₹{weekTotals.walletWeek.toLocaleString()}</p>
+        </div>
+      </div>
+
+      {/* Records */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 px-6 py-4 border-b border-slate-100 bg-slate-50/60">
+            <div>
+                <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Weekly View</p>
+                <p className="text-sm font-bold text-slate-800">{selectedWeek?.label || 'All History'}</p>
             </div>
-
-            <button
-              onClick={goToNextWeek}
-              disabled={currentWeekIndex === -1 || currentWeekIndex === 0}
-              className="p-3 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl disabled:opacity-30 disabled:hover:bg-transparent transition-colors flex-shrink-0"
-            >
-              <ChevronRight size={24} />
-            </button>
-          </div>
-
-          <div className="relative group w-full max-w-md">
-            <input
-              type="text"
-              placeholder="Search driver in selected week..."
-              value={filterDriver}
-              onChange={(e) => setFilterDriver(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
-            />
-            <Search size={18} className="absolute left-3.5 top-3.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-          </div>
-
-          <div className="flex flex-col items-center gap-2 text-center">
-            <button
-              onClick={() => setShowFullHistory(prev => !prev)}
-              className="text-xs font-bold text-indigo-600 bg-indigo-50 px-4 py-2 rounded-lg hover:bg-indigo-100 transition-colors"
-            >
-              {showFullHistory ? `Show last ${RECENT_WEEKS} weeks` : 'Load full history'}
-            </button>
-            {!showFullHistory && recentFromDate && (
-              <span className="text-[11px] text-slate-400">Since {recentFromDate.split('-').reverse().join('-')}</span>
-            )}
-          </div>
+            <div className="flex items-center justify-between md:justify-end gap-3">
+                <button
+                  onClick={() => setCurrentWeekIndex(prev => Math.max(0, prev - 1))}
+                  disabled={currentWeekIndex <= 0}
+                  className="p-2 rounded-xl border border-slate-200 text-slate-600 disabled:opacity-30 hover:bg-white transition-all active:scale-90"
+                >
+                    <ChevronLeft size={20} />
+                </button>
+                <span className="text-xs text-slate-500 font-bold bg-white px-3 py-1.5 rounded-lg border border-slate-100">
+                    {weekOptions.length === 0 ? 0 : currentWeekIndex + 1} / {weekOptions.length}
+                </span>
+                <button
+                  onClick={() => setCurrentWeekIndex(prev => Math.min(weekOptions.length - 1, prev + 1))}
+                  disabled={currentWeekIndex >= weekOptions.length - 1}
+                  className="p-2 rounded-xl border border-slate-200 text-slate-600 disabled:opacity-30 hover:bg-white transition-all active:scale-90"
+                >
+                    <ChevronRight size={20} />
+                </button>
+            </div>
         </div>
 
         <div className="overflow-x-auto">
           {/* Mobile Card View */}
           <div className="md:hidden flex-1 overflow-y-auto bg-slate-50/50 p-4 space-y-4">
             {loading ? (
-              <div className="p-12 text-center text-slate-400">Loading wallet data...</div>
+              <div className="p-12 text-center text-slate-400">
+                <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-3"></div>
+                <p className="text-sm font-medium">Loading wallet data...</p>
+              </div>
             ) : filteredWallets.length === 0 ? (
-              <div className="p-12 text-center text-slate-400">No records found.</div>
+              <div className="p-12 text-center text-slate-400">
+                <div className="bg-white w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
+                  <Wallet size={24} className="opacity-20" />
+                </div>
+                <p className="font-medium">No records found</p>
+              </div>
             ) : (
               filteredWallets.map(w => {
                 const walletWeek = calculateWalletWeek(w);
                 const deductions = calculateDeductions(w);
                 const walletAfterCharges = calculateWalletAfterCharges(w);
                 return (
-                  <div key={w.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 relative">
-                    <div className="flex justify-between items-start mb-3">
+                  <div key={w.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 active:scale-[0.98] transition-all">
+                    <div className="flex justify-between items-start mb-4">
                       <div>
-                        <h4 className="font-bold text-slate-800 text-lg">{w.driver}</h4>
-                        <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
+                        <h4 className="font-bold text-slate-900 text-lg leading-tight">{w.driver}</h4>
+                        <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-1">
                           <Calendar size={12} />
                           {formatWeekRange(w.weekStartDate, w.weekEndDate)}
                         </div>
                       </div>
-                      <div className="flex items-center space-x-1">
-                        <button onClick={() => handleEdit(w)} className="text-slate-400 hover:text-indigo-600 p-2 hover:bg-indigo-50 rounded-lg"><Edit2 size={16} /></button>
-                        <button onClick={() => handleDelete(w.id)} className="text-slate-400 hover:text-rose-600 p-2 hover:bg-rose-50 rounded-lg"><Trash2 size={16} /></button>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => handleEdit(w)} className="p-2 text-indigo-600 bg-indigo-50 rounded-lg active:scale-90 transition-transform">
+                          <Edit2 size={16} />
+                        </button>
+                        <button onClick={() => handleDelete(w.id)} className="p-2 text-rose-600 bg-rose-50 rounded-lg active:scale-90 transition-transform">
+                          <Trash2 size={16} />
+                        </button>
                       </div>
                     </div>
                     
-                    <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm mb-4">
-                      <div>
-                        <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Trips</p>
-                        <p className="font-medium text-slate-700">{w.trips || 0}</p>
+                    <div className="grid grid-cols-2 gap-3 mb-5">
+                      <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-100/50">
+                        <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold mb-1">Trips</p>
+                        <p className="font-bold text-slate-800 text-sm">{w.trips || 0}</p>
                       </div>
-                      <div>
-                        <p className="text-[10px] uppercase tracking-wider text-emerald-600 font-semibold">Earnings</p>
-                        <p className="font-medium text-emerald-700">+₹{w.earnings}</p>
+                      <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-100/50">
+                        <p className="text-[9px] uppercase tracking-wider text-emerald-600 font-bold mb-1">Earnings</p>
+                        <p className="font-bold text-emerald-700 text-sm">+₹{w.earnings}</p>
                       </div>
-                      <div>
-                        <p className="text-[10px] uppercase tracking-wider text-emerald-600 font-semibold">Refund</p>
-                        <p className="font-medium text-emerald-700">+₹{w.refund}</p>
+                      <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-100/50">
+                        <p className="text-[9px] uppercase tracking-wider text-emerald-600 font-bold mb-1">Refund</p>
+                        <p className="font-bold text-emerald-700 text-sm">+₹{w.refund}</p>
                       </div>
-                      <div>
-                        <p className="text-[10px] uppercase tracking-wider text-rose-500 font-semibold">Deductions</p>
-                        <p className="font-medium text-rose-600">-₹{deductions.toFixed(2)}</p>
+                      <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-100/50">
+                        <p className="text-[9px] uppercase tracking-wider text-rose-500 font-bold mb-1">Deductions</p>
+                        <p className="font-bold text-rose-600 text-sm">-₹{deductions.toFixed(2)}</p>
                       </div>
                     </div>
 
-                    <div className="flex gap-3 pt-3 border-t border-slate-100">
-                      <div className="flex-1 bg-slate-50 p-3 rounded-xl">
-                        <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">Wallet Week</p>
-                        <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-bold ${
-                          walletWeek < 0 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
+                    <div className="grid grid-cols-2 gap-3 pt-4 border-t border-slate-50">
+                      <div className={`p-3 rounded-2xl border ${
+                        walletWeek < 0 ? 'bg-rose-50 border-rose-100' : 'bg-emerald-50 border-emerald-100'
+                      }`}>
+                        <p className={`text-[9px] uppercase tracking-wider font-bold mb-1 ${
+                          walletWeek < 0 ? 'text-rose-400' : 'text-emerald-400'
+                        }`}>Wallet Week</p>
+                        <span className={`text-sm font-black ${
+                          walletWeek < 0 ? 'text-rose-700' : 'text-emerald-700'
                         }`}>
                           {walletWeek < 0 ? '' : '+'}₹{walletWeek.toFixed(2)}
                         </span>
                       </div>
-                      <div className="flex-1 bg-slate-50 p-3 rounded-xl">
-                        <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">Wallet /+ Charges</p>
-                        <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-bold ${
-                          walletAfterCharges < 0 ? 'bg-rose-100 text-rose-700' : 'bg-indigo-100 text-indigo-700'
+                      <div className={`p-3 rounded-2xl border ${
+                        walletAfterCharges < 0 ? 'bg-rose-50 border-rose-100' : 'bg-indigo-50 border-indigo-100'
+                      }`}>
+                        <p className={`text-[9px] uppercase tracking-wider font-bold mb-1 ${
+                          walletAfterCharges < 0 ? 'text-rose-400' : 'text-indigo-400'
+                        }`}>Wallet /+ Charges</p>
+                        <span className={`text-sm font-black ${
+                          walletAfterCharges < 0 ? 'text-rose-700' : 'text-indigo-700'
                         }`}>
                           {walletAfterCharges < 0 ? '' : '+'}₹{walletAfterCharges.toFixed(2)}
                         </span>

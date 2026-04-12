@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { storageService } from '../services/storageService';
 import { CompanyWeeklySummary, DailyEntry, WeeklyWallet, RentalSlab, DriverBillingRecord } from '../types';
-import { Calculator, AlertTriangle, CheckCircle, TrendingUp, TrendingDown, DollarSign, Wallet, ShieldCheck, ShieldAlert, Calendar, RefreshCcw, ArrowRight, Filter, ChevronRight, History, Layers, ChevronDown } from 'lucide-react';
+import { Calculator, AlertTriangle, CheckCircle, TrendingUp, TrendingDown, DollarSign, Wallet, ShieldCheck, ShieldAlert, Calendar, RefreshCcw, ArrowRight, Filter, ChevronRight, History, Layers, ChevronDown, Search } from 'lucide-react';
 
 // --- Types for Internal Calculations ---
 interface DriverPendingEntry {
@@ -345,28 +345,28 @@ const RevenuePage: React.FC = () => {
   );
 
   return (
-    <div className="max-w-[1920px] mx-auto space-y-8 animate-fade-in pb-20">
+    <div className="max-w-[1920px] mx-auto space-y-6 md:space-y-8 animate-fade-in pb-20 px-4 md:px-0">
        {/* HEADER & CONTROLS */}
-       <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-6">
+       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
           <div className="flex items-center space-x-4">
               <div className="p-3 bg-indigo-900/10 rounded-xl text-indigo-700 shadow-sm border border-indigo-100">
                 <Calculator size={28} />
               </div>
               <div>
-                <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Revenue Calculation</h2>
-                <p className="text-slate-500 mt-1 font-medium">Weekly settlements and profit/loss analysis.</p>
+                <h2 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">Revenue Analysis</h2>
+                <p className="text-xs md:text-sm text-slate-500 mt-1 font-medium">Weekly settlements & profit/loss.</p>
               </div>
           </div>
 
           <div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-200 flex flex-col sm:flex-row items-center gap-2">
-              <div className="flex items-center gap-4 px-4 py-2">
-                 <div className="flex flex-col">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Start Week</span>
+              <div className="flex items-center gap-4 px-4 py-2 w-full sm:w-auto">
+                 <div className="flex flex-col flex-1 sm:flex-none">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Start Week</span>
                     <div className="relative group">
                        <select 
                           value={rangeStartId} 
                           onChange={e => setRangeStartId(e.target.value)}
-                          className="appearance-none bg-transparent font-bold text-base text-slate-700 pr-6 focus:outline-none cursor-pointer w-40"
+                          className="appearance-none bg-transparent font-bold text-sm md:text-base text-slate-700 pr-6 focus:outline-none cursor-pointer w-full sm:w-32"
                        >
                           {processedWeeks.map(w => <option key={w.id} value={w.id}>{w.label}</option>)}
                        </select>
@@ -374,15 +374,15 @@ const RevenuePage: React.FC = () => {
                     </div>
                  </div>
                  
-                 <div className="text-slate-300"><ArrowRight size={16}/></div>
+                 <div className="text-slate-300"><ArrowRight size={14}/></div>
                  
-                 <div className="flex flex-col">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">End Week</span>
+                 <div className="flex flex-col flex-1 sm:flex-none">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">End Week</span>
                     <div className="relative group">
                        <select 
                           value={rangeEndId} 
                           onChange={e => setRangeEndId(e.target.value)}
-                          className="appearance-none bg-transparent font-bold text-base text-slate-700 pr-6 focus:outline-none cursor-pointer w-40"
+                          className="appearance-none bg-transparent font-bold text-sm md:text-base text-slate-700 pr-6 focus:outline-none cursor-pointer w-full sm:w-32"
                        >
                           {processedWeeks.map(w => <option key={w.id} value={w.id}>{w.label}</option>)}
                        </select>
@@ -393,10 +393,10 @@ const RevenuePage: React.FC = () => {
 
               <div className="h-8 w-px bg-slate-100 hidden sm:block"></div>
 
-              <div className="flex gap-2 p-1">
+              <div className="flex gap-2 p-1 w-full sm:w-auto">
                  <button 
                    onClick={handleApplyRange}
-                   className={`px-5 py-2.5 text-sm font-bold rounded-xl transition-all shadow-sm flex items-center gap-2 ${selectionMode === 'RANGE' ? 'bg-indigo-600 text-white shadow-indigo-200' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                   className={`flex-1 sm:flex-none px-4 py-2.5 text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 ${selectionMode === 'RANGE' ? 'bg-indigo-600 text-white shadow-indigo-200' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
                  >
                    <Filter size={14} /> Apply Range
                  </button>
@@ -411,98 +411,98 @@ const RevenuePage: React.FC = () => {
           </div>
        </div>
 
-       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 md:gap-8">
           {/* LEFT COLUMN: ACTIVE VIEW (2/3 width) */}
-          <div className="xl:col-span-2 space-y-8">
+          <div className="xl:col-span-2 space-y-6 md:space-y-8">
               
               {/* 1. AGGREGATED HERO CARDS */}
               {consolidatedStats && (
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
                     <div
-                      className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden group cursor-pointer"
+                      className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden group cursor-pointer active:scale-95 transition-transform"
                       role="button"
                       tabIndex={0}
                       onClick={() => toggleCardDetails('revenue')}
                       onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && toggleCardDetails('revenue')}
                     >
-                        <div className="absolute right-0 top-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                        <div className="absolute right-0 top-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity hidden md:block">
                            <DollarSign size={80} />
                         </div>
-                        <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Total Revenue</p>
-                        <h3 className="text-2xl font-bold text-slate-800 mt-1">{formatCurrency(consolidatedStats.driversPayments)}</h3>
-                        <p className="text-xs text-emerald-600 font-medium mt-2 flex items-center gap-1">
-                           <TrendingUp size={12} /> Rent total from Driver Billings
+                        <p className="text-slate-400 text-[9px] md:text-xs font-bold uppercase tracking-wider">Revenue</p>
+                        <h3 className="text-lg md:text-2xl font-bold text-slate-800 mt-1">{formatCurrency(consolidatedStats.driversPayments)}</h3>
+                        <p className="text-[9px] text-emerald-600 font-bold mt-2 flex items-center gap-1">
+                           <TrendingUp size={10} /> Rent total
                         </p>
                         {openCardKey === 'revenue' && (
-                          <div className="mt-3 p-3 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-700 text-xs leading-relaxed">
+                          <div className="mt-3 p-3 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-700 text-[10px] leading-relaxed">
                             Revenue = Sum of rent totals from driver billings for the selected period.
                           </div>
                         )}
                     </div>
 
                     <div
-                      className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden group cursor-pointer"
+                      className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden group cursor-pointer active:scale-95 transition-transform"
                       role="button"
                       tabIndex={0}
                       onClick={() => toggleCardDetails('pending')}
                       onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && toggleCardDetails('pending')}
                     >
-                        <div className="absolute right-0 top-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                        <div className="absolute right-0 top-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity hidden md:block">
                            <AlertTriangle size={80} />
                         </div>
-                        <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Drivers Pending</p>
-                        <h3 className="text-2xl font-bold text-slate-800 mt-1">{formatCurrency(consolidatedStats.driverPendingTotal)}</h3>
-                        <p className="text-xs text-amber-600 font-medium mt-2 flex items-center gap-1">
-                           <TrendingDown size={12} /> Amount drivers need to pay this selection
+                        <p className="text-slate-400 text-[9px] md:text-xs font-bold uppercase tracking-wider">Pending</p>
+                        <h3 className="text-lg md:text-2xl font-bold text-slate-800 mt-1">{formatCurrency(consolidatedStats.driverPendingTotal)}</h3>
+                        <p className="text-[9px] text-amber-600 font-bold mt-2 flex items-center gap-1">
+                           <TrendingDown size={10} /> Driver debt
                         </p>
                         {openCardKey === 'pending' && (
-                          <div className="mt-3 p-3 rounded-xl bg-amber-50 border border-amber-100 text-amber-700 text-xs leading-relaxed">
+                          <div className="mt-3 p-3 rounded-xl bg-amber-50 border border-amber-100 text-amber-700 text-[10px] leading-relaxed">
                             Drivers Pending = Sum of negative payouts from the billing history for this range.
                           </div>
                         )}
                     </div>
 
                     <div
-                      className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden group cursor-pointer"
+                      className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden group cursor-pointer active:scale-95 transition-transform"
                       role="button"
                       tabIndex={0}
                       onClick={() => toggleCardDetails('expenses')}
                       onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && toggleCardDetails('expenses')}
                     >
-                        <div className="absolute right-0 top-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                        <div className="absolute right-0 top-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity hidden md:block">
                            <Wallet size={80} />
                         </div>
-                        <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Total Expenses</p>
-                        <h3 className="text-2xl font-bold text-slate-800 mt-1">
+                        <p className="text-slate-400 text-[9px] md:text-xs font-bold uppercase tracking-wider">Expenses</p>
+                        <h3 className="text-lg md:text-2xl font-bold text-slate-800 mt-1">
                            {formatCurrency(consolidatedStats.currentOs + consolidatedStats.driversWalletRaw + consolidatedStats.totalRoomRent)}
                         </h3>
-                        <p className="text-xs text-rose-500 font-medium mt-2 flex items-center gap-1">
-                           <TrendingDown size={12} /> Outflows + O/S + Rent
+                        <p className="text-[9px] text-rose-500 font-bold mt-2 flex items-center gap-1">
+                           <TrendingDown size={10} /> Total Outflow
                         </p>
                         {openCardKey === 'expenses' && (
-                          <div className="mt-3 p-3 rounded-xl bg-rose-50 border border-rose-100 text-rose-700 text-xs leading-relaxed">
+                          <div className="mt-3 p-3 rounded-xl bg-rose-50 border border-rose-100 text-rose-700 text-[10px] leading-relaxed">
                             Total Expenses = Current O/S + Driver Wallet (with adjustments) + Room Rent for all selected weeks.
                           </div>
                         )}
                     </div>
 
                     <div
-                      className={`p-6 rounded-2xl shadow-sm border relative overflow-hidden group text-white cursor-pointer ${consolidatedStats.strictProfit >= 0 ? 'bg-slate-900 border-slate-800' : 'bg-rose-600 border-rose-700'}`}
+                      className={`p-4 md:p-6 rounded-2xl shadow-sm border relative overflow-hidden group text-white cursor-pointer active:scale-95 transition-transform ${consolidatedStats.strictProfit >= 0 ? 'bg-slate-900 border-slate-800' : 'bg-rose-600 border-rose-700'}`}
                       role="button"
                       tabIndex={0}
                       onClick={() => toggleCardDetails('profit')}
                       onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && toggleCardDetails('profit')}
                     >
-                        <div className="absolute right-0 top-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                        <div className="absolute right-0 top-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity hidden md:block">
                            {consolidatedStats.strictProfit >= 0 ? <TrendingUp size={80} /> : <TrendingDown size={80} />}
                         </div>
-                        <p className="text-white/60 text-xs font-bold uppercase tracking-wider">Net Profit / Loss</p>
-                        <h3 className="text-3xl font-bold mt-1">{formatCurrency(consolidatedStats.strictProfit)}</h3>
-                        <p className="text-xs text-white/80 font-medium mt-2">
-                           {consolidatedStats.weeksCount} Week{consolidatedStats.weeksCount > 1 ? 's' : ''} Selected
+                        <p className="text-white/60 text-[9px] md:text-xs font-bold uppercase tracking-wider">Net Profit</p>
+                        <h3 className="text-xl md:text-3xl font-bold mt-1">{formatCurrency(consolidatedStats.strictProfit)}</h3>
+                        <p className="text-[9px] text-white/80 font-bold mt-2 uppercase tracking-tight">
+                           {consolidatedStats.weeksCount} Week{consolidatedStats.weeksCount > 1 ? 's' : ''}
                         </p>
                         {openCardKey === 'profit' && (
-                          <div className="mt-3 p-3 rounded-xl bg-white/10 border border-white/20 text-white text-xs leading-relaxed">
+                          <div className="mt-3 p-3 rounded-xl bg-white/10 border border-white/20 text-white text-[10px] leading-relaxed">
                             Net Profit / Loss = Revenue - Driver Wallet - Current O/S - Room Rent across the selected weeks.
                           </div>
                         )}
@@ -544,13 +544,13 @@ const RevenuePage: React.FC = () => {
                       </div>
 
                       {/* Detail Grid */}
-                      <div className="p-8 grid grid-cols-1 lg:grid-cols-2 gap-10">
+                      <div className="p-4 md:p-8 grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-10">
                          {/* Left: Financial Inputs */}
-                         <div className="space-y-8">
+                         <div className="space-y-6 md:space-y-8">
                             {/* RENT SECTION */}
-                            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 relative">
-                               <span className="absolute -top-3 left-4 bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded border border-slate-200 uppercase tracking-wider">Rental Breakdown</span>
-                               <div className="space-y-3 text-sm mt-2">
+                            <div className="bg-slate-50 p-4 md:p-5 rounded-2xl border border-slate-100 relative">
+                               <span className="absolute -top-3 left-4 bg-slate-100 text-slate-500 text-[9px] md:text-[10px] font-bold px-2 py-0.5 rounded border border-slate-200 uppercase tracking-wider">Rental Breakdown</span>
+                               <div className="space-y-3 text-xs md:text-sm mt-2">
                                   <div className="flex justify-between items-center">
                                      <span className="text-slate-600">Vehicle Rent</span>
                                      <span className="font-bold text-slate-800">{formatCurrency(consolidatedStats.vehicleRent)}</span>
@@ -562,85 +562,85 @@ const RevenuePage: React.FC = () => {
                                   <div className="h-px bg-slate-200 my-2"></div>
                                   <div className="flex justify-between items-center">
                                      <span className="text-slate-700 font-bold">Total Rent</span>
-                                     <span className="font-bold text-indigo-600 text-base">{formatCurrency(consolidatedStats.totalRent)}</span>
+                                     <span className="font-bold text-indigo-600 text-sm md:text-base">{formatCurrency(consolidatedStats.totalRent)}</span>
                                   </div>
                                </div>
                             </div>
 
                             {/* REVENUE & WALLET */}
-                            <div className="grid grid-cols-2 gap-4">
-                               <div className="bg-emerald-50/50 p-4 rounded-xl border border-emerald-100">
-                                  <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-1">Total Revenue</p>
-                                  <p className="text-xs text-emerald-700/70 mb-2">Drivers Payments</p>
-                                  <p className="text-xl font-bold text-emerald-800">{formatCurrency(consolidatedStats.driversPayments)}</p>
+                            <div className="grid grid-cols-2 gap-3 md:gap-4">
+                               <div className="bg-emerald-50/50 p-3 md:p-4 rounded-xl border border-emerald-100">
+                                  <p className="text-[9px] md:text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-1">Total Revenue</p>
+                                  <p className="text-[10px] md:text-xs text-emerald-700/70 mb-2">Drivers Payments</p>
+                                  <p className="text-base md:text-xl font-bold text-emerald-800">{formatCurrency(consolidatedStats.driversPayments)}</p>
                                </div>
-                               <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Driver Wallet</p>
-                                  <p className="text-xs text-slate-400 mb-2">Net Balance (With Adj)</p>
-                                  <p className="text-xl font-bold text-slate-800">{formatCurrency(consolidatedStats.driversWalletRaw)}</p>
+                               <div className="bg-slate-50 p-3 md:p-4 rounded-xl border border-slate-100">
+                                  <p className="text-[9px] md:text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Driver Wallet</p>
+                                  <p className="text-[10px] md:text-xs text-slate-400 mb-2">Net Balance</p>
+                                  <p className="text-base md:text-xl font-bold text-slate-800">{formatCurrency(consolidatedStats.driversWalletRaw)}</p>
                                </div>
                             </div>
                          </div>
 
                          {/* Right: Deductions & Result */}
-                         <div className="space-y-6 flex flex-col">
+                         <div className="space-y-4 md:space-y-6 flex flex-col">
                             {/* DEDUCTIONS LIST */}
-                            <div className="space-y-3 text-sm bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
-                               <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Operational Costs & O/S</h5>
+                            <div className="space-y-3 text-xs md:text-sm bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                               <h5 className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Operational Costs & O/S</h5>
                                <div className="flex justify-between">
                                   <span className="text-slate-600">Current O/S</span>
                                   <span className="font-bold text-slate-800">{formatCurrency(consolidatedStats.currentOs)}</span>
-                               </div>
-                               <div className="flex justify-between">
+                                </div>
+                                <div className="flex justify-between">
                                   <span className="text-slate-600">Room Rent ({consolidatedStats.weeksCount} wks)</span>
                                   <span className="font-bold text-slate-800">{formatCurrency(consolidatedStats.totalRoomRent)}</span>
-                               </div>
-                               <div className="flex justify-between text-xs text-slate-400 mt-1">
-                                  <span>Other Head Sections</span>
-                                  <span>{formatCurrency(consolidatedStats.otherHeadSections)}</span>
-                               </div>
+                                </div>
+                                <div className="flex justify-between text-[10px] md:text-xs text-slate-400 mt-1">
+                                   <span>Other Head Sections</span>
+                                   <span>{formatCurrency(consolidatedStats.otherHeadSections)}</span>
+                                </div>
                             </div>
 
                             {/* FRAUD CHECK AGGREGATED */}
-                            <div className={`px-4 py-3 rounded-xl border flex gap-3 ${!consolidatedStats.isWalletSafe ? 'bg-rose-50 border-rose-200' : 'bg-blue-50 border-blue-200'}`}>
+                            <div className={`px-3 md:px-4 py-3 rounded-xl border flex gap-3 ${!consolidatedStats.isWalletSafe ? 'bg-rose-50 border-rose-200' : 'bg-blue-50 border-blue-200'}`}>
                                <div className={`mt-0.5 ${!consolidatedStats.isWalletSafe ? 'text-rose-500' : 'text-blue-500'}`}>
                                   {!consolidatedStats.isWalletSafe ? <ShieldAlert size={18} /> : <ShieldCheck size={18} />}
                                 </div>
                                <div className="flex-1">
                                   <div className="flex justify-between items-center">
-                                      <p className={`text-xs font-bold ${!consolidatedStats.isWalletSafe ? 'text-rose-700' : 'text-blue-700'}`}>
-                                         {!consolidatedStats.isWalletSafe ? 'Fraud Suspected (Aggregated)' : 'Wallet Integrity Verified'}
+                                      <p className={`text-[10px] md:text-xs font-bold ${!consolidatedStats.isWalletSafe ? 'text-rose-700' : 'text-blue-700'}`}>
+                                         {!consolidatedStats.isWalletSafe ? 'Fraud Suspected' : 'Wallet Verified'}
                                       </p>
                                       {Math.abs(consolidatedStats.fraudCheckDiff) > 0 && (
-                                         <span className="text-[10px] font-bold bg-white/50 px-2 py-0.5 rounded text-slate-600">
+                                         <span className="text-[9px] font-bold bg-white/50 px-1.5 py-0.5 rounded text-slate-600">
                                             Diff: {formatCurrency(Math.abs(consolidatedStats.fraudCheckDiff))}
                                          </span>
                                       )}
                                   </div>
-                                  <p className="text-[10px] opacity-80 mt-1 leading-relaxed">
+                                  <p className="text-[9px] md:text-[10px] opacity-80 mt-1 leading-relaxed">
                                      {!consolidatedStats.isWalletSafe 
-                                        ? `Significant cumulative mismatch of ${formatCurrency(Math.abs(consolidatedStats.fraudCheckDiff))} detected between Wallet Adjusted and Company Wallet across ${consolidatedStats.weeksCount} weeks.` 
-                                        : `Minor cumulative variance of ${formatCurrency(Math.abs(consolidatedStats.fraudCheckDiff))} is within tolerance levels.`}
+                                        ? `Mismatch of ${formatCurrency(Math.abs(consolidatedStats.fraudCheckDiff))} detected.` 
+                                        : `Variance of ${formatCurrency(Math.abs(consolidatedStats.fraudCheckDiff))} is within tolerance.`}
                                   </p>
                                </div>
                             </div>
 
                             {/* NET RESULT BOX */}
-                            <div className="bg-slate-900 text-white p-6 rounded-2xl mt-auto relative overflow-hidden shadow-xl shadow-slate-900/10">
+                            <div className="bg-slate-900 text-white p-5 md:p-6 rounded-2xl mt-auto relative overflow-hidden shadow-xl shadow-slate-900/10">
                                <div className="absolute right-0 bottom-0 opacity-10 pointer-events-none transform translate-x-1/4 translate-y-1/4">
                                   <DollarSign size={120} />
-                               </div>
+                                </div>
                                <div className="relative z-10">
-                                  <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-2 font-bold">Net Consolidated Result</p>
-                                  <div className="flex items-end gap-3">
-                                     <span className="text-4xl font-bold tracking-tight">{formatCurrency(consolidatedStats.strictProfit)}</span>
-                                     <div className={`mb-1.5 flex items-center gap-1 text-sm font-bold ${consolidatedStats.strictProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                  <p className="text-[9px] text-slate-400 uppercase tracking-wider mb-2 font-bold">Net Consolidated Result</p>
+                                  <div className="flex items-end gap-2 md:gap-3">
+                                     <span className="text-2xl md:text-4xl font-bold tracking-tight">{formatCurrency(consolidatedStats.strictProfit)}</span>
+                                     <div className={`mb-1 md:mb-1.5 flex items-center gap-1 text-xs font-bold ${consolidatedStats.strictProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                                         {consolidatedStats.strictProfit >= 0 ? <TrendingUp size={16}/> : <TrendingDown size={16}/>}
                                         {consolidatedStats.strictProfit >= 0 ? 'Profit' : 'Loss'}
                                      </div>
                                   </div>
-                                  <div className="mt-4 pt-4 border-t border-slate-800 text-[10px] text-slate-500 font-mono">
-                                     Formula: Revenue ({formatCurrency(consolidatedStats.driversPayments)}) - Wallet ({formatCurrency(consolidatedStats.driversWalletRaw)}) - O/S ({formatCurrency(consolidatedStats.currentOs)}) - RoomRent ({formatCurrency(consolidatedStats.totalRoomRent)})
+                                  <div className="mt-4 pt-4 border-t border-slate-800 text-[9px] text-slate-500 font-mono">
+                                     Formula: Rev - Wallet - O/S - RoomRent
                                   </div>
                                </div>
                             </div>
@@ -656,52 +656,52 @@ const RevenuePage: React.FC = () => {
                  {/* Drivers Pending Panel */}
                  {consolidatedStats && (
                     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                       <div className="px-6 py-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                       <div className="px-4 md:px-6 py-4 md:py-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                           <div>
-                             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Driver Pending (This Selection)</p>
-                             <h4 className="text-xl font-bold text-slate-800">{formatCurrency(consolidatedStats.driverPendingTotal)}</h4>
-                             <p className="text-xs text-slate-500 mt-1">Total amount drivers need to settle for the selected week(s).</p>
+                             <p className="text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-slate-400">Driver Pending</p>
+                             <h4 className="text-lg md:text-xl font-bold text-slate-800">{formatCurrency(consolidatedStats.driverPendingTotal)}</h4>
+                             <p className="text-[10px] md:text-xs text-slate-500 mt-1">Total amount drivers need to settle.</p>
                           </div>
                           <div className="flex items-center gap-3 w-full md:w-auto">
                              <div className="relative flex-1 md:flex-none">
                                 <input
                                    value={pendingFilter}
                                    onChange={e => setPendingFilter(e.target.value)}
-                                   placeholder="Filter by driver, QR or week"
-                                   className="w-full md:w-64 px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-base"
+                                   placeholder="Filter drivers..."
+                                   className="w-full md:w-64 px-4 py-2 rounded-xl bg-slate-50 border-0 ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 text-sm md:text-base"
                                 />
-                                <Filter size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300" />
+                                <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300" />
                              </div>
-                             <div className="px-3 py-2 rounded-lg bg-amber-50 text-amber-700 text-xs font-semibold border border-amber-100">
-                                {filteredPendingEntries.length} pending driver{filteredPendingEntries.length !== 1 ? 's' : ''}
+                             <div className="px-2 py-1.5 rounded-lg bg-amber-50 text-amber-700 text-[10px] font-bold border border-amber-100 whitespace-nowrap">
+                                {filteredPendingEntries.length} Pending
                              </div>
                           </div>
                        </div>
 
                        <div className="divide-y divide-slate-100">
                           {filteredPendingEntries.length === 0 && (
-                             <div className="p-6 text-slate-400 text-sm text-center">No pending driver payments for the selected filters.</div>
+                             <div className="p-4 md:p-6 text-slate-400 text-sm text-center">No pending driver payments for the selected filters.</div>
                           )}
 
                           {filteredPendingEntries.length > 0 && (
                              <>
                                 {filteredPendingEntries.map(entry => (
-                                   <div key={`${entry.weekId}-${entry.qrCode}`} className="px-6 py-4 flex items-center justify-between gap-4">
-                                      <div className="flex items-center gap-4">
-                                         <div className="p-2 rounded-lg bg-slate-100 text-slate-500 font-mono text-xs">{entry.qrCode}</div>
+                                   <div key={`${entry.weekId}-${entry.qrCode}`} className="px-4 md:px-6 py-3 md:py-4 flex items-center justify-between gap-4 active:bg-slate-50 transition-colors">
+                                      <div className="flex items-center gap-3 md:gap-4">
+                                         <div className="p-1.5 md:p-2 rounded-lg bg-slate-100 text-slate-500 font-mono text-[10px] md:text-xs">{entry.qrCode}</div>
                                          <div>
-                                            <p className="text-sm font-bold text-slate-800">{entry.driver}</p>
-                                            <p className="text-[11px] uppercase tracking-wider text-slate-400">{entry.weekLabel}</p>
+                                            <p className="text-xs md:text-sm font-bold text-slate-800">{entry.driver}</p>
+                                            <p className="text-[9px] md:text-[11px] uppercase tracking-wider text-slate-400">{entry.weekLabel}</p>
                                          </div>
                                       </div>
                                       <div className="text-right">
-                                         <div className="text-base font-bold text-amber-700">{formatCurrency(entry.pending)}</div>
-                                         <div className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">{entry.status}</div>
+                                         <div className="text-sm md:text-base font-bold text-amber-700">{formatCurrency(entry.pending)}</div>
+                                         <div className="text-[9px] md:text-[11px] text-slate-400 font-bold uppercase tracking-wider">{entry.status}</div>
                                       </div>
                                    </div>
                                 ))}
 
-                                <div className="bg-slate-50 px-6 py-4 flex items-center justify-between text-sm font-bold text-slate-700">
+                                <div className="bg-slate-50 px-4 md:px-6 py-3 md:py-4 flex items-center justify-between text-sm font-bold text-slate-700">
                                    <span>Total pending (filtered)</span>
                                    <span>{formatCurrency(totalFilteredPending)}</span>
                                 </div>
@@ -717,15 +717,15 @@ const RevenuePage: React.FC = () => {
                        <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">Weekly Breakdown</h4>
                        <div className="grid grid-cols-1 gap-4">
                           {activeWeeks.map(week => (
-                             <div key={week.id} className="bg-white px-6 py-4 rounded-xl border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
-                                <div className="flex items-center gap-4">
-                                   <div className="bg-slate-100 p-2 rounded-lg text-slate-500"><Calendar size={16}/></div>
+                             <div key={week.id} className="bg-white px-4 md:px-6 py-3 md:py-4 rounded-xl border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-3 md:gap-4">
+                                <div className="flex items-center gap-3 md:gap-4">
+                                   <div className="bg-slate-100 p-1.5 md:p-2 rounded-lg text-slate-500"><Calendar size={16}/></div>
                                       <div>
-                                      <p className="text-sm font-bold text-slate-800">{week.label}</p>
-                                      <p className="text-xs text-slate-400">Rev: {formatCurrency(week.driversPayments)} • Exp: {formatCurrency(week.currentOs + week.driversWalletRaw + ROOM_RENT_PER_WEEK)} • Pending: {formatCurrency(week.driverPendingTotal)}</p>
+                                      <p className="text-xs md:text-sm font-bold text-slate-800">{week.label}</p>
+                                      <p className="text-[10px] md:text-xs text-slate-400">Rev: {formatCurrency(week.driversPayments)} • Exp: {formatCurrency(week.currentOs + week.driversWalletRaw + ROOM_RENT_PER_WEEK)} • Pending: {formatCurrency(week.driverPendingTotal)}</p>
                                    </div>
                                 </div>
-                                <div className={`text-sm font-bold px-3 py-1 rounded-lg ${week.profitLoss >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                                <div className={`text-xs md:text-sm font-bold px-2 md:px-3 py-1 rounded-lg ${week.profitLoss >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
                                    {formatCurrency(week.profitLoss)}
                                 </div>
                              </div>
@@ -738,15 +738,15 @@ const RevenuePage: React.FC = () => {
 
           {/* RIGHT COLUMN: HISTORY LIST (1/3 width) */}
           <div className="xl:col-span-1">
-             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden sticky top-6 max-h-[calc(100vh-100px)] flex flex-col">
-                <div className="p-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden xl:sticky xl:top-6 max-h-[calc(100vh-100px)] flex flex-col">
+                <div className="p-3 md:p-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
                    <h3 className="font-bold text-slate-800 flex items-center gap-2">
                       <History size={18} className="text-indigo-500"/> Revenue History
                    </h3>
-                   <span className="text-xs bg-white border border-slate-200 px-2 py-1 rounded-md text-slate-500 font-medium">{processedWeeks.length} Weeks</span>
+                   <span className="text-[10px] bg-white border border-slate-200 px-2 py-1 rounded-md text-slate-500 font-bold uppercase tracking-wider">{processedWeeks.length} Weeks</span>
                 </div>
                 
-                <div className="overflow-y-auto p-2 space-y-2 flex-1 scrollbar-thin">
+                <div className="overflow-y-auto p-1.5 md:p-2 space-y-1.5 md:space-y-2 flex-1 scrollbar-thin">
                    {processedWeeks.map(week => {
                       const isActive = selectionMode === 'SINGLE' && selectedWeekId === week.id;
                       const isInRange = selectionMode === 'RANGE' && activeWeeks.some(aw => aw.id === week.id);
@@ -755,7 +755,7 @@ const RevenuePage: React.FC = () => {
                          <button 
                            key={week.id}
                            onClick={() => handleHistoryClick(week.id)}
-                           className={`w-full text-left p-3 rounded-xl border transition-all duration-200 group flex items-center justify-between ${isActive 
+                           className={`w-full text-left p-2.5 md:p-3 rounded-xl border transition-all duration-200 group flex items-center justify-between active:scale-[0.98] ${isActive 
                               ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' 
                               : isInRange 
                                 ? 'bg-indigo-50 border-indigo-200 text-slate-800'
@@ -763,14 +763,14 @@ const RevenuePage: React.FC = () => {
                            }`}
                          >
                             <div>
-                               <p className={`text-xs font-bold ${isActive ? 'text-indigo-200' : 'text-slate-400'} uppercase tracking-wider mb-0.5`}>Week Ending</p>
+                               <p className={`text-[9px] font-bold ${isActive ? 'text-indigo-200' : 'text-slate-400'} uppercase tracking-wider mb-0.5`}>Week Ending</p>
                                <p className={`text-sm font-bold ${isActive ? 'text-white' : 'text-slate-800'}`}>{formatDate(week.endDate)}</p>
                             </div>
                             <div className="text-right">
                                <div className={`text-sm font-bold ${isActive ? 'text-white' : week.profitLoss >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                                   {formatCurrency(week.profitLoss)}
                                </div>
-                               <div className={`text-[10px] flex items-center justify-end gap-1 ${isActive ? 'text-indigo-200' : 'text-slate-400'}`}>
+                               <div className={`text-[9px] flex items-center justify-end gap-1 font-bold uppercase tracking-tight ${isActive ? 'text-indigo-200' : 'text-slate-400'}`}>
                                   {week.profitLoss >= 0 ? 'Profit' : 'Loss'} 
                                   <ChevronRight size={12} className={`transition-transform ${isActive ? 'translate-x-1' : 'group-hover:translate-x-1'}`} />
                                </div>
@@ -779,7 +779,7 @@ const RevenuePage: React.FC = () => {
                       );
                    })}
                    {processedWeeks.length === 0 && (
-                      <div className="p-8 text-center text-slate-400 text-sm">No history available.</div>
+                      <div className="p-8 text-center text-slate-400 text-xs">No history available.</div>
                    )}
                 </div>
              </div>
