@@ -140,7 +140,7 @@ const DashboardPage: React.FC = () => {
   );
 
   const StatCard = ({ title, value, colorClass, icon: Icon, subtext, trend }: any) => (
-    <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.07)] hover:shadow-xl transition-all duration-300 group">
+    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 transition-all hover:shadow-md group">
       <div className="flex justify-between items-start mb-4">
         <div className={`p-3.5 rounded-2xl ${colorClass.bg} ${colorClass.text} transition-transform group-hover:scale-110 duration-300`}>
           <Icon size={24} />
@@ -153,16 +153,9 @@ const DashboardPage: React.FC = () => {
         )}
       </div>
       <div>
-        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{title}</p>
-        <h3 className="text-2xl font-black text-slate-900 tracking-tight">{value}</h3>
-        {subtext && (
-          <div className="mt-3 flex items-center gap-2">
-            <div className="flex-1 h-1 bg-slate-100 rounded-full overflow-hidden">
-              <div className={`h-full w-2/3 ${colorClass.bg.replace('bg-', 'bg-opacity-100 bg-')}`} />
-            </div>
-            <p className="text-[10px] text-slate-400 font-bold whitespace-nowrap">{subtext}</p>
-          </div>
-        )}
+        <p className="text-sm font-semibold text-slate-400 mb-1 tracking-wide uppercase text-[11px]">{title}</p>
+        <h3 className="text-3xl font-bold text-slate-800 tracking-tight">{value}</h3>
+        {subtext && <p className="text-xs text-slate-400 mt-2 font-medium flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span> {subtext}</p>}
       </div>
     </div>
   );

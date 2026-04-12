@@ -590,12 +590,12 @@ const WeeklyWalletPage: React.FC = () => {
 
       {/* Records */}
       <div className="bg-white rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100 overflow-hidden">
-        <div className="px-4 py-6 bg-slate-50 border-b border-slate-100 flex flex-col items-center gap-6">
+        <div className="px-6 py-6 bg-slate-50 border-b border-slate-100 flex flex-col items-center gap-6">
           <div className="flex items-center bg-white rounded-2xl border border-slate-200 shadow-sm p-1.5 w-full max-w-md mx-auto justify-between">
             <button
               onClick={goToPreviousWeek}
               disabled={currentWeekIndex === -1 || currentWeekIndex >= weekOptions.length - 1}
-              className="p-3 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl disabled:opacity-30 disabled:hover:bg-transparent transition-colors flex-shrink-0 active:scale-90"
+              className="p-3 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl disabled:opacity-30 disabled:hover:bg-transparent transition-colors flex-shrink-0"
             >
               <ChevronLeft size={24} />
             </button>
@@ -603,10 +603,10 @@ const WeeklyWalletPage: React.FC = () => {
             <div className="px-4 text-center flex-1 relative group cursor-pointer">
               {selectedWeek || currentWeekIndex === -1 ? (
                 <>
-                  <div className="flex flex-col items-center pointer-events-none py-1">
+                  <div className="flex flex-col items-center pointer-events-none">
                     <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Wallet Period</span>
-                    <span className="text-sm md:text-lg font-bold text-slate-800 flex items-center justify-center gap-2 group-hover:text-indigo-600 transition-colors">
-                      <Calendar size={16} className="text-indigo-500" />
+                    <span className="text-base md:text-lg font-bold text-slate-800 flex items-center justify-center gap-2 group-hover:text-indigo-600 transition-colors">
+                      <Calendar size={18} className="text-indigo-500 mb-0.5" />
                       {selectedWeek ? selectedWeek.label : 'No Data Available'}
                       {weekOptions.length > 0 && <ChevronDown size={14} className="text-slate-300 group-hover:text-indigo-400 transition-colors" />}
                     </span>
@@ -634,7 +634,7 @@ const WeeklyWalletPage: React.FC = () => {
             <button
               onClick={goToNextWeek}
               disabled={currentWeekIndex === -1 || currentWeekIndex === 0}
-              className="p-3 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl disabled:opacity-30 disabled:hover:bg-transparent transition-colors flex-shrink-0 active:scale-90"
+              className="p-3 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl disabled:opacity-30 disabled:hover:bg-transparent transition-colors flex-shrink-0"
             >
               <ChevronRight size={24} />
             </button>
