@@ -1339,85 +1339,168 @@ const DailyEntryPage: React.FC = () => {
       )}
 
       {/* Global Filter Bar */}
-      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row gap-5 items-center justify-between">
-        <div className="flex items-center gap-3 text-slate-500">
-          <Filter size={18} />
-          <span className="text-sm font-semibold uppercase tracking-wide">Data View</span>
+      <div className="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4 md:space-y-0 md:flex md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center justify-between md:justify-start gap-3 text-slate-500">
+          <div className="flex items-center gap-2">
+            <Filter size={18} />
+            <span className="text-sm font-semibold uppercase tracking-wide">Data View</span>
+          </div>
           {isAnyFilterActive && (
-             <button onClick={clearAllFilters} className="text-xs font-bold text-rose-500 bg-rose-50 px-2 py-1 rounded-lg hover:bg-rose-100 transition-colors">
-                Reset All Filters
+             <button onClick={clearAllFilters} className="text-xs font-bold text-rose-500 bg-rose-50 px-3 py-1.5 rounded-lg hover:bg-rose-100 transition-colors">
+                Reset
              </button>
           )}
         </div>
-        <div className="flex items-center gap-4 flex-wrap">
-             <GlobalDriverFilter drivers={enteredDrivers} selected={filterDriver} onChange={setFilterDriver} />
+        
+        <div className="flex flex-col md:flex-row md:items-center gap-4 w-full md:w-auto">
+             <div className="w-full md:w-auto">
+                <GlobalDriverFilter drivers={enteredDrivers} selected={filterDriver} onChange={setFilterDriver} />
+             </div>
              
+             <div className="h-px w-full bg-slate-100 md:hidden"></div>
              <div className="h-8 w-px bg-slate-200 hidden md:block"></div>
 
-             <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-400 uppercase mr-2">Global Date Range</span>
-                <input 
-                  type="date" 
-                  value={filterDateStart} 
-                  onChange={e => setFilterDateStart(e.target.value)} 
-                  className="bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl px-3 py-2.5 text-base text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-                <span className="text-slate-300">-</span>
-                <input 
-                  type="date" 
-                  value={filterDateEnd} 
-                  onChange={e => setFilterDateEnd(e.target.value)} 
-                  className="bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl px-3 py-2.5 text-base text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
-                />
+             <div className="flex flex-col gap-2 w-full md:w-auto">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Global Date Range</span>
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="date" 
+                    value={filterDateStart} 
+                    onChange={e => setFilterDateStart(e.target.value)} 
+                    className="flex-1 md:w-36 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl px-3 py-2 text-sm text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <span className="text-slate-300">-</span>
+                  <input 
+                    type="date" 
+                    value={filterDateEnd} 
+                    onChange={e => setFilterDateEnd(e.target.value)} 
+                    className="flex-1 md:w-36 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl px-3 py-2 text-sm text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
              </div>
 
-             <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-400 uppercase">History</span>
-                <button
-                  onClick={() => setShowFullHistory(prev => !prev)}
-                  className="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-2 rounded-lg hover:bg-indigo-100 transition-colors"
-                >
-                  {showFullHistory ? `Show last ${RECENT_DAYS} days` : 'Load full history'}
-                </button>
-                {!showFullHistory && recentFromDate && (
-                  <span className="text-[11px] text-slate-400">Since {formatDate(recentFromDate)}</span>
-                )}
+             <div className="h-px w-full bg-slate-100 md:hidden"></div>
+             <div className="h-8 w-px bg-slate-200 hidden md:block"></div>
+
+             <div className="flex flex-col gap-2 w-full md:w-auto">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">History</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowFullHistory(prev => !prev)}
+                    className="flex-1 md:w-auto text-xs font-bold text-indigo-600 bg-indigo-50 px-4 py-2 rounded-xl hover:bg-indigo-100 transition-colors whitespace-nowrap"
+                  >
+                    {showFullHistory ? `Last ${RECENT_DAYS} days` : 'Full history'}
+                  </button>
+                  {!showFullHistory && recentFromDate && (
+                    <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap">Since {formatDate(recentFromDate)}</span>
+                  )}
+                </div>
              </div>
         </div>
       </div>
 
-      {/* Table */}
+      {/* Table / Cards */}
       <div className="bg-white rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100 overflow-hidden">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 px-6 py-4 border-b border-slate-100 bg-slate-50/60">
-            <div>
-                <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Records Window</p>
-                <p className="text-sm font-bold text-slate-800">{currentPageLabel}</p>
-                {currentPageRange && <p className="text-xs text-slate-400">{currentPageRange}</p>}
-                {currentPageMeta?.hasSpillover && (
-                    <p className="text-[11px] text-amber-600 font-semibold">Includes next month dates to complete the week.</p>
-                )}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 px-6 py-5 border-b border-slate-100 bg-slate-50/60">
+            <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600">
+                  <FileText size={20} />
+                </div>
+                <div>
+                    <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Records Window</p>
+                    <p className="text-base font-bold text-slate-800">{currentPageLabel}</p>
+                    {currentPageRange && <p className="text-xs text-slate-500 font-medium">{currentPageRange}</p>}
+                </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between md:justify-end gap-3 bg-white p-1.5 rounded-xl border border-slate-200 shadow-sm">
                 <button
                   onClick={goToPreviousPage}
                   disabled={currentPageIndex === 0 || paginatedPages.length === 0}
-                  className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold disabled:opacity-50 hover:border-indigo-200 hover:text-indigo-600 transition-colors"
+                  className="p-2 rounded-lg text-slate-500 disabled:opacity-30 hover:bg-slate-100 transition-colors"
                 >
-                    Prev
+                    <ChevronUp className="-rotate-90" size={20} />
                 </button>
-                <span className="text-xs text-slate-500 font-semibold">
-                    Page {paginatedPages.length === 0 ? 0 : currentPageIndex + 1} of {paginatedPages.length}
-                </span>
+                <div className="px-3 py-1 bg-slate-50 rounded-lg text-xs font-bold text-slate-600 border border-slate-100">
+                    {paginatedPages.length === 0 ? 0 : currentPageIndex + 1} / {paginatedPages.length}
+                </div>
                 <button
                   onClick={goToNextPage}
                   disabled={paginatedPages.length === 0 || currentPageIndex >= paginatedPages.length - 1}
-                  className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold disabled:opacity-50 hover:border-indigo-200 hover:text-indigo-600 transition-colors"
+                  className="p-2 rounded-lg text-slate-500 disabled:opacity-30 hover:bg-slate-100 transition-colors"
                 >
-                    Next
+                    <ChevronDown className="-rotate-90" size={20} />
                 </button>
             </div>
         </div>
-        <div className="overflow-x-auto min-h-[400px]">
+
+        {/* Mobile Card View */}
+        <div className="md:hidden divide-y divide-slate-100">
+          {loading ? (
+            <div className="p-12 text-center text-slate-400">Loading entries...</div>
+          ) : displayedEntries.length === 0 ? (
+            <div className="p-12 text-center text-slate-400">No records found for this period.</div>
+          ) : (
+            displayedEntries.map(entry => {
+              const onLeave = isDriverUnavailableOnDate(leaveRecords, entry.driver, entry.date);
+              return (
+                <div key={entry.id} className="p-4 bg-white hover:bg-slate-50 transition-colors">
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-900">{entry.driver}</span>
+                        {onLeave && <span className="text-[10px] bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded font-bold">LEAVE</span>}
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
+                        <CalIcon size={12} />
+                        {formatDate(entry.date)}
+                        <span className="text-slate-300">•</span>
+                        <span>{entry.vehicle || 'No Vehicle'}</span>
+                        <span className="text-slate-300">•</span>
+                        <span className="uppercase">{entry.shift}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => handleEdit(entry)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                        <Edit2 size={16} />
+                      </button>
+                      <button onClick={() => handleDelete(entry.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors">
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    <div className="bg-slate-50 p-2 rounded-lg text-center">
+                      <p className="text-[9px] uppercase font-bold text-slate-400 mb-0.5">Rent</p>
+                      <p className="text-xs font-bold text-slate-700">₹{entry.rent}</p>
+                    </div>
+                    <div className="bg-emerald-50 p-2 rounded-lg text-center">
+                      <p className="text-[9px] uppercase font-bold text-emerald-600 mb-0.5">Coll.</p>
+                      <p className="text-xs font-bold text-emerald-700">₹{entry.collection}</p>
+                    </div>
+                    <div className="bg-amber-50 p-2 rounded-lg text-center">
+                      <p className="text-[9px] uppercase font-bold text-amber-600 mb-0.5">Fuel</p>
+                      <p className="text-xs font-bold text-amber-700">₹{entry.fuel || 0}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px]">
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400 font-medium">QR: {entry.qrCode || '-'}</span>
+                      {entry.notes && <span className="text-indigo-500 font-medium italic truncate max-w-[150px]">"{entry.notes}"</span>}
+                    </div>
+                    <div className={`font-bold ${Number(entry.due || 0) > 0 ? 'text-rose-600' : Number(entry.due || 0) < 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                      Due: ₹{entry.due || 0}
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Desktop Table View */}
+        <div className="hidden md:block overflow-x-auto min-h-[400px]">
           <table className="w-full text-sm text-left">
             <thead className="text-xs text-slate-500 uppercase bg-slate-50/50 border-b border-slate-100">
               <tr>
@@ -1527,20 +1610,44 @@ const DailyEntryPage: React.FC = () => {
                 ))
               )}
             </tbody>
-            <tfoot className="bg-slate-50 border-t border-slate-100">
-              <tr>
-                <td className="px-6 py-4 font-bold text-slate-700" colSpan={4}>Totals</td>
-                <td className="px-6 py-4 text-right font-bold text-slate-700">₹{totals.rent}</td>
-                <td className="px-6 py-4 text-right font-bold text-slate-700">₹{totals.collection}</td>
-                <td className="px-6 py-4 text-right font-bold text-slate-700">₹{totals.fuel}</td>
-                <td className="px-6 py-4 text-right font-bold text-slate-700">{totals.due > 0 ? '+' : ''}{totals.due}</td>
-                <td className="px-6 py-4 text-right font-bold text-slate-700">₹{totals.payout}</td>
-                <td className="px-6 py-4"></td>
-                <td className="px-6 py-4"></td>
-              </tr>
-            </tfoot>
           </table>
         </div>
+
+        {/* Totals Summary Section */}
+        {!loading && displayedEntries.length > 0 && (
+            <div className="bg-slate-900 text-white p-6 md:p-8 border-t border-slate-800">
+                <div className="flex items-center gap-3 mb-6">
+                    <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-400">
+                        <FileDown size={16} />
+                    </div>
+                    <h4 className="text-sm font-bold uppercase tracking-widest text-slate-400">Period Summary</h4>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-6 md:gap-8">
+                    <div className="space-y-1">
+                        <p className="text-[10px] uppercase font-bold text-slate-500 tracking-widest">Total Rent</p>
+                        <p className="text-xl md:text-2xl font-bold text-indigo-400">₹{totals.rent.toLocaleString()}</p>
+                    </div>
+                    <div className="space-y-1">
+                        <p className="text-[10px] uppercase font-bold text-slate-500 tracking-widest">Total Collection</p>
+                        <p className="text-xl md:text-2xl font-bold text-emerald-400">₹{totals.collection.toLocaleString()}</p>
+                    </div>
+                    <div className="space-y-1">
+                        <p className="text-[10px] uppercase font-bold text-slate-500 tracking-widest">Total Fuel</p>
+                        <p className="text-xl md:text-2xl font-bold text-amber-400">₹{totals.fuel.toLocaleString()}</p>
+                    </div>
+                    <div className="space-y-1">
+                        <p className="text-[10px] uppercase font-bold text-slate-500 tracking-widest">Total Due</p>
+                        <p className={`text-xl md:text-2xl font-bold ${totals.due >= 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                            {totals.due > 0 ? '+' : ''}₹{Math.abs(totals.due).toLocaleString()}
+                        </p>
+                    </div>
+                    <div className="space-y-1">
+                        <p className="text-[10px] uppercase font-bold text-slate-500 tracking-widest">Total Payout</p>
+                        <p className="text-xl md:text-2xl font-bold text-sky-400">₹{totals.payout.toLocaleString()}</p>
+                    </div>
+                </div>
+            </div>
+        )}
       </div>
     </div>
   );

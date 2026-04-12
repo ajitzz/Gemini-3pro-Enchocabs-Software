@@ -171,7 +171,86 @@ const LeavePage: React.FC = () => {
            <div className="p-6 border-b border-slate-100 bg-slate-50/50">
              <h3 className="font-bold text-slate-700">Recent Leaves</h3>
            </div>
-           <div className="overflow-x-auto">
+           <div className="md:hidden divide-y divide-slate-100">
+             {loading ? (
+               <div className="p-12 text-center text-slate-400">Loading...</div>
+             ) : leaves.length === 0 ? (
+               <div className="p-12 text-center text-slate-400">No leave records found.</div>
+             ) : (
+               leaves.map(l => {
+                 const isLate = l.actualReturnDate && new Date(l.actualReturnDate) > new Date(l.endDate);
+                 const lateDays = isLate ? Math.ceil((new Date(l.actualReturnDate!).getTime() - new Date(l.endDate).getTime()) / (1000*3600*24)) : 0;
+                 const driverName = getDriverName(l.driverId);
+                 
+                 return (
+                   <div key={l.id} className="p-4 bg-white hover:bg-slate-50 transition-colors">
+                     <div className="flex justify-between items-start mb-3">
+                       <div className="flex items-center gap-3">
+                         <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center text-amber-600 font-bold">
+                           {driverName.charAt(0)}
+                         </div>
+                         <div>
+                           <h4 className="font-bold text-slate-800">{driverName}</h4>
+                           {l.reason && <p className="text-xs text-slate-400 italic">"{l.reason}"</p>}
+                         </div>
+                       </div>
+                       <button onClick={() => handleDelete(l.id)} className="p-2 text-slate-300 hover:text-rose-500 transition-colors rounded-lg hover:bg-rose-50">
+                         <Trash2 size={18} />
+                       </button>
+                     </div>
+
+                     <div className="grid grid-cols-2 gap-4 mb-4">
+                       <div className="bg-slate-50 p-3 rounded-xl">
+                         <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">Planned Period</p>
+                         <div className="text-xs font-medium text-slate-700 space-y-0.5">
+                           <p>{l.startDate.split('-').reverse().join('-')}</p>
+                           <p className="text-[10px] text-slate-300">to</p>
+                           <p>{l.endDate.split('-').reverse().join('-')}</p>
+                         </div>
+                       </div>
+                       <div className="bg-slate-50 p-3 rounded-xl">
+                         <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">Actual Return</p>
+                         {editingReturnId === l.id ? (
+                           <div className="flex flex-col gap-2">
+                             <input 
+                               type="date" 
+                               value={returnDateInput} 
+                               onChange={e => setReturnDateInput(e.target.value)}
+                               className="p-1.5 border rounded-lg text-sm w-full bg-white"
+                             />
+                             <div className="flex gap-2">
+                               <button onClick={() => handleUpdateReturnDate(l)} className="flex-1 bg-emerald-500 text-white p-1.5 rounded-lg flex justify-center"><CheckCircle size={14}/></button>
+                               <button onClick={() => setEditingReturnId(null)} className="flex-1 bg-slate-200 text-slate-600 p-1.5 rounded-lg flex justify-center"><X size={14}/></button>
+                             </div>
+                           </div>
+                         ) : l.actualReturnDate ? (
+                           <div className="space-y-1">
+                             <p className={`text-xs font-bold ${isLate ? 'text-rose-600' : 'text-emerald-600'}`}>
+                               {l.actualReturnDate.split('-').reverse().join('-')}
+                             </p>
+                             {isLate && <p className="text-[9px] text-rose-500 font-bold uppercase tracking-tighter">+{lateDays} days late</p>}
+                           </div>
+                         ) : (
+                           <button onClick={() => startEditingReturn(l)} className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-1.5 rounded-lg font-bold hover:bg-indigo-100 transition-colors w-full">
+                             MARK RETURNED
+                           </button>
+                         )}
+                       </div>
+                     </div>
+
+                     <div className="flex justify-between items-center">
+                       <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${l.actualReturnDate ? (isLate ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100') : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
+                         {l.actualReturnDate ? (isLate ? 'LATE RETURN' : 'ON TIME') : 'ACTIVE LEAVE'}
+                       </span>
+                       <span className="text-[10px] text-slate-400 font-medium">Duration: {l.days} days</span>
+                     </div>
+                   </div>
+                 );
+               })
+             )}
+           </div>
+
+           <div className="hidden md:block overflow-x-auto">
              <table className="w-full text-sm text-left">
                <thead className="text-xs text-slate-500 uppercase border-b border-slate-100 bg-slate-50/50">
                  <tr>
