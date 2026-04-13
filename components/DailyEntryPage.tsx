@@ -268,7 +268,6 @@ const ColumnFilter: React.FC<ColumnFilterProps> = ({ columnKey, data, activeFilt
 
 
 const DailyEntryPage: React.FC = () => {
-  const MOBILE_QUICK_ENTRY_PREFS_KEY = 'daily_entry_mobile_quick_entry_panels_v1';
   const RECENT_DAYS = 60;
   const FALLBACK_LIVE_REFRESH_MS = 60000;
   const getTodayISODate = () => {
@@ -305,27 +304,6 @@ const DailyEntryPage: React.FC = () => {
   // UI State for optional fields
   const [showOptionalFields, setShowOptionalFields] = useState(false);
   const [showFullHistory, setShowFullHistory] = useState(false);
-  const [mobileQuickEntryPanels, setMobileQuickEntryPanels] = useState<{
-    missingDailyEntries: boolean;
-    missingWeeklyWallets: boolean;
-  }>(() => {
-    try {
-      const saved = localStorage.getItem(MOBILE_QUICK_ENTRY_PREFS_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return {
-          missingDailyEntries: parsed?.missingDailyEntries !== false,
-          missingWeeklyWallets: parsed?.missingWeeklyWallets !== false,
-        };
-      }
-    } catch (error) {
-      console.warn('Failed to load mobile quick entry preferences', error);
-    }
-    return {
-      missingDailyEntries: true,
-      missingWeeklyWallets: true,
-    };
-  });
 
   // Global Filters
   const [filterDateStart, setFilterDateStart] = useState('');
@@ -395,14 +373,6 @@ const DailyEntryPage: React.FC = () => {
       console.warn('Failed to save offline queue', e);
     }
   }, [offlineQueue]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(MOBILE_QUICK_ENTRY_PREFS_KEY, JSON.stringify(mobileQuickEntryPanels));
-    } catch (error) {
-      console.warn('Failed to save mobile quick entry preferences', error);
-    }
-  }, [MOBILE_QUICK_ENTRY_PREFS_KEY, mobileQuickEntryPanels]);
 
   const syncOfflineQueue = useCallback(async () => {
     if (offlineQueue.length === 0 || isSyncing || !navigator.onLine) return;
@@ -1229,99 +1199,49 @@ const DailyEntryPage: React.FC = () => {
 
            {/* Missing Entries Info */}
            <div className="bg-indigo-50/60 border border-indigo-100 rounded-2xl p-4">
-            <div className="flex flex-col gap-3 mb-4 md:flex-row md:items-end md:justify-between">
-              <div>
-                <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider">Quick Entry Mobile View</h4>
-                <p className="text-[11px] text-slate-500 mt-1">Set these sections to Off to permanently save space on mobile.</p>
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div className="flex-1">
+                <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-2">Missing Daily Entries</h4>
+                <p className="text-[11px] text-slate-500 mb-2">
+                  {formData.date ? `Date: ${formatDate(formData.date)}` : 'Select a date to see missing daily entries.'}
+                </p>
+                {formData.date && missingDailyDriversForDate.length > 0 ? (
+                  <ul className="flex flex-wrap gap-2">
+                    {missingDailyDriversForDate.map(driver => (
+                      <li key={driver.id} className="px-3 py-1 bg-white border border-indigo-100 rounded-full text-xs font-semibold text-slate-700">
+                        {driver.name}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-slate-400">
+                    {formData.date ? 'No missing daily entries for this date.' : 'No date selected.'}
+                  </p>
+                )}
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full md:w-auto">
-                <div className="flex items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-white/80 px-3 py-2">
-                  <span className="text-xs font-semibold text-slate-600">Missing Daily Entries</span>
-                  <select
-                    value={mobileQuickEntryPanels.missingDailyEntries ? 'on' : 'off'}
-                    onChange={(event) =>
-                      setMobileQuickEntryPanels((prev) => ({
-                        ...prev,
-                        missingDailyEntries: event.target.value === 'on',
-                      }))
-                    }
-                    className="rounded-lg border border-indigo-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="on">On</option>
-                    <option value="off">Off</option>
-                  </select>
-                </div>
-                <div className="flex items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-white/80 px-3 py-2">
-                  <span className="text-xs font-semibold text-slate-600">Missing Weekly Wallets</span>
-                  <select
-                    value={mobileQuickEntryPanels.missingWeeklyWallets ? 'on' : 'off'}
-                    onChange={(event) =>
-                      setMobileQuickEntryPanels((prev) => ({
-                        ...prev,
-                        missingWeeklyWallets: event.target.value === 'on',
-                      }))
-                    }
-                    className="rounded-lg border border-indigo-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="on">On</option>
-                    <option value="off">Off</option>
-                  </select>
-                </div>
+              <div className="flex-1">
+                <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-2">Missing Weekly Wallets</h4>
+                <p className="text-[11px] text-slate-500 mb-2">
+                  {formData.date ? `Week: ${formatDate(getWeekRangeForDate(formData.date).start)} – ${formatDate(getWeekRangeForDate(formData.date).end)}` : 'Select a date to see missing weekly wallets.'}
+                </p>
+                {formData.date && missingWeeklyWalletsForWeek.length > 0 ? (
+                  <ul className="flex flex-col gap-2">
+                    {missingWeeklyWalletsForWeek.map(item => (
+                      <li key={`${item.driver}-${item.weekStart}`} className="flex flex-wrap items-center justify-between gap-2 bg-white border border-indigo-100 rounded-xl px-3 py-2 text-xs text-slate-700">
+                        <span className="font-semibold">{item.driver}</span>
+                        <span className="text-[11px] text-slate-500">
+                          {formatDate(item.weekStart)} – {formatDate(item.weekEnd)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-slate-400">
+                    {formData.date ? 'No missing weekly wallets for this week.' : 'No date selected.'}
+                  </p>
+                )}
               </div>
             </div>
-            {mobileQuickEntryPanels.missingDailyEntries || mobileQuickEntryPanels.missingWeeklyWallets ? (
-              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                {mobileQuickEntryPanels.missingDailyEntries && (
-                  <div className="flex-1">
-                    <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-2">Missing Daily Entries</h4>
-                    <p className="text-[11px] text-slate-500 mb-2">
-                      {formData.date ? `Date: ${formatDate(formData.date)}` : 'Select a date to see missing daily entries.'}
-                    </p>
-                    {formData.date && missingDailyDriversForDate.length > 0 ? (
-                      <ul className="flex flex-wrap gap-2">
-                        {missingDailyDriversForDate.map(driver => (
-                          <li key={driver.id} className="px-3 py-1 bg-white border border-indigo-100 rounded-full text-xs font-semibold text-slate-700">
-                            {driver.name}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="text-xs text-slate-400">
-                        {formData.date ? 'No missing daily entries for this date.' : 'No date selected.'}
-                      </p>
-                    )}
-                  </div>
-                )}
-                {mobileQuickEntryPanels.missingWeeklyWallets && (
-                  <div className="flex-1">
-                    <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-2">Missing Weekly Wallets</h4>
-                    <p className="text-[11px] text-slate-500 mb-2">
-                      {formData.date ? `Week: ${formatDate(getWeekRangeForDate(formData.date).start)} – ${formatDate(getWeekRangeForDate(formData.date).end)}` : 'Select a date to see missing weekly wallets.'}
-                    </p>
-                    {formData.date && missingWeeklyWalletsForWeek.length > 0 ? (
-                      <ul className="flex flex-col gap-2">
-                        {missingWeeklyWalletsForWeek.map(item => (
-                          <li key={`${item.driver}-${item.weekStart}`} className="flex flex-wrap items-center justify-between gap-2 bg-white border border-indigo-100 rounded-xl px-3 py-2 text-xs text-slate-700">
-                            <span className="font-semibold">{item.driver}</span>
-                            <span className="text-[11px] text-slate-500">
-                              {formatDate(item.weekStart)} – {formatDate(item.weekEnd)}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="text-xs text-slate-400">
-                        {formData.date ? 'No missing weekly wallets for this week.' : 'No date selected.'}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="text-xs text-slate-500 rounded-xl border border-dashed border-indigo-200 bg-white/70 px-3 py-2">
-                Both helper panels are turned off. Turn one on anytime from the dropdown above.
-              </p>
-            )}
           </div>
 
            {/* Row 2: Shift & Vehicle */}
