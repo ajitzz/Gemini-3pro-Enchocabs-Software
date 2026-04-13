@@ -4,7 +4,7 @@ import { DailyEntry, Driver, LeaveRecord, WeeklyWallet } from '../types';
 import { storageService } from '../services/storageService';
 import { useLiveUpdates } from '../lib/useLiveUpdates';
 import { isDriverUnavailableOnDate } from '../lib/leaveUtils';
-import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check, AlertOctagon, FileDown, AlertCircle, ChevronLeft, ChevronRight, Car, QrCode } from 'lucide-react';
+import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check, AlertOctagon, FileDown, AlertCircle, ChevronLeft, ChevronRight, Car, QrCode, Eye, EyeOff } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
 const InputField = ({ label, name, type = "text", value, onChange, onKeyDown, placeholder, required = false, className = "", readOnly = false, inputMode }: any) => (
@@ -27,6 +27,12 @@ const InputField = ({ label, name, type = "text", value, onChange, onKeyDown, pl
 );
 
 type DisplayDailyEntry = DailyEntry & { adjustmentApplied?: number };
+type QuickEntryPanelId = 'missingDailyEntries' | 'missingWeeklyWallets';
+type QuickEntryPanelPreference = {
+  collapsed: boolean;
+  hidden: boolean;
+};
+type QuickEntryPanelPreferences = Record<QuickEntryPanelId, QuickEntryPanelPreference>;
 
 // --- GLOBAL DRIVER FILTER COMPONENT ---
 interface DriverFilterProps {
@@ -304,6 +310,23 @@ const DailyEntryPage: React.FC = () => {
   // UI State for optional fields
   const [showOptionalFields, setShowOptionalFields] = useState(false);
   const [showFullHistory, setShowFullHistory] = useState(false);
+  const [quickEntryPanelPreferences, setQuickEntryPanelPreferences] = useState<QuickEntryPanelPreferences>(() => {
+    const defaultPreferences: QuickEntryPanelPreferences = {
+      missingDailyEntries: { collapsed: false, hidden: false },
+      missingWeeklyWallets: { collapsed: false, hidden: false },
+    };
+    try {
+      const persisted = localStorage.getItem('daily_entry_quick_entry_panels_v1');
+      if (!persisted) return defaultPreferences;
+      return {
+        ...defaultPreferences,
+        ...JSON.parse(persisted),
+      };
+    } catch (e) {
+      console.warn('Failed to load quick entry panel preferences', e);
+      return defaultPreferences;
+    }
+  });
 
   // Global Filters
   const [filterDateStart, setFilterDateStart] = useState('');
@@ -373,6 +396,14 @@ const DailyEntryPage: React.FC = () => {
       console.warn('Failed to save offline queue', e);
     }
   }, [offlineQueue]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('daily_entry_quick_entry_panels_v1', JSON.stringify(quickEntryPanelPreferences));
+    } catch (e) {
+      console.warn('Failed to save quick entry panel preferences', e);
+    }
+  }, [quickEntryPanelPreferences]);
 
   const syncOfflineQueue = useCallback(async () => {
     if (offlineQueue.length === 0 || isSyncing || !navigator.onLine) return;
@@ -1124,6 +1155,25 @@ const DailyEntryPage: React.FC = () => {
       setColumnFilters({});
   };
 
+  const updateQuickEntryPanelPreference = (panelId: QuickEntryPanelId, updater: (current: QuickEntryPanelPreference) => QuickEntryPanelPreference) => {
+    setQuickEntryPanelPreferences(prev => ({
+      ...prev,
+      [panelId]: updater(prev[panelId]),
+    }));
+  };
+
+  const toggleQuickEntryPanelCollapse = (panelId: QuickEntryPanelId) => {
+    updateQuickEntryPanelPreference(panelId, current => ({ ...current, collapsed: !current.collapsed }));
+  };
+
+  const toggleQuickEntryPanelHidden = (panelId: QuickEntryPanelId) => {
+    updateQuickEntryPanelPreference(panelId, current => ({ ...current, hidden: !current.hidden }));
+  };
+
+  const hiddenQuickEntryPanels = (Object.keys(quickEntryPanelPreferences) as QuickEntryPanelId[]).filter(
+    (panelId) => quickEntryPanelPreferences[panelId]?.hidden
+  );
+
   return (
     <div className="max-w-[1920px] mx-auto space-y-8 pb-20">
       {/* Header / Actions */}
@@ -1198,50 +1248,138 @@ const DailyEntryPage: React.FC = () => {
            </div>
 
            {/* Missing Entries Info */}
-           <div className="bg-indigo-50/60 border border-indigo-100 rounded-2xl p-4">
-            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-              <div className="flex-1">
-                <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-2">Missing Daily Entries</h4>
-                <p className="text-[11px] text-slate-500 mb-2">
-                  {formData.date ? `Date: ${formatDate(formData.date)}` : 'Select a date to see missing daily entries.'}
-                </p>
-                {formData.date && missingDailyDriversForDate.length > 0 ? (
-                  <ul className="flex flex-wrap gap-2">
-                    {missingDailyDriversForDate.map(driver => (
-                      <li key={driver.id} className="px-3 py-1 bg-white border border-indigo-100 rounded-full text-xs font-semibold text-slate-700">
-                        {driver.name}
-                      </li>
+           <div className="bg-indigo-50/60 border border-indigo-100 rounded-2xl p-4 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider">Missing Data Assistant</h4>
+              {hiddenQuickEntryPanels.length > 0 && (
+                <details className="relative">
+                  <summary className="list-none text-[11px] font-semibold text-indigo-700 bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 flex items-center gap-1 cursor-pointer">
+                    Hidden ({hiddenQuickEntryPanels.length})
+                    <ChevronDown size={14} />
+                  </summary>
+                  <div className="absolute right-0 top-full mt-1 z-20 w-56 bg-white border border-indigo-100 rounded-xl shadow-lg p-2">
+                    {hiddenQuickEntryPanels.map(panelId => (
+                      <button
+                        type="button"
+                        key={panelId}
+                        onClick={() => toggleQuickEntryPanelHidden(panelId)}
+                        className="w-full text-left px-3 py-2 rounded-lg text-xs text-slate-700 hover:bg-indigo-50 flex items-center justify-between"
+                      >
+                        <span>{panelId === 'missingDailyEntries' ? 'Missing Daily Entries' : 'Missing Weekly Wallets'}</span>
+                        <span className="text-indigo-600 font-semibold">Unhide</span>
+                      </button>
                     ))}
-                  </ul>
-                ) : (
-                  <p className="text-xs text-slate-400">
-                    {formData.date ? 'No missing daily entries for this date.' : 'No date selected.'}
-                  </p>
-                )}
-              </div>
-              <div className="flex-1">
-                <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-2">Missing Weekly Wallets</h4>
-                <p className="text-[11px] text-slate-500 mb-2">
-                  {formData.date ? `Week: ${formatDate(getWeekRangeForDate(formData.date).start)} – ${formatDate(getWeekRangeForDate(formData.date).end)}` : 'Select a date to see missing weekly wallets.'}
-                </p>
-                {formData.date && missingWeeklyWalletsForWeek.length > 0 ? (
-                  <ul className="flex flex-col gap-2">
-                    {missingWeeklyWalletsForWeek.map(item => (
-                      <li key={`${item.driver}-${item.weekStart}`} className="flex flex-wrap items-center justify-between gap-2 bg-white border border-indigo-100 rounded-xl px-3 py-2 text-xs text-slate-700">
-                        <span className="font-semibold">{item.driver}</span>
-                        <span className="text-[11px] text-slate-500">
-                          {formatDate(item.weekStart)} – {formatDate(item.weekEnd)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-xs text-slate-400">
-                    {formData.date ? 'No missing weekly wallets for this week.' : 'No date selected.'}
-                  </p>
-                )}
-              </div>
+                  </div>
+                </details>
+              )}
             </div>
+
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              {!quickEntryPanelPreferences.missingDailyEntries.hidden && (
+                <div className="flex-1 bg-white/70 border border-indigo-100 rounded-xl p-3">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleQuickEntryPanelCollapse('missingDailyEntries')}
+                      className="flex items-center gap-1.5 text-left"
+                    >
+                      <h5 className="text-xs font-bold text-indigo-700 uppercase tracking-wider">Missing Daily Entries</h5>
+                      {quickEntryPanelPreferences.missingDailyEntries.collapsed ? <ChevronDown size={14} className="text-indigo-700" /> : <ChevronUp size={14} className="text-indigo-700" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toggleQuickEntryPanelHidden('missingDailyEntries')}
+                      className="text-[11px] text-slate-500 hover:text-indigo-700 flex items-center gap-1"
+                    >
+                      <EyeOff size={12} />
+                      Hide
+                    </button>
+                  </div>
+                  {!quickEntryPanelPreferences.missingDailyEntries.collapsed && (
+                    <>
+                      <p className="text-[11px] text-slate-500 mb-2">
+                        {formData.date ? `Date: ${formatDate(formData.date)}` : 'Select a date to see missing daily entries.'}
+                      </p>
+                      {formData.date && missingDailyDriversForDate.length > 0 ? (
+                        <ul className="flex flex-wrap gap-2">
+                          {missingDailyDriversForDate.map(driver => (
+                            <li key={driver.id} className="px-3 py-1 bg-white border border-indigo-100 rounded-full text-xs font-semibold text-slate-700">
+                              {driver.name}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-xs text-slate-400">
+                          {formData.date ? 'No missing daily entries for this date.' : 'No date selected.'}
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {!quickEntryPanelPreferences.missingWeeklyWallets.hidden && (
+                <div className="flex-1 bg-white/70 border border-indigo-100 rounded-xl p-3">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleQuickEntryPanelCollapse('missingWeeklyWallets')}
+                      className="flex items-center gap-1.5 text-left"
+                    >
+                      <h5 className="text-xs font-bold text-indigo-700 uppercase tracking-wider">Missing Weekly Wallets</h5>
+                      {quickEntryPanelPreferences.missingWeeklyWallets.collapsed ? <ChevronDown size={14} className="text-indigo-700" /> : <ChevronUp size={14} className="text-indigo-700" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toggleQuickEntryPanelHidden('missingWeeklyWallets')}
+                      className="text-[11px] text-slate-500 hover:text-indigo-700 flex items-center gap-1"
+                    >
+                      <EyeOff size={12} />
+                      Hide
+                    </button>
+                  </div>
+                  {!quickEntryPanelPreferences.missingWeeklyWallets.collapsed && (
+                    <>
+                      <p className="text-[11px] text-slate-500 mb-2">
+                        {formData.date ? `Week: ${formatDate(getWeekRangeForDate(formData.date).start)} – ${formatDate(getWeekRangeForDate(formData.date).end)}` : 'Select a date to see missing weekly wallets.'}
+                      </p>
+                      {formData.date && missingWeeklyWalletsForWeek.length > 0 ? (
+                        <ul className="flex flex-col gap-2">
+                          {missingWeeklyWalletsForWeek.map(item => (
+                            <li key={`${item.driver}-${item.weekStart}`} className="flex flex-wrap items-center justify-between gap-2 bg-white border border-indigo-100 rounded-xl px-3 py-2 text-xs text-slate-700">
+                              <span className="font-semibold">{item.driver}</span>
+                              <span className="text-[11px] text-slate-500">
+                                {formatDate(item.weekStart)} – {formatDate(item.weekEnd)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-xs text-slate-400">
+                          {formData.date ? 'No missing weekly wallets for this week.' : 'No date selected.'}
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {hiddenQuickEntryPanels.length === 2 && (
+              <button
+                type="button"
+                onClick={() =>
+                  setQuickEntryPanelPreferences({
+                    missingDailyEntries: { collapsed: false, hidden: false },
+                    missingWeeklyWallets: { collapsed: false, hidden: false },
+                  })
+                }
+                className="w-full md:w-auto text-xs font-semibold text-indigo-700 bg-white border border-indigo-200 rounded-lg px-3 py-2 flex items-center justify-center gap-1.5"
+              >
+                <Eye size={12} />
+                Unhide missing data panels
+              </button>
+            )}
           </div>
 
            {/* Row 2: Shift & Vehicle */}
