@@ -41,6 +41,10 @@ const ManageDefaultsPage: React.FC = () => {
   };
 
   const getActiveDrivers = () => drivers.filter(d => !d.terminationDate);
+  const getQrAssignedDriverName = (qrCode: string) => {
+    const assignedDriver = getActiveDrivers().find(d => d.qrCode === qrCode);
+    return assignedDriver?.name ?? '';
+  };
 
   // --- ASSET MANAGEMENT ---
   const handleAddAsset = async (type: 'vehicles' | 'qrcodes') => {
@@ -246,12 +250,22 @@ const ManageDefaultsPage: React.FC = () => {
                    <button onClick={() => handleAddAsset('qrcodes')} className="bg-slate-900 text-white p-2.5 rounded-xl hover:bg-black transition-colors shadow-lg shadow-slate-900/20"><Plus size={20}/></button>
                 </div>
                 <div className="overflow-y-auto space-y-2 pr-2 flex-1 scrollbar-thin">
-                   {assets.qrCodes.map(q => (
-                      <div key={q} className="flex justify-between items-center p-3.5 bg-slate-50 rounded-xl border border-slate-100 group hover:border-slate-200 transition-colors">
-                         <span className="font-semibold text-slate-700">{q}</span>
-                         <button onClick={() => handleDeleteAsset('qrcodes', q)} className="text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
-                      </div>
-                   ))}
+                   {assets.qrCodes.map(q => {
+                      const assignedDriverName = getQrAssignedDriverName(q);
+                      return (
+                         <div key={q} className="flex justify-between items-center p-3.5 bg-slate-50 rounded-xl border border-slate-100 group hover:border-slate-200 transition-colors">
+                            <span className="font-semibold text-slate-700">{q}</span>
+                            <div className="flex items-center gap-3">
+                               {assignedDriverName && (
+                                  <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-1 rounded-md">
+                                     Driver: {assignedDriverName}
+                                  </span>
+                               )}
+                               <button onClick={() => handleDeleteAsset('qrcodes', q)} className="text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
+                            </div>
+                         </div>
+                      );
+                   })}
                 </div>
              </div>
           </div>
