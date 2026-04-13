@@ -4,7 +4,7 @@ import { DailyEntry, Driver, LeaveRecord, WeeklyWallet } from '../types';
 import { storageService } from '../services/storageService';
 import { useLiveUpdates } from '../lib/useLiveUpdates';
 import { isDriverUnavailableOnDate } from '../lib/leaveUtils';
-import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check, AlertOctagon, FileDown, AlertCircle, ChevronLeft, ChevronRight, Car, QrCode, Eye, EyeOff } from 'lucide-react';
+import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check, AlertOctagon, FileDown, AlertCircle, ChevronLeft, ChevronRight, Car, QrCode, EyeOff } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
 const InputField = ({ label, name, type = "text", value, onChange, onKeyDown, placeholder, required = false, className = "", readOnly = false, inputMode }: any) => (
@@ -1365,21 +1365,6 @@ const DailyEntryPage: React.FC = () => {
               )}
             </div>
 
-            {hiddenQuickEntryPanels.length === 2 && (
-              <button
-                type="button"
-                onClick={() =>
-                  setQuickEntryPanelPreferences({
-                    missingDailyEntries: { collapsed: false, hidden: false },
-                    missingWeeklyWallets: { collapsed: false, hidden: false },
-                  })
-                }
-                className="w-full md:w-auto text-xs font-semibold text-indigo-700 bg-white border border-indigo-200 rounded-lg px-3 py-2 flex items-center justify-center gap-1.5"
-              >
-                <Eye size={12} />
-                Unhide missing data panels
-              </button>
-            )}
           </div>
 
            {/* Row 2: Shift & Vehicle */}
