@@ -102,7 +102,6 @@ export interface LeaveRecord {
 export interface AssetMaster {
   vehicles: string[]; // List of all owned vehicles
   qrCodes: string[]; // List of all owned QR codes
-  vehicleFuelEntries?: Record<string, { driverId: string; amount: number }>; // First fuel entry per vehicle
 }
 
 export interface DriverSummary {
