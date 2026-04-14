@@ -2527,7 +2527,23 @@ app.get('/api/assets', async (req, res) => {
     const result = await db.query('SELECT type, value FROM assets');
     const vehicles = result.rows.filter(r => r.type === 'vehicle').map(r => r.value);
     const qrCodes = result.rows.filter(r => r.type === 'qrcode').map(r => r.value);
-    const payload = { vehicles, qrCodes };
+    const vehicleFuelEntries = result.rows
+      .filter(r => r.type === 'vehicle_fuel_entry')
+      .reduce((acc, row) => {
+        try {
+          const parsed = JSON.parse(row.value);
+          if (parsed?.vehicle && typeof parsed.driverId === 'string') {
+            acc[parsed.vehicle] = {
+              driverId: parsed.driverId,
+              amount: Number(parsed.amount) || 0
+            };
+          }
+        } catch (_error) {
+          // Ignore malformed payloads and continue loading other assets.
+        }
+        return acc;
+      }, {});
+    const payload = { vehicles, qrCodes, vehicleFuelEntries };
     await setCacheJSON(ASSETS_CACHE_KEY, payload, ASSETS_CACHE_TTL_SECONDS);
     res.set('X-Cache', 'MISS');
     res.json(payload);
@@ -2535,13 +2551,23 @@ app.get('/api/assets', async (req, res) => {
 });
 
 app.post('/api/assets', async (req, res) => {
-  const { vehicles, qrCodes } = req.body;
+  const { vehicles = [], qrCodes = [], vehicleFuelEntries = {} } = req.body;
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
     await client.query('DELETE FROM assets'); 
     for (const v of vehicles) await client.query("INSERT INTO assets (type, value) VALUES ('vehicle', $1)", [v]);
     for (const q of qrCodes) await client.query("INSERT INTO assets (type, value) VALUES ('qrcode', $1)", [q]);
+    for (const [vehicle, entry] of Object.entries(vehicleFuelEntries)) {
+      if (!entry || typeof entry.driverId !== 'string' || !entry.driverId) continue;
+      await client.query("INSERT INTO assets (type, value) VALUES ('vehicle_fuel_entry', $1)", [
+        JSON.stringify({
+          vehicle,
+          driverId: entry.driverId,
+          amount: Number(entry.amount) || 0
+        })
+      ]);
+    }
     await client.query('COMMIT');
     await invalidateKeys(ASSETS_CACHE_KEY);
     res.json({ success: true });
