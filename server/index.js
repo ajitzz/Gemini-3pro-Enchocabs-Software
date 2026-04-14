@@ -18,6 +18,13 @@ const { getJSON: getCacheJSON, setJSON: setCacheJSON, deleteKeys: deleteCacheKey
 const { enqueueBillingRefresh, isQStashConfigured } = require('./qstash');
 const app = express();
 
+
+const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const toUuidOrNull = (value) => {
+  const raw = String(value || '').trim();
+  return UUID_V4_REGEX.test(raw) ? raw : null;
+};
+
 const splitCsvEnv = (value) => String(value || '')
   .split(',')
   .map((part) => part.trim())
@@ -2179,15 +2186,17 @@ app.post('/api/daily-entries', async (req, res) => {
     const payoutDateISO = e.payoutDate ? toISODate(e.payoutDate) : null;
     if (e.payoutDate && !payoutDateISO) return res.status(400).json({ error: 'Invalid payout date format' });
 
-    const existingEntry = e.id
-      ? await db.query(`SELECT driver, to_char(date, 'YYYY-MM-DD') as date FROM daily_entries WHERE id = $1`, [e.id])
+    const entryId = toUuidOrNull(e.id);
+
+    const existingEntry = entryId
+      ? await db.query(`SELECT driver, to_char(date, 'YYYY-MM-DD') as date FROM daily_entries WHERE id = $1::uuid`, [entryId])
       : { rows: [] };
     const previousEntry = existingEntry.rows[0];
 
     const normalizedDriver = normalizeDriver(e.driver);
     const duplicateCheck = await db.query(
-      `SELECT id FROM daily_entries WHERE date = $1 AND LOWER(driver) = $2 AND ($3::uuid IS NULL OR id <> $3)`
-      , [isoDate, normalizedDriver, e.id || null]
+      `SELECT id FROM daily_entries WHERE date = $1 AND LOWER(driver) = $2 AND ($3::uuid IS NULL OR id <> $3::uuid)`
+      , [isoDate, normalizedDriver, entryId]
     );
     if (duplicateCheck.rowCount > 0) {
       return res.status(409).json({ error: 'Driver already has an entry for this date. Please edit or delete the existing record.' });
@@ -2201,7 +2210,7 @@ app.post('/api/daily-entries', async (req, res) => {
         date=$2, day=$3, vehicle=$4, driver=$5, shift=$6, qr_code=$7, rent=$8, collection=$9, fuel=$10, due=$11, payout=$12, payout_date=$13, notes=$14
       RETURNING *;
     `;
-    const result = await db.query(q, [e.id, isoDate, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, payoutDateISO, e.notes]);
+    const result = await db.query(q, [entryId || uuidv4(), isoDate, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, payoutDateISO, e.notes]);
 
     const newWeekStart = getMondayISO(isoDate);
     if (newWeekStart) {
