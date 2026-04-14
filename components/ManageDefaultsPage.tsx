@@ -287,68 +287,6 @@ const ManageDefaultsPage: React.FC = () => {
        {/* --- ASSETS TAB --- */}
        {activeTab === 'assets' && (
           <div className="space-y-8 animate-fade-in">
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-             {/* Vehicles */}
-             <div className="bg-white p-8 rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100 flex flex-col h-[500px]">
-                <div className="flex items-center justify-between mb-6">
-                   <h3 className="font-bold text-slate-800 flex items-center gap-3 text-lg"><Car size={22} className="text-indigo-600" /> Vehicles</h3>
-                   <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md">{assets.vehicles.length} Total</span>
-                </div>
-                <div className="flex gap-3 mb-6">
-                   <input 
-                      placeholder="Add Vehicle No." 
-                      value={newAssetValue} 
-                      onChange={e => setNewAssetValue(e.target.value)} 
-                      className="flex-1 px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-base focus:ring-2 focus:ring-indigo-500 outline-none"
-                   />
-                   <button onClick={() => handleAddAsset('vehicles')} className="bg-slate-900 text-white p-2.5 rounded-xl hover:bg-black transition-colors shadow-lg shadow-slate-900/20"><Plus size={20}/></button>
-                </div>
-                <div className="overflow-y-auto space-y-2 pr-2 flex-1 scrollbar-thin">
-                   {assets.vehicles.map(v => (
-                      <div key={v} className="flex justify-between items-center p-3.5 bg-slate-50 rounded-xl border border-slate-100 group hover:border-slate-200 transition-colors">
-                         <span className="font-semibold text-slate-700">{v}</span>
-                         <button onClick={() => handleDeleteAsset('vehicles', v)} className="text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
-                      </div>
-                   ))}
-                </div>
-             </div>
-
-             {/* QR Codes */}
-             <div className="bg-white p-8 rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100 flex flex-col h-[500px]">
-                <div className="flex items-center justify-between mb-6">
-                   <h3 className="font-bold text-slate-800 flex items-center gap-3 text-lg"><QrCode size={22} className="text-indigo-600" /> QR Codes</h3>
-                   <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md">{assets.qrCodes.length} Total</span>
-                </div>
-                <div className="flex gap-3 mb-6">
-                   <input 
-                      placeholder="Add QR ID" 
-                      value={newAssetValue} 
-                      onChange={e => setNewAssetValue(e.target.value)} 
-                      className="flex-1 px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-base focus:ring-2 focus:ring-indigo-500 outline-none"
-                   />
-                   <button onClick={() => handleAddAsset('qrcodes')} className="bg-slate-900 text-white p-2.5 rounded-xl hover:bg-black transition-colors shadow-lg shadow-slate-900/20"><Plus size={20}/></button>
-                </div>
-                <div className="overflow-y-auto space-y-2 pr-2 flex-1 scrollbar-thin">
-                   {assets.qrCodes.map(q => {
-                      const assignedDriverName = getQrAssignedDriverName(q);
-                      return (
-                         <div key={q} className="flex justify-between items-center p-3.5 bg-slate-50 rounded-xl border border-slate-100 group hover:border-slate-200 transition-colors">
-                            <span className="font-semibold text-slate-700">{q}</span>
-                            <div className="flex items-center gap-3">
-                               {assignedDriverName && (
-                                  <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-1 rounded-md">
-                                     Driver: {assignedDriverName}
-                                  </span>
-                               )}
-                               <button onClick={() => handleDeleteAsset('qrcodes', q)} className="text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
-                            </div>
-                         </div>
-                      );
-                   })}
-                </div>
-             </div>
-             </div>
-
              {/* Vehicle Driver Assignment Section */}
              <div className="bg-white p-8 rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100">
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
@@ -463,6 +401,69 @@ const ManageDefaultsPage: React.FC = () => {
                    })}
                 </div>
              </div>
+
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+             {/* Vehicles */}
+             <div className="bg-white p-8 rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100 flex flex-col h-[500px]">
+                <div className="flex items-center justify-between mb-6">
+                   <h3 className="font-bold text-slate-800 flex items-center gap-3 text-lg"><Car size={22} className="text-indigo-600" /> Vehicles</h3>
+                   <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md">{assets.vehicles.length} Total</span>
+                </div>
+                <div className="flex gap-3 mb-6">
+                   <input 
+                      placeholder="Add Vehicle No." 
+                      value={newAssetValue} 
+                      onChange={e => setNewAssetValue(e.target.value)} 
+                      className="flex-1 px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-base focus:ring-2 focus:ring-indigo-500 outline-none"
+                   />
+                   <button onClick={() => handleAddAsset('vehicles')} className="bg-slate-900 text-white p-2.5 rounded-xl hover:bg-black transition-colors shadow-lg shadow-slate-900/20"><Plus size={20}/></button>
+                </div>
+                <div className="overflow-y-auto space-y-2 pr-2 flex-1 scrollbar-thin">
+                   {assets.vehicles.map(v => (
+                      <div key={v} className="flex justify-between items-center p-3.5 bg-slate-50 rounded-xl border border-slate-100 group hover:border-slate-200 transition-colors">
+                         <span className="font-semibold text-slate-700">{v}</span>
+                         <button onClick={() => handleDeleteAsset('vehicles', v)} className="text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
+                      </div>
+                   ))}
+                </div>
+             </div>
+
+             {/* QR Codes */}
+             <div className="bg-white p-8 rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100 flex flex-col h-[500px]">
+                <div className="flex items-center justify-between mb-6">
+                   <h3 className="font-bold text-slate-800 flex items-center gap-3 text-lg"><QrCode size={22} className="text-indigo-600" /> QR Codes</h3>
+                   <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md">{assets.qrCodes.length} Total</span>
+                </div>
+                <div className="flex gap-3 mb-6">
+                   <input 
+                      placeholder="Add QR ID" 
+                      value={newAssetValue} 
+                      onChange={e => setNewAssetValue(e.target.value)} 
+                      className="flex-1 px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-base focus:ring-2 focus:ring-indigo-500 outline-none"
+                   />
+                   <button onClick={() => handleAddAsset('qrcodes')} className="bg-slate-900 text-white p-2.5 rounded-xl hover:bg-black transition-colors shadow-lg shadow-slate-900/20"><Plus size={20}/></button>
+                </div>
+                <div className="overflow-y-auto space-y-2 pr-2 flex-1 scrollbar-thin">
+                   {assets.qrCodes.map(q => {
+                      const assignedDriverName = getQrAssignedDriverName(q);
+                      return (
+                         <div key={q} className="flex justify-between items-center p-3.5 bg-slate-50 rounded-xl border border-slate-100 group hover:border-slate-200 transition-colors">
+                            <span className="font-semibold text-slate-700">{q}</span>
+                            <div className="flex items-center gap-3">
+                               {assignedDriverName && (
+                                  <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-1 rounded-md">
+                                     Driver: {assignedDriverName}
+                                  </span>
+                               )}
+                               <button onClick={() => handleDeleteAsset('qrcodes', q)} className="text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
+                            </div>
+                         </div>
+                      );
+                   })}
+                </div>
+             </div>
+             </div>
+
           </div>
        )}
 
