@@ -14,6 +14,7 @@ const ManageDefaultsPage: React.FC = () => {
 
   // Asset Form State
   const [newAssetValue, setNewAssetValue] = useState('');
+  const [newVehicleSectionValue, setNewVehicleSectionValue] = useState('');
 
   // Editing State for Drivers
   const [editState, setEditState] = useState<Record<string, Partial<Driver>>>({});
@@ -46,6 +47,19 @@ const ManageDefaultsPage: React.FC = () => {
     return assignedDriver?.name ?? '';
   };
 
+  const getVehicleSlotDriver = (vehicle: string, shift: 'Day' | 'Night') =>
+    getActiveDrivers().find(d => d.vehicle === vehicle && d.currentShift === shift);
+
+  const getVehicleOccupants = (vehicle: string) =>
+    getActiveDrivers().filter(d => d.vehicle === vehicle);
+
+  const getAvailableDriversForVehicle = (vehicle: string) => {
+    const activeDrivers = getActiveDrivers();
+    return activeDrivers
+      .filter(d => !d.vehicle || d.vehicle === vehicle)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  };
+
   // --- ASSET MANAGEMENT ---
   const handleAddAsset = async (type: 'vehicles' | 'qrcodes') => {
     if (!newAssetValue.trim()) return;
@@ -72,6 +86,70 @@ const ManageDefaultsPage: React.FC = () => {
     }
     await storageService.saveAssets(newAssets);
     setAssets(newAssets);
+  };
+
+  const handleAddVehicleFromSection = async () => {
+    if (!newVehicleSectionValue.trim()) return;
+    const vehicleToAdd = newVehicleSectionValue.trim();
+    if (assets.vehicles.includes(vehicleToAdd)) {
+      alert('Vehicle already exists');
+      return;
+    }
+
+    const newAssets = {
+      ...assets,
+      vehicles: [...assets.vehicles, vehicleToAdd]
+    };
+    await storageService.saveAssets(newAssets);
+    setAssets(newAssets);
+    setNewVehicleSectionValue('');
+  };
+
+  const handleRemoveVehicleDriver = async (vehicle: string, shift: 'Day' | 'Night') => {
+    const assignedDriver = getVehicleSlotDriver(vehicle, shift);
+    if (!assignedDriver) return;
+
+    await storageService.saveDriver({
+      ...assignedDriver,
+      vehicle: ''
+    });
+    await loadData();
+  };
+
+  const handleAssignVehicleDriver = async (
+    vehicle: string,
+    shift: 'Day' | 'Night',
+    driverId: string
+  ) => {
+    if (!driverId) return;
+
+    const selectedDriver = getActiveDrivers().find(d => d.id === driverId);
+    if (!selectedDriver) return;
+
+    const existingForSlot = getVehicleSlotDriver(vehicle, shift);
+    if (existingForSlot && existingForSlot.id !== driverId) {
+      alert(`Please remove the current ${shift === 'Day' ? 'Morning' : 'Night'} driver first.`);
+      return;
+    }
+
+    const vehicleOccupants = getVehicleOccupants(vehicle);
+    const isAlreadyInVehicle = selectedDriver.vehicle === vehicle;
+    if (!isAlreadyInVehicle && vehicleOccupants.length >= 2) {
+      alert(`Vehicle ${vehicle} is full (Max 2 drivers).`);
+      return;
+    }
+
+    if (selectedDriver.vehicle && selectedDriver.vehicle !== vehicle) {
+      alert(`${selectedDriver.name} is already assigned to vehicle ${selectedDriver.vehicle}. Remove first, then reassign.`);
+      return;
+    }
+
+    await storageService.saveDriver({
+      ...selectedDriver,
+      vehicle,
+      currentShift: shift
+    });
+    await loadData();
   };
 
   // --- DRIVER ASSIGNMENTS ---
@@ -208,7 +286,8 @@ const ManageDefaultsPage: React.FC = () => {
 
        {/* --- ASSETS TAB --- */}
        {activeTab === 'assets' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-fade-in">
+          <div className="space-y-8 animate-fade-in">
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
              {/* Vehicles */}
              <div className="bg-white p-8 rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100 flex flex-col h-[500px]">
                 <div className="flex items-center justify-between mb-6">
@@ -264,6 +343,122 @@ const ManageDefaultsPage: React.FC = () => {
                                <button onClick={() => handleDeleteAsset('qrcodes', q)} className="text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
                             </div>
                          </div>
+                      );
+                   })}
+                </div>
+             </div>
+             </div>
+
+             {/* Vehicle Driver Assignment Section */}
+             <div className="bg-white p-8 rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+                   <div>
+                      <h3 className="font-bold text-slate-800 flex items-center gap-3 text-lg">
+                        <Car size={22} className="text-indigo-600" />
+                        Vehicle Driver Assignment (Morning / Night)
+                      </h3>
+                      <p className="text-sm text-slate-500 mt-1">Each vehicle can have max 2 drivers: Morning (Day) and Night.</p>
+                   </div>
+                   <div className="flex gap-3 w-full md:w-auto">
+                      <input
+                        placeholder="Add Vehicle No."
+                        value={newVehicleSectionValue}
+                        onChange={e => setNewVehicleSectionValue(e.target.value)}
+                        className="flex-1 md:w-56 px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-base focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                      <button onClick={handleAddVehicleFromSection} className="bg-slate-900 text-white p-2.5 rounded-xl hover:bg-black transition-colors shadow-lg shadow-slate-900/20">
+                        <Plus size={20} />
+                      </button>
+                   </div>
+                </div>
+
+                <div className="space-y-4">
+                   {assets.vehicles.map(vehicle => {
+                      const morningDriver = getVehicleSlotDriver(vehicle, 'Day');
+                      const nightDriver = getVehicleSlotDriver(vehicle, 'Night');
+                      const availableDrivers = getAvailableDriversForVehicle(vehicle);
+
+                      return (
+                        <div key={vehicle} className="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
+                          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                            <h4 className="font-bold text-slate-800">{vehicle}</h4>
+                            <span className="text-xs font-semibold text-slate-500 bg-white border border-slate-200 rounded-md px-2 py-1">
+                              {getVehicleOccupants(vehicle).length}/2 Assigned
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="bg-white border border-amber-100 rounded-xl p-4">
+                              <div className="text-xs font-bold uppercase tracking-wide text-amber-700 mb-2">Morning</div>
+                              {morningDriver ? (
+                                <div className="flex items-center justify-between gap-3">
+                                  <div>
+                                    <p className="font-semibold text-slate-800">{morningDriver.name}</p>
+                                    <p className="text-[11px] text-slate-400">QR: {morningDriver.qrCode || 'Not assigned'}</p>
+                                    <p className="text-xs text-slate-500">{morningDriver.mobile}</p>
+                                  </div>
+                                  <button
+                                    onClick={() => handleRemoveVehicleDriver(vehicle, 'Day')}
+                                    className="text-xs font-semibold text-rose-600 border border-rose-200 bg-rose-50 px-3 py-1.5 rounded-lg hover:bg-rose-100 transition-colors"
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="relative">
+                                  <select
+                                    value=""
+                                    onChange={e => handleAssignVehicleDriver(vehicle, 'Day', e.target.value)}
+                                    className="w-full pl-3 pr-8 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
+                                  >
+                                    <option value="">Assign Morning Driver</option>
+                                    {availableDrivers.map(driver => (
+                                      <option key={driver.id} value={driver.id}>
+                                        {driver.name} {driver.vehicle ? `(Assigned: ${driver.vehicle})` : ''}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <ChevronDown size={14} className="absolute right-3 top-3 text-slate-400 pointer-events-none" />
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="bg-white border border-slate-200 rounded-xl p-4">
+                              <div className="text-xs font-bold uppercase tracking-wide text-slate-700 mb-2">Night</div>
+                              {nightDriver ? (
+                                <div className="flex items-center justify-between gap-3">
+                                  <div>
+                                    <p className="font-semibold text-slate-800">{nightDriver.name}</p>
+                                    <p className="text-[11px] text-slate-400">QR: {nightDriver.qrCode || 'Not assigned'}</p>
+                                    <p className="text-xs text-slate-500">{nightDriver.mobile}</p>
+                                  </div>
+                                  <button
+                                    onClick={() => handleRemoveVehicleDriver(vehicle, 'Night')}
+                                    className="text-xs font-semibold text-rose-600 border border-rose-200 bg-rose-50 px-3 py-1.5 rounded-lg hover:bg-rose-100 transition-colors"
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="relative">
+                                  <select
+                                    value=""
+                                    onChange={e => handleAssignVehicleDriver(vehicle, 'Night', e.target.value)}
+                                    className="w-full pl-3 pr-8 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
+                                  >
+                                    <option value="">Assign Night Driver</option>
+                                    {availableDrivers.map(driver => (
+                                      <option key={driver.id} value={driver.id}>
+                                        {driver.name} {driver.vehicle ? `(Assigned: ${driver.vehicle})` : ''}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <ChevronDown size={14} className="absolute right-3 top-3 text-slate-400 pointer-events-none" />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       );
                    })}
                 </div>

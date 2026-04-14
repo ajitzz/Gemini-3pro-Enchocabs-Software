@@ -8,11 +8,10 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   Download, Calendar, Wallet, FileText, ChevronRight, LogOut, 
   UserCircle, TrendingUp, TrendingDown, DollarSign, MapPin, 
-  CheckCircle, AlertCircle, Eye, X, ShieldCheck, Users, ArrowLeft, Lock, ArrowRight, Gauge, BarChart3, ChevronDown, Copy, AlertTriangle, ArrowUpRight, Clock, Ticket, Utensils, Bell
+  CheckCircle, AlertCircle, Eye, X, ShieldCheck, Users, ArrowLeft, Lock, ArrowRight, Gauge, BarChart3, ChevronDown, Copy, AlertTriangle, ArrowUpRight, Clock, Ticket, Utensils, Bell, Phone, MessageCircle
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import NetCalculationPopup from './NetCalculationPopup';
-import DriverMobileWidgetCard from './driver/DriverMobileWidgetCard';
 import { registerDriverPushNotifications } from '../lib/pushNotifications';
 
 type PortalDailyEntry = DailyEntry & { adjustmentApplied?: number; adjustedDue?: number };
@@ -51,7 +50,6 @@ const DriverPortalPage: React.FC = () => {
   const [copiedDriverId, setCopiedDriverId] = useState<string | null>(null);
   const [teamCashModes, setTeamCashModes] = useState<Record<string, CashMode>>({});
   const [teamCashModeUpdating, setTeamCashModeUpdating] = useState<Record<string, boolean>>({});
-  const [widgetUpdatedAt, setWidgetUpdatedAt] = useState<number>(Date.now());
   const [unreadUpdateCount, setUnreadUpdateCount] = useState(0);
   const [lastUpdateLabel, setLastUpdateLabel] = useState<string | null>(null);
   const [calcPopup, setCalcPopup] = useState<{
@@ -338,8 +336,8 @@ const DriverPortalPage: React.FC = () => {
           const sortedSlabs = slabs.sort((a, b) => a.minTrips - b.minTrips);
           setRentalSlabs(sortedSlabs);
 
+          setDriversList(visibleDrivers.sort((a, b) => a.name.localeCompare(b.name)));
           if (user?.role === 'admin' || user?.role === 'super_admin') {
-              setDriversList(visibleDrivers.sort((a, b) => a.name.localeCompare(b.name)));
               lastDriversRefreshRef.current = Date.now();
           }
 
@@ -422,7 +420,6 @@ const DriverPortalPage: React.FC = () => {
   const refreshPortalData = useCallback(async (options?: { includeDrivers?: boolean }) => {
       if (!user || !viewingAsDriver) return;
       try {
-          const isAdminUser = user.role === 'admin' || user.role === 'super_admin';
           const shouldLoadDrivers = options?.includeDrivers ?? false;
           const scopedDriverNames = getScopedDriverNames(viewingAsDriver.name);
 
@@ -433,8 +430,9 @@ const DriverPortalPage: React.FC = () => {
           const dailyEntries = bootstrapPayload.entries;
           const weeklyWallets = bootstrapPayload.weeklyWallets;
 
-          if (drivers && isAdminUser) {
-              setDriversList(drivers.sort((a, b) => a.name.localeCompare(b.name)));
+          if (drivers) {
+              const visibleDrivers = drivers.filter(d => !d.isHidden);
+              setDriversList(visibleDrivers.sort((a, b) => a.name.localeCompare(b.name)));
           }
 
           const updatedDriver = drivers?.find(d => d.id === viewingAsDriver.id);
@@ -454,8 +452,6 @@ const DriverPortalPage: React.FC = () => {
           const activeName = updatedDriver?.name || viewingAsDriver.name;
           setRawDaily(allDaily.filter(d => d.driver === activeName).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
           setRawWeekly(allWeekly.filter(w => w.driver === activeName).sort((a,b) => new Date(b.weekStartDate).getTime() - new Date(a.weekStartDate).getTime()));
-
-          setWidgetUpdatedAt(Date.now());
 
           if (myTeam.length > 0) {
               const balances: Record<string, number> = {};
@@ -845,6 +841,31 @@ const DriverPortalPage: React.FC = () => {
 
   const netBalance = driverStats?.finalTotal ?? 0;
   const hasFoodAccess = user?.role === 'driver' && Boolean(viewingAsDriver?.foodOption);
+
+  const vehiclePartnerDriver = useMemo(() => {
+      if (!viewingAsDriver?.vehicle) return null;
+
+      return driversList.find(driver =>
+          !driver.terminationDate &&
+          driver.id !== viewingAsDriver.id &&
+          driver.vehicle === viewingAsDriver.vehicle
+      ) || null;
+  }, [driversList, viewingAsDriver]);
+
+  const normalizePhoneForWhatsApp = (value?: string) => {
+      const digits = (value || '').replace(/[^\d]/g, '');
+      if (!digits) return '';
+
+      if (digits.length === 10) {
+          return `91${digits}`;
+      }
+
+      if (digits.length === 11 && digits.startsWith('0')) {
+          return `91${digits.slice(1)}`;
+      }
+
+      return digits;
+  };
   const isFoodTicketActive = netBalance >= 0;
 
   useEffect(() => {
@@ -1512,14 +1533,48 @@ const DriverPortalPage: React.FC = () => {
                 </div>
            </div>
 
-           <DriverMobileWidgetCard
-               netBalance={netBalance}
-               netPayout={balanceSummary.netPayout}
-               connected={liveUpdatesConnected}
-               updatedAt={widgetUpdatedAt}
-               onOpenNetPayout={() => openCalculationPopup('netPayout')}
-               onOpenNetBalance={() => openCalculationPopup('netBalance')}
-           />
+           <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                  <div>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Assigned Vehicle</p>
+                      <p className="text-base font-bold text-slate-800 mt-1">{viewingAsDriver.vehicle || 'No Vehicle Assigned'}</p>
+                  </div>
+                  <div className="text-right">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Current Shift</p>
+                      <p className="text-sm font-semibold text-slate-700 mt-1">{viewingAsDriver.currentShift}</p>
+                  </div>
+              </div>
+
+              <div className="mt-4 pt-4 border-t border-slate-100">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 mb-2">Other Driver on Same Vehicle</p>
+                  {vehiclePartnerDriver ? (
+                      <div className="flex items-start justify-between gap-3">
+                          <div>
+                              <p className="text-sm font-bold text-slate-800">{vehiclePartnerDriver.name}</p>
+                              <p className="text-xs text-slate-500">📞 {vehiclePartnerDriver.mobile}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                              <a
+                                  href={`tel:${vehiclePartnerDriver.mobile}`}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 transition-colors"
+                              >
+                                  <Phone size={12} /> Call
+                              </a>
+                              <a
+                                  href={`https://wa.me/${normalizePhoneForWhatsApp(vehiclePartnerDriver.mobile)}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+                              >
+                                  <MessageCircle size={12} /> WhatsApp
+                              </a>
+                          </div>
+                      </div>
+                  ) : (
+                      <p className="text-xs text-slate-500">No other driver assigned to this vehicle right now.</p>
+                  )}
+              </div>
+           </div>
 
            {/* Top Cards Grid (Dynamic) */}
            <div className="grid grid-cols-2 gap-4 mb-2">
