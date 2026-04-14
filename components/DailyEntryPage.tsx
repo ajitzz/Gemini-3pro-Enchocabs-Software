@@ -662,11 +662,21 @@ const DailyEntryPage: React.FC = () => {
       return Array.from(uniqueNames).sort();
   }, [entriesWithAdjustments]);
 
+  const getDriverAssignedDefaults = useCallback((driverName?: string) => {
+    const selectedDriver = drivers.find(d => d.name === driverName);
+    return {
+      vehicle: selectedDriver?.vehicle || '',
+      qrCode: selectedDriver?.qrCode || '',
+      shift: selectedDriver?.currentShift || 'Day',
+      rent: selectedDriver?.defaultRent,
+    };
+  }, [drivers]);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     
     if (name === 'driver') {
-        const selectedDriver = drivers.find(d => d.name === value);
+        const assignedDefaults = getDriverAssignedDefaults(value);
         setManualDefaultOverrides({
           vehicle: false,
           shift: false,
@@ -676,18 +686,36 @@ const DailyEntryPage: React.FC = () => {
         setFormData(prev => ({
             ...prev,
             driver: value,
-            vehicle: selectedDriver?.vehicle || '',
-            qrCode: selectedDriver?.qrCode || '',
-            shift: selectedDriver?.currentShift || 'Day',
-            rent: selectedDriver?.defaultRent // Let undefined flow if no default set
+            vehicle: assignedDefaults.vehicle,
+            qrCode: assignedDefaults.qrCode,
+            shift: assignedDefaults.shift,
+            rent: assignedDefaults.rent // Let undefined flow if no default set
         }));
     } else {
+        const nextValue = type === 'number' ? (value === '' ? undefined : parseFloat(value)) : value;
+
         if (name === 'vehicle' || name === 'shift' || name === 'qrCode' || name === 'rent') {
-          setManualDefaultOverrides(prev => ({ ...prev, [name]: true }));
+          const assignedDefaults = getDriverAssignedDefaults(formData.driver);
+          const normalizedValue = name === 'rent'
+            ? (nextValue === undefined ? undefined : Number(nextValue))
+            : String(nextValue ?? '');
+          const rawDefaultValue = name === 'vehicle'
+            ? assignedDefaults.vehicle
+            : name === 'shift'
+              ? assignedDefaults.shift
+              : name === 'qrCode'
+                ? assignedDefaults.qrCode
+                : assignedDefaults.rent;
+          const normalizedDefault = name === 'rent'
+            ? (rawDefaultValue === undefined ? undefined : Number(rawDefaultValue))
+            : String(rawDefaultValue ?? '');
+          const hasManualOverride = normalizedValue !== normalizedDefault;
+
+          setManualDefaultOverrides(prev => ({ ...prev, [name]: hasManualOverride }));
         }
         setFormData(prev => ({
             ...prev,
-            [name]: type === 'number' ? (value === '' ? undefined : parseFloat(value)) : value
+            [name]: nextValue
         }));
     }
   };
