@@ -8,7 +8,7 @@ const ManageDefaultsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'assets' | 'assignments'>('assets');
   
   const [drivers, setDrivers] = useState<Driver[]>([]);
-  const [assets, setAssets] = useState<AssetMaster>({ vehicles: [], qrCodes: [] });
+  const [assets, setAssets] = useState<AssetMaster>({ vehicles: [], qrCodes: [], vehicleFirstFuel: {} });
   const [shiftRecords, setShiftRecords] = useState<DriverShiftRecord[]>([]);
   const [leaves, setLeaves] = useState<LeaveRecord[]>([]);
 
@@ -82,6 +82,11 @@ const ManageDefaultsPage: React.FC = () => {
     const newAssets = { ...assets };
     if (type === 'vehicles') {
       newAssets.vehicles = newAssets.vehicles.filter(v => v !== val);
+      if (newAssets.vehicleFirstFuel?.[val]) {
+        const updatedFirstFuel = { ...newAssets.vehicleFirstFuel };
+        delete updatedFirstFuel[val];
+        newAssets.vehicleFirstFuel = updatedFirstFuel;
+      }
     } else {
       newAssets.qrCodes = newAssets.qrCodes.filter(q => q !== val);
     }
@@ -168,6 +173,56 @@ const ManageDefaultsPage: React.FC = () => {
       defaultRent: parsedAmount
     });
     await loadData();
+  };
+
+  const handleVehicleFirstFuelDriverChange = async (vehicle: string, driverId: string) => {
+    const newAssets = { ...assets };
+    const current = newAssets.vehicleFirstFuel?.[vehicle] ?? {};
+    newAssets.vehicleFirstFuel = {
+      ...(newAssets.vehicleFirstFuel ?? {}),
+      [vehicle]: {
+        ...current,
+        driverId
+      }
+    };
+    await storageService.saveAssets(newAssets);
+    setAssets(newAssets);
+  };
+
+  const handleVehicleFirstFuelAmountChange = async (vehicle: string, amountValue: string) => {
+    const trimmed = amountValue.trim();
+    if (trimmed === '') {
+      const newAssets = { ...assets };
+      const current = newAssets.vehicleFirstFuel?.[vehicle] ?? { driverId: '' };
+      newAssets.vehicleFirstFuel = {
+        ...(newAssets.vehicleFirstFuel ?? {}),
+        [vehicle]: {
+          ...current,
+          amount: undefined
+        }
+      };
+      await storageService.saveAssets(newAssets);
+      setAssets(newAssets);
+      return;
+    }
+
+    const parsedAmount = Number(trimmed);
+    if (Number.isNaN(parsedAmount)) {
+      alert('Please enter a valid first fuel amount.');
+      return;
+    }
+
+    const newAssets = { ...assets };
+    const current = newAssets.vehicleFirstFuel?.[vehicle] ?? { driverId: '' };
+    newAssets.vehicleFirstFuel = {
+      ...(newAssets.vehicleFirstFuel ?? {}),
+      [vehicle]: {
+        ...current,
+        amount: parsedAmount
+      }
+    };
+    await storageService.saveAssets(newAssets);
+    setAssets(newAssets);
   };
 
   // --- DRIVER ASSIGNMENTS ---
@@ -334,6 +389,7 @@ const ManageDefaultsPage: React.FC = () => {
                       const nightDriver = getVehicleSlotDriver(vehicle, 'Night');
                       const availableMorningDrivers = getAvailableDriversForSlot(vehicle, 'Day');
                       const availableNightDrivers = getAvailableDriversForSlot(vehicle, 'Night');
+                      const firstFuel = assets.vehicleFirstFuel?.[vehicle];
 
                       return (
                         <div key={vehicle} className="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
@@ -463,6 +519,39 @@ const ManageDefaultsPage: React.FC = () => {
                                   </div>
                                 </div>
                               )}
+                            </div>
+                          </div>
+
+                          <div className="mt-4 border-t border-slate-200 pt-4">
+                            <div className="text-xs font-bold uppercase tracking-wide text-indigo-700 mb-2">First Fuel Record</div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div className="relative">
+                                <label className="text-[11px] font-semibold text-slate-500">Driver</label>
+                                <select
+                                  value={firstFuel?.driverId ?? ''}
+                                  onChange={e => handleVehicleFirstFuelDriverChange(vehicle, e.target.value)}
+                                  className="mt-1 w-full pl-3 pr-8 py-2.5 bg-white border-0 ring-1 ring-slate-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
+                                >
+                                  <option value="">Select Driver</option>
+                                  {getActiveDrivers().map(driver => (
+                                    <option key={driver.id} value={driver.id}>
+                                      {driver.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                <ChevronDown size={14} className="absolute right-3 top-[32px] text-slate-400 pointer-events-none" />
+                              </div>
+                              <div>
+                                <label className="text-[11px] font-semibold text-slate-500">Amount</label>
+                                <input
+                                  type="number"
+                                  inputMode="decimal"
+                                  defaultValue={firstFuel?.amount ?? ''}
+                                  placeholder="Enter first fuel amount"
+                                  onBlur={e => handleVehicleFirstFuelAmountChange(vehicle, e.target.value)}
+                                  className="mt-1 w-full px-3 py-2.5 bg-white border-0 ring-1 ring-slate-200 rounded-lg text-sm font-medium text-right focus:ring-2 focus:ring-indigo-500 outline-none"
+                                />
+                              </div>
                             </div>
                           </div>
                         </div>
