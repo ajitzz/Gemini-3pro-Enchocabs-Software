@@ -36,14 +36,46 @@ const ManageDefaultsPage: React.FC = () => {
       storageService.getLeaves()
     ]);
     setDrivers(d);
-    setAssets(a);
+    const dedupedAssets = sanitizeAssets(a);
+    setAssets(dedupedAssets);
     setShiftRecords(s);
     setLeaves(l);
     setLoading(false);
+
+    // Self-heal any legacy duplicates at source.
+    if (JSON.stringify(dedupedAssets) !== JSON.stringify(a)) {
+      await storageService.saveAssets(dedupedAssets);
+    }
   };
 
   const getActiveDrivers = () => drivers.filter(d => !d.terminationDate);
   const normalizeAssetValue = (value: string) => value.trim().toLowerCase();
+  const sanitizeAssets = (incoming: AssetMaster): AssetMaster => {
+    const uniqueVehicles = Array.from(new Set((incoming.vehicles || []).map(v => v.trim()).filter(Boolean).map(v => `${normalizeAssetValue(v)}::${v}`)))
+      .map(entry => entry.split('::')[1]);
+
+    const uniqueQrCodes = Array.from(new Set((incoming.qrCodes || []).map(q => q.trim()).filter(Boolean).map(q => `${normalizeAssetValue(q)}::${q}`)))
+      .map(entry => entry.split('::')[1]);
+
+    const seenVehicles = new Set<string>();
+    const seenDrivers = new Set<string>();
+    const uniqueFuelRecords = (incoming.vehicleFirstFuelRecords || []).filter(record => {
+      const vehicleKey = normalizeAssetValue(record.vehicle || '');
+      const driverKey = normalizeAssetValue(record.driverId || record.driverName || '');
+      if (!vehicleKey || !driverKey) return false;
+      if (seenVehicles.has(vehicleKey) || seenDrivers.has(driverKey)) return false;
+      if (!uniqueVehicles.some(v => normalizeAssetValue(v) === vehicleKey)) return false;
+      seenVehicles.add(vehicleKey);
+      seenDrivers.add(driverKey);
+      return true;
+    });
+
+    return {
+      vehicles: uniqueVehicles,
+      qrCodes: uniqueQrCodes,
+      vehicleFirstFuelRecords: uniqueFuelRecords
+    };
+  };
   const getQrAssignedDriverName = (qrCode: string) => {
     const assignedDriver = getActiveDrivers().find(d => d.qrCode === qrCode);
     return assignedDriver?.name ?? '';
@@ -56,6 +88,15 @@ const ManageDefaultsPage: React.FC = () => {
     getActiveDrivers().filter(d => d.vehicle === vehicle);
   const getVehicleFuelRecord = (vehicle: string) =>
     (assets.vehicleFirstFuelRecords || []).find(record => record.vehicle === vehicle);
+  const getAvailableFuelDrivers = (vehicle: string) => {
+    const currentRecord = getVehicleFuelRecord(vehicle);
+    const usedDriverIds = new Set(
+      (assets.vehicleFirstFuelRecords || [])
+        .filter(record => record.vehicle !== vehicle)
+        .map(record => record.driverId)
+    );
+    return getActiveDrivers().filter(driver => !usedDriverIds.has(driver.id) || driver.id === currentRecord?.driverId);
+  };
 
   const getAvailableDriversForSlot = (vehicle: string, shift: 'Day' | 'Night') => {
     const activeDrivers = getActiveDrivers();
@@ -80,9 +121,10 @@ const ManageDefaultsPage: React.FC = () => {
       if (qrExists) return alert('QR Code already exists');
       newAssets.qrCodes.push(cleanedValue);
     }
-    await storageService.saveAssets(newAssets);
+    const sanitized = sanitizeAssets(newAssets);
+    await storageService.saveAssets(sanitized);
     setNewAssetValue('');
-    setAssets(newAssets); // Optimistic update
+    setAssets(sanitized); // Optimistic update
   };
 
   const handleDeleteAsset = async (type: 'vehicles' | 'qrcodes', val: string) => {
@@ -94,8 +136,9 @@ const ManageDefaultsPage: React.FC = () => {
     } else {
       newAssets.qrCodes = newAssets.qrCodes.filter(q => q !== val);
     }
-    await storageService.saveAssets(newAssets);
-    setAssets(newAssets);
+    const sanitized = sanitizeAssets(newAssets);
+    await storageService.saveAssets(sanitized);
+    setAssets(sanitized);
   };
 
   const handleAddVehicleFromSection = async () => {
@@ -110,8 +153,9 @@ const ManageDefaultsPage: React.FC = () => {
       ...assets,
       vehicles: [...assets.vehicles, vehicleToAdd]
     };
-    await storageService.saveAssets(newAssets);
-    setAssets(newAssets);
+    const sanitized = sanitizeAssets(newAssets);
+    await storageService.saveAssets(sanitized);
+    setAssets(sanitized);
     setNewVehicleSectionValue('');
   };
 
@@ -177,8 +221,9 @@ const ManageDefaultsPage: React.FC = () => {
       ...assets,
       vehicleFirstFuelRecords: nextRecords
     };
-    await storageService.saveAssets(nextAssets);
-    setAssets(nextAssets);
+    const sanitized = sanitizeAssets(nextAssets);
+    await storageService.saveAssets(sanitized);
+    setAssets(sanitized);
     cancelVehicleFuelEdit(vehicle);
   };
 
@@ -414,7 +459,7 @@ const ManageDefaultsPage: React.FC = () => {
                                     className="px-2 py-1 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-slate-300"
                                   >
                                     <option value="">Driver</option>
-                                    {getActiveDrivers().map(driver => (
+                                    {getAvailableFuelDrivers(vehicle).map(driver => (
                                       <option key={driver.id} value={driver.id}>{driver.name}</option>
                                     ))}
                                   </select>
