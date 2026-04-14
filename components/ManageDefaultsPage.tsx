@@ -15,6 +15,7 @@ const ManageDefaultsPage: React.FC = () => {
   // Asset Form State
   const [newAssetValue, setNewAssetValue] = useState('');
   const [newVehicleSectionValue, setNewVehicleSectionValue] = useState('');
+  const [vehicleFuelDrafts, setVehicleFuelDrafts] = useState<Record<string, { driverId: string; amount: string }>>({});
 
   // Editing State for Drivers
   const [editState, setEditState] = useState<Record<string, Partial<Driver>>>({});
@@ -36,6 +37,18 @@ const ManageDefaultsPage: React.FC = () => {
     ]);
     setDrivers(d);
     setAssets(a);
+    setVehicleFuelDrafts(
+      (a.vehicleFuelEntries ? Object.entries(a.vehicleFuelEntries) : []).reduce(
+        (acc, [vehicle, entry]) => ({
+          ...acc,
+          [vehicle]: {
+            driverId: entry.driverId || '',
+            amount: entry.amount ? String(entry.amount) : ''
+          }
+        }),
+        {} as Record<string, { driverId: string; amount: string }>
+      )
+    );
     setShiftRecords(s);
     setLeaves(l);
     setLoading(false);
@@ -82,11 +95,59 @@ const ManageDefaultsPage: React.FC = () => {
     const newAssets = { ...assets };
     if (type === 'vehicles') {
       newAssets.vehicles = newAssets.vehicles.filter(v => v !== val);
+      if (newAssets.vehicleFuelEntries?.[val]) {
+        const remainingEntries = { ...newAssets.vehicleFuelEntries };
+        delete remainingEntries[val];
+        newAssets.vehicleFuelEntries = remainingEntries;
+      }
     } else {
       newAssets.qrCodes = newAssets.qrCodes.filter(q => q !== val);
     }
     await storageService.saveAssets(newAssets);
     setAssets(newAssets);
+  };
+
+  const handleFuelDraftChange = (
+    vehicle: string,
+    field: 'driverId' | 'amount',
+    value: string
+  ) => {
+    setVehicleFuelDrafts(prev => ({
+      ...prev,
+      [vehicle]: {
+        driverId: prev[vehicle]?.driverId || '',
+        amount: prev[vehicle]?.amount || '',
+        [field]: value
+      }
+    }));
+  };
+
+  const saveVehicleFuelEntry = async (vehicle: string) => {
+    const draft = vehicleFuelDrafts[vehicle] || { driverId: '', amount: '' };
+    const amount = draft.amount.trim() === '' ? 0 : Number(draft.amount);
+    if (draft.driverId && (Number.isNaN(amount) || amount < 0)) {
+      alert('Please enter a valid amount.');
+      return;
+    }
+
+    const updatedAssets: AssetMaster = {
+      ...assets,
+      vehicleFuelEntries: {
+        ...(assets.vehicleFuelEntries || {})
+      }
+    };
+
+    if (!draft.driverId) {
+      delete updatedAssets.vehicleFuelEntries?.[vehicle];
+    } else {
+      updatedAssets.vehicleFuelEntries![vehicle] = {
+        driverId: draft.driverId,
+        amount
+      };
+    }
+
+    await storageService.saveAssets(updatedAssets);
+    setAssets(updatedAssets);
   };
 
   const handleAddVehicleFromSection = async () => {
@@ -430,9 +491,43 @@ const ManageDefaultsPage: React.FC = () => {
                 </div>
                 <div className="overflow-y-auto space-y-2 pr-2 flex-1 scrollbar-thin">
                    {assets.vehicles.map(v => (
-                      <div key={v} className="flex justify-between items-center p-3.5 bg-slate-50 rounded-xl border border-slate-100 group hover:border-slate-200 transition-colors">
-                         <span className="font-semibold text-slate-700">{v}</span>
-                         <button onClick={() => handleDeleteAsset('vehicles', v)} className="text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
+                      <div key={v} className="p-3 bg-slate-50 rounded-xl border border-slate-100 group hover:border-slate-200 transition-colors">
+                         <div className="flex justify-between items-center gap-3">
+                            <span className="font-semibold text-slate-700">{v}</span>
+                            <button onClick={() => handleDeleteAsset('vehicles', v)} className="text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
+                         </div>
+                         <div className="mt-2.5">
+                            <p className="text-[10px] uppercase tracking-wide text-slate-400 mb-1.5">First fuel entry</p>
+                            <div className="grid grid-cols-1 md:grid-cols-[1fr_96px_auto] gap-1.5">
+                               <select
+                                  value={vehicleFuelDrafts[v]?.driverId || ''}
+                                  onChange={e => handleFuelDraftChange(v, 'driverId', e.target.value)}
+                                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-md text-xs text-slate-600 focus:ring-1 focus:ring-slate-300 outline-none"
+                               >
+                                  <option value="">Select driver</option>
+                                  {getActiveDrivers().map(driver => (
+                                    <option key={driver.id} value={driver.id}>
+                                      {driver.name}
+                                    </option>
+                                  ))}
+                               </select>
+                               <input
+                                  type="number"
+                                  inputMode="decimal"
+                                  min="0"
+                                  placeholder="Amount"
+                                  value={vehicleFuelDrafts[v]?.amount || ''}
+                                  onChange={e => handleFuelDraftChange(v, 'amount', e.target.value)}
+                                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-md text-xs text-slate-600 focus:ring-1 focus:ring-slate-300 outline-none"
+                               />
+                               <button
+                                  onClick={() => saveVehicleFuelEntry(v)}
+                                  className="px-2 py-1.5 text-xs text-slate-600 border border-slate-200 rounded-md hover:bg-slate-100 transition-colors"
+                               >
+                                  Save
+                               </button>
+                            </div>
+                         </div>
                       </div>
                    ))}
                 </div>
