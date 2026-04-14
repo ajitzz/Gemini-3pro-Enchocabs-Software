@@ -53,11 +53,10 @@ const ManageDefaultsPage: React.FC = () => {
   const getVehicleOccupants = (vehicle: string) =>
     getActiveDrivers().filter(d => d.vehicle === vehicle);
 
-  const getAvailableDriversForSlot = (vehicle: string, shift: 'Day' | 'Night') => {
+  const getAvailableDriversForVehicle = (vehicle: string) => {
     const activeDrivers = getActiveDrivers();
-    const existingForSlot = getVehicleSlotDriver(vehicle, shift);
     return activeDrivers
-      .filter(d => !d.vehicle || d.id === existingForSlot?.id)
+      .filter(d => !d.vehicle || d.vehicle === vehicle)
       .sort((a, b) => a.name.localeCompare(b.name));
   };
 
@@ -149,23 +148,6 @@ const ManageDefaultsPage: React.FC = () => {
       ...selectedDriver,
       vehicle,
       currentShift: shift
-    });
-    await loadData();
-  };
-
-  const handleVehicleDriverAmountChange = async (driverId: string, amountValue: string) => {
-    const driver = getActiveDrivers().find(d => d.id === driverId);
-    if (!driver) return;
-
-    const parsedAmount = amountValue.trim() === '' ? undefined : Number(amountValue);
-    if (parsedAmount !== undefined && Number.isNaN(parsedAmount)) {
-      alert('Please enter a valid amount.');
-      return;
-    }
-
-    await storageService.saveDriver({
-      ...driver,
-      defaultRent: parsedAmount
     });
     await loadData();
   };
@@ -332,8 +314,7 @@ const ManageDefaultsPage: React.FC = () => {
                    {assets.vehicles.map(vehicle => {
                       const morningDriver = getVehicleSlotDriver(vehicle, 'Day');
                       const nightDriver = getVehicleSlotDriver(vehicle, 'Night');
-                      const availableMorningDrivers = getAvailableDriversForSlot(vehicle, 'Day');
-                      const availableNightDrivers = getAvailableDriversForSlot(vehicle, 'Night');
+                      const availableDrivers = getAvailableDriversForVehicle(vehicle);
 
                       return (
                         <div key={vehicle} className="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
@@ -348,8 +329,7 @@ const ManageDefaultsPage: React.FC = () => {
                             <div className="bg-white border border-amber-100 rounded-xl p-4">
                               <div className="text-xs font-bold uppercase tracking-wide text-amber-700 mb-2">Morning</div>
                               {morningDriver ? (
-                                <div className="space-y-3">
-                                  <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center justify-between gap-3">
                                   <div>
                                     <p className="font-semibold text-slate-800">{morningDriver.name}</p>
                                     <p className="text-[11px] text-slate-400">QR: {morningDriver.qrCode || 'Not assigned'}</p>
@@ -362,45 +342,21 @@ const ManageDefaultsPage: React.FC = () => {
                                     Remove
                                   </button>
                                 </div>
-                                <div>
-                                  <label className="text-[11px] font-semibold text-slate-500">Amount</label>
-                                  <input
-                                    type="number"
-                                    inputMode="decimal"
-                                    defaultValue={morningDriver.defaultRent ?? ''}
-                                    placeholder="Enter amount"
-                                    onBlur={e => handleVehicleDriverAmountChange(morningDriver.id, e.target.value)}
-                                    className="mt-1 w-full px-3 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-sm font-medium text-right focus:ring-2 focus:ring-indigo-500 outline-none"
-                                  />
-                                </div>
-                                </div>
                               ) : (
-                                <div className="space-y-3">
-                                  <div className="relative">
-                                    <select
-                                      value=""
-                                      onChange={e => handleAssignVehicleDriver(vehicle, 'Day', e.target.value)}
-                                      className="w-full pl-3 pr-8 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
-                                    >
-                                      <option value="">Assign Morning Driver</option>
-                                      {availableMorningDrivers.map(driver => (
-                                        <option key={driver.id} value={driver.id}>
-                                          {driver.name}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    <ChevronDown size={14} className="absolute right-3 top-3 text-slate-400 pointer-events-none" />
-                                  </div>
-                                  <div>
-                                    <label className="text-[11px] font-semibold text-slate-500">Amount</label>
-                                    <input
-                                      type="number"
-                                      inputMode="decimal"
-                                      disabled
-                                      placeholder="Select driver first"
-                                      className="mt-1 w-full px-3 py-2 bg-slate-100 border-0 ring-1 ring-slate-200 rounded-lg text-sm text-slate-400 outline-none cursor-not-allowed"
-                                    />
-                                  </div>
+                                <div className="relative">
+                                  <select
+                                    value=""
+                                    onChange={e => handleAssignVehicleDriver(vehicle, 'Day', e.target.value)}
+                                    className="w-full pl-3 pr-8 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
+                                  >
+                                    <option value="">Assign Morning Driver</option>
+                                    {availableDrivers.map(driver => (
+                                      <option key={driver.id} value={driver.id}>
+                                        {driver.name} {driver.vehicle ? `(Assigned: ${driver.vehicle})` : ''}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <ChevronDown size={14} className="absolute right-3 top-3 text-slate-400 pointer-events-none" />
                                 </div>
                               )}
                             </div>
@@ -408,8 +364,7 @@ const ManageDefaultsPage: React.FC = () => {
                             <div className="bg-white border border-slate-200 rounded-xl p-4">
                               <div className="text-xs font-bold uppercase tracking-wide text-slate-700 mb-2">Night</div>
                               {nightDriver ? (
-                                <div className="space-y-3">
-                                  <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center justify-between gap-3">
                                   <div>
                                     <p className="font-semibold text-slate-800">{nightDriver.name}</p>
                                     <p className="text-[11px] text-slate-400">QR: {nightDriver.qrCode || 'Not assigned'}</p>
@@ -422,45 +377,21 @@ const ManageDefaultsPage: React.FC = () => {
                                     Remove
                                   </button>
                                 </div>
-                                <div>
-                                  <label className="text-[11px] font-semibold text-slate-500">Amount</label>
-                                  <input
-                                    type="number"
-                                    inputMode="decimal"
-                                    defaultValue={nightDriver.defaultRent ?? ''}
-                                    placeholder="Enter amount"
-                                    onBlur={e => handleVehicleDriverAmountChange(nightDriver.id, e.target.value)}
-                                    className="mt-1 w-full px-3 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-sm font-medium text-right focus:ring-2 focus:ring-indigo-500 outline-none"
-                                  />
-                                </div>
-                                </div>
                               ) : (
-                                <div className="space-y-3">
-                                  <div className="relative">
-                                    <select
-                                      value=""
-                                      onChange={e => handleAssignVehicleDriver(vehicle, 'Night', e.target.value)}
-                                      className="w-full pl-3 pr-8 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
-                                    >
-                                      <option value="">Assign Night Driver</option>
-                                      {availableNightDrivers.map(driver => (
-                                        <option key={driver.id} value={driver.id}>
-                                          {driver.name}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    <ChevronDown size={14} className="absolute right-3 top-3 text-slate-400 pointer-events-none" />
-                                  </div>
-                                  <div>
-                                    <label className="text-[11px] font-semibold text-slate-500">Amount</label>
-                                    <input
-                                      type="number"
-                                      inputMode="decimal"
-                                      disabled
-                                      placeholder="Select driver first"
-                                      className="mt-1 w-full px-3 py-2 bg-slate-100 border-0 ring-1 ring-slate-200 rounded-lg text-sm text-slate-400 outline-none cursor-not-allowed"
-                                    />
-                                  </div>
+                                <div className="relative">
+                                  <select
+                                    value=""
+                                    onChange={e => handleAssignVehicleDriver(vehicle, 'Night', e.target.value)}
+                                    className="w-full pl-3 pr-8 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
+                                  >
+                                    <option value="">Assign Night Driver</option>
+                                    {availableDrivers.map(driver => (
+                                      <option key={driver.id} value={driver.id}>
+                                        {driver.name} {driver.vehicle ? `(Assigned: ${driver.vehicle})` : ''}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <ChevronDown size={14} className="absolute right-3 top-3 text-slate-400 pointer-events-none" />
                                 </div>
                               )}
                             </div>
