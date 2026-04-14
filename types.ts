@@ -104,12 +104,6 @@ export interface AssetMaster {
   qrCodes: string[]; // List of all owned QR codes
 }
 
-export interface VehicleFuelDefault {
-  vehicle: string;
-  driverId: string;
-  amount?: number;
-}
-
 export interface DriverSummary {
   driver: string;
   totalCollection: number;

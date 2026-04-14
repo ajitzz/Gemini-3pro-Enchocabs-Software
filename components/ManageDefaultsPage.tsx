@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Driver, AssetMaster, DriverShiftRecord, LeaveRecord, VehicleFuelDefault } from '../types';
+import { Driver, AssetMaster, DriverShiftRecord, LeaveRecord } from '../types';
 import { storageService } from '../services/storageService';
 import { Settings, Plus, Trash2, Car, QrCode, Save, History, Calendar, ChevronDown } from 'lucide-react';
 
@@ -11,7 +11,6 @@ const ManageDefaultsPage: React.FC = () => {
   const [assets, setAssets] = useState<AssetMaster>({ vehicles: [], qrCodes: [] });
   const [shiftRecords, setShiftRecords] = useState<DriverShiftRecord[]>([]);
   const [leaves, setLeaves] = useState<LeaveRecord[]>([]);
-  const [vehicleFuelDefaults, setVehicleFuelDefaults] = useState<Record<string, VehicleFuelDefault>>({});
 
   // Asset Form State
   const [newAssetValue, setNewAssetValue] = useState('');
@@ -29,23 +28,16 @@ const ManageDefaultsPage: React.FC = () => {
 
   const loadData = async () => {
     setLoading(true);
-    const [d, a, s, l, vehicleFuel] = await Promise.all([
+    const [d, a, s, l] = await Promise.all([
       storageService.getDrivers(),
       storageService.getAssets(),
       storageService.getDriverShifts(),
-      storageService.getLeaves(),
-      storageService.getVehicleFuelDefaults()
+      storageService.getLeaves()
     ]);
     setDrivers(d);
     setAssets(a);
     setShiftRecords(s);
     setLeaves(l);
-    setVehicleFuelDefaults(
-      vehicleFuel.reduce<Record<string, VehicleFuelDefault>>((acc, row) => {
-        acc[row.vehicle] = row;
-        return acc;
-      }, {})
-    );
     setLoading(false);
   };
 
@@ -94,48 +86,7 @@ const ManageDefaultsPage: React.FC = () => {
       newAssets.qrCodes = newAssets.qrCodes.filter(q => q !== val);
     }
     await storageService.saveAssets(newAssets);
-    if (type === 'vehicles') {
-      await storageService.deleteVehicleFuelDefault(val);
-      setVehicleFuelDefaults(prev => {
-        const next = { ...prev };
-        delete next[val];
-        return next;
-      });
-    }
     setAssets(newAssets);
-  };
-
-  const handleVehicleFuelDefaultChange = async (
-    vehicle: string,
-    field: 'driverId' | 'amount',
-    value: string
-  ) => {
-    const existing = vehicleFuelDefaults[vehicle] || { vehicle, driverId: '' };
-    const updated: VehicleFuelDefault = { ...existing };
-
-    if (field === 'driverId') {
-      updated.driverId = value;
-    } else {
-      const parsedAmount = value.trim() === '' ? undefined : Number(value);
-      if (parsedAmount !== undefined && Number.isNaN(parsedAmount)) {
-        alert('Please enter a valid amount.');
-        return;
-      }
-      updated.amount = parsedAmount;
-    }
-
-    if (!updated.driverId && (updated.amount === undefined || updated.amount === null)) {
-      await storageService.deleteVehicleFuelDefault(vehicle);
-      setVehicleFuelDefaults(prev => {
-        const next = { ...prev };
-        delete next[vehicle];
-        return next;
-      });
-      return;
-    }
-
-    await storageService.saveVehicleFuelDefault(updated);
-    setVehicleFuelDefaults(prev => ({ ...prev, [vehicle]: updated }));
   };
 
   const handleAddVehicleFromSection = async () => {
@@ -540,32 +491,7 @@ const ManageDefaultsPage: React.FC = () => {
                    {assets.vehicles.map(v => (
                       <div key={v} className="flex justify-between items-center p-3.5 bg-slate-50 rounded-xl border border-slate-100 group hover:border-slate-200 transition-colors">
                          <span className="font-semibold text-slate-700">{v}</span>
-                         <div className="flex items-center gap-2">
-                           <div className="relative min-w-[180px]">
-                              <select
-                                value={vehicleFuelDefaults[v]?.driverId || ''}
-                                onChange={e => handleVehicleFuelDefaultChange(v, 'driverId', e.target.value)}
-                                className="w-full pl-2 pr-7 py-1.5 bg-white border-0 ring-1 ring-slate-200 rounded-lg text-xs font-medium focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
-                              >
-                                <option value="">First fuel driver</option>
-                                {getActiveDrivers().map(driver => (
-                                  <option key={driver.id} value={driver.id}>
-                                    {driver.name}
-                                  </option>
-                                ))}
-                              </select>
-                              <ChevronDown size={12} className="absolute right-2 top-2.5 text-slate-400 pointer-events-none" />
-                           </div>
-                           <input
-                             type="number"
-                             inputMode="decimal"
-                             defaultValue={vehicleFuelDefaults[v]?.amount ?? ''}
-                             placeholder="Amount"
-                             onBlur={e => handleVehicleFuelDefaultChange(v, 'amount', e.target.value)}
-                             className="w-24 px-2 py-1.5 bg-white border-0 ring-1 ring-slate-200 rounded-lg text-xs text-right focus:ring-2 focus:ring-indigo-500 outline-none"
-                           />
-                           <button onClick={() => handleDeleteAsset('vehicles', v)} className="text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
-                         </div>
+                         <button onClick={() => handleDeleteAsset('vehicles', v)} className="text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
                       </div>
                    ))}
                 </div>
