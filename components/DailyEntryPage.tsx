@@ -343,6 +343,12 @@ const DailyEntryPage: React.FC = () => {
   const [duplicateWarning, setDuplicateWarning] = useState<{ active: boolean, existingId: string, payload: DailyEntry } | null>(null);
   const [outlierWarning, setOutlierWarning] = useState<{ message: string, payload: DailyEntry } | null>(null);
   const closeAfterSaveRef = useRef(true);
+  const [manualDefaultOverrides, setManualDefaultOverrides] = useState({
+    vehicle: false,
+    shift: false,
+    qrCode: false,
+    rent: false,
+  });
 
   // Form State
   const initialFormState: Partial<DailyEntry> = {
@@ -661,21 +667,63 @@ const DailyEntryPage: React.FC = () => {
     
     if (name === 'driver') {
         const selectedDriver = drivers.find(d => d.name === value);
+        setManualDefaultOverrides({
+          vehicle: false,
+          shift: false,
+          qrCode: false,
+          rent: false,
+        });
         setFormData(prev => ({
             ...prev,
             driver: value,
-            vehicle: selectedDriver?.vehicle || prev.vehicle,
-            qrCode: selectedDriver?.qrCode || prev.qrCode,
-            shift: selectedDriver?.currentShift || prev.shift || 'Day',
+            vehicle: selectedDriver?.vehicle || '',
+            qrCode: selectedDriver?.qrCode || '',
+            shift: selectedDriver?.currentShift || 'Day',
             rent: selectedDriver?.defaultRent // Let undefined flow if no default set
         }));
     } else {
+        if (name === 'vehicle' || name === 'shift' || name === 'qrCode' || name === 'rent') {
+          setManualDefaultOverrides(prev => ({ ...prev, [name]: true }));
+        }
         setFormData(prev => ({
             ...prev,
             [name]: type === 'number' ? (value === '' ? undefined : parseFloat(value)) : value
         }));
     }
   };
+
+  useEffect(() => {
+    if (!formData.driver || editingId) return;
+
+    const selectedDriver = drivers.find(d => d.name === formData.driver);
+    if (!selectedDriver) return;
+
+    setFormData(prev => {
+      if (prev.driver !== selectedDriver.name) return prev;
+
+      const nextVehicle = manualDefaultOverrides.vehicle ? prev.vehicle : (selectedDriver.vehicle || '');
+      const nextQrCode = manualDefaultOverrides.qrCode ? prev.qrCode : (selectedDriver.qrCode || '');
+      const nextShift = manualDefaultOverrides.shift ? prev.shift : (selectedDriver.currentShift || 'Day');
+      const nextRent = manualDefaultOverrides.rent ? prev.rent : selectedDriver.defaultRent;
+
+      if (
+        prev.vehicle === nextVehicle &&
+        prev.qrCode === nextQrCode &&
+        prev.shift === nextShift &&
+        prev.rent === nextRent
+      ) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        vehicle: nextVehicle,
+        qrCode: nextQrCode,
+        shift: nextShift,
+        rent: nextRent,
+      };
+    });
+  }, [drivers, formData.driver, editingId, manualDefaultOverrides]);
 
   const checkOutliers = (newEntry: DailyEntry) => {
     const driverEntries = entries.filter(e => e.driver === newEntry.driver);
@@ -826,6 +874,12 @@ const DailyEntryPage: React.FC = () => {
   };
 
   const resetFormAfterSave = (preserveDate: string) => {
+    setManualDefaultOverrides({
+      vehicle: false,
+      shift: false,
+      qrCode: false,
+      rent: false,
+    });
     const newState = {
       ...initialFormState,
       date: normalizeDateValue(preserveDate) || getTodayISODate(),
@@ -837,6 +891,12 @@ const DailyEntryPage: React.FC = () => {
   };
 
   const handleEdit = (entry: DailyEntry) => {
+    setManualDefaultOverrides({
+      vehicle: true,
+      shift: true,
+      qrCode: true,
+      rent: true,
+    });
     setFormData({
       ...initialFormState,
       ...entry,
@@ -854,6 +914,12 @@ const DailyEntryPage: React.FC = () => {
   };
 
   const resetForm = () => {
+    setManualDefaultOverrides({
+      vehicle: false,
+      shift: false,
+      qrCode: false,
+      rent: false,
+    });
     setFormData(initialFormState);
     localStorage.removeItem('daily_entry_draft');
     setEditingId(null);
