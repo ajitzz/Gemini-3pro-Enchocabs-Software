@@ -394,6 +394,7 @@ const ManageDefaultsPage: React.FC = () => {
                                 <div className="flex items-center justify-between gap-3">
                                   <div>
                                     <p className="font-semibold text-slate-800">{morningDriver.name}</p>
+                                    <p className="text-[11px] text-slate-400">QR: {morningDriver.qrCode || 'Not assigned'}</p>
                                     <p className="text-xs text-slate-500">{morningDriver.mobile}</p>
                                   </div>
                                   <button
@@ -428,6 +429,7 @@ const ManageDefaultsPage: React.FC = () => {
                                 <div className="flex items-center justify-between gap-3">
                                   <div>
                                     <p className="font-semibold text-slate-800">{nightDriver.name}</p>
+                                    <p className="text-[11px] text-slate-400">QR: {nightDriver.qrCode || 'Not assigned'}</p>
                                     <p className="text-xs text-slate-500">{nightDriver.mobile}</p>
                                   </div>
                                   <button
