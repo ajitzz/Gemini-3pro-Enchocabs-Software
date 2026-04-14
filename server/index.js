@@ -2527,22 +2527,7 @@ app.get('/api/assets', async (req, res) => {
     const result = await db.query('SELECT type, value FROM assets');
     const vehicles = result.rows.filter(r => r.type === 'vehicle').map(r => r.value);
     const qrCodes = result.rows.filter(r => r.type === 'qrcode').map(r => r.value);
-    const vehicleFirstFuel = result.rows
-      .filter(r => r.type === 'vehicle_first_fuel')
-      .reduce((acc, row) => {
-        try {
-          const parsed = JSON.parse(row.value);
-          if (!parsed?.vehicle) return acc;
-          acc[parsed.vehicle] = {
-            driverId: parsed.driverId || '',
-            amount: typeof parsed.amount === 'number' ? parsed.amount : undefined
-          };
-        } catch (error) {
-          console.warn('Invalid vehicle_first_fuel asset row:', row.value, error?.message || error);
-        }
-        return acc;
-      }, {});
-    const payload = { vehicles, qrCodes, vehicleFirstFuel };
+    const payload = { vehicles, qrCodes };
     await setCacheJSON(ASSETS_CACHE_KEY, payload, ASSETS_CACHE_TTL_SECONDS);
     res.set('X-Cache', 'MISS');
     res.json(payload);
@@ -2550,22 +2535,13 @@ app.get('/api/assets', async (req, res) => {
 });
 
 app.post('/api/assets', async (req, res) => {
-  const { vehicles, qrCodes, vehicleFirstFuel = {} } = req.body;
+  const { vehicles, qrCodes } = req.body;
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
     await client.query('DELETE FROM assets'); 
     for (const v of vehicles) await client.query("INSERT INTO assets (type, value) VALUES ('vehicle', $1)", [v]);
     for (const q of qrCodes) await client.query("INSERT INTO assets (type, value) VALUES ('qrcode', $1)", [q]);
-    for (const [vehicle, record] of Object.entries(vehicleFirstFuel)) {
-      if (!vehicle || !record || typeof record !== 'object') continue;
-      const payload = {
-        vehicle,
-        driverId: record.driverId || '',
-        amount: typeof record.amount === 'number' ? record.amount : undefined
-      };
-      await client.query("INSERT INTO assets (type, value) VALUES ('vehicle_first_fuel', $1)", [JSON.stringify(payload)]);
-    }
     await client.query('COMMIT');
     await invalidateKeys(ASSETS_CACHE_KEY);
     res.json({ success: true });
