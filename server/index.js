@@ -354,7 +354,7 @@ const assertDriverEntryAllowedOnDate = async ({ client = db, driverName, isoDate
     `
       SELECT l.id
       FROM leaves l
-      JOIN drivers d ON d.id = l.driver_id
+      JOIN drivers d ON d.id::text = l.driver_id::text
       WHERE LOWER(d.name) = $1
         AND $2::date >= l.start_date
         AND (
