@@ -8,7 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   Download, Calendar, Wallet, FileText, ChevronRight, LogOut, 
   UserCircle, TrendingUp, TrendingDown, DollarSign, MapPin, 
-  CheckCircle, AlertCircle, Eye, X, ShieldCheck, Users, ArrowLeft, Lock, ArrowRight, Gauge, BarChart3, ChevronDown, Copy, AlertTriangle, ArrowUpRight, Clock, Ticket, Utensils, Bell
+  CheckCircle, AlertCircle, Eye, X, ShieldCheck, Users, ArrowLeft, Lock, ArrowRight, Gauge, BarChart3, ChevronDown, Copy, AlertTriangle, ArrowUpRight, Clock, Ticket, Utensils, Bell, Phone, MessageCircle
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import NetCalculationPopup from './NetCalculationPopup';
@@ -338,8 +338,8 @@ const DriverPortalPage: React.FC = () => {
           const sortedSlabs = slabs.sort((a, b) => a.minTrips - b.minTrips);
           setRentalSlabs(sortedSlabs);
 
+          setDriversList(visibleDrivers.sort((a, b) => a.name.localeCompare(b.name)));
           if (user?.role === 'admin' || user?.role === 'super_admin') {
-              setDriversList(visibleDrivers.sort((a, b) => a.name.localeCompare(b.name)));
               lastDriversRefreshRef.current = Date.now();
           }
 
@@ -422,7 +422,6 @@ const DriverPortalPage: React.FC = () => {
   const refreshPortalData = useCallback(async (options?: { includeDrivers?: boolean }) => {
       if (!user || !viewingAsDriver) return;
       try {
-          const isAdminUser = user.role === 'admin' || user.role === 'super_admin';
           const shouldLoadDrivers = options?.includeDrivers ?? false;
           const scopedDriverNames = getScopedDriverNames(viewingAsDriver.name);
 
@@ -433,8 +432,9 @@ const DriverPortalPage: React.FC = () => {
           const dailyEntries = bootstrapPayload.entries;
           const weeklyWallets = bootstrapPayload.weeklyWallets;
 
-          if (drivers && isAdminUser) {
-              setDriversList(drivers.sort((a, b) => a.name.localeCompare(b.name)));
+          if (drivers) {
+              const visibleDrivers = drivers.filter(d => !d.isHidden);
+              setDriversList(visibleDrivers.sort((a, b) => a.name.localeCompare(b.name)));
           }
 
           const updatedDriver = drivers?.find(d => d.id === viewingAsDriver.id);
@@ -845,6 +845,18 @@ const DriverPortalPage: React.FC = () => {
 
   const netBalance = driverStats?.finalTotal ?? 0;
   const hasFoodAccess = user?.role === 'driver' && Boolean(viewingAsDriver?.foodOption);
+
+  const vehiclePartnerDriver = useMemo(() => {
+      if (!viewingAsDriver?.vehicle) return null;
+
+      return driversList.find(driver =>
+          !driver.terminationDate &&
+          driver.id !== viewingAsDriver.id &&
+          driver.vehicle === viewingAsDriver.vehicle
+      ) || null;
+  }, [driversList, viewingAsDriver]);
+
+  const normalizePhoneForWhatsApp = (value?: string) => (value || '').replace(/[^\d]/g, '');
   const isFoodTicketActive = netBalance >= 0;
 
   useEffect(() => {
@@ -1510,6 +1522,50 @@ const DriverPortalPage: React.FC = () => {
                         </div>
                     )}
                 </div>
+           </div>
+
+           <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                  <div>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Assigned Vehicle</p>
+                      <p className="text-base font-bold text-slate-800 mt-1">{viewingAsDriver.vehicle || 'No Vehicle Assigned'}</p>
+                  </div>
+                  <div className="text-right">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Current Shift</p>
+                      <p className="text-sm font-semibold text-slate-700 mt-1">{viewingAsDriver.currentShift}</p>
+                  </div>
+              </div>
+
+              <div className="mt-4 pt-4 border-t border-slate-100">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 mb-2">Other Driver on Same Vehicle</p>
+                  {vehiclePartnerDriver ? (
+                      <div className="flex items-start justify-between gap-3">
+                          <div>
+                              <p className="text-sm font-bold text-slate-800">{vehiclePartnerDriver.name}</p>
+                              <p className="text-xs text-slate-500">📞 {vehiclePartnerDriver.mobile}</p>
+                              <p className="text-[11px] text-slate-400">QR: {vehiclePartnerDriver.qrCode || 'Not assigned'}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                              <a
+                                  href={`tel:${vehiclePartnerDriver.mobile}`}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 transition-colors"
+                              >
+                                  <Phone size={12} /> Call
+                              </a>
+                              <a
+                                  href={`https://wa.me/${normalizePhoneForWhatsApp(vehiclePartnerDriver.mobile)}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+                              >
+                                  <MessageCircle size={12} /> WhatsApp
+                              </a>
+                          </div>
+                      </div>
+                  ) : (
+                      <p className="text-xs text-slate-500">No other driver assigned to this vehicle right now.</p>
+                  )}
+              </div>
            </div>
 
            <DriverMobileWidgetCard
