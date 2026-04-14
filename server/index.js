@@ -2527,7 +2527,17 @@ app.get('/api/assets', async (req, res) => {
     const result = await db.query('SELECT type, value FROM assets');
     const vehicles = result.rows.filter(r => r.type === 'vehicle').map(r => r.value);
     const qrCodes = result.rows.filter(r => r.type === 'qrcode').map(r => r.value);
-    const payload = { vehicles, qrCodes };
+    const vehicleFirstFuelRecords = result.rows
+      .filter(r => r.type === 'vehicle_first_fuel')
+      .map(r => {
+        try {
+          return JSON.parse(r.value);
+        } catch (_error) {
+          return null;
+        }
+      })
+      .filter(Boolean);
+    const payload = { vehicles, qrCodes, vehicleFirstFuelRecords };
     await setCacheJSON(ASSETS_CACHE_KEY, payload, ASSETS_CACHE_TTL_SECONDS);
     res.set('X-Cache', 'MISS');
     res.json(payload);
@@ -2535,13 +2545,30 @@ app.get('/api/assets', async (req, res) => {
 });
 
 app.post('/api/assets', async (req, res) => {
-  const { vehicles, qrCodes } = req.body;
+  const { vehicles = [], qrCodes = [], vehicleFirstFuelRecords = [] } = req.body;
   const client = await db.pool.connect();
   try {
+    const normalize = (value) => String(value || '').trim().toLowerCase();
+    const hasDuplicateVehicles = new Set(vehicles.map(normalize)).size !== vehicles.length;
+    if (hasDuplicateVehicles) {
+      return res.status(400).json({ error: 'Duplicate vehicles are not allowed.' });
+    }
+    const hasDuplicateQrCodes = new Set(qrCodes.map(normalize)).size !== qrCodes.length;
+    if (hasDuplicateQrCodes) {
+      return res.status(400).json({ error: 'Duplicate QR codes are not allowed.' });
+    }
+    const fuelDriverIds = vehicleFirstFuelRecords.map(r => r?.driverId).filter(Boolean);
+    if (new Set(fuelDriverIds).size !== fuelDriverIds.length) {
+      return res.status(400).json({ error: 'Duplicate drivers are not allowed in first fuel records.' });
+    }
+
     await client.query('BEGIN');
     await client.query('DELETE FROM assets'); 
     for (const v of vehicles) await client.query("INSERT INTO assets (type, value) VALUES ('vehicle', $1)", [v]);
     for (const q of qrCodes) await client.query("INSERT INTO assets (type, value) VALUES ('qrcode', $1)", [q]);
+    for (const record of vehicleFirstFuelRecords) {
+      await client.query("INSERT INTO assets (type, value) VALUES ('vehicle_first_fuel', $1)", [JSON.stringify(record)]);
+    }
     await client.query('COMMIT');
     await invalidateKeys(ASSETS_CACHE_KEY);
     res.json({ success: true });

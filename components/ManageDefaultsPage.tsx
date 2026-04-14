@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Driver, AssetMaster, DriverShiftRecord, LeaveRecord } from '../types';
 import { storageService } from '../services/storageService';
-import { Settings, Plus, Trash2, Car, QrCode, Save, History, Calendar, ChevronDown } from 'lucide-react';
+import { Settings, Plus, Trash2, Car, QrCode, Save, History, Calendar, ChevronDown, Pencil } from 'lucide-react';
 
 const ManageDefaultsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
@@ -21,6 +21,7 @@ const ManageDefaultsPage: React.FC = () => {
   
   // Shift History Modal
   const [showShiftHistory, setShowShiftHistory] = useState<string | null>(null);
+  const [vehicleFuelEditState, setVehicleFuelEditState] = useState<Record<string, { driverId: string; amount: string }>>({});
 
   useEffect(() => {
     loadData();
@@ -42,6 +43,7 @@ const ManageDefaultsPage: React.FC = () => {
   };
 
   const getActiveDrivers = () => drivers.filter(d => !d.terminationDate);
+  const normalizeAssetValue = (value: string) => value.trim().toLowerCase();
   const getQrAssignedDriverName = (qrCode: string) => {
     const assignedDriver = getActiveDrivers().find(d => d.qrCode === qrCode);
     return assignedDriver?.name ?? '';
@@ -52,6 +54,8 @@ const ManageDefaultsPage: React.FC = () => {
 
   const getVehicleOccupants = (vehicle: string) =>
     getActiveDrivers().filter(d => d.vehicle === vehicle);
+  const getVehicleFuelRecord = (vehicle: string) =>
+    (assets.vehicleFirstFuelRecords || []).find(record => record.vehicle === vehicle);
 
   const getAvailableDriversForSlot = (vehicle: string, shift: 'Day' | 'Night') => {
     const activeDrivers = getActiveDrivers();
@@ -63,14 +67,18 @@ const ManageDefaultsPage: React.FC = () => {
 
   // --- ASSET MANAGEMENT ---
   const handleAddAsset = async (type: 'vehicles' | 'qrcodes') => {
-    if (!newAssetValue.trim()) return;
+    const normalizedNewValue = normalizeAssetValue(newAssetValue);
+    if (!normalizedNewValue) return;
+    const cleanedValue = newAssetValue.trim();
     const newAssets = { ...assets };
     if (type === 'vehicles') {
-      if (newAssets.vehicles.includes(newAssetValue)) return alert('Vehicle already exists');
-      newAssets.vehicles.push(newAssetValue);
+      const vehicleExists = newAssets.vehicles.some(vehicle => normalizeAssetValue(vehicle) === normalizedNewValue);
+      if (vehicleExists) return alert('Vehicle already exists');
+      newAssets.vehicles.push(cleanedValue);
     } else {
-      if (newAssets.qrCodes.includes(newAssetValue)) return alert('QR Code already exists');
-      newAssets.qrCodes.push(newAssetValue);
+      const qrExists = newAssets.qrCodes.some(qrCode => normalizeAssetValue(qrCode) === normalizedNewValue);
+      if (qrExists) return alert('QR Code already exists');
+      newAssets.qrCodes.push(cleanedValue);
     }
     await storageService.saveAssets(newAssets);
     setNewAssetValue('');
@@ -82,6 +90,7 @@ const ManageDefaultsPage: React.FC = () => {
     const newAssets = { ...assets };
     if (type === 'vehicles') {
       newAssets.vehicles = newAssets.vehicles.filter(v => v !== val);
+      newAssets.vehicleFirstFuelRecords = (newAssets.vehicleFirstFuelRecords || []).filter(record => record.vehicle !== val);
     } else {
       newAssets.qrCodes = newAssets.qrCodes.filter(q => q !== val);
     }
@@ -92,7 +101,7 @@ const ManageDefaultsPage: React.FC = () => {
   const handleAddVehicleFromSection = async () => {
     if (!newVehicleSectionValue.trim()) return;
     const vehicleToAdd = newVehicleSectionValue.trim();
-    if (assets.vehicles.includes(vehicleToAdd)) {
+    if (assets.vehicles.some(vehicle => normalizeAssetValue(vehicle) === normalizeAssetValue(vehicleToAdd))) {
       alert('Vehicle already exists');
       return;
     }
@@ -104,6 +113,73 @@ const ManageDefaultsPage: React.FC = () => {
     await storageService.saveAssets(newAssets);
     setAssets(newAssets);
     setNewVehicleSectionValue('');
+  };
+
+  const startVehicleFuelEdit = (vehicle: string) => {
+    const currentRecord = getVehicleFuelRecord(vehicle);
+    setVehicleFuelEditState(prev => ({
+      ...prev,
+      [vehicle]: {
+        driverId: currentRecord?.driverId || '',
+        amount: currentRecord ? String(currentRecord.amount) : ''
+      }
+    }));
+  };
+
+  const cancelVehicleFuelEdit = (vehicle: string) => {
+    setVehicleFuelEditState(prev => {
+      const next = { ...prev };
+      delete next[vehicle];
+      return next;
+    });
+  };
+
+  const saveVehicleFuelRecord = async (vehicle: string) => {
+    const editData = vehicleFuelEditState[vehicle];
+    if (!editData) return;
+
+    if (!editData.driverId) {
+      alert('Please select a driver.');
+      return;
+    }
+
+    const amount = Number(editData.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      alert('Please enter a valid fuel amount.');
+      return;
+    }
+
+    const selectedDriver = getActiveDrivers().find(driver => driver.id === editData.driverId);
+    if (!selectedDriver) {
+      alert('Selected driver is invalid.');
+      return;
+    }
+
+    const duplicateDriverRecord = (assets.vehicleFirstFuelRecords || []).find(
+      record => record.driverId === editData.driverId && record.vehicle !== vehicle
+    );
+    if (duplicateDriverRecord) {
+      alert(`Driver already used in ${duplicateDriverRecord.vehicle}. Duplicate drivers are not allowed.`);
+      return;
+    }
+
+    const nextRecords = [
+      ...(assets.vehicleFirstFuelRecords || []).filter(record => record.vehicle !== vehicle),
+      {
+        vehicle,
+        driverId: selectedDriver.id,
+        driverName: selectedDriver.name,
+        amount
+      }
+    ];
+
+    const nextAssets: AssetMaster = {
+      ...assets,
+      vehicleFirstFuelRecords: nextRecords
+    };
+    await storageService.saveAssets(nextAssets);
+    setAssets(nextAssets);
+    cancelVehicleFuelEdit(vehicle);
   };
 
   const handleRemoveVehicleDriver = async (vehicle: string, shift: 'Day' | 'Night') => {
@@ -183,7 +259,11 @@ const ManageDefaultsPage: React.FC = () => {
 
     // Validate QR Uniqueness
     if (changes.qrCode && changes.qrCode !== originalDriver.qrCode) {
-        const qrTaken = getActiveDrivers().some(d => d.qrCode === changes.qrCode && d.id !== driverId);
+        const qrTaken = getActiveDrivers().some(
+          d =>
+            normalizeAssetValue(d.qrCode || '') === normalizeAssetValue(changes.qrCode || '') &&
+            d.id !== driverId
+        );
         if (qrTaken) {
             alert(`QR Code ${changes.qrCode} is already assigned to another driver.`);
             return;
@@ -318,13 +398,71 @@ const ManageDefaultsPage: React.FC = () => {
                       const availableMorningDrivers = getAvailableDriversForSlot(vehicle, 'Day');
                       const availableNightDrivers = getAvailableDriversForSlot(vehicle, 'Night');
 
-                      return (
+                     return (
                         <div key={vehicle} className="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
                           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-                            <h4 className="font-bold text-slate-800">{vehicle}</h4>
-                            <span className="text-xs font-semibold text-slate-500 bg-white border border-slate-200 rounded-md px-2 py-1">
-                              {getVehicleOccupants(vehicle).length}/2 Assigned
-                            </span>
+                            <div>
+                              <h4 className="font-bold text-slate-800">{vehicle}</h4>
+                              {vehicleFuelEditState[vehicle] ? (
+                                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                                  <select
+                                    value={vehicleFuelEditState[vehicle].driverId}
+                                    onChange={(e) => setVehicleFuelEditState(prev => ({
+                                      ...prev,
+                                      [vehicle]: { ...prev[vehicle], driverId: e.target.value }
+                                    }))}
+                                    className="px-2 py-1 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-slate-300"
+                                  >
+                                    <option value="">Driver</option>
+                                    {getActiveDrivers().map(driver => (
+                                      <option key={driver.id} value={driver.id}>{driver.name}</option>
+                                    ))}
+                                  </select>
+                                  <input
+                                    type="number"
+                                    value={vehicleFuelEditState[vehicle].amount}
+                                    onChange={(e) => setVehicleFuelEditState(prev => ({
+                                      ...prev,
+                                      [vehicle]: { ...prev[vehicle], amount: e.target.value }
+                                    }))}
+                                    placeholder="Amount"
+                                    className="w-24 px-2 py-1 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-slate-300"
+                                  />
+                                  <button
+                                    onClick={() => saveVehicleFuelRecord(vehicle)}
+                                    className="text-[11px] px-2 py-1 border border-slate-300 text-slate-700 rounded-md hover:bg-white"
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    onClick={() => cancelVehicleFuelEdit(vehicle)}
+                                    className="text-[11px] px-2 py-1 border border-slate-200 text-slate-500 rounded-md hover:bg-white"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="mt-1 flex items-center gap-2">
+                                  <span className="text-[11px] text-slate-500">
+                                    {getVehicleFuelRecord(vehicle)
+                                      ? `${getVehicleFuelRecord(vehicle)?.driverName} - ₹${getVehicleFuelRecord(vehicle)?.amount}`
+                                      : 'First fuel: not set'}
+                                  </span>
+                                  <button
+                                    onClick={() => startVehicleFuelEdit(vehicle)}
+                                    className="p-1 text-slate-400 hover:text-slate-600"
+                                    title="Edit first fuel details"
+                                  >
+                                    <Pencil size={12} />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-semibold text-slate-500 bg-white border border-slate-200 rounded-md px-2 py-1">
+                                {getVehicleOccupants(vehicle).length}/2 Assigned
+                              </span>
+                            </div>
                           </div>
 
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
