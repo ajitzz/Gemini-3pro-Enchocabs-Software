@@ -942,6 +942,14 @@ const initDb = async () => {
     `);
 
     await db.query(`
+      CREATE TABLE IF NOT EXISTS vehicle_fuel_defaults (
+        vehicle TEXT PRIMARY KEY,
+        driver_id UUID,
+        amount NUMERIC
+      );
+    `);
+
+    await db.query(`
       CREATE TABLE IF NOT EXISTS system_flags (
         flag_key TEXT PRIMARY KEY,
         flag_value TEXT,
@@ -2550,6 +2558,59 @@ app.post('/api/assets', async (req, res) => {
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
+  }
+});
+
+app.get('/api/vehicle-fuel-defaults', async (_req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT vehicle, COALESCE(driver_id::text, '') AS "driverId", amount
+      FROM vehicle_fuel_defaults
+      ORDER BY vehicle ASC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/vehicle-fuel-defaults', async (req, res) => {
+  const { vehicle, driverId, amount } = req.body || {};
+  if (!vehicle || typeof vehicle !== 'string') {
+    return res.status(400).json({ error: 'vehicle is required' });
+  }
+
+  try {
+    const normalizedDriverId = driverId && String(driverId).trim() ? String(driverId).trim() : null;
+    const normalizedAmount =
+      amount === undefined || amount === null || amount === '' ? null : Number(amount);
+
+    if (normalizedAmount !== null && Number.isNaN(normalizedAmount)) {
+      return res.status(400).json({ error: 'amount must be a number' });
+    }
+
+    const result = await db.query(
+      `
+      INSERT INTO vehicle_fuel_defaults (vehicle, driver_id, amount)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (vehicle)
+      DO UPDATE SET driver_id = EXCLUDED.driver_id, amount = EXCLUDED.amount
+      RETURNING vehicle, COALESCE(driver_id::text, '') AS "driverId", amount
+      `,
+      [vehicle, normalizedDriverId, normalizedAmount]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/vehicle-fuel-defaults/:vehicle', async (req, res) => {
+  try {
+    await db.query('DELETE FROM vehicle_fuel_defaults WHERE vehicle = $1', [req.params.vehicle]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
