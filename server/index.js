@@ -2525,9 +2525,54 @@ app.get('/api/assets', async (req, res) => {
     }
 
     const result = await db.query('SELECT type, value FROM assets');
-    const vehicles = result.rows.filter(r => r.type === 'vehicle').map(r => r.value);
-    const qrCodes = result.rows.filter(r => r.type === 'qrcode').map(r => r.value);
-    const payload = { vehicles, qrCodes };
+    const normalize = (value) => String(value || '').trim().toLowerCase();
+
+    const rawVehicles = result.rows.filter(r => r.type === 'vehicle').map(r => String(r.value || '').trim()).filter(Boolean);
+    const rawQrCodes = result.rows.filter(r => r.type === 'qrcode').map(r => String(r.value || '').trim()).filter(Boolean);
+    const rawVehicleFirstFuelRecords = result.rows
+      .filter(r => r.type === 'vehicle_first_fuel')
+      .map(r => {
+        try {
+          return JSON.parse(r.value);
+        } catch (_error) {
+          return null;
+        }
+      })
+      .filter(Boolean);
+
+    const vehicles = [];
+    const seenVehicles = new Set();
+    for (const vehicle of rawVehicles) {
+      const key = normalize(vehicle);
+      if (!key || seenVehicles.has(key)) continue;
+      seenVehicles.add(key);
+      vehicles.push(vehicle);
+    }
+
+    const qrCodes = [];
+    const seenQrCodes = new Set();
+    for (const qr of rawQrCodes) {
+      const key = normalize(qr);
+      if (!key || seenQrCodes.has(key)) continue;
+      seenQrCodes.add(key);
+      qrCodes.push(qr);
+    }
+
+    const vehicleFirstFuelRecords = [];
+    const seenFuelVehicles = new Set();
+    const seenFuelDrivers = new Set();
+    for (const record of rawVehicleFirstFuelRecords) {
+      const vehicleKey = normalize(record?.vehicle);
+      const driverKey = normalize(record?.driverId || record?.driverName);
+      if (!vehicleKey || !driverKey) continue;
+      if (seenFuelVehicles.has(vehicleKey) || seenFuelDrivers.has(driverKey)) continue;
+      if (!seenVehicles.has(vehicleKey)) continue;
+      seenFuelVehicles.add(vehicleKey);
+      seenFuelDrivers.add(driverKey);
+      vehicleFirstFuelRecords.push(record);
+    }
+
+    const payload = { vehicles, qrCodes, vehicleFirstFuelRecords };
     await setCacheJSON(ASSETS_CACHE_KEY, payload, ASSETS_CACHE_TTL_SECONDS);
     res.set('X-Cache', 'MISS');
     res.json(payload);
@@ -2535,13 +2580,50 @@ app.get('/api/assets', async (req, res) => {
 });
 
 app.post('/api/assets', async (req, res) => {
-  const { vehicles, qrCodes } = req.body;
+  const { vehicles = [], qrCodes = [], vehicleFirstFuelRecords = [] } = req.body;
   const client = await db.pool.connect();
   try {
+    const normalize = (value) => String(value || '').trim().toLowerCase();
+
+    const uniqueVehicles = [];
+    const seenVehicles = new Set();
+    for (const vehicle of vehicles.map(v => String(v || '').trim()).filter(Boolean)) {
+      const key = normalize(vehicle);
+      if (!key || seenVehicles.has(key)) continue;
+      seenVehicles.add(key);
+      uniqueVehicles.push(vehicle);
+    }
+
+    const uniqueQrCodes = [];
+    const seenQrCodes = new Set();
+    for (const qr of qrCodes.map(q => String(q || '').trim()).filter(Boolean)) {
+      const key = normalize(qr);
+      if (!key || seenQrCodes.has(key)) continue;
+      seenQrCodes.add(key);
+      uniqueQrCodes.push(qr);
+    }
+
+    const uniqueVehicleFirstFuelRecords = [];
+    const seenFuelVehicles = new Set();
+    const seenFuelDrivers = new Set();
+    for (const record of vehicleFirstFuelRecords) {
+      const vehicleKey = normalize(record?.vehicle);
+      const driverKey = normalize(record?.driverId || record?.driverName);
+      if (!vehicleKey || !driverKey) continue;
+      if (!seenVehicles.has(vehicleKey)) continue;
+      if (seenFuelVehicles.has(vehicleKey) || seenFuelDrivers.has(driverKey)) continue;
+      seenFuelVehicles.add(vehicleKey);
+      seenFuelDrivers.add(driverKey);
+      uniqueVehicleFirstFuelRecords.push(record);
+    }
+
     await client.query('BEGIN');
     await client.query('DELETE FROM assets'); 
-    for (const v of vehicles) await client.query("INSERT INTO assets (type, value) VALUES ('vehicle', $1)", [v]);
-    for (const q of qrCodes) await client.query("INSERT INTO assets (type, value) VALUES ('qrcode', $1)", [q]);
+    for (const v of uniqueVehicles) await client.query("INSERT INTO assets (type, value) VALUES ('vehicle', $1)", [v]);
+    for (const q of uniqueQrCodes) await client.query("INSERT INTO assets (type, value) VALUES ('qrcode', $1)", [q]);
+    for (const record of uniqueVehicleFirstFuelRecords) {
+      await client.query("INSERT INTO assets (type, value) VALUES ('vehicle_first_fuel', $1)", [JSON.stringify(record)]);
+    }
     await client.query('COMMIT');
     await invalidateKeys(ASSETS_CACHE_KEY);
     res.json({ success: true });
