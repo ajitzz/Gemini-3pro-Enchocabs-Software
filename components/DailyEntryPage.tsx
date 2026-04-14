@@ -365,17 +365,7 @@ const DailyEntryPage: React.FC = () => {
     qrCode: '',
     notes: ''
   };
-  const [formData, setFormData] = useState<Partial<DailyEntry>>(() => {
-    try {
-      const draft = localStorage.getItem('daily_entry_draft');
-      if (draft) {
-        return JSON.parse(draft);
-      }
-    } catch (e) {
-      console.warn('Failed to load draft', e);
-    }
-    return initialFormState;
-  });
+  const [formData, setFormData] = useState<Partial<DailyEntry>>(initialFormState);
   const [offlineQueue, setOfflineQueue] = useState<DailyEntry[]>(() => {
     try {
       const queue = localStorage.getItem('daily_entry_offline_queue');
@@ -388,12 +378,9 @@ const DailyEntryPage: React.FC = () => {
   const liveRefreshTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('daily_entry_draft', JSON.stringify(formData));
-    } catch (e) {
-      console.warn('Failed to save draft', e);
-    }
-  }, [formData]);
+    // Form must fully reset on every browser/project reload.
+    localStorage.removeItem('daily_entry_draft');
+  }, []);
 
   useEffect(() => {
     try {
@@ -778,13 +765,9 @@ const DailyEntryPage: React.FC = () => {
     if (!navigator.onLine) {
       setOfflineQueue(prev => [...prev, newEntry]);
       upsertEntry({ ...newEntry, id: `offline-${newEntry.id}` }); // Optimistic UI update
-      if (editingId) {
-        resetForm();
-      } else {
-        resetFormAfterSave(newEntry.date);
-        if (closeAfterSaveRef.current) {
-          setIsFormOpen(false);
-        }
+      resetFormAfterSave(newEntry.date, newEntry.driver);
+      if (closeAfterSaveRef.current) {
+        setIsFormOpen(false);
       }
       alert('You are offline. Entry saved locally and will sync when online.');
       return;
@@ -793,13 +776,9 @@ const DailyEntryPage: React.FC = () => {
     try {
       const savedEntry = await storageService.saveDailyEntry(newEntry);
       upsertEntry({ ...newEntry, ...savedEntry });
-      if (editingId) {
-        resetForm();
-      } else {
-        resetFormAfterSave(newEntry.date);
-        if (closeAfterSaveRef.current) {
-          setIsFormOpen(false);
-        }
+      resetFormAfterSave(newEntry.date, newEntry.driver);
+      if (closeAfterSaveRef.current) {
+        setIsFormOpen(false);
       }
     } catch (error: any) {
       console.error('Save daily entry failed:', error);
@@ -901,7 +880,8 @@ const DailyEntryPage: React.FC = () => {
     await saveEntry(entryToSave);
   };
 
-  const resetFormAfterSave = (preserveDate: string) => {
+  const resetFormAfterSave = (preserveDate: string, preserveDriver?: string) => {
+    const assignedDefaults = getDriverAssignedDefaults(preserveDriver);
     setManualDefaultOverrides({
       vehicle: false,
       shift: false,
@@ -911,6 +891,11 @@ const DailyEntryPage: React.FC = () => {
     const newState = {
       ...initialFormState,
       date: normalizeDateValue(preserveDate) || getTodayISODate(),
+      driver: preserveDriver || '',
+      vehicle: assignedDefaults.vehicle,
+      qrCode: assignedDefaults.qrCode,
+      shift: assignedDefaults.shift,
+      rent: assignedDefaults.rent,
     };
     setFormData(newState);
     localStorage.removeItem('daily_entry_draft');
@@ -1294,7 +1279,13 @@ const DailyEntryPage: React.FC = () => {
             <span className="hidden md:inline">Export CSV</span>
           </button>
           <button
-            onClick={() => setIsFormOpen(!isFormOpen)}
+            onClick={() => {
+              if (isFormOpen) {
+                resetForm();
+                return;
+              }
+              setIsFormOpen(true);
+            }}
             className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
           >
             {isFormOpen ? <X size={20} /> : <Plus size={20} />}
@@ -1317,7 +1308,7 @@ const DailyEntryPage: React.FC = () => {
            )}
         </div>
         
-        <form onSubmit={(e) => { closeAfterSaveRef.current = true; handleSubmit(e); }} className="flex flex-col gap-5">
+        <form onSubmit={(e) => { closeAfterSaveRef.current = false; handleSubmit(e); }} className="flex flex-col gap-5">
            {/* Row 1: Date & Driver */}
            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <InputField label="Date" name="date" type="date" value={formData.date} onChange={handleInputChange} required />
@@ -1480,7 +1471,7 @@ const DailyEntryPage: React.FC = () => {
 
            {/* Primary Financials */}
            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <InputField label="Collection (₹)" name="collection" type="number" inputMode="decimal" value={formData.collection} onChange={handleInputChange} onKeyDown={(e: any) => { if (e.key === 'Enter') { closeAfterSaveRef.current = true; handleSubmit(e); } }} required className="font-bold text-emerald-700 text-xl py-4" placeholder="Enter Amount" />
+              <InputField label="Collection (₹)" name="collection" type="number" inputMode="decimal" value={formData.collection} onChange={handleInputChange} onKeyDown={(e: any) => { if (e.key === 'Enter') { closeAfterSaveRef.current = false; handleSubmit(e); } }} required className="font-bold text-emerald-700 text-xl py-4" placeholder="Enter Amount" />
               
               <div className="relative">
                  <InputField label="Rent (₹)" name="rent" type="number" inputMode="decimal" value={formData.rent} onChange={handleInputChange} required className="py-4 text-lg" placeholder="Enter Rent" />
@@ -1528,8 +1519,8 @@ const DailyEntryPage: React.FC = () => {
              <div className="flex flex-col md:flex-row justify-end gap-3 max-w-[1920px] mx-auto">
                <button type="button" onClick={resetForm} className="px-5 py-3.5 md:py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-xl transition-colors w-full md:w-auto text-center order-2 md:order-1">Cancel</button>
                {!editingId && (
-                 <button type="button" onClick={(e) => { closeAfterSaveRef.current = false; handleSubmit(e); }} className="px-5 py-3.5 md:py-2.5 bg-indigo-100 text-indigo-700 font-bold rounded-xl hover:bg-indigo-200 transition-all active:scale-95 w-full md:w-auto text-center order-1 md:order-2">
-                   Save & Add Next
+                 <button type="button" onClick={(e) => { closeAfterSaveRef.current = true; handleSubmit(e); }} className="px-5 py-3.5 md:py-2.5 bg-indigo-100 text-indigo-700 font-bold rounded-xl hover:bg-indigo-200 transition-all active:scale-95 w-full md:w-auto text-center order-1 md:order-2">
+                   Save & Close
                  </button>
                )}
                <button type="submit" className="px-8 py-3.5 md:py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all active:scale-95 w-full md:w-auto text-center order-1 md:order-3">
