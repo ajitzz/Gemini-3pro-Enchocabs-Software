@@ -1,5 +1,5 @@
 
-import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping, ManagerAccess, AdminAccess, DriverBillingRecord, CashMode, DriverWidgetSummary, VehicleFuelDefault } from '../types';
+import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping, ManagerAccess, AdminAccess, DriverBillingRecord, CashMode, DriverWidgetSummary } from '../types';
 import { getApiBase } from '../lib/apiBase';
 
 type DailyEntryBootstrapResponse = {
@@ -482,9 +482,6 @@ export const storageService = {
   // --- Assets ---
   getAssets: async (): Promise<AssetMaster> => api.get('/assets'),
   saveAssets: async (assets: AssetMaster): Promise<AssetMaster> => { await api.post('/assets', assets); return assets; },
-  getVehicleFuelDefaults: async (): Promise<VehicleFuelDefault[]> => api.get('/vehicle-fuel-defaults'),
-  saveVehicleFuelDefault: async (payload: VehicleFuelDefault): Promise<VehicleFuelDefault> => api.post('/vehicle-fuel-defaults', payload),
-  deleteVehicleFuelDefault: async (vehicle: string): Promise<void> => api.delete(`/vehicle-fuel-defaults/${encodeURIComponent(vehicle)}`),
 
   // --- Rental Slabs ---
   getCompanyRentalSlabs: async (): Promise<RentalSlab[]> => {
