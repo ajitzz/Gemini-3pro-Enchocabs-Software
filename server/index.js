@@ -339,6 +339,30 @@ const startKeepAlive = () => {
 
 // --- DATE HELPERS ---
 const normalizeDriver = (name = '') => name.toLowerCase().trim();
+const assertDriverEntryAllowedOnDate = async ({ client = db, driverName, isoDate }) => {
+  const normalizedDriverName = normalizeDriver(driverName);
+  if (!normalizedDriverName || !isoDate) return;
+
+  const leaveConflict = await client.query(
+    `
+      SELECT l.id
+      FROM leaves l
+      JOIN drivers d ON d.id = l.driver_id
+      WHERE LOWER(d.name) = $1
+        AND $2::date >= l.start_date
+        AND (
+          l.actual_return_date IS NULL
+          OR $2::date <= l.actual_return_date
+        )
+      LIMIT 1
+    `,
+    [normalizedDriverName, isoDate],
+  );
+
+  if ((leaveConflict.rowCount || 0) > 0) {
+    throw new Error(`Driver ${driverName} is on leave on ${isoDate}. Daily entry is not allowed.`);
+  }
+};
 const toISODate = (rawVal) => {
   if (!rawVal) return '';
 
@@ -2054,7 +2078,7 @@ app.get('/api/daily-entries/bootstrap', async (req, res) => {
     const leavesFilters = [];
     if (fromDate) {
       leavesValues.push(fromDate);
-      leavesFilters.push(`end_date >= $${leavesValues.length}`);
+      leavesFilters.push(`COALESCE(actual_return_date, 'infinity'::date) >= $${leavesValues.length}`);
     }
     if (toDate) {
       leavesValues.push(toDate);
@@ -2168,6 +2192,7 @@ app.post('/api/daily-entries', async (req, res) => {
     if (duplicateCheck.rowCount > 0) {
       return res.status(409).json({ error: 'Driver already has an entry for this date. Please edit or delete the existing record.' });
     }
+    await assertDriverEntryAllowedOnDate({ client: db, driverName: e.driver, isoDate });
 
     const q = `
       INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, payout, payout_date, notes)
@@ -2197,6 +2222,9 @@ app.post('/api/daily-entries', async (req, res) => {
     emitLiveUpdate('daily_entries_changed');
     res.json(result.rows[0]);
   } catch (err) {
+    if (err.message && err.message.includes('is on leave')) {
+      return res.status(409).json({ error: err.message });
+    }
     if (err.code === '23505') {
       return res.status(409).json({ error: 'Driver already has an entry for this date. Please edit or delete the existing record.' });
     }
@@ -2251,6 +2279,7 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
       keyToId.set(key, incomingId);
 
       const payoutDateISO = e.payoutDate ? toISODate(e.payoutDate) : null;
+      await assertDriverEntryAllowedOnDate({ client, driverName: canonicalDriver, isoDate });
 
       const q = `
         INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, payout, payout_date, notes)
@@ -2313,6 +2342,9 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     await client.query('ROLLBACK');
+    if (err.message && err.message.includes('is on leave')) {
+      return res.status(409).json({ error: err.message });
+    }
     if (err.code === '23505') {
       return res.status(409).json({ error: 'Duplicate daily entry detected. Each driver can only have one entry per day.' });
     }
@@ -2887,8 +2919,8 @@ app.post('/api/leaves', async (req, res) => {
         FROM leaves
         WHERE driver_id = $1
           AND id <> $2
-          AND daterange(start_date, COALESCE(actual_return_date, end_date + 1), '[)')
-              && daterange($3::date, COALESCE($4::date, $5::date + 1), '[)')
+          AND daterange(start_date, COALESCE(actual_return_date + 1, 'infinity'::date), '[)')
+              && daterange($3::date, COALESCE($4::date + 1, 'infinity'::date), '[)')
         LIMIT 1
       `,
       [driverId, id, startDate, actualReturnDate, endDate],
