@@ -365,17 +365,7 @@ const DailyEntryPage: React.FC = () => {
     qrCode: '',
     notes: ''
   };
-  const [formData, setFormData] = useState<Partial<DailyEntry>>(() => {
-    try {
-      const draft = localStorage.getItem('daily_entry_draft');
-      if (draft) {
-        return JSON.parse(draft);
-      }
-    } catch (e) {
-      console.warn('Failed to load draft', e);
-    }
-    return initialFormState;
-  });
+  const [formData, setFormData] = useState<Partial<DailyEntry>>(initialFormState);
   const [offlineQueue, setOfflineQueue] = useState<DailyEntry[]>(() => {
     try {
       const queue = localStorage.getItem('daily_entry_offline_queue');
@@ -388,12 +378,9 @@ const DailyEntryPage: React.FC = () => {
   const liveRefreshTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('daily_entry_draft', JSON.stringify(formData));
-    } catch (e) {
-      console.warn('Failed to save draft', e);
-    }
-  }, [formData]);
+    // Form must fully reset on every browser/project reload.
+    localStorage.removeItem('daily_entry_draft');
+  }, []);
 
   useEffect(() => {
     try {
