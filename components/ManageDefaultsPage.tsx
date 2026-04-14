@@ -153,23 +153,6 @@ const ManageDefaultsPage: React.FC = () => {
     await loadData();
   };
 
-  const handleVehicleDriverAmountChange = async (driverId: string, amountValue: string) => {
-    const driver = getActiveDrivers().find(d => d.id === driverId);
-    if (!driver) return;
-
-    const parsedAmount = amountValue.trim() === '' ? undefined : Number(amountValue);
-    if (parsedAmount !== undefined && Number.isNaN(parsedAmount)) {
-      alert('Please enter a valid amount.');
-      return;
-    }
-
-    await storageService.saveDriver({
-      ...driver,
-      defaultRent: parsedAmount
-    });
-    await loadData();
-  };
-
   // --- DRIVER ASSIGNMENTS ---
   
   const handleEditChange = (driverId: string, field: keyof Driver, value: any) => {
@@ -362,17 +345,6 @@ const ManageDefaultsPage: React.FC = () => {
                                     Remove
                                   </button>
                                 </div>
-                                <div>
-                                  <label className="text-[11px] font-semibold text-slate-500">Amount</label>
-                                  <input
-                                    type="number"
-                                    inputMode="decimal"
-                                    defaultValue={morningDriver.defaultRent ?? ''}
-                                    placeholder="Enter amount"
-                                    onBlur={e => handleVehicleDriverAmountChange(morningDriver.id, e.target.value)}
-                                    className="mt-1 w-full px-3 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-sm font-medium text-right focus:ring-2 focus:ring-indigo-500 outline-none"
-                                  />
-                                </div>
                                 </div>
                               ) : (
                                 <div className="space-y-3">
@@ -390,16 +362,6 @@ const ManageDefaultsPage: React.FC = () => {
                                       ))}
                                     </select>
                                     <ChevronDown size={14} className="absolute right-3 top-3 text-slate-400 pointer-events-none" />
-                                  </div>
-                                  <div>
-                                    <label className="text-[11px] font-semibold text-slate-500">Amount</label>
-                                    <input
-                                      type="number"
-                                      inputMode="decimal"
-                                      disabled
-                                      placeholder="Select driver first"
-                                      className="mt-1 w-full px-3 py-2 bg-slate-100 border-0 ring-1 ring-slate-200 rounded-lg text-sm text-slate-400 outline-none cursor-not-allowed"
-                                    />
                                   </div>
                                 </div>
                               )}
@@ -422,17 +384,6 @@ const ManageDefaultsPage: React.FC = () => {
                                     Remove
                                   </button>
                                 </div>
-                                <div>
-                                  <label className="text-[11px] font-semibold text-slate-500">Amount</label>
-                                  <input
-                                    type="number"
-                                    inputMode="decimal"
-                                    defaultValue={nightDriver.defaultRent ?? ''}
-                                    placeholder="Enter amount"
-                                    onBlur={e => handleVehicleDriverAmountChange(nightDriver.id, e.target.value)}
-                                    className="mt-1 w-full px-3 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-sm font-medium text-right focus:ring-2 focus:ring-indigo-500 outline-none"
-                                  />
-                                </div>
                                 </div>
                               ) : (
                                 <div className="space-y-3">
@@ -450,16 +401,6 @@ const ManageDefaultsPage: React.FC = () => {
                                       ))}
                                     </select>
                                     <ChevronDown size={14} className="absolute right-3 top-3 text-slate-400 pointer-events-none" />
-                                  </div>
-                                  <div>
-                                    <label className="text-[11px] font-semibold text-slate-500">Amount</label>
-                                    <input
-                                      type="number"
-                                      inputMode="decimal"
-                                      disabled
-                                      placeholder="Select driver first"
-                                      className="mt-1 w-full px-3 py-2 bg-slate-100 border-0 ring-1 ring-slate-200 rounded-lg text-sm text-slate-400 outline-none cursor-not-allowed"
-                                    />
                                   </div>
                                 </div>
                               )}
