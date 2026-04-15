@@ -1935,7 +1935,7 @@ const DriverPortalPage: React.FC = () => {
                                        <p className="text-sm font-bold text-emerald-600">+{formatCurrency(entry.collection)}</p>
                                        <p className="text-[10px] text-slate-400">Rent: {formatCurrency(entry.rent)}</p>
                                        {entryExpense > 0 && (
-                                           <p className="text-[10px] text-rose-500 font-semibold">Expe: -{formatCurrency(entryExpense)}</p>
+                                           <p className="text-[10px] text-rose-500 font-semibold">Expe: {formatCurrency(entryExpense)}</p>
                                        )}
                                    </div>
                               </div>
@@ -2067,7 +2067,7 @@ const DriverPortalPage: React.FC = () => {
                                               <div>
                                                   <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Expe</span>
                                                   <span className="text-rose-600 font-semibold">
-                                                      - {formatCurrency(entryExpense)}
+                                                      {formatCurrency(entryExpense)}
                                                   </span>
                                               </div>
                                           )}
