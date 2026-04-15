@@ -18,13 +18,6 @@ const { getJSON: getCacheJSON, setJSON: setCacheJSON, deleteKeys: deleteCacheKey
 const { enqueueBillingRefresh, isQStashConfigured } = require('./qstash');
 const app = express();
 
-
-const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const toUuidOrNull = (value) => {
-  const raw = String(value || '').trim();
-  return UUID_V4_REGEX.test(raw) ? raw : null;
-};
-
 const splitCsvEnv = (value) => String(value || '')
   .split(',')
   .map((part) => part.trim())
@@ -64,6 +57,8 @@ const defaultAllowedOrigins = [
   'https://gemini-3pro-enchocabs-software.onrender.com',
   'http://localhost:5173',
   'http://127.0.0.1:5173',
+  'http://127.0.0.1:3000',
+  'http://localhost:3000',
 ];
 
 const allowedOrigins = new Set([
@@ -334,6 +329,7 @@ const startKeepAlive = () => {
         method: 'GET',
         headers: { 'Cache-Control': 'no-cache' },
       });
+      await response.text(); // Consume body to ensure socket cleanup
       console.log(`Keep-alive ping -> ${response.status} @ ${new Date().toISOString()}`);
     } catch (err) {
       console.error('Keep-alive ping failed:', err.message);
@@ -346,30 +342,6 @@ const startKeepAlive = () => {
 
 // --- DATE HELPERS ---
 const normalizeDriver = (name = '') => name.toLowerCase().trim();
-const assertDriverEntryAllowedOnDate = async ({ client = db, driverName, isoDate }) => {
-  const normalizedDriverName = normalizeDriver(driverName);
-  if (!normalizedDriverName || !isoDate) return;
-
-  const leaveConflict = await client.query(
-    `
-      SELECT l.id
-      FROM leaves l
-      JOIN drivers d ON d.id::text = l.driver_id::text
-      WHERE LOWER(d.name) = $1
-        AND $2::date >= l.start_date
-        AND (
-          l.actual_return_date IS NULL
-          OR $2::date <= l.actual_return_date
-        )
-      LIMIT 1
-    `,
-    [normalizedDriverName, isoDate],
-  );
-
-  if ((leaveConflict.rowCount || 0) > 0) {
-    throw new Error(`Driver ${driverName} is on leave on ${isoDate}. Daily entry is not allowed.`);
-  }
-};
 const toISODate = (rawVal) => {
   if (!rawVal) return '';
 
@@ -2085,7 +2057,7 @@ app.get('/api/daily-entries/bootstrap', async (req, res) => {
     const leavesFilters = [];
     if (fromDate) {
       leavesValues.push(fromDate);
-      leavesFilters.push(`COALESCE(actual_return_date, 'infinity'::date) >= $${leavesValues.length}`);
+      leavesFilters.push(`end_date >= $${leavesValues.length}`);
     }
     if (toDate) {
       leavesValues.push(toDate);
@@ -2186,22 +2158,19 @@ app.post('/api/daily-entries', async (req, res) => {
     const payoutDateISO = e.payoutDate ? toISODate(e.payoutDate) : null;
     if (e.payoutDate && !payoutDateISO) return res.status(400).json({ error: 'Invalid payout date format' });
 
-    const entryId = toUuidOrNull(e.id);
-
-    const existingEntry = entryId
-      ? await db.query(`SELECT driver, to_char(date, 'YYYY-MM-DD') as date FROM daily_entries WHERE id = $1::uuid`, [entryId])
+    const existingEntry = e.id
+      ? await db.query(`SELECT driver, to_char(date, 'YYYY-MM-DD') as date FROM daily_entries WHERE id = $1`, [e.id])
       : { rows: [] };
     const previousEntry = existingEntry.rows[0];
 
     const normalizedDriver = normalizeDriver(e.driver);
     const duplicateCheck = await db.query(
-      `SELECT id FROM daily_entries WHERE date = $1 AND LOWER(driver) = $2 AND ($3::uuid IS NULL OR id <> $3::uuid)`
-      , [isoDate, normalizedDriver, entryId]
+      `SELECT id FROM daily_entries WHERE date = $1 AND LOWER(driver) = $2 AND ($3::uuid IS NULL OR id <> $3)`
+      , [isoDate, normalizedDriver, e.id || null]
     );
     if (duplicateCheck.rowCount > 0) {
       return res.status(409).json({ error: 'Driver already has an entry for this date. Please edit or delete the existing record.' });
     }
-    await assertDriverEntryAllowedOnDate({ client: db, driverName: e.driver, isoDate });
 
     const q = `
       INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, payout, payout_date, notes)
@@ -2210,7 +2179,7 @@ app.post('/api/daily-entries', async (req, res) => {
         date=$2, day=$3, vehicle=$4, driver=$5, shift=$6, qr_code=$7, rent=$8, collection=$9, fuel=$10, due=$11, payout=$12, payout_date=$13, notes=$14
       RETURNING *;
     `;
-    const result = await db.query(q, [entryId || uuidv4(), isoDate, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, payoutDateISO, e.notes]);
+    const result = await db.query(q, [e.id, isoDate, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, payoutDateISO, e.notes]);
 
     const newWeekStart = getMondayISO(isoDate);
     if (newWeekStart) {
@@ -2231,9 +2200,6 @@ app.post('/api/daily-entries', async (req, res) => {
     emitLiveUpdate('daily_entries_changed');
     res.json(result.rows[0]);
   } catch (err) {
-    if (err.message && err.message.includes('is on leave')) {
-      return res.status(409).json({ error: err.message });
-    }
     if (err.code === '23505') {
       return res.status(409).json({ error: 'Driver already has an entry for this date. Please edit or delete the existing record.' });
     }
@@ -2288,7 +2254,6 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
       keyToId.set(key, incomingId);
 
       const payoutDateISO = e.payoutDate ? toISODate(e.payoutDate) : null;
-      await assertDriverEntryAllowedOnDate({ client, driverName: canonicalDriver, isoDate });
 
       const q = `
         INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, payout, payout_date, notes)
@@ -2351,9 +2316,6 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     await client.query('ROLLBACK');
-    if (err.message && err.message.includes('is on leave')) {
-      return res.status(409).json({ error: err.message });
-    }
     if (err.code === '23505') {
       return res.status(409).json({ error: 'Duplicate daily entry detected. Each driver can only have one entry per day.' });
     }
@@ -2566,54 +2528,9 @@ app.get('/api/assets', async (req, res) => {
     }
 
     const result = await db.query('SELECT type, value FROM assets');
-    const normalize = (value) => String(value || '').trim().toLowerCase();
-
-    const rawVehicles = result.rows.filter(r => r.type === 'vehicle').map(r => String(r.value || '').trim()).filter(Boolean);
-    const rawQrCodes = result.rows.filter(r => r.type === 'qrcode').map(r => String(r.value || '').trim()).filter(Boolean);
-    const rawVehicleFirstFuelRecords = result.rows
-      .filter(r => r.type === 'vehicle_first_fuel')
-      .map(r => {
-        try {
-          return JSON.parse(r.value);
-        } catch (_error) {
-          return null;
-        }
-      })
-      .filter(Boolean);
-
-    const vehicles = [];
-    const seenVehicles = new Set();
-    for (const vehicle of rawVehicles) {
-      const key = normalize(vehicle);
-      if (!key || seenVehicles.has(key)) continue;
-      seenVehicles.add(key);
-      vehicles.push(vehicle);
-    }
-
-    const qrCodes = [];
-    const seenQrCodes = new Set();
-    for (const qr of rawQrCodes) {
-      const key = normalize(qr);
-      if (!key || seenQrCodes.has(key)) continue;
-      seenQrCodes.add(key);
-      qrCodes.push(qr);
-    }
-
-    const vehicleFirstFuelRecords = [];
-    const seenFuelVehicles = new Set();
-    const seenFuelDrivers = new Set();
-    for (const record of rawVehicleFirstFuelRecords) {
-      const vehicleKey = normalize(record?.vehicle);
-      const driverKey = normalize(record?.driverId || record?.driverName);
-      if (!vehicleKey || !driverKey) continue;
-      if (seenFuelVehicles.has(vehicleKey) || seenFuelDrivers.has(driverKey)) continue;
-      if (!seenVehicles.has(vehicleKey)) continue;
-      seenFuelVehicles.add(vehicleKey);
-      seenFuelDrivers.add(driverKey);
-      vehicleFirstFuelRecords.push(record);
-    }
-
-    const payload = { vehicles, qrCodes, vehicleFirstFuelRecords };
+    const vehicles = result.rows.filter(r => r.type === 'vehicle').map(r => r.value);
+    const qrCodes = result.rows.filter(r => r.type === 'qrcode').map(r => r.value);
+    const payload = { vehicles, qrCodes };
     await setCacheJSON(ASSETS_CACHE_KEY, payload, ASSETS_CACHE_TTL_SECONDS);
     res.set('X-Cache', 'MISS');
     res.json(payload);
@@ -2621,50 +2538,13 @@ app.get('/api/assets', async (req, res) => {
 });
 
 app.post('/api/assets', async (req, res) => {
-  const { vehicles = [], qrCodes = [], vehicleFirstFuelRecords = [] } = req.body;
+  const { vehicles, qrCodes } = req.body;
   const client = await db.pool.connect();
   try {
-    const normalize = (value) => String(value || '').trim().toLowerCase();
-
-    const uniqueVehicles = [];
-    const seenVehicles = new Set();
-    for (const vehicle of vehicles.map(v => String(v || '').trim()).filter(Boolean)) {
-      const key = normalize(vehicle);
-      if (!key || seenVehicles.has(key)) continue;
-      seenVehicles.add(key);
-      uniqueVehicles.push(vehicle);
-    }
-
-    const uniqueQrCodes = [];
-    const seenQrCodes = new Set();
-    for (const qr of qrCodes.map(q => String(q || '').trim()).filter(Boolean)) {
-      const key = normalize(qr);
-      if (!key || seenQrCodes.has(key)) continue;
-      seenQrCodes.add(key);
-      uniqueQrCodes.push(qr);
-    }
-
-    const uniqueVehicleFirstFuelRecords = [];
-    const seenFuelVehicles = new Set();
-    const seenFuelDrivers = new Set();
-    for (const record of vehicleFirstFuelRecords) {
-      const vehicleKey = normalize(record?.vehicle);
-      const driverKey = normalize(record?.driverId || record?.driverName);
-      if (!vehicleKey || !driverKey) continue;
-      if (!seenVehicles.has(vehicleKey)) continue;
-      if (seenFuelVehicles.has(vehicleKey) || seenFuelDrivers.has(driverKey)) continue;
-      seenFuelVehicles.add(vehicleKey);
-      seenFuelDrivers.add(driverKey);
-      uniqueVehicleFirstFuelRecords.push(record);
-    }
-
     await client.query('BEGIN');
     await client.query('DELETE FROM assets'); 
-    for (const v of uniqueVehicles) await client.query("INSERT INTO assets (type, value) VALUES ('vehicle', $1)", [v]);
-    for (const q of uniqueQrCodes) await client.query("INSERT INTO assets (type, value) VALUES ('qrcode', $1)", [q]);
-    for (const record of uniqueVehicleFirstFuelRecords) {
-      await client.query("INSERT INTO assets (type, value) VALUES ('vehicle_first_fuel', $1)", [JSON.stringify(record)]);
-    }
+    for (const v of vehicles) await client.query("INSERT INTO assets (type, value) VALUES ('vehicle', $1)", [v]);
+    for (const q of qrCodes) await client.query("INSERT INTO assets (type, value) VALUES ('qrcode', $1)", [q]);
     await client.query('COMMIT');
     await invalidateKeys(ASSETS_CACHE_KEY);
     res.json({ success: true });
@@ -2928,8 +2808,8 @@ app.post('/api/leaves', async (req, res) => {
         FROM leaves
         WHERE driver_id = $1
           AND id <> $2
-          AND daterange(start_date, COALESCE(actual_return_date + 1, 'infinity'::date), '[)')
-              && daterange($3::date, COALESCE($4::date + 1, 'infinity'::date), '[)')
+          AND daterange(start_date, COALESCE(actual_return_date, end_date + 1), '[)')
+              && daterange($3::date, COALESCE($4::date, $5::date + 1), '[)')
         LIMIT 1
       `,
       [driverId, id, startDate, actualReturnDate, endDate],

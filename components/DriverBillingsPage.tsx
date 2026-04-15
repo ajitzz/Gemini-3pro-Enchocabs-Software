@@ -641,7 +641,8 @@ const DriverBillingsPage: React.FC = () => {
                </div>
 
                <div className="overflow-x-auto max-h-[500px] scrollbar-thin">
-                  <table className="w-full text-sm text-left">
+                  {/* Desktop Table View */}
+                  <table className="w-full text-sm text-left hidden md:table">
                     <thead className="text-xs text-slate-500 uppercase bg-slate-50/80 sticky top-0 backdrop-blur-sm z-10 border-b border-slate-200">
                       <tr>
                         <th className="px-6 py-4 font-semibold tracking-wider">Driver</th>
@@ -714,27 +715,100 @@ const DriverBillingsPage: React.FC = () => {
                         <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.finalTotal)}</td>
                       </tr>
                     </tfoot>
-                   {displayedBills.length > 0 && (
-                      <tfoot className="bg-slate-50 text-slate-700 font-bold border-t border-slate-100">
-                        <tr>
-                          <td className="px-6 py-3">Totals</td>
-                          <td className="px-6 py-3 text-slate-400">—</td>
-                          <td className="px-6 py-3 text-center">{Math.round(billingTotals.daysWorked)}</td>
-                          <td className="px-6 py-3 text-center">{Math.round(billingTotals.trips)}</td>
-                          <td className="px-6 py-3 text-right text-slate-400">—</td>
-                          <td className="px-6 py-3 text-right text-rose-600">-{formatIntegerCurrency(billingTotals.rentTotal)}</td>
-                          <td className="px-6 py-3 text-right text-emerald-600">+{formatIntegerCurrency(billingTotals.collection)}</td>
-                          <td className="px-6 py-3 text-right">{formatIntegerCurrency(billingTotals.due)}</td>
-                          <td className="px-6 py-3 text-right text-indigo-600">+{formatIntegerCurrency(billingTotals.adjustments)}</td>
-                          <td className="px-6 py-3 text-right text-rose-500">-{formatIntegerCurrency(billingTotals.fuel)}</td>
-                          <td className="px-6 py-3 text-right text-indigo-600">+{formatIntegerCurrency(billingTotals.wallet)}</td>
-                          <td className="px-6 py-3 text-right">{formatIntegerCurrency(billingTotals.walletOverdue)}</td>
-                          <td className="px-6 py-3 text-right">{formatIntegerCurrency(billingTotals.payout)}</td>
-                          <td className="px-6 py-3 text-center bg-white sticky right-0 shadow-[-4px_0_10px_-2px_rgba(0,0,0,0.02)]">—</td>
-                        </tr>
-                      </tfoot>
-                   )}
                 </table>
+
+                {/* Mobile Card View */}
+                <div className="md:hidden flex flex-col divide-y divide-slate-100">
+                    {loading ? (
+                        <div className="p-8 text-center text-slate-400">Loading balances...</div>
+                    ) : filteredSummaries.length === 0 ? (
+                        <div className="p-8 text-center text-slate-400">No drivers found.</div>
+                    ) : (
+                        filteredSummaries.map((driver) => (
+                            <div key={driver.driver} className="p-4 bg-white hover:bg-slate-50 transition-colors">
+                                <div className="flex justify-between items-center mb-3">
+                                    <h4 className="font-bold text-slate-800">{driver.driver}</h4>
+                                    <div className="flex gap-2">
+                                        <div
+                                            className="cursor-pointer"
+                                            onClick={() => openCalcPopup(driver, 'netPayout')}
+                                        >
+                                            <span className={`inline-flex items-center px-2 py-1 rounded-md text-[10px] font-bold border ${
+                                                driver.netPayout < 0
+                                                    ? 'bg-rose-50 text-rose-700 border-rose-100'
+                                                    : 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                                            }`}>
+                                                Payout: {formatCurrency(driver.netPayout)}
+                                            </span>
+                                        </div>
+                                        <div
+                                            className="cursor-pointer"
+                                            onClick={() => openCalcPopup(driver, 'netBalance')}
+                                        >
+                                            <span className={`inline-flex items-center px-2 py-1 rounded-md text-[10px] font-bold border ${
+                                                driver.finalTotal < 0
+                                                    ? 'bg-rose-50 text-rose-700 border-rose-100'
+                                                    : 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                                            }`}>
+                                                Bal: {formatCurrency(driver.finalTotal)}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                    <div className="flex justify-between bg-slate-50 p-2 rounded">
+                                        <span className="text-slate-500">Collection</span>
+                                        <span className="font-medium text-slate-700">{formatCurrency(driver.totalCollection)}</span>
+                                    </div>
+                                    <div className="flex justify-between bg-slate-50 p-2 rounded">
+                                        <span className="text-slate-500">Wallet</span>
+                                        <span className="font-medium text-slate-700">{formatCurrency(driver.totalWalletWeek)}</span>
+                                    </div>
+                                    <div className="flex justify-between bg-slate-50 p-2 rounded">
+                                        <span className="text-slate-500">Rent</span>
+                                        <span className="font-medium text-slate-700">{formatCurrency(driver.totalRent)}</span>
+                                    </div>
+                                    <div className="flex justify-between bg-slate-50 p-2 rounded">
+                                        <span className="text-slate-500">Fuel</span>
+                                        <span className="font-medium text-slate-700">{formatCurrency(driver.totalFuel)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                    {/* Mobile Totals */}
+                    {filteredSummaries.length > 0 && (
+                        <div className="p-4 bg-slate-50 border-t border-slate-200">
+                            <h4 className="font-bold text-slate-700 mb-3 text-sm uppercase tracking-wider">Overall Totals</h4>
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                                <div className="flex justify-between p-1.5">
+                                    <span className="text-slate-500">Collection</span>
+                                    <span className="font-bold text-slate-700">{formatCurrency(balanceTotals.collection)}</span>
+                                </div>
+                                <div className="flex justify-between p-1.5">
+                                    <span className="text-slate-500">Wallet</span>
+                                    <span className="font-bold text-slate-700">{formatCurrency(balanceTotals.wallet)}</span>
+                                </div>
+                                <div className="flex justify-between p-1.5">
+                                    <span className="text-slate-500">Rent</span>
+                                    <span className="font-bold text-slate-700">{formatCurrency(balanceTotals.rent)}</span>
+                                </div>
+                                <div className="flex justify-between p-1.5">
+                                    <span className="text-slate-500">Fuel</span>
+                                    <span className="font-bold text-slate-700">{formatCurrency(balanceTotals.fuel)}</span>
+                                </div>
+                                <div className="flex justify-between p-1.5 bg-indigo-50/50 rounded mt-1">
+                                    <span className="text-indigo-700 font-semibold">Net Payout</span>
+                                    <span className="font-bold text-indigo-700">{formatCurrency(balanceTotals.netPayout)}</span>
+                                </div>
+                                <div className="flex justify-between p-1.5 bg-emerald-50/50 rounded mt-1">
+                                    <span className="text-emerald-700 font-semibold">Net Balance</span>
+                                    <span className="font-bold text-emerald-700">{formatCurrency(balanceTotals.finalTotal)}</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
                </div>
             </div>
           )}
@@ -831,7 +905,8 @@ const DriverBillingsPage: React.FC = () => {
                 </div>
 
                 <div className="overflow-x-auto">
-                    <table className="w-full text-xs text-left whitespace-nowrap">
+                    {/* Desktop Table View */}
+                    <table className="w-full text-xs text-left whitespace-nowrap hidden md:table">
                        <thead className="bg-slate-50 text-slate-500 uppercase font-bold border-b border-slate-100">
                           <tr>
                              <th className="px-6 py-4">DRIVER</th>
@@ -980,7 +1055,189 @@ const DriverBillingsPage: React.FC = () => {
                              ))
                           )}
                        </tbody>
+                       {displayedBills.length > 0 && (
+                          <tfoot className="bg-slate-50 text-slate-700 font-bold border-t border-slate-100">
+                            <tr>
+                              <td className="px-6 py-3">Totals</td>
+                              <td className="px-6 py-3 text-slate-400">—</td>
+                              <td className="px-6 py-3 text-center">{Math.round(billingTotals.daysWorked)}</td>
+                              <td className="px-6 py-3 text-center">{Math.round(billingTotals.trips)}</td>
+                              <td className="px-6 py-3 text-right text-slate-400">—</td>
+                              <td className="px-6 py-3 text-right text-rose-600">-{formatIntegerCurrency(billingTotals.rentTotal)}</td>
+                              <td className="px-6 py-3 text-right text-emerald-600">+{formatIntegerCurrency(billingTotals.collection)}</td>
+                              <td className="px-6 py-3 text-right">{formatIntegerCurrency(billingTotals.due)}</td>
+                              <td className="px-6 py-3 text-right text-indigo-600">+{formatIntegerCurrency(billingTotals.adjustments)}</td>
+                              <td className="px-6 py-3 text-right text-rose-500">-{formatIntegerCurrency(billingTotals.fuel)}</td>
+                              <td className="px-6 py-3 text-right text-indigo-600">+{formatIntegerCurrency(billingTotals.wallet)}</td>
+                              <td className="px-6 py-3 text-right">{formatIntegerCurrency(billingTotals.walletOverdue)}</td>
+                              <td className="px-6 py-3 text-right">{formatIntegerCurrency(billingTotals.payout)}</td>
+                              <td className="px-6 py-3 text-center bg-white sticky right-0 shadow-[-4px_0_10px_-2px_rgba(0,0,0,0.02)]">—</td>
+                            </tr>
+                          </tfoot>
+                       )}
                     </table>
+
+                    {/* Mobile Card View */}
+                    <div className="md:hidden flex flex-col divide-y divide-slate-100">
+                        {displayedBills.length === 0 ? (
+                            <div className="p-12 text-center text-slate-400">No billings found for this week.</div>
+                        ) : (
+                            displayedBills.map((bill) => (
+                                <div key={bill.id} className={`p-4 bg-white hover:bg-slate-50 transition-colors ${bill.isProvisional ? 'bg-amber-50/30' : bill.isSaved ? 'bg-indigo-50/20' : ''}`}>
+                                    <div className="flex justify-between items-center mb-3">
+                                        <div className="flex items-center gap-2">
+                                            <h4 className="font-bold text-slate-800 text-base">{bill.driver}</h4>
+                                            {bill.isProvisional && <span className="px-1.5 py-0.5 rounded text-[9px] bg-amber-100 text-amber-700 uppercase tracking-wide border border-amber-200">Prov</span>}
+                                            {bill.isSaved && <span className="px-1.5 py-0.5 rounded text-[9px] bg-indigo-100 text-indigo-700 uppercase tracking-wide border border-indigo-200 flex items-center gap-0.5"><Lock size={8}/> Saved</span>}
+                                        </div>
+                                        <span className={`px-2 py-1 rounded-lg font-bold text-xs border ${bill.payout < 0 ? 'bg-rose-50 text-rose-700 border-rose-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>
+                                            Payout: {formatCurrency(bill.payout)}
+                                        </span>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+                                        <div className="flex justify-between bg-slate-50 p-2 rounded">
+                                            <span className="text-slate-500">Days Worked</span>
+                                            <span className={`font-bold ${bill.daysWorked !== bill.calculatedDays && !bill.isAggregate ? 'text-amber-600' : 'text-slate-800'}`}>{bill.daysWorked}</span>
+                                        </div>
+                                        <div className="flex justify-between bg-slate-50 p-2 rounded">
+                                            <span className="text-slate-500">Trips</span>
+                                            <span className="font-bold text-slate-800">{bill.isProvisional ? '-' : bill.trips}</span>
+                                        </div>
+                                        <div className="flex justify-between bg-slate-50 p-2 rounded">
+                                            <span className="text-slate-500">Collection</span>
+                                            <span className="font-bold text-emerald-600">+{formatCurrency(bill.collection)}</span>
+                                        </div>
+                                        <div className="flex justify-between bg-slate-50 p-2 rounded">
+                                            <span className="text-slate-500">Rent Total</span>
+                                            <span className="font-bold text-rose-600">-{formatCurrency(bill.rentTotal)}</span>
+                                        </div>
+                                        <div className="flex justify-between bg-slate-50 p-2 rounded">
+                                            <span className="text-slate-500">Fuel</span>
+                                            <span className="font-bold text-rose-500">-{formatCurrency(bill.fuel)}</span>
+                                        </div>
+                                        <div className="flex justify-between bg-slate-50 p-2 rounded">
+                                            <span className="text-slate-500">Due</span>
+                                            <span className="font-bold text-slate-600">{formatCurrency(bill.due)}</span>
+                                        </div>
+                                        <div className="flex justify-between bg-slate-50 p-2 rounded">
+                                            <span className="text-slate-500">Wallet</span>
+                                            <span className="font-bold text-indigo-600">{bill.isProvisional ? '-' : `+${formatCurrency(bill.wallet)}`}</span>
+                                        </div>
+                                        <div className="flex justify-between bg-slate-50 p-2 rounded">
+                                            <span className="text-slate-500">Wallet Overdue</span>
+                                            <span className="font-bold text-slate-600">{formatCurrency(bill.walletOverdue)}</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
+                                        <button 
+                                            onClick={() => toggleExpandBill(bill.id)} 
+                                            className="text-xs font-bold text-indigo-600 flex items-center gap-1"
+                                        >
+                                            {expandedBillIds.has(bill.id) ? (
+                                                <><ChevronUp size={14}/> Hide Daily</>
+                                            ) : (
+                                                <><ChevronDown size={14}/> Show Daily</>
+                                            )}
+                                        </button>
+                                        
+                                        <div className="flex items-center gap-1">
+                                            {!bill.isAggregate && (
+                                                <>
+                                                    <button onClick={() => openEditModal(bill)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors" title="Edit Rent / Days">
+                                                        <Edit2 size={16} />
+                                                    </button>
+                                                    {!bill.isSaved && (
+                                                        <button onClick={() => finalizeBill(bill)} className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors" title="Finalize & Save Bill">
+                                                            <Save size={16} />
+                                                        </button>
+                                                    )}
+                                                    <button onClick={() => copyBillLink(bill)} className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors" title="Copy Bill Link">
+                                                        {copiedId === bill.id ? <Check size={16} className="text-emerald-600" /> : <Copy size={16} />}
+                                                    </button>
+                                                    <button onClick={() => downloadBill(bill)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors" title="Download Bill">
+                                                        <Download size={16} />
+                                                    </button>
+                                                </>
+                                            )}
+                                            {bill.isAggregate && <span className="text-[10px] text-slate-400 italic">Aggregate</span>}
+                                        </div>
+                                    </div>
+                                    
+                                    {expandedBillIds.has(bill.id) && (
+                                        <div className="mt-3 bg-slate-50 rounded-lg p-3 border border-slate-100">
+                                            <div className="text-[10px] font-bold text-slate-500 mb-2 uppercase tracking-wide">Daily Breakdown</div>
+                                            <div className="flex flex-col gap-2">
+                                                {(bill.dailyDetails || []).map((d: any) => (
+                                                    <div key={d.id} className="bg-white p-2 rounded border border-slate-100 text-xs">
+                                                        <div className="flex justify-between font-medium mb-1">
+                                                            <span className="text-slate-700">{toDisplayDate(d.date)}</span>
+                                                            <span className="text-slate-500">{d.shift}</span>
+                                                        </div>
+                                                        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                                                            <div className="flex justify-between"><span className="text-slate-400">Coll:</span><span className="text-emerald-600">{formatCurrency(d.collection)}</span></div>
+                                                            <div className="flex justify-between"><span className="text-slate-400">Rent:</span><span className="text-slate-600">{formatCurrency(d.rent)}</span></div>
+                                                            <div className="flex justify-between"><span className="text-slate-400">Fuel:</span><span className="text-rose-500">{formatCurrency(d.fuel)}</span></div>
+                                                            <div className="flex justify-between"><span className="text-slate-400">Due:</span><span className="text-slate-600">{formatCurrency(d.due)}</span></div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                                {(!bill.dailyDetails || bill.dailyDetails.length === 0) && (
+                                                    <div className="text-center text-slate-400 text-xs py-2">No daily entries linked.</div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ))
+                        )}
+                        
+                        {/* Mobile Totals */}
+                        {displayedBills.length > 0 && (
+                            <div className="p-4 bg-slate-50 border-t border-slate-200">
+                                <h4 className="font-bold text-slate-700 mb-3 text-sm uppercase tracking-wider">Weekly Totals</h4>
+                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                    <div className="flex justify-between p-1.5">
+                                        <span className="text-slate-500">Days</span>
+                                        <span className="font-bold text-slate-700">{Math.round(billingTotals.daysWorked)}</span>
+                                    </div>
+                                    <div className="flex justify-between p-1.5">
+                                        <span className="text-slate-500">Trips</span>
+                                        <span className="font-bold text-slate-700">{Math.round(billingTotals.trips)}</span>
+                                    </div>
+                                    <div className="flex justify-between p-1.5">
+                                        <span className="text-slate-500">Rent Total</span>
+                                        <span className="font-bold text-rose-600">-{formatIntegerCurrency(billingTotals.rentTotal)}</span>
+                                    </div>
+                                    <div className="flex justify-between p-1.5">
+                                        <span className="text-slate-500">Collection</span>
+                                        <span className="font-bold text-emerald-600">+{formatIntegerCurrency(billingTotals.collection)}</span>
+                                    </div>
+                                    <div className="flex justify-between p-1.5">
+                                        <span className="text-slate-500">Due</span>
+                                        <span className="font-bold text-slate-700">{formatIntegerCurrency(billingTotals.due)}</span>
+                                    </div>
+                                    <div className="flex justify-between p-1.5">
+                                        <span className="text-slate-500">Fuel</span>
+                                        <span className="font-bold text-rose-500">-{formatIntegerCurrency(billingTotals.fuel)}</span>
+                                    </div>
+                                    <div className="flex justify-between p-1.5">
+                                        <span className="text-slate-500">Wallet</span>
+                                        <span className="font-bold text-indigo-600">+{formatIntegerCurrency(billingTotals.wallet)}</span>
+                                    </div>
+                                    <div className="flex justify-between p-1.5">
+                                        <span className="text-slate-500">Wallet Overdue</span>
+                                        <span className="font-bold text-slate-700">{formatIntegerCurrency(billingTotals.walletOverdue)}</span>
+                                    </div>
+                                    <div className="col-span-2 flex justify-between p-2 bg-indigo-50/50 rounded mt-1">
+                                        <span className="text-indigo-700 font-semibold">Net Payout</span>
+                                        <span className="font-bold text-indigo-700">{formatIntegerCurrency(billingTotals.payout)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
              </div>
           )}
