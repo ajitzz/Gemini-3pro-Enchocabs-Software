@@ -16,6 +16,7 @@ const buildGlobalSummary = (driverSummaries: DriverSummary[]): GlobalSummary => 
   totalFuel: driverSummaries.reduce((sum, d) => sum + d.totalFuel, 0),
   totalDue: driverSummaries.reduce((sum, d) => sum + d.totalDue, 0),
   totalPayout: driverSummaries.reduce((sum, d) => sum + d.totalPayout, 0),
+  totalExpenses: driverSummaries.reduce((sum, d) => sum + d.totalExpenses, 0),
   totalWalletWeek: driverSummaries.reduce((sum, d) => sum + d.totalWalletWeek, 0),
   pendingFromDrivers: driverSummaries
     .filter((d) => d.finalTotal < 0)
@@ -60,6 +61,7 @@ const DashboardPage: React.FC = () => {
       due: number;
       wallet: number;
       payout: number;
+      expenses: number;
     };
     title?: string;
     sourceNote?: string;
@@ -102,6 +104,7 @@ const DashboardPage: React.FC = () => {
         due: driver.totalDue,
         wallet: driver.totalWalletWeek,
         payout: driver.totalPayout,
+        expenses: driver.totalExpenses,
       },
       title: `${metric === 'netPayout' ? 'Net Payout' : 'Net Balance'} • ${driver.driver}`,
       sourceNote:
@@ -133,10 +136,11 @@ const DashboardPage: React.FC = () => {
       due: acc.due + driver.totalDue,
       wallet: acc.wallet + driver.totalWalletWeek,
       payout: acc.payout + driver.totalPayout,
+      expenses: acc.expenses + driver.totalExpenses,
       netPayout: acc.netPayout + driver.netPayout,
       finalTotal: acc.finalTotal + driver.finalTotal,
     }),
-    { collection: 0, rent: 0, fuel: 0, due: 0, wallet: 0, payout: 0, netPayout: 0, finalTotal: 0 }
+    { collection: 0, rent: 0, fuel: 0, due: 0, wallet: 0, payout: 0, expenses: 0, netPayout: 0, finalTotal: 0 }
   );
 
   const StatCard = ({ title, value, colorClass, icon: Icon, subtext, trend }: any) => (
@@ -294,7 +298,7 @@ const DashboardPage: React.FC = () => {
             </div>
           )}
           <div className="px-6 py-2 border-b border-slate-100 bg-slate-50/40 text-[11px] text-slate-500 font-medium">
-            Net Balance = Collection - Rent - Fuel + Due + Wallet Week - Payout · Net Payout = min(Net Balance, latest wallet cutoff balance).
+            Net Balance = Collection - Rent - Fuel + Due + Wallet Week - Payout - Expenses · Net Payout = min(Net Balance, latest wallet cutoff balance).
           </div>
           
           {/* Mobile Card View */}
@@ -400,6 +404,7 @@ const DashboardPage: React.FC = () => {
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Dues</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet Week</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Payout</th>
+                  <th className="px-6 py-4 font-semibold text-right tracking-wider">Expenses</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Payout</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Balance</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Actions</th>
@@ -415,6 +420,7 @@ const DashboardPage: React.FC = () => {
                     <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalDue)}</td>
                     <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalWalletWeek)}</td>
                     <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalPayout)}</td>
+                    <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalExpenses)}</td>
                     <td className="px-6 py-4 text-right">
                       <div
                         className="flex flex-col items-end gap-1 cursor-pointer"
@@ -461,7 +467,7 @@ const DashboardPage: React.FC = () => {
                 ))}
                 {visibleSummaries.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="px-6 py-20 text-center text-slate-400">
+                    <td colSpan={11} className="px-6 py-20 text-center text-slate-400">
                       <div className="flex flex-col items-center gap-2">
                         <Users size={32} className="opacity-20" />
                         <p>No drivers found matching "{filterDriver}"</p>
@@ -479,6 +485,7 @@ const DashboardPage: React.FC = () => {
                   <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.due)}</td>
                   <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.wallet)}</td>
                   <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.payout)}</td>
+                  <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.expenses)}</td>
                   <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.netPayout)}</td>
                   <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.finalTotal)}</td>
                   <td className="px-6 py-3 text-right">-</td>
@@ -508,7 +515,7 @@ const DashboardPage: React.FC = () => {
               <div>
                 <h4 className="font-bold text-white text-sm mb-1 uppercase tracking-wider">Net Calculation</h4>
                 <p className="text-slate-300 text-xs leading-relaxed font-mono mt-2 bg-slate-800 p-2 rounded-lg border border-slate-700">
-                  Total = Collection - Rent - Fuel + Due + WalletWeek - Payouts
+                  Total = Collection - Rent - Fuel + Due + WalletWeek - Payouts - Expenses
                 </p>
                 <div className="mt-4 space-y-2">
                    <div className="flex items-center justify-between text-xs bg-slate-800/50 p-2 rounded-lg border border-slate-700/50">

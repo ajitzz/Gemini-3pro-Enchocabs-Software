@@ -435,6 +435,34 @@ const getSundayISO = (mondayStr) => {
   return d.toISOString().slice(0, 10);
 };
 
+const isDriverTerminatedOnDate = (driverRow, isoDate) => {
+  if (!driverRow) return true;
+  const termination = toISODate(driverRow.termination_date);
+  return Boolean(termination && termination < isoDate);
+};
+
+const isDriverOnLeaveOnDate = (leaveRow, isoDate) => {
+  if (!leaveRow) return false;
+  const startDate = toISODate(leaveRow.start_date);
+  const endDate = toISODate(leaveRow.end_date);
+  const actualReturnDate = toISODate(leaveRow.actual_return_date);
+  if (!startDate || !endDate) return false;
+
+  const effectiveEnd = actualReturnDate && actualReturnDate < endDate ? actualReturnDate : endDate;
+  return isoDate >= startDate && isoDate <= effectiveEnd;
+};
+
+const splitAmountEquallyInRupees = (amount, count) => {
+  if (count <= 0) return [];
+  const normalizedAmount = Math.max(0, Math.round(Number(amount) || 0));
+  const base = Math.floor(normalizedAmount / count);
+  const remainder = normalizedAmount % count;
+
+  return Array.from({ length: count }, (_, index) => {
+    return base + (index < remainder ? 1 : 0);
+  });
+};
+
 const buildDriverBuckets = (dailyEntries, weeklyWallets) => {
   const buckets = new Map();
 
@@ -484,7 +512,7 @@ const calculateWalletWeek = (wallet) => {
   return earnings + refund - (diff + cash + charges);
 };
 
-const calculateDriverStatsServer = (driverName, driverDaily, driverWallets, sortedSlabs) => {
+const calculateDriverStatsServer = (driverName, driverDaily, driverWallets, sortedSlabs, driverExpenses = []) => {
   if (!driverName) {
     return null;
   }
@@ -494,6 +522,7 @@ const calculateDriverStatsServer = (driverName, driverDaily, driverWallets, sort
   let totalFuel = 0;
   let totalDue = 0;
   let totalPayout = 0;
+  let totalExpenses = 0;
   let totalWalletWeek = 0;
 
   const processedDailyIds = new Set();
@@ -504,6 +533,7 @@ const calculateDriverStatsServer = (driverName, driverDaily, driverWallets, sort
   let cutoffFuel = 0;
   let cutoffDue = 0;
   let cutoffPayout = 0;
+  let cutoffExpenses = 0;
   let cutoffWalletWeek = 0;
 
   const sortedWallets = [...driverWallets].sort((a, b) => b.weekEndDate.localeCompare(a.weekEndDate));
@@ -591,9 +621,17 @@ const calculateDriverStatsServer = (driverName, driverDaily, driverWallets, sort
     }
   });
 
-  const finalTotal = totalCollection - totalRent - totalFuel + totalDue + totalWalletWeek - totalPayout;
+  driverExpenses.forEach((expense) => {
+    const amount = Number(expense.amount) || 0;
+    totalExpenses += amount;
+    if (latestWalletEndDate && expense.expenseDate <= latestWalletEndDate) {
+      cutoffExpenses += amount;
+    }
+  });
+
+  const finalTotal = totalCollection - totalRent - totalFuel + totalDue + totalWalletWeek - totalPayout - totalExpenses;
   const cutoffTotal = latestWalletEndDate
-    ? (cutoffCollection - cutoffRent - cutoffFuel + cutoffDue + cutoffWalletWeek - cutoffPayout)
+    ? (cutoffCollection - cutoffRent - cutoffFuel + cutoffDue + cutoffWalletWeek - cutoffPayout - cutoffExpenses)
     : finalTotal;
 
   let netPayout = finalTotal;
@@ -618,6 +656,7 @@ const calculateDriverStatsServer = (driverName, driverDaily, driverWallets, sort
     totalFuel,
     totalDue,
     totalPayout,
+    totalExpenses,
     totalWalletWeek,
     finalTotal,
     netPayout,
@@ -650,16 +689,20 @@ const BILLINGS_CACHE_KEY = 'driver-billings:all';
 const DRIVERS_CACHE_KEY = 'drivers:all';
 const DAILY_ENTRIES_CACHE_KEY = 'daily-entries:all';
 const WEEKLY_WALLETS_CACHE_KEY = 'weekly-wallets:all';
+const DRIVER_EXPENSES_CACHE_KEY = 'driver-expenses:all';
 const ASSETS_CACHE_KEY = 'assets:all';
 const QUERY_CACHE_NAMESPACE = {
   dailyEntries: 'daily-entries',
   weeklyWallets: 'weekly-wallets',
+  driverExpenses: 'driver-expenses',
 };
 const rentalSlabCacheKey = (type) => `rental-slabs:${type}`;
 const dailyEntriesCacheKey = (driver) =>
   driver ? `daily-entries:driver:${normalizeDriver(driver)}` : DAILY_ENTRIES_CACHE_KEY;
 const weeklyWalletsCacheKey = (driver) =>
   driver ? `weekly-wallets:driver:${normalizeDriver(driver)}` : WEEKLY_WALLETS_CACHE_KEY;
+const driverExpensesCacheKey = (driver) =>
+  driver ? `driver-expenses:driver:${normalizeDriver(driver)}` : DRIVER_EXPENSES_CACHE_KEY;
 const systemFlagCacheKey = (key) => `system-flag:${key}`;
 
 const queryCacheRegistry = new Map();
@@ -696,6 +739,7 @@ const BILLINGS_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.BILLINGS_CACHE_TT
 const DRIVERS_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.DRIVERS_CACHE_TTL_SECONDS || 240, 240);
 const DAILY_ENTRIES_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.DAILY_ENTRIES_CACHE_TTL_SECONDS || 240, 240);
 const WEEKLY_WALLETS_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.WEEKLY_WALLETS_CACHE_TTL_SECONDS || 240, 240);
+const DRIVER_EXPENSES_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.DRIVER_EXPENSES_CACHE_TTL_SECONDS || 240, 240);
 const ASSETS_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.ASSETS_CACHE_TTL_SECONDS || 600, 600);
 const RENTAL_SLAB_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.RENTAL_SLAB_CACHE_TTL_SECONDS || 600, 600);
 const SYSTEM_FLAG_CACHE_TTL_SECONDS = clampTtlSeconds(process.env.SYSTEM_FLAG_CACHE_TTL_SECONDS || 600, 600);
@@ -820,6 +864,11 @@ const invalidateWeeklyWalletsCache = async () => {
   await invalidateQueryCacheNamespace(QUERY_CACHE_NAMESPACE.weeklyWallets);
 };
 
+const invalidateDriverExpensesCache = async () => {
+  await invalidateKeys(DRIVER_EXPENSES_CACHE_KEY);
+  await invalidateQueryCacheNamespace(QUERY_CACHE_NAMESPACE.driverExpenses);
+};
+
 // --- INITIALIZATION SQL ---
 const initDb = async () => {
   try {
@@ -891,6 +940,25 @@ const initDb = async () => {
         notes TEXT
       );
     `);
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS driver_expenses (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        group_id UUID NOT NULL,
+        expense_date DATE NOT NULL,
+        category TEXT NOT NULL,
+        custom_type TEXT,
+        driver TEXT NOT NULL,
+        amount NUMERIC NOT NULL CHECK (amount >= 0),
+        notes TEXT,
+        split_mode TEXT NOT NULL DEFAULT 'selected',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS driver_expenses_group_idx ON driver_expenses (group_id);`);
+    await db.query(`CREATE INDEX IF NOT EXISTS driver_expenses_date_idx ON driver_expenses (expense_date);`);
+    await db.query(`CREATE INDEX IF NOT EXISTS driver_expenses_driver_idx ON driver_expenses (LOWER(driver));`);
 
     // NEW TABLE: driver_billings (Fixes 404 Error)
     await db.query(`
@@ -1487,7 +1555,7 @@ app.post('/api/auth/google', async (req, res) => {
         role = 'admin';
       } else {
         const driverRes = await db.query(
-          'SELECT id, name FROM drivers WHERE lower(email) = lower($1) AND COALESCE(is_hidden, FALSE) = FALSE LIMIT 1',
+          'SELECT id, name, COALESCE(is_manager, FALSE) as "isManager" FROM drivers WHERE lower(email) = lower($1) AND COALESCE(is_hidden, FALSE) = FALSE LIMIT 1',
           [email]
         );
         if (driverRes.rows.length === 0) {
@@ -1495,6 +1563,9 @@ app.post('/api/auth/google', async (req, res) => {
         }
         driverId = driverRes.rows[0].id;
         name = driverRes.rows[0].name || name;
+        if (driverRes.rows[0].isManager) {
+          role = 'manager';
+        }
       }
     }
 
@@ -1521,7 +1592,7 @@ app.get('/api/drivers/:driverId/widget-summary', async (req, res) => {
       return res.status(400).json({ error: 'driverId is required' });
     }
 
-    const [driverRes, dailyRes, walletRes, slabsRes] = await Promise.all([
+    const [driverRes, dailyRes, walletRes, slabsRes, expenseRes] = await Promise.all([
       db.query('SELECT id, name FROM drivers WHERE id = $1 AND COALESCE(is_hidden, FALSE) = FALSE LIMIT 1', [driverId]),
       db.query(
         `SELECT id, to_char(date, 'YYYY-MM-DD') as date, driver, rent, collection, fuel, due, payout
@@ -1541,6 +1612,12 @@ app.get('/api/drivers/:driverId/widget-summary', async (req, res) => {
         `SELECT id, type, min_trips as "minTrips", max_trips as "maxTrips", rent_amount as "rentAmount"
          FROM rental_slabs
          ORDER BY min_trips ASC`
+      ),
+      db.query(
+        `SELECT driver, to_char(expense_date, 'YYYY-MM-DD') as "expenseDate", amount
+         FROM driver_expenses
+         WHERE lower(driver) = lower((SELECT name FROM drivers WHERE id = $1 LIMIT 1))`,
+        [driverId]
       )
     ]);
 
@@ -1576,7 +1653,12 @@ app.get('/api/drivers/:driverId/widget-summary', async (req, res) => {
       rentAmount: Number(r.rentAmount) || 0,
     }));
 
-    const summary = calculateDriverStatsServer(driver.name, dailyEntries, weeklyWallets, sortedSlabs);
+    const expenses = expenseRes.rows.map((r) => ({
+      ...r,
+      amount: Number(r.amount) || 0,
+    }));
+
+    const summary = calculateDriverStatsServer(driver.name, dailyEntries, weeklyWallets, sortedSlabs, expenses);
 
     if (!summary) {
       return res.status(404).json({ error: 'Unable to compute widget summary' });
@@ -1884,10 +1966,11 @@ app.get('/api/summary', async (req, res) => {
 
     if (!summaryBuildPromise) {
       summaryBuildPromise = (async () => {
-        const [dailyRes, walletRes, slabRes] = await Promise.all([
+        const [dailyRes, walletRes, slabRes, expenseRes] = await Promise.all([
           db.query("SELECT id, to_char(date, 'YYYY-MM-DD') as date, driver, rent, collection, fuel, due, payout FROM daily_entries"),
           db.query("SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as week_start_date, to_char(week_end_date, 'YYYY-MM-DD') as week_end_date, trips, wallet_week, days_worked_override, rent_override, adjustments FROM weekly_wallets"),
-          db.query(`SELECT min_trips as "minTrips", max_trips as "maxTrips", rent_amount as "rentAmount" FROM rental_slabs WHERE slab_type = 'driver' ORDER BY min_trips`)
+          db.query(`SELECT min_trips as "minTrips", max_trips as "maxTrips", rent_amount as "rentAmount" FROM rental_slabs WHERE slab_type = 'driver' ORDER BY min_trips`),
+          db.query(`SELECT driver, to_char(expense_date, 'YYYY-MM-DD') as "expenseDate", amount FROM driver_expenses`)
         ]);
 
         const dailyEntries = dailyRes.rows.map((r) => ({
@@ -1916,11 +1999,25 @@ app.get('/api/summary', async (req, res) => {
           rentAmount: Number(r.rentAmount)
         }));
         const sortedSlabs = (rentalSlabs.length ? rentalSlabs : defaultDriverRentalSlabs).sort((a, b) => a.minTrips - b.minTrips);
+        const expensesByDriver = expenseRes.rows.reduce((acc, row) => {
+          const key = normalizeDriver(row.driver);
+          if (!key) return acc;
+          if (!acc[key]) acc[key] = [];
+          acc[key].push({ driver: row.driver, expenseDate: row.expenseDate, amount: Number(row.amount) || 0 });
+          return acc;
+        }, {});
 
         const driverBuckets = buildDriverBuckets(dailyEntries, weeklyWallets);
+        Object.keys(expensesByDriver).forEach((driverKey) => {
+          if (!driverKey) return;
+          if (!driverBuckets.has(driverKey)) {
+            const name = expensesByDriver[driverKey][0]?.driver || driverKey;
+            driverBuckets.set(driverKey, { name, daily: [], wallets: [] });
+          }
+        });
         const driverSummaries = Array.from(driverBuckets.values())
           .sort((a, b) => a.name.localeCompare(b.name))
-          .map(({ name, daily, wallets }) => calculateDriverStatsServer(name, daily, wallets, sortedSlabs))
+          .map(({ name, daily, wallets }) => calculateDriverStatsServer(name, daily, wallets, sortedSlabs, expensesByDriver[normalizeDriver(name)] || []))
           .filter(Boolean);
 
         const global = {
@@ -1929,6 +2026,7 @@ app.get('/api/summary', async (req, res) => {
           totalFuel: driverSummaries.reduce((sum, d) => sum + d.totalFuel, 0),
           totalDue: driverSummaries.reduce((sum, d) => sum + d.totalDue, 0),
           totalPayout: driverSummaries.reduce((sum, d) => sum + d.totalPayout, 0),
+          totalExpenses: driverSummaries.reduce((sum, d) => sum + d.totalExpenses, 0),
           totalWalletWeek: driverSummaries.reduce((sum, d) => sum + d.totalWalletWeek, 0),
           pendingFromDrivers: driverSummaries.filter((d) => d.finalTotal < 0).reduce((sum, d) => sum + Math.abs(d.finalTotal), 0),
           payableToDrivers: driverSummaries.filter((d) => d.finalTotal > 0).reduce((sum, d) => sum + d.finalTotal, 0),
@@ -2554,6 +2652,167 @@ app.delete('/api/weekly-wallets/:id', async (req, res) => {
     emitLiveUpdate('weekly_wallets_changed');
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/driver-expenses', async (req, res) => {
+  try {
+    const cacheBypass = req.query.fresh === '1';
+    const cacheKey = buildQueryCacheKey(driverExpensesCacheKey(), req.query);
+    if (!cacheBypass) {
+      const cached = await getCacheJSON(cacheKey);
+      if (cached) {
+        res.set('X-Cache', 'REDIS');
+        return res.json(cached);
+      }
+    }
+
+    const values = [];
+    const filters = [];
+    const driverFilters = parseDriverFilters(req.query);
+    if (driverFilters.length === 1) {
+      values.push(driverFilters[0]);
+      filters.push(`LOWER(driver) = $${values.length}`);
+    } else if (driverFilters.length > 1) {
+      values.push(driverFilters);
+      filters.push(`LOWER(driver) = ANY($${values.length})`);
+    }
+
+    const fromDate = parseQueryDate(req.query.from, 'from');
+    if (fromDate) {
+      values.push(fromDate);
+      filters.push(`expense_date >= $${values.length}`);
+    }
+
+    const toDate = parseQueryDate(req.query.to, 'to');
+    if (toDate) {
+      values.push(toDate);
+      filters.push(`expense_date <= $${values.length}`);
+    }
+
+    const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+    const result = await db.query(
+      `SELECT id, group_id as "groupId", to_char(expense_date, 'YYYY-MM-DD') as "expenseDate", category, custom_type as "customType",
+              driver, amount, notes, split_mode as "splitMode", created_at as "createdAt", updated_at as "updatedAt"
+       FROM driver_expenses
+       ${whereClause}
+       ORDER BY expense_date DESC, created_at DESC`,
+      values
+    );
+    const payload = result.rows.map((r) => ({
+      ...r,
+      amount: Number(r.amount) || 0,
+    }));
+
+    if (!cacheBypass) {
+      await setCacheJSON(cacheKey, payload, DRIVER_EXPENSES_CACHE_TTL_SECONDS);
+      registerQueryCacheKey(QUERY_CACHE_NAMESPACE.driverExpenses, cacheKey);
+      res.set('X-Cache', 'MISS');
+    }
+    res.json(payload);
+  } catch (err) {
+    if (err.message && err.message.startsWith('Invalid')) {
+      return res.status(400).json({ error: err.message });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/driver-expenses', async (req, res) => {
+  const client = await db.pool.connect();
+  try {
+    const payload = req.body || {};
+    const groupId = toUuidOrNull(payload.id) || uuidv4();
+    const expenseDate = toISODate(payload.expenseDate);
+    const amount = Math.round(Number(payload.amount) || 0);
+    const splitMode = payload.splitMode === 'all' ? 'all' : 'selected';
+    const notes = String(payload.notes || '').trim();
+    const category = String(payload.category || '').trim();
+    const customType = String(payload.customType || '').trim();
+    const selectedDrivers = Array.isArray(payload.selectedDrivers)
+      ? payload.selectedDrivers.map((d) => String(d || '').trim()).filter(Boolean)
+      : [];
+
+    if (!expenseDate) return res.status(400).json({ error: 'Invalid expense date' });
+    if (!category) return res.status(400).json({ error: 'Category is required' });
+    if (amount <= 0) return res.status(400).json({ error: 'Expense amount must be greater than 0' });
+
+    const activeDriversRes = await client.query(
+      `SELECT name, status, termination_date
+       FROM drivers
+       WHERE COALESCE(is_hidden, FALSE) = FALSE
+         AND LOWER(status) = 'active'`
+    );
+    const allActiveDrivers = activeDriversRes.rows
+      .filter((row) => !isDriverTerminatedOnDate(row, expenseDate))
+      .map((row) => String(row.name || '').trim())
+      .filter(Boolean);
+
+    const leaveRes = await client.query(
+      `SELECT d.name, l.start_date, l.end_date, l.actual_return_date
+       FROM leaves l
+       JOIN drivers d ON d.id::text = l.driver_id::text`
+    );
+    const blockedByLeave = new Set(
+      leaveRes.rows
+        .filter((row) => isDriverOnLeaveOnDate(row, expenseDate))
+        .map((row) => normalizeDriver(row.name))
+        .filter(Boolean)
+    );
+
+    const eligibleDrivers = allActiveDrivers.filter((name) => !blockedByLeave.has(normalizeDriver(name)));
+    const targets = splitMode === 'all'
+      ? eligibleDrivers
+      : selectedDrivers.filter((name) => eligibleDrivers.some((eligible) => normalizeDriver(eligible) === normalizeDriver(name)));
+
+    if (!targets.length) return res.status(400).json({ error: 'No eligible drivers available for split.' });
+
+    const normalizedTargets = Array.from(new Set(targets.map((name) => name.trim()))).sort((a, b) => a.localeCompare(b));
+    const allocations = splitAmountEquallyInRupees(amount, normalizedTargets.length);
+
+    await client.query('BEGIN');
+    await client.query('DELETE FROM driver_expenses WHERE group_id = $1', [groupId]);
+
+    const inserted = [];
+    for (let index = 0; index < normalizedTargets.length; index += 1) {
+      const driver = normalizedTargets[index];
+      const allocatedAmount = allocations[index] || 0;
+      if (allocatedAmount <= 0) continue;
+
+      const row = await client.query(
+        `INSERT INTO driver_expenses (id, group_id, expense_date, category, custom_type, driver, amount, notes, split_mode, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+         RETURNING id, group_id as "groupId", to_char(expense_date, 'YYYY-MM-DD') as "expenseDate", category, custom_type as "customType",
+                   driver, amount, notes, split_mode as "splitMode", created_at as "createdAt", updated_at as "updatedAt"`,
+        [uuidv4(), groupId, expenseDate, category, customType || null, driver, allocatedAmount, notes || null, splitMode]
+      );
+      inserted.push({ ...row.rows[0], amount: Number(row.rows[0].amount) || 0 });
+    }
+    await client.query('COMMIT');
+
+    await invalidateAggregateCaches();
+    await invalidateDriverExpensesCache();
+    emitLiveUpdate('driver_expenses_changed', { groupId, expenseDate });
+    res.json({ groupId, entries: inserted });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.delete('/api/driver-expenses/:groupId', async (req, res) => {
+  try {
+    const groupId = toUuidOrNull(req.params.groupId);
+    if (!groupId) return res.status(400).json({ error: 'Invalid expense group id' });
+    await db.query('DELETE FROM driver_expenses WHERE group_id = $1', [groupId]);
+    await invalidateAggregateCaches();
+    await invalidateDriverExpensesCache();
+    emitLiveUpdate('driver_expenses_changed', { groupId });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // --- ASSETS ---

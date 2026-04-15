@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { storageService } from '../services/storageService';
-import { CompanyWeeklySummary, DailyEntry, WeeklyWallet, RentalSlab, DriverBillingRecord } from '../types';
+import { CompanyWeeklySummary, DailyEntry, WeeklyWallet, RentalSlab, DriverBillingRecord, DriverExpense } from '../types';
 import { Calculator, AlertTriangle, CheckCircle, TrendingUp, TrendingDown, DollarSign, Wallet, ShieldCheck, ShieldAlert, Calendar, RefreshCcw, ArrowRight, Filter, ChevronRight, History, Layers, ChevronDown, Search } from 'lucide-react';
 
 // --- Types for Internal Calculations ---
@@ -49,6 +49,7 @@ const RevenuePage: React.FC = () => {
   const [rawSummaries, setRawSummaries] = useState<CompanyWeeklySummary[]>([]);
   const [dailyEntries, setDailyEntries] = useState<DailyEntry[]>([]);
   const [weeklyWallets, setWeeklyWallets] = useState<WeeklyWallet[]>([]);
+  const [driverExpenses, setDriverExpenses] = useState<DriverExpense[]>([]);
   const [rentalSlabs, setRentalSlabs] = useState<RentalSlab[]>([]);
   const [driverBillings, setDriverBillings] = useState<DriverBillingRecord[]>([]);
   const [pendingFilter, setPendingFilter] = useState('');
@@ -68,11 +69,12 @@ const RevenuePage: React.FC = () => {
 
   const loadData = async () => {
     setLoading(true);
-    const [s, d, w, r] = await Promise.all([
+    const [s, d, w, r, expenses] = await Promise.all([
       storageService.getCompanySummaries(),
       storageService.getDailyEntries(),
       storageService.getWeeklyWallets(),
-      storageService.getDriverRentalSlabs()
+      storageService.getDriverRentalSlabs(),
+      storageService.getDriverExpenses()
     ]);
 
     // Driver billings are used as the authoritative revenue source. Fail silently to avoid blocking the page.
@@ -88,6 +90,7 @@ const RevenuePage: React.FC = () => {
     setRawSummaries(sortedSummaries);
     setDailyEntries(d);
     setWeeklyWallets(w);
+    setDriverExpenses(expenses);
     setRentalSlabs(r.sort((a,b) => a.minTrips - b.minTrips));
     
     // Default to latest week
@@ -142,6 +145,10 @@ const RevenuePage: React.FC = () => {
           const wStart = new Date(w.weekStartDate);
           return wStart >= startDate && wStart <= endDate;
       });
+      const relevantExpenses = driverExpenses.filter(expense => {
+          const expenseDate = new Date(expense.expenseDate);
+          return expenseDate >= startDate && expenseDate <= endDate;
+      });
 
       // Identify all drivers involved in this week (either via Daily Activity or Billing History)
       const uniqueDrivers = Array.from(new Set([
@@ -160,11 +167,12 @@ const RevenuePage: React.FC = () => {
       // If NOT, it falls back to summing 'relevantDaily' raw values.
       uniqueDrivers.forEach(driver => {
           const stats = storageService.calculateDriverStats(
-              driver,
-              relevantDaily, // Scope to this week
-              relevantWallets, // Scope to this week
-              rentalSlabs
-          );
+                  driver,
+                  relevantDaily, // Scope to this week
+                  relevantWallets, // Scope to this week
+                  rentalSlabs,
+                  relevantExpenses
+              );
 
           driversPaymentsFromStats += stats.totalRent;
           driversWalletRaw += stats.totalWalletWeek;
@@ -227,7 +235,7 @@ const RevenuePage: React.FC = () => {
         fraudCheckDiff
       };
     });
-  }, [rawSummaries, dailyEntries, weeklyWallets, rentalSlabs, driverBillings]);
+  }, [rawSummaries, dailyEntries, weeklyWallets, rentalSlabs, driverBillings, driverExpenses]);
 
   // --- 2. SELECTION LOGIC ---
   const activeWeeks = useMemo(() => {

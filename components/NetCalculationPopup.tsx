@@ -10,6 +10,7 @@ interface CalculationValues {
   due: number;
   wallet: number;
   payout: number;
+  expenses: number;
 }
 
 interface NetCalculationPopupProps {
@@ -42,7 +43,8 @@ const NetCalculationPopup: React.FC<NetCalculationPopupProps> = ({
     { label: 'Fuel', value: -values.fuel, tone: 'negative' },
     { label: 'Dues', value: values.due, tone: values.due >= 0 ? 'positive' : 'negative' },
     { label: 'Weekly Wallet', value: values.wallet, tone: values.wallet >= 0 ? 'positive' : 'negative' },
-    { label: 'Direct Payouts', value: -values.payout, tone: 'negative' }
+    { label: 'Direct Payouts', value: -values.payout, tone: 'negative' },
+    { label: 'Expenses', value: -values.expenses, tone: 'negative' }
   ];
 
   const heading = title || (metric === 'netPayout' ? 'Net Payout Calculation' : 'Net Balance Calculation');
@@ -57,7 +59,7 @@ const NetCalculationPopup: React.FC<NetCalculationPopupProps> = ({
         <div className="flex items-start justify-between px-5 py-4 border-b border-slate-100 bg-slate-50/70 backdrop-blur">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-indigo-500">{heading}</p>
-            <p className="text-xs text-slate-500 font-semibold">Collections - Rent - Fuel + Dues + Wallet - Payouts</p>
+            <p className="text-xs text-slate-500 font-semibold">Collections - Rent - Fuel + Dues + Wallet - Payouts - Expenses</p>
           </div>
           <button
             className="p-2 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
