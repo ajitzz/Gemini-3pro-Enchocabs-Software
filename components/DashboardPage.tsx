@@ -202,7 +202,7 @@ const DashboardPage: React.FC = () => {
       </div>
 
       {/* Global Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
         <StatCard 
           title="Total Collection" 
           value={formatCurrency(global?.totalCollection || 0)} 
@@ -216,6 +216,13 @@ const DashboardPage: React.FC = () => {
           colorClass={{ bg: 'bg-amber-50', text: 'text-amber-600' }}
           icon={Fuel} 
           subtext="Expenses Out"
+        />
+        <StatCard
+          title="Total Driver Expenses"
+          value={formatCurrency(global?.totalExpenses || 0)}
+          colorClass={{ bg: 'bg-rose-50', text: 'text-rose-600' }}
+          icon={AlertCircle}
+          subtext="Split Deductions"
         />
         <StatCard 
           title="Pending from Drivers" 
