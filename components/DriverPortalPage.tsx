@@ -1917,7 +1917,10 @@ const DriverPortalPage: React.FC = () => {
                           <button onClick={() => setActiveTab('daily')} className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700">View All</button>
                       </div>
                       <div className="space-y-3">
-                          {recentLogs.map(entry => (
+                          {recentLogs.map(entry => {
+                              const entryExpense = expensesByDate[entry.date] || 0;
+
+                              return (
                               <div key={entry.id} className="bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center">
                                    <div className="flex items-center gap-3">
                                        <div className="bg-slate-50 p-2.5 rounded-xl text-slate-400">
@@ -1931,10 +1934,13 @@ const DriverPortalPage: React.FC = () => {
                                    <div className="text-right">
                                        <p className="text-sm font-bold text-emerald-600">+{formatCurrency(entry.collection)}</p>
                                        <p className="text-[10px] text-slate-400">Rent: {formatCurrency(entry.rent)}</p>
-                                       <p className="text-[10px] text-rose-500 font-semibold">Expenses: -{formatCurrency(expensesByDate[entry.date] || 0)}</p>
+                                       {entryExpense > 0 && (
+                                           <p className="text-[10px] text-rose-500 font-semibold">Expenses: -{formatCurrency(entryExpense)}</p>
+                                       )}
                                    </div>
                               </div>
-                          ))}
+                              );
+                          })}
                           {recentLogs.length === 0 && <p className="text-center text-xs text-slate-400 py-4 bg-white rounded-2xl border border-slate-100 border-dashed">No recent activity found</p>}
                       </div>
                   </div>
@@ -2055,6 +2061,14 @@ const DriverPortalPage: React.FC = () => {
                                                   ) : null}
                                               </div>
                                           </div>
+                                          {(expensesByDate[entry.date] || 0) > 0 && (
+                                              <div>
+                                                  <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Expense</span>
+                                                  <span className="text-rose-600 font-semibold">
+                                                      - {formatCurrency(expensesByDate[entry.date] || 0)}
+                                                  </span>
+                                              </div>
+                                          )}
                                           <div>
                                               <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Expense</span>
                                               <span className="text-rose-600 font-semibold">
