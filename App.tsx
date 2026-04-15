@@ -21,7 +21,6 @@ const DriverLeadsPage = lazy(() => import('./components/DriverLeadsPage'));
 const ImportPage = lazy(() => import('./components/ImportPage'));
 const AdminAccessPage = lazy(() => import('./components/AdminAccessPage'));
 const DriverBalanceInsightsPage = lazy(() => import('./components/DriverBalanceInsightsPage'));
-const ExpensesPage = lazy(() => import('./components/ExpensesPage'));
 
 
 const routePrefetchers: Record<string, () => Promise<unknown>> = {
@@ -42,7 +41,6 @@ const routePrefetchers: Record<string, () => Promise<unknown>> = {
   '/app/import': () => import('./components/ImportPage'),
   '/app/admin-access': () => import('./components/AdminAccessPage'),
   '/app/driver-balances': () => import('./components/DriverBalanceInsightsPage'),
-  '/app/expenses': () => import('./components/ExpensesPage'),
 };
 
 const prefetchedRoutes = new Set<string>();
@@ -188,7 +186,6 @@ const Layout: React.FC = () => {
               <NavItem to="/app/leaves" icon={Coffee} label="Leaves" />
               <NavItem to="/app/settlement" icon={Briefcase} label="Company Settlement" />
               <NavItem to="/app/billings" icon={FileText} label="Driver Billings" />
-              <NavItem to="/app/expenses" icon={Wallet} label="Expenses" />
               <NavItem to="/app/revenue" icon={Calculator} label="Revenue Calculation" />
               <NavItem to="/app/driver-leads" icon={ClipboardList} label="Driver Leads" />
               <NavItem to="/app/import" icon={Upload} label="Import Data" />
@@ -314,7 +311,6 @@ const App: React.FC = () => {
                 <Route path="leaves" element={<LazyPage><LeavePage /></LazyPage>} />
                 <Route path="settlement" element={<LazyPage><CompanySettlementPage /></LazyPage>} />
                 <Route path="billings" element={<LazyPage><DriverBillingsPage /></LazyPage>} />
-                <Route path="expenses" element={<LazyPage><ExpensesPage /></LazyPage>} />
                 <Route path="revenue" element={<LazyPage><RevenuePage /></LazyPage>} />
                 <Route path="driver-leads" element={<LazyPage><DriverLeadsPage /></LazyPage>} />
                 <Route path="import" element={<LazyPage><ImportPage /></LazyPage>} />

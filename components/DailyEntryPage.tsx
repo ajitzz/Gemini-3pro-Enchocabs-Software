@@ -4,7 +4,7 @@ import { DailyEntry, Driver, LeaveRecord, WeeklyWallet } from '../types';
 import { storageService } from '../services/storageService';
 import { useLiveUpdates } from '../lib/useLiveUpdates';
 import { isDriverUnavailableOnDate } from '../lib/leaveUtils';
-import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check, AlertOctagon, FileDown, AlertCircle, ChevronLeft, ChevronRight, Car, QrCode } from 'lucide-react';
+import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check, AlertOctagon, FileDown, AlertCircle, ChevronLeft, ChevronRight, Car, QrCode, EyeOff } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
 const InputField = ({ label, name, type = "text", value, onChange, onKeyDown, placeholder, required = false, className = "", readOnly = false, inputMode }: any) => (
@@ -27,6 +27,12 @@ const InputField = ({ label, name, type = "text", value, onChange, onKeyDown, pl
 );
 
 type DisplayDailyEntry = DailyEntry & { adjustmentApplied?: number };
+type QuickEntryPanelId = 'missingDailyEntries' | 'missingWeeklyWallets';
+type QuickEntryPanelPreference = {
+  collapsed: boolean;
+  hidden: boolean;
+};
+type QuickEntryPanelPreferences = Record<QuickEntryPanelId, QuickEntryPanelPreference>;
 
 // --- GLOBAL DRIVER FILTER COMPONENT ---
 interface DriverFilterProps {
@@ -304,6 +310,23 @@ const DailyEntryPage: React.FC = () => {
   // UI State for optional fields
   const [showOptionalFields, setShowOptionalFields] = useState(false);
   const [showFullHistory, setShowFullHistory] = useState(false);
+  const [quickEntryPanelPreferences, setQuickEntryPanelPreferences] = useState<QuickEntryPanelPreferences>(() => {
+    const defaultPreferences: QuickEntryPanelPreferences = {
+      missingDailyEntries: { collapsed: false, hidden: false },
+      missingWeeklyWallets: { collapsed: false, hidden: false },
+    };
+    try {
+      const persisted = localStorage.getItem('daily_entry_quick_entry_panels_v1');
+      if (!persisted) return defaultPreferences;
+      return {
+        ...defaultPreferences,
+        ...JSON.parse(persisted),
+      };
+    } catch (e) {
+      console.warn('Failed to load quick entry panel preferences', e);
+      return defaultPreferences;
+    }
+  });
 
   // Global Filters
   const [filterDateStart, setFilterDateStart] = useState('');
@@ -320,6 +343,12 @@ const DailyEntryPage: React.FC = () => {
   const [duplicateWarning, setDuplicateWarning] = useState<{ active: boolean, existingId: string, payload: DailyEntry } | null>(null);
   const [outlierWarning, setOutlierWarning] = useState<{ message: string, payload: DailyEntry } | null>(null);
   const closeAfterSaveRef = useRef(true);
+  const [manualDefaultOverrides, setManualDefaultOverrides] = useState({
+    vehicle: false,
+    shift: false,
+    qrCode: false,
+    rent: false,
+  });
 
   // Form State
   const initialFormState: Partial<DailyEntry> = {
@@ -336,17 +365,7 @@ const DailyEntryPage: React.FC = () => {
     qrCode: '',
     notes: ''
   };
-  const [formData, setFormData] = useState<Partial<DailyEntry>>(() => {
-    try {
-      const draft = localStorage.getItem('daily_entry_draft');
-      if (draft) {
-        return JSON.parse(draft);
-      }
-    } catch (e) {
-      console.warn('Failed to load draft', e);
-    }
-    return initialFormState;
-  });
+  const [formData, setFormData] = useState<Partial<DailyEntry>>(initialFormState);
   const [offlineQueue, setOfflineQueue] = useState<DailyEntry[]>(() => {
     try {
       const queue = localStorage.getItem('daily_entry_offline_queue');
@@ -359,12 +378,9 @@ const DailyEntryPage: React.FC = () => {
   const liveRefreshTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('daily_entry_draft', JSON.stringify(formData));
-    } catch (e) {
-      console.warn('Failed to save draft', e);
-    }
-  }, [formData]);
+    // Form must fully reset on every browser/project reload.
+    localStorage.removeItem('daily_entry_draft');
+  }, []);
 
   useEffect(() => {
     try {
@@ -373,6 +389,14 @@ const DailyEntryPage: React.FC = () => {
       console.warn('Failed to save offline queue', e);
     }
   }, [offlineQueue]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('daily_entry_quick_entry_panels_v1', JSON.stringify(quickEntryPanelPreferences));
+    } catch (e) {
+      console.warn('Failed to save quick entry panel preferences', e);
+    }
+  }, [quickEntryPanelPreferences]);
 
   const syncOfflineQueue = useCallback(async () => {
     if (offlineQueue.length === 0 || isSyncing || !navigator.onLine) return;
@@ -625,26 +649,96 @@ const DailyEntryPage: React.FC = () => {
       return Array.from(uniqueNames).sort();
   }, [entriesWithAdjustments]);
 
+  const getDriverAssignedDefaults = useCallback((driverName?: string) => {
+    const selectedDriver = drivers.find(d => d.name === driverName);
+    return {
+      vehicle: selectedDriver?.vehicle || '',
+      qrCode: selectedDriver?.qrCode || '',
+      shift: selectedDriver?.currentShift || 'Day',
+      rent: selectedDriver?.defaultRent,
+    };
+  }, [drivers]);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     
     if (name === 'driver') {
-        const selectedDriver = drivers.find(d => d.name === value);
+        const assignedDefaults = getDriverAssignedDefaults(value);
+        setManualDefaultOverrides({
+          vehicle: false,
+          shift: false,
+          qrCode: false,
+          rent: false,
+        });
         setFormData(prev => ({
             ...prev,
             driver: value,
-            vehicle: selectedDriver?.vehicle || prev.vehicle,
-            qrCode: selectedDriver?.qrCode || prev.qrCode,
-            shift: selectedDriver?.currentShift || prev.shift || 'Day',
-            rent: selectedDriver?.defaultRent // Let undefined flow if no default set
+            vehicle: assignedDefaults.vehicle,
+            qrCode: assignedDefaults.qrCode,
+            shift: assignedDefaults.shift,
+            rent: assignedDefaults.rent // Let undefined flow if no default set
         }));
     } else {
+        const nextValue = type === 'number' ? (value === '' ? undefined : parseFloat(value)) : value;
+
+        if (name === 'vehicle' || name === 'shift' || name === 'qrCode' || name === 'rent') {
+          const assignedDefaults = getDriverAssignedDefaults(formData.driver);
+          const normalizedValue = name === 'rent'
+            ? (nextValue === undefined ? undefined : Number(nextValue))
+            : String(nextValue ?? '');
+          const rawDefaultValue = name === 'vehicle'
+            ? assignedDefaults.vehicle
+            : name === 'shift'
+              ? assignedDefaults.shift
+              : name === 'qrCode'
+                ? assignedDefaults.qrCode
+                : assignedDefaults.rent;
+          const normalizedDefault = name === 'rent'
+            ? (rawDefaultValue === undefined ? undefined : Number(rawDefaultValue))
+            : String(rawDefaultValue ?? '');
+          const hasManualOverride = normalizedValue !== normalizedDefault;
+
+          setManualDefaultOverrides(prev => ({ ...prev, [name]: hasManualOverride }));
+        }
         setFormData(prev => ({
             ...prev,
-            [name]: type === 'number' ? (value === '' ? undefined : parseFloat(value)) : value
+            [name]: nextValue
         }));
     }
   };
+
+  useEffect(() => {
+    if (!formData.driver || editingId) return;
+
+    const selectedDriver = drivers.find(d => d.name === formData.driver);
+    if (!selectedDriver) return;
+
+    setFormData(prev => {
+      if (prev.driver !== selectedDriver.name) return prev;
+
+      const nextVehicle = manualDefaultOverrides.vehicle ? prev.vehicle : (selectedDriver.vehicle || '');
+      const nextQrCode = manualDefaultOverrides.qrCode ? prev.qrCode : (selectedDriver.qrCode || '');
+      const nextShift = manualDefaultOverrides.shift ? prev.shift : (selectedDriver.currentShift || 'Day');
+      const nextRent = manualDefaultOverrides.rent ? prev.rent : selectedDriver.defaultRent;
+
+      if (
+        prev.vehicle === nextVehicle &&
+        prev.qrCode === nextQrCode &&
+        prev.shift === nextShift &&
+        prev.rent === nextRent
+      ) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        vehicle: nextVehicle,
+        qrCode: nextQrCode,
+        shift: nextShift,
+        rent: nextRent,
+      };
+    });
+  }, [drivers, formData.driver, editingId, manualDefaultOverrides]);
 
   const checkOutliers = (newEntry: DailyEntry) => {
     const driverEntries = entries.filter(e => e.driver === newEntry.driver);
@@ -671,13 +765,9 @@ const DailyEntryPage: React.FC = () => {
     if (!navigator.onLine) {
       setOfflineQueue(prev => [...prev, newEntry]);
       upsertEntry({ ...newEntry, id: `offline-${newEntry.id}` }); // Optimistic UI update
-      if (editingId) {
-        resetForm();
-      } else {
-        resetFormAfterSave(newEntry.date);
-        if (closeAfterSaveRef.current) {
-          setIsFormOpen(false);
-        }
+      resetFormAfterSave(newEntry.date, newEntry.driver);
+      if (closeAfterSaveRef.current) {
+        setIsFormOpen(false);
       }
       alert('You are offline. Entry saved locally and will sync when online.');
       return;
@@ -686,13 +776,9 @@ const DailyEntryPage: React.FC = () => {
     try {
       const savedEntry = await storageService.saveDailyEntry(newEntry);
       upsertEntry({ ...newEntry, ...savedEntry });
-      if (editingId) {
-        resetForm();
-      } else {
-        resetFormAfterSave(newEntry.date);
-        if (closeAfterSaveRef.current) {
-          setIsFormOpen(false);
-        }
+      resetFormAfterSave(newEntry.date, newEntry.driver);
+      if (closeAfterSaveRef.current) {
+        setIsFormOpen(false);
       }
     } catch (error: any) {
       console.error('Save daily entry failed:', error);
@@ -794,10 +880,22 @@ const DailyEntryPage: React.FC = () => {
     await saveEntry(entryToSave);
   };
 
-  const resetFormAfterSave = (preserveDate: string) => {
+  const resetFormAfterSave = (preserveDate: string, preserveDriver?: string) => {
+    const assignedDefaults = getDriverAssignedDefaults(preserveDriver);
+    setManualDefaultOverrides({
+      vehicle: false,
+      shift: false,
+      qrCode: false,
+      rent: false,
+    });
     const newState = {
       ...initialFormState,
       date: normalizeDateValue(preserveDate) || getTodayISODate(),
+      driver: preserveDriver || '',
+      vehicle: assignedDefaults.vehicle,
+      qrCode: assignedDefaults.qrCode,
+      shift: assignedDefaults.shift,
+      rent: assignedDefaults.rent,
     };
     setFormData(newState);
     localStorage.removeItem('daily_entry_draft');
@@ -806,6 +904,12 @@ const DailyEntryPage: React.FC = () => {
   };
 
   const handleEdit = (entry: DailyEntry) => {
+    setManualDefaultOverrides({
+      vehicle: true,
+      shift: true,
+      qrCode: true,
+      rent: true,
+    });
     setFormData({
       ...initialFormState,
       ...entry,
@@ -823,6 +927,12 @@ const DailyEntryPage: React.FC = () => {
   };
 
   const resetForm = () => {
+    setManualDefaultOverrides({
+      vehicle: false,
+      shift: false,
+      qrCode: false,
+      rent: false,
+    });
     setFormData(initialFormState);
     localStorage.removeItem('daily_entry_draft');
     setEditingId(null);
@@ -1124,6 +1234,25 @@ const DailyEntryPage: React.FC = () => {
       setColumnFilters({});
   };
 
+  const updateQuickEntryPanelPreference = (panelId: QuickEntryPanelId, updater: (current: QuickEntryPanelPreference) => QuickEntryPanelPreference) => {
+    setQuickEntryPanelPreferences(prev => ({
+      ...prev,
+      [panelId]: updater(prev[panelId]),
+    }));
+  };
+
+  const toggleQuickEntryPanelCollapse = (panelId: QuickEntryPanelId) => {
+    updateQuickEntryPanelPreference(panelId, current => ({ ...current, collapsed: !current.collapsed }));
+  };
+
+  const toggleQuickEntryPanelHidden = (panelId: QuickEntryPanelId) => {
+    updateQuickEntryPanelPreference(panelId, current => ({ ...current, hidden: !current.hidden }));
+  };
+
+  const hiddenQuickEntryPanels = (Object.keys(quickEntryPanelPreferences) as QuickEntryPanelId[]).filter(
+    (panelId) => quickEntryPanelPreferences[panelId]?.hidden
+  );
+
   return (
     <div className="max-w-[1920px] mx-auto space-y-8 pb-20">
       {/* Header / Actions */}
@@ -1150,7 +1279,13 @@ const DailyEntryPage: React.FC = () => {
             <span className="hidden md:inline">Export CSV</span>
           </button>
           <button
-            onClick={() => setIsFormOpen(!isFormOpen)}
+            onClick={() => {
+              if (isFormOpen) {
+                resetForm();
+                return;
+              }
+              setIsFormOpen(true);
+            }}
             className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
           >
             {isFormOpen ? <X size={20} /> : <Plus size={20} />}
@@ -1173,7 +1308,7 @@ const DailyEntryPage: React.FC = () => {
            )}
         </div>
         
-        <form onSubmit={(e) => { closeAfterSaveRef.current = true; handleSubmit(e); }} className="flex flex-col gap-5">
+        <form onSubmit={(e) => { closeAfterSaveRef.current = false; handleSubmit(e); }} className="flex flex-col gap-5">
            {/* Row 1: Date & Driver */}
            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <InputField label="Date" name="date" type="date" value={formData.date} onChange={handleInputChange} required />
@@ -1198,50 +1333,123 @@ const DailyEntryPage: React.FC = () => {
            </div>
 
            {/* Missing Entries Info */}
-           <div className="bg-indigo-50/60 border border-indigo-100 rounded-2xl p-4">
-            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-              <div className="flex-1">
-                <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-2">Missing Daily Entries</h4>
-                <p className="text-[11px] text-slate-500 mb-2">
-                  {formData.date ? `Date: ${formatDate(formData.date)}` : 'Select a date to see missing daily entries.'}
-                </p>
-                {formData.date && missingDailyDriversForDate.length > 0 ? (
-                  <ul className="flex flex-wrap gap-2">
-                    {missingDailyDriversForDate.map(driver => (
-                      <li key={driver.id} className="px-3 py-1 bg-white border border-indigo-100 rounded-full text-xs font-semibold text-slate-700">
-                        {driver.name}
-                      </li>
+           <div className="bg-indigo-50/60 border border-indigo-100 rounded-2xl p-4 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider">Missing Data Assistant</h4>
+              {hiddenQuickEntryPanels.length > 0 && (
+                <details className="relative">
+                  <summary className="list-none text-[11px] font-semibold text-indigo-700 bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 flex items-center gap-1 cursor-pointer">
+                    Hidden ({hiddenQuickEntryPanels.length})
+                    <ChevronDown size={14} />
+                  </summary>
+                  <div className="absolute right-0 top-full mt-1 z-20 w-56 bg-white border border-indigo-100 rounded-xl shadow-lg p-2">
+                    {hiddenQuickEntryPanels.map(panelId => (
+                      <button
+                        type="button"
+                        key={panelId}
+                        onClick={() => toggleQuickEntryPanelHidden(panelId)}
+                        className="w-full text-left px-3 py-2 rounded-lg text-xs text-slate-700 hover:bg-indigo-50 flex items-center justify-between"
+                      >
+                        <span>{panelId === 'missingDailyEntries' ? 'Missing Daily Entries' : 'Missing Weekly Wallets'}</span>
+                        <span className="text-indigo-600 font-semibold">Unhide</span>
+                      </button>
                     ))}
-                  </ul>
-                ) : (
-                  <p className="text-xs text-slate-400">
-                    {formData.date ? 'No missing daily entries for this date.' : 'No date selected.'}
-                  </p>
-                )}
-              </div>
-              <div className="flex-1">
-                <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-2">Missing Weekly Wallets</h4>
-                <p className="text-[11px] text-slate-500 mb-2">
-                  {formData.date ? `Week: ${formatDate(getWeekRangeForDate(formData.date).start)} – ${formatDate(getWeekRangeForDate(formData.date).end)}` : 'Select a date to see missing weekly wallets.'}
-                </p>
-                {formData.date && missingWeeklyWalletsForWeek.length > 0 ? (
-                  <ul className="flex flex-col gap-2">
-                    {missingWeeklyWalletsForWeek.map(item => (
-                      <li key={`${item.driver}-${item.weekStart}`} className="flex flex-wrap items-center justify-between gap-2 bg-white border border-indigo-100 rounded-xl px-3 py-2 text-xs text-slate-700">
-                        <span className="font-semibold">{item.driver}</span>
-                        <span className="text-[11px] text-slate-500">
-                          {formatDate(item.weekStart)} – {formatDate(item.weekEnd)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-xs text-slate-400">
-                    {formData.date ? 'No missing weekly wallets for this week.' : 'No date selected.'}
-                  </p>
-                )}
-              </div>
+                  </div>
+                </details>
+              )}
             </div>
+
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              {!quickEntryPanelPreferences.missingDailyEntries.hidden && (
+                <div className="flex-1 bg-white/70 border border-indigo-100 rounded-xl p-3">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleQuickEntryPanelCollapse('missingDailyEntries')}
+                      className="flex items-center gap-1.5 text-left"
+                    >
+                      <h5 className="text-xs font-bold text-indigo-700 uppercase tracking-wider">Missing Daily Entries</h5>
+                      {quickEntryPanelPreferences.missingDailyEntries.collapsed ? <ChevronDown size={14} className="text-indigo-700" /> : <ChevronUp size={14} className="text-indigo-700" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toggleQuickEntryPanelHidden('missingDailyEntries')}
+                      className="text-[11px] text-slate-500 hover:text-indigo-700 flex items-center gap-1"
+                    >
+                      <EyeOff size={12} />
+                      Hide
+                    </button>
+                  </div>
+                  {!quickEntryPanelPreferences.missingDailyEntries.collapsed && (
+                    <>
+                      <p className="text-[11px] text-slate-500 mb-2">
+                        {formData.date ? `Date: ${formatDate(formData.date)}` : 'Select a date to see missing daily entries.'}
+                      </p>
+                      {formData.date && missingDailyDriversForDate.length > 0 ? (
+                        <ul className="flex flex-wrap gap-2">
+                          {missingDailyDriversForDate.map(driver => (
+                            <li key={driver.id} className="px-3 py-1 bg-white border border-indigo-100 rounded-full text-xs font-semibold text-slate-700">
+                              {driver.name}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-xs text-slate-400">
+                          {formData.date ? 'No missing daily entries for this date.' : 'No date selected.'}
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {!quickEntryPanelPreferences.missingWeeklyWallets.hidden && (
+                <div className="flex-1 bg-white/70 border border-indigo-100 rounded-xl p-3">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleQuickEntryPanelCollapse('missingWeeklyWallets')}
+                      className="flex items-center gap-1.5 text-left"
+                    >
+                      <h5 className="text-xs font-bold text-indigo-700 uppercase tracking-wider">Missing Weekly Wallets</h5>
+                      {quickEntryPanelPreferences.missingWeeklyWallets.collapsed ? <ChevronDown size={14} className="text-indigo-700" /> : <ChevronUp size={14} className="text-indigo-700" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toggleQuickEntryPanelHidden('missingWeeklyWallets')}
+                      className="text-[11px] text-slate-500 hover:text-indigo-700 flex items-center gap-1"
+                    >
+                      <EyeOff size={12} />
+                      Hide
+                    </button>
+                  </div>
+                  {!quickEntryPanelPreferences.missingWeeklyWallets.collapsed && (
+                    <>
+                      <p className="text-[11px] text-slate-500 mb-2">
+                        {formData.date ? `Week: ${formatDate(getWeekRangeForDate(formData.date).start)} – ${formatDate(getWeekRangeForDate(formData.date).end)}` : 'Select a date to see missing weekly wallets.'}
+                      </p>
+                      {formData.date && missingWeeklyWalletsForWeek.length > 0 ? (
+                        <ul className="flex flex-col gap-2">
+                          {missingWeeklyWalletsForWeek.map(item => (
+                            <li key={`${item.driver}-${item.weekStart}`} className="flex flex-wrap items-center justify-between gap-2 bg-white border border-indigo-100 rounded-xl px-3 py-2 text-xs text-slate-700">
+                              <span className="font-semibold">{item.driver}</span>
+                              <span className="text-[11px] text-slate-500">
+                                {formatDate(item.weekStart)} – {formatDate(item.weekEnd)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-xs text-slate-400">
+                          {formData.date ? 'No missing weekly wallets for this week.' : 'No date selected.'}
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
           </div>
 
            {/* Row 2: Shift & Vehicle */}
@@ -1263,7 +1471,7 @@ const DailyEntryPage: React.FC = () => {
 
            {/* Primary Financials */}
            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <InputField label="Collection (₹)" name="collection" type="number" inputMode="decimal" value={formData.collection} onChange={handleInputChange} onKeyDown={(e: any) => { if (e.key === 'Enter') { closeAfterSaveRef.current = true; handleSubmit(e); } }} required className="font-bold text-emerald-700 text-xl py-4" placeholder="Enter Amount" />
+              <InputField label="Collection (₹)" name="collection" type="number" inputMode="decimal" value={formData.collection} onChange={handleInputChange} onKeyDown={(e: any) => { if (e.key === 'Enter') { closeAfterSaveRef.current = false; handleSubmit(e); } }} required className="font-bold text-emerald-700 text-xl py-4" placeholder="Enter Amount" />
               
               <div className="relative">
                  <InputField label="Rent (₹)" name="rent" type="number" inputMode="decimal" value={formData.rent} onChange={handleInputChange} required className="py-4 text-lg" placeholder="Enter Rent" />
@@ -1311,8 +1519,8 @@ const DailyEntryPage: React.FC = () => {
              <div className="flex flex-col md:flex-row justify-end gap-3 max-w-[1920px] mx-auto">
                <button type="button" onClick={resetForm} className="px-5 py-3.5 md:py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-xl transition-colors w-full md:w-auto text-center order-2 md:order-1">Cancel</button>
                {!editingId && (
-                 <button type="button" onClick={(e) => { closeAfterSaveRef.current = false; handleSubmit(e); }} className="px-5 py-3.5 md:py-2.5 bg-indigo-100 text-indigo-700 font-bold rounded-xl hover:bg-indigo-200 transition-all active:scale-95 w-full md:w-auto text-center order-1 md:order-2">
-                   Save & Add Next
+                 <button type="button" onClick={(e) => { closeAfterSaveRef.current = true; handleSubmit(e); }} className="px-5 py-3.5 md:py-2.5 bg-indigo-100 text-indigo-700 font-bold rounded-xl hover:bg-indigo-200 transition-all active:scale-95 w-full md:w-auto text-center order-1 md:order-2">
+                   Save & Close
                  </button>
                )}
                <button type="submit" className="px-8 py-3.5 md:py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all active:scale-95 w-full md:w-auto text-center order-1 md:order-3">
