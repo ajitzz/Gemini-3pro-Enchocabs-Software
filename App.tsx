@@ -1,6 +1,6 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, Navigate, Outlet } from 'react-router-dom';
-import { LayoutDashboard, Calendar, Wallet, Menu, X, Users, Coffee, Upload, Settings, Briefcase, FileText, Calculator, UserCircle, LogOut, Shield, ClipboardList } from 'lucide-react';
+import { LayoutDashboard, Calendar, Wallet, Menu, X, Users, Coffee, Upload, Settings, Briefcase, FileText, Calculator, UserCircle, LogOut, Shield, ClipboardList, ReceiptText } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
 
@@ -21,6 +21,7 @@ const DriverLeadsPage = lazy(() => import('./components/DriverLeadsPage'));
 const ImportPage = lazy(() => import('./components/ImportPage'));
 const AdminAccessPage = lazy(() => import('./components/AdminAccessPage'));
 const DriverBalanceInsightsPage = lazy(() => import('./components/DriverBalanceInsightsPage'));
+const DriverExpensesPage = lazy(() => import('./components/DriverExpensesPage'));
 
 
 const routePrefetchers: Record<string, () => Promise<unknown>> = {
@@ -39,6 +40,7 @@ const routePrefetchers: Record<string, () => Promise<unknown>> = {
   '/app/revenue': () => import('./components/RevenuePage'),
   '/app/driver-leads': () => import('./components/DriverLeadsPage'),
   '/app/import': () => import('./components/ImportPage'),
+  '/app/expenses': () => import('./components/DriverExpensesPage'),
   '/app/admin-access': () => import('./components/AdminAccessPage'),
   '/app/driver-balances': () => import('./components/DriverBalanceInsightsPage'),
 };
@@ -187,6 +189,7 @@ const Layout: React.FC = () => {
               <NavItem to="/app/settlement" icon={Briefcase} label="Company Settlement" />
               <NavItem to="/app/billings" icon={FileText} label="Driver Billings" />
               <NavItem to="/app/revenue" icon={Calculator} label="Revenue Calculation" />
+              <NavItem to="/app/expenses" icon={ReceiptText} label="Driver Expenses" />
               <NavItem to="/app/driver-leads" icon={ClipboardList} label="Driver Leads" />
               <NavItem to="/app/import" icon={Upload} label="Import Data" />
             </nav>
@@ -289,7 +292,7 @@ const App: React.FC = () => {
 
               {/* Driver Portal Route (Secure) */}
               <Route path="/portal" element={
-                  <ProtectedRoute allowedRoles={['driver', 'admin', 'super_admin']}>
+                  <ProtectedRoute allowedRoles={['driver', 'manager', 'admin', 'super_admin']}>
                       <LazyPage><DriverPortalPage /></LazyPage>
                   </ProtectedRoute>
               } />
@@ -298,7 +301,7 @@ const App: React.FC = () => {
               <Route
                 path="/app"
                 element={
-                  <ProtectedRoute allowedRoles={['admin', 'super_admin']}>
+                  <ProtectedRoute allowedRoles={['manager', 'admin', 'super_admin']}>
                     <Layout />
                   </ProtectedRoute>
                 }
@@ -312,6 +315,7 @@ const App: React.FC = () => {
                 <Route path="settlement" element={<LazyPage><CompanySettlementPage /></LazyPage>} />
                 <Route path="billings" element={<LazyPage><DriverBillingsPage /></LazyPage>} />
                 <Route path="revenue" element={<LazyPage><RevenuePage /></LazyPage>} />
+                <Route path="expenses" element={<LazyPage><DriverExpensesPage /></LazyPage>} />
                 <Route path="driver-leads" element={<LazyPage><DriverLeadsPage /></LazyPage>} />
                 <Route path="import" element={<LazyPage><ImportPage /></LazyPage>} />
                 <Route path="admin-access" element={<LazyPage><AdminAccessPage /></LazyPage>} />

@@ -68,7 +68,26 @@ CREATE INDEX IF NOT EXISTS weekly_wallets_end_date_idx ON weekly_wallets (week_e
 CREATE INDEX IF NOT EXISTS weekly_wallets_date_range_idx ON weekly_wallets (week_start_date, week_end_date);
 CREATE INDEX IF NOT EXISTS weekly_wallets_driver_idx ON weekly_wallets (LOWER(driver));
 
--- 5. Driver Billings Table (Finalized/Saved Bills)
+-- 5. Driver Expenses (Shared deductions split by driver)
+CREATE TABLE IF NOT EXISTS driver_expenses (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  group_id UUID NOT NULL,
+  expense_date DATE NOT NULL,
+  category TEXT NOT NULL,
+  custom_type TEXT,
+  driver TEXT NOT NULL,
+  amount NUMERIC NOT NULL CHECK (amount >= 0),
+  notes TEXT,
+  split_mode TEXT NOT NULL DEFAULT 'selected',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS driver_expenses_group_idx ON driver_expenses (group_id);
+CREATE INDEX IF NOT EXISTS driver_expenses_date_idx ON driver_expenses (expense_date);
+CREATE INDEX IF NOT EXISTS driver_expenses_driver_idx ON driver_expenses (LOWER(driver));
+
+-- 6. Driver Billings Table (Finalized/Saved Bills)
 CREATE TABLE IF NOT EXISTS driver_billings (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   driver_id TEXT,
@@ -102,7 +121,7 @@ BEGIN
     END IF;
 END $$;
 
--- 6. Rental Slabs Table (Configuration)
+-- 7. Rental Slabs Table (Configuration)
 CREATE TABLE IF NOT EXISTS rental_slabs (
   id UUID PRIMARY KEY,
   slab_type TEXT DEFAULT 'company', -- 'company' or 'driver'
@@ -112,7 +131,7 @@ CREATE TABLE IF NOT EXISTS rental_slabs (
   notes TEXT
 );
 
--- 7. Company Summaries Table (Import Metadata)
+-- 8. Company Summaries Table (Import Metadata)
 CREATE TABLE IF NOT EXISTS company_summaries (
   id UUID PRIMARY KEY,
   start_date DATE,
@@ -122,7 +141,7 @@ CREATE TABLE IF NOT EXISTS company_summaries (
   note TEXT
 );
 
--- 8. Company Summary Rows Table (Imported Data)
+-- 9. Company Summary Rows Table (Imported Data)
 CREATE TABLE IF NOT EXISTS company_summary_rows (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   summary_id UUID,
@@ -148,7 +167,7 @@ CREATE TABLE IF NOT EXISTS company_summary_rows (
   current_os NUMERIC
 );
 
--- 9. Leaves Table
+-- 10. Leaves Table
 CREATE TABLE IF NOT EXISTS leaves (
   id UUID PRIMARY KEY,
   driver_id UUID,
@@ -163,7 +182,7 @@ CREATE TABLE IF NOT EXISTS leaves (
 CREATE INDEX IF NOT EXISTS leaves_start_date_idx ON leaves (start_date);
 CREATE INDEX IF NOT EXISTS leaves_end_date_idx ON leaves (end_date);
 
--- 10. Shifts Table (History)
+-- 11. Shifts Table (History)
 CREATE TABLE IF NOT EXISTS shifts (
   id UUID PRIMARY KEY,
   driver_id UUID,

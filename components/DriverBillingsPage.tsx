@@ -24,6 +24,7 @@ const DriverBillingsPage: React.FC = () => {
           due: number;
           wallet: number;
           payout: number;
+          expenses: number;
       };
       title?: string;
       sourceNote?: string;
@@ -103,7 +104,8 @@ const DriverBillingsPage: React.FC = () => {
               fuel: driver.totalFuel,
               due: driver.totalDue,
               wallet: driver.totalWalletWeek,
-              payout: driver.totalPayout
+              payout: driver.totalPayout,
+              expenses: driver.totalExpenses
           },
           title: `${metric === 'netPayout' ? 'Net Payout' : 'Net Balance'} • ${driver.driver}`,
           sourceNote:
@@ -172,10 +174,11 @@ const DriverBillingsPage: React.FC = () => {
       rent: acc.rent + driver.totalRent,
       fuel: acc.fuel + driver.totalFuel,
       wallet: acc.wallet + driver.totalWalletWeek,
+      expenses: acc.expenses + driver.totalExpenses,
       netPayout: acc.netPayout + driver.netPayout,
       finalTotal: acc.finalTotal + driver.finalTotal,
     }),
-    { collection: 0, rent: 0, fuel: 0, wallet: 0, netPayout: 0, finalTotal: 0 }
+    { collection: 0, rent: 0, fuel: 0, wallet: 0, expenses: 0, netPayout: 0, finalTotal: 0 }
   );
 
   const normalize = (s: string) => s ? s.toLowerCase().replace(/[^a-z0-9]/g, '').trim() : '';
@@ -649,15 +652,16 @@ const DriverBillingsPage: React.FC = () => {
                         <th className="px-6 py-4 font-semibold text-right tracking-wider">Rent</th>
                         <th className="px-6 py-4 font-semibold text-right tracking-wider">Fuel</th>
                         <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet</th>
+                        <th className="px-6 py-4 font-semibold text-right tracking-wider">Expenses</th>
                         <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Payout</th>
                         <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Balance</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {loading ? (
-                         <tr><td colSpan={7} className="p-8 text-center text-slate-400">Loading balances...</td></tr>
+                         <tr><td colSpan={8} className="p-8 text-center text-slate-400">Loading balances...</td></tr>
                       ) : filteredSummaries.length === 0 ? (
-                         <tr><td colSpan={7} className="p-8 text-center text-slate-400">No drivers found.</td></tr>
+                         <tr><td colSpan={8} className="p-8 text-center text-slate-400">No drivers found.</td></tr>
                       ) : (
                         filteredSummaries.map((driver) => (
                           <tr key={driver.driver} className="hover:bg-slate-50 transition-colors group">
@@ -666,6 +670,7 @@ const DriverBillingsPage: React.FC = () => {
                             <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalRent)}</td>
                             <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalFuel)}</td>
                             <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalWalletWeek)}</td>
+                            <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalExpenses)}</td>
                             <td className="px-6 py-4 text-right">
                               <div
                                 className="flex flex-col items-end gap-1 cursor-pointer"
@@ -710,6 +715,7 @@ const DriverBillingsPage: React.FC = () => {
                         <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.rent)}</td>
                         <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.fuel)}</td>
                         <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.wallet)}</td>
+                        <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.expenses)}</td>
                         <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.netPayout)}</td>
                         <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.finalTotal)}</td>
                       </tr>
