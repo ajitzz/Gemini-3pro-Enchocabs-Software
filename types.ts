@@ -53,6 +53,7 @@ export interface DriverBillingRecord {
   walletOverdue: number; // From DailyEntry.due
   adjustments: number;
   payout: number;
+  expenses: number; // New: Expenses deducted
   status: 'Pending' | 'Paid' | 'Finalized';
   generatedAt: string;
 }
@@ -102,6 +103,14 @@ export interface LeaveRecord {
 export interface AssetMaster {
   vehicles: string[]; // List of all owned vehicles
   qrCodes: string[]; // List of all owned QR codes
+  vehicleFirstFuelRecords?: VehicleFirstFuelRecord[];
+}
+
+export interface VehicleFirstFuelRecord {
+  vehicle: string;
+  driverId: string;
+  driverName: string;
+  amount: number;
 }
 
 export interface DriverSummary {
@@ -112,6 +121,7 @@ export interface DriverSummary {
   totalDue: number;
   totalPayout: number;
   totalWalletWeek: number;
+  totalExpenses: number; // New: Total expenses for this driver
   finalTotal: number; // Represents overall net balance from start to end
   netPayout: number; // Represents the lowest payout amount (overall vs latest wallet window)
   netPayoutSource: 'overall' | 'latest-wallet';
@@ -243,4 +253,19 @@ export interface DriverWidgetSummary {
   netPayoutSource: 'overall' | 'latest-wallet';
   netPayoutRange?: string | null;
   updatedAt: string;
+}
+
+export interface ExpenseSplit {
+  driverId: string;
+  amount: number;
+}
+
+export interface Expense {
+  id: string;
+  date: string; // ISO YYYY-MM-DD
+  category: 'Food' | 'Travel' | 'Ticket' | 'Other';
+  description: string;
+  totalAmount: number;
+  splits: ExpenseSplit[];
+  createdAt: string;
 }

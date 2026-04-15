@@ -7,6 +7,7 @@ type DailyEntryBootstrapResponse = {
   drivers: Driver[];
   leaves: LeaveRecord[];
   weeklyWallets: WeeklyWallet[];
+  expenses: Expense[];
 };
 
 type DriverScopedQueryParams = {
@@ -385,6 +386,7 @@ export const storageService = {
       drivers: payload.drivers,
       leaves: payload.leaves,
       weeklyWallets: payload.weeklyWallets,
+      expenses: payload.expenses || [],
     };
   },
   getDailyEntriesFresh: async (): Promise<DailyEntry[]> => api.get(`/daily-entries${buildQueryString({ fresh: 1 })}`, { skipMemoryCache: true }),
@@ -401,6 +403,11 @@ export const storageService = {
   saveWeeklyWallet: async (wallet: WeeklyWallet): Promise<WeeklyWallet> => api.post('/weekly-wallets', wallet),
   saveWeeklyWalletsBulk: async (newWallets: WeeklyWallet[]): Promise<void> => Promise.all(newWallets.map(w => api.post('/weekly-wallets', w))).then(() => {}),
   deleteWeeklyWallet: async (id: string): Promise<void> => api.delete(`/weekly-wallets/${id}`),
+
+  // --- Expenses ---
+  getExpenses: async (): Promise<Expense[]> => api.get('/expenses'),
+  saveExpense: async (expense: Expense): Promise<Expense> => api.post('/expenses', expense),
+  deleteExpense: async (id: string): Promise<void> => api.delete(`/expenses/${id}`),
 
   // --- Driver Billings (NEW) ---
   getDriverWidgetSummary: async (driverId: string, token?: string): Promise<DriverWidgetSummary> => {

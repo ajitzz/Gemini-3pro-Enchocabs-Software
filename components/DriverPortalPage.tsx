@@ -8,11 +8,10 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   Download, Calendar, Wallet, FileText, ChevronRight, LogOut, 
   UserCircle, TrendingUp, TrendingDown, DollarSign, MapPin, 
-  CheckCircle, AlertCircle, Eye, X, ShieldCheck, Users, ArrowLeft, Lock, ArrowRight, Gauge, BarChart3, ChevronDown, Copy, AlertTriangle, ArrowUpRight, Clock, Ticket, Utensils, Bell
+  CheckCircle, AlertCircle, Eye, X, ShieldCheck, Users, ArrowLeft, Lock, ArrowRight, Gauge, BarChart3, ChevronDown, Copy, AlertTriangle, ArrowUpRight, Clock, Ticket, Utensils, Bell, Phone, MessageCircle
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import NetCalculationPopup from './NetCalculationPopup';
-import DriverMobileWidgetCard from './driver/DriverMobileWidgetCard';
 import { registerDriverPushNotifications } from '../lib/pushNotifications';
 
 type PortalDailyEntry = DailyEntry & { adjustmentApplied?: number; adjustedDue?: number };
@@ -51,7 +50,6 @@ const DriverPortalPage: React.FC = () => {
   const [copiedDriverId, setCopiedDriverId] = useState<string | null>(null);
   const [teamCashModes, setTeamCashModes] = useState<Record<string, CashMode>>({});
   const [teamCashModeUpdating, setTeamCashModeUpdating] = useState<Record<string, boolean>>({});
-  const [widgetUpdatedAt, setWidgetUpdatedAt] = useState<number>(Date.now());
   const [unreadUpdateCount, setUnreadUpdateCount] = useState(0);
   const [lastUpdateLabel, setLastUpdateLabel] = useState<string | null>(null);
   const [calcPopup, setCalcPopup] = useState<{
@@ -338,8 +336,8 @@ const DriverPortalPage: React.FC = () => {
           const sortedSlabs = slabs.sort((a, b) => a.minTrips - b.minTrips);
           setRentalSlabs(sortedSlabs);
 
+          setDriversList(visibleDrivers.sort((a, b) => a.name.localeCompare(b.name)));
           if (user?.role === 'admin' || user?.role === 'super_admin') {
-              setDriversList(visibleDrivers.sort((a, b) => a.name.localeCompare(b.name)));
               lastDriversRefreshRef.current = Date.now();
           }
 
@@ -422,7 +420,6 @@ const DriverPortalPage: React.FC = () => {
   const refreshPortalData = useCallback(async (options?: { includeDrivers?: boolean }) => {
       if (!user || !viewingAsDriver) return;
       try {
-          const isAdminUser = user.role === 'admin' || user.role === 'super_admin';
           const shouldLoadDrivers = options?.includeDrivers ?? false;
           const scopedDriverNames = getScopedDriverNames(viewingAsDriver.name);
 
@@ -433,8 +430,9 @@ const DriverPortalPage: React.FC = () => {
           const dailyEntries = bootstrapPayload.entries;
           const weeklyWallets = bootstrapPayload.weeklyWallets;
 
-          if (drivers && isAdminUser) {
-              setDriversList(drivers.sort((a, b) => a.name.localeCompare(b.name)));
+          if (drivers) {
+              const visibleDrivers = drivers.filter(d => !d.isHidden);
+              setDriversList(visibleDrivers.sort((a, b) => a.name.localeCompare(b.name)));
           }
 
           const updatedDriver = drivers?.find(d => d.id === viewingAsDriver.id);
@@ -454,8 +452,6 @@ const DriverPortalPage: React.FC = () => {
           const activeName = updatedDriver?.name || viewingAsDriver.name;
           setRawDaily(allDaily.filter(d => d.driver === activeName).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
           setRawWeekly(allWeekly.filter(w => w.driver === activeName).sort((a,b) => new Date(b.weekStartDate).getTime() - new Date(a.weekStartDate).getTime()));
-
-          setWidgetUpdatedAt(Date.now());
 
           if (myTeam.length > 0) {
               const balances: Record<string, number> = {};
@@ -845,6 +841,31 @@ const DriverPortalPage: React.FC = () => {
 
   const netBalance = driverStats?.finalTotal ?? 0;
   const hasFoodAccess = user?.role === 'driver' && Boolean(viewingAsDriver?.foodOption);
+
+  const vehiclePartnerDriver = useMemo(() => {
+      if (!viewingAsDriver?.vehicle) return null;
+
+      return driversList.find(driver =>
+          !driver.terminationDate &&
+          driver.id !== viewingAsDriver.id &&
+          driver.vehicle === viewingAsDriver.vehicle
+      ) || null;
+  }, [driversList, viewingAsDriver]);
+
+  const normalizePhoneForWhatsApp = (value?: string) => {
+      const digits = (value || '').replace(/[^\d]/g, '');
+      if (!digits) return '';
+
+      if (digits.length === 10) {
+          return `91${digits}`;
+      }
+
+      if (digits.length === 11 && digits.startsWith('0')) {
+          return `91${digits.slice(1)}`;
+      }
+
+      return digits;
+  };
   const isFoodTicketActive = netBalance >= 0;
 
   useEffect(() => {
@@ -965,6 +986,20 @@ const DriverPortalPage: React.FC = () => {
         const monthEarningRanges = currentMonthWeeks.map(w => `${formatDate(w.weekStartDate)} - ${formatDate(w.weekEndDate)}`);
         monthWallet = currentMonthWeeks.reduce((sum, w) => sum + calculateWalletWeek(w), 0);
 
+        // Calculate month expenses from billing data
+        let monthExpenses = 0;
+        const monthBills = billingData.filter(b => {
+            if (b.isAggregate) return false;
+            if (!b.dailyDetails || b.dailyDetails.length === 0) return false;
+            
+            // Check if any daily detail falls within the current month
+            return b.dailyDetails.some((d: any) => {
+                const date = new Date(d.date);
+                return date.getFullYear() === currentYear && date.getMonth() === currentMonth;
+            });
+        });
+        monthExpenses = monthBills.reduce((sum, bill) => sum + (bill.expenses || 0), 0);
+
         const monthDaily = rawDaily.filter(entry => {
             const d = new Date(entry.date);
             return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
@@ -1005,6 +1040,7 @@ const DriverPortalPage: React.FC = () => {
         let rangeTrips = 0;
         let rangeWallet = 0;
         let rangeFuel = 0;
+        let rangeExpenses = 0;
 
         let rangeLabel: string | undefined;
         let rangeSummary: string | undefined;
@@ -1047,6 +1083,21 @@ const DriverPortalPage: React.FC = () => {
 
             rangeWallet = rangeWeekly.reduce((sum, week) => sum + calculateWalletWeek(week), 0);
             rangeEarnings = rangeWeekly.reduce((sum, week) => sum + (week.earnings || 0), 0);
+            
+            // Calculate range expenses from billing data
+            const rangeBills = billingData.filter(b => {
+                if (b.isAggregate) return false;
+                if (!b.dailyDetails || b.dailyDetails.length === 0) return false;
+                
+                // Check if any daily detail falls within the range
+                return b.dailyDetails.some((d: any) => {
+                    const date = new Date(d.date).getTime();
+                    if (filterStart !== null && date < filterStart) return false;
+                    if (filterEnd !== null && date > filterEnd) return false;
+                    return true;
+                });
+            });
+            rangeExpenses = rangeBills.reduce((sum, bill) => sum + (bill.expenses || 0), 0);
         }
 
         // Latest Week Details
@@ -1063,6 +1114,7 @@ const DriverPortalPage: React.FC = () => {
             monthPayout,
             monthWallet,
             monthFuel,
+            monthExpenses,
             totalDues,
             yearCollection,
             latestWeekTrips,
@@ -1075,6 +1127,7 @@ const DriverPortalPage: React.FC = () => {
             monthNetPayout: monthStats.netPayout,
             rangeWallet,
             rangeFuel,
+            rangeExpenses,
             rangeCollection,
             rangeRent,
             rangeDues,
@@ -1085,7 +1138,7 @@ const DriverPortalPage: React.FC = () => {
             rangeWalletWeeksLabel,
             rangeSummary,
         };
-    }, [dailyWithAdjustments, filteredDaily, fromDate, getAdjustedDue, isDateFilterActive, rawDaily, rawWeekly, rentalSlabs, toDate, viewingAsDriver]);
+    }, [dailyWithAdjustments, filteredDaily, fromDate, getAdjustedDue, isDateFilterActive, rawDaily, rawWeekly, rentalSlabs, toDate, viewingAsDriver, billingData]);
 
   // --- 4. DYNAMIC CARD DATA ---
     const topCards: any = useMemo(() => {
@@ -1160,6 +1213,11 @@ const DriverPortalPage: React.FC = () => {
                                 colorClass: 'text-amber-600'
                             },
                             {
+                                label: 'Expenses',
+                                value: aggregatedStats.rangeExpenses,
+                                colorClass: 'text-rose-500'
+                            },
+                            {
                                 label: 'Dues',
                                 value: aggregatedStats.rangeDues,
                                 colorClass: 'text-rose-500'
@@ -1190,6 +1248,11 @@ const DriverPortalPage: React.FC = () => {
                                 label: 'Month Fuel',
                                 value: aggregatedStats.monthFuel,
                                 colorClass: 'text-amber-600'
+                            },
+                            {
+                                label: 'Expenses',
+                                value: aggregatedStats.monthExpenses,
+                                colorClass: 'text-rose-500'
                             },
                             {
                                 label: 'Dues',
@@ -1299,6 +1362,7 @@ const DriverPortalPage: React.FC = () => {
                <div class="st-row"><span class="st-label">Wallet Earnings (Weekly)</span><span class="st-val green">+ ${formatCurrency(bill.wallet)}</span></div>
                <div class="st-row"><span class="st-label">Rental Collection</span><span class="st-val green">+ ${formatCurrency(bill.collection)}</span></div>
                <div class="st-row"><span class="st-label">Previous Dues/Credit</span><span class="st-val">${formatCurrency(bill.overdue)}</span></div>
+               ${(bill.expenses || 0) > 0 ? `<div class="st-row"><span class="st-label">Expenses</span><span class="st-val red">- ${formatCurrency(bill.expenses)}</span></div>` : ''}
             </div>
             <div class="net-box">
                <span class="net-label">WEEK PAYOUT</span>
@@ -1512,14 +1576,48 @@ const DriverPortalPage: React.FC = () => {
                 </div>
            </div>
 
-           <DriverMobileWidgetCard
-               netBalance={netBalance}
-               netPayout={balanceSummary.netPayout}
-               connected={liveUpdatesConnected}
-               updatedAt={widgetUpdatedAt}
-               onOpenNetPayout={() => openCalculationPopup('netPayout')}
-               onOpenNetBalance={() => openCalculationPopup('netBalance')}
-           />
+           <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                  <div>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Assigned Vehicle</p>
+                      <p className="text-base font-bold text-slate-800 mt-1">{viewingAsDriver.vehicle || 'No Vehicle Assigned'}</p>
+                  </div>
+                  <div className="text-right">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Current Shift</p>
+                      <p className="text-sm font-semibold text-slate-700 mt-1">{viewingAsDriver.currentShift}</p>
+                  </div>
+              </div>
+
+              <div className="mt-4 pt-4 border-t border-slate-100">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 mb-2">Other Driver on Same Vehicle</p>
+                  {vehiclePartnerDriver ? (
+                      <div className="flex items-start justify-between gap-3">
+                          <div>
+                              <p className="text-sm font-bold text-slate-800">{vehiclePartnerDriver.name}</p>
+                              <p className="text-xs text-slate-500">📞 {vehiclePartnerDriver.mobile}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                              <a
+                                  href={`tel:${vehiclePartnerDriver.mobile}`}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 transition-colors"
+                              >
+                                  <Phone size={12} /> Call
+                              </a>
+                              <a
+                                  href={`https://wa.me/${normalizePhoneForWhatsApp(vehiclePartnerDriver.mobile)}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+                              >
+                                  <MessageCircle size={12} /> WhatsApp
+                              </a>
+                          </div>
+                      </div>
+                  ) : (
+                      <p className="text-xs text-slate-500">No other driver assigned to this vehicle right now.</p>
+                  )}
+              </div>
+           </div>
 
            {/* Top Cards Grid (Dynamic) */}
            <div className="grid grid-cols-2 gap-4 mb-2">
@@ -1900,7 +1998,7 @@ const DriverPortalPage: React.FC = () => {
                                           </span>
                                       </div>
 
-                                      <div className="grid grid-cols-5 gap-2 text-[10px] text-slate-500 bg-slate-50/50 p-2 rounded-lg">
+                                      <div className="grid grid-cols-6 gap-2 text-[10px] text-slate-500 bg-slate-50/50 p-2 rounded-lg">
                                           <div>
                                               <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Rent</span>
                                               {formatCurrency(entry.rent)}
@@ -1908,6 +2006,21 @@ const DriverPortalPage: React.FC = () => {
                                           <div>
                                               <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Fuel</span>
                                               {formatCurrency(entry.fuel)}
+                                          </div>
+                                          <div>
+                                              <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Exp</span>
+                                              <span className="text-rose-600 font-bold">
+                                                  {(() => {
+                                                      // Find expenses for this date
+                                                      const dateStr = new Date(entry.date).toISOString().split('T')[0];
+                                                      const billForDate = billingData.find(b => !b.isAggregate && b.dailyDetails?.some((d: any) => d.date.startsWith(dateStr)));
+                                                      if (billForDate && billForDate.dailyDetails) {
+                                                          const detail = billForDate.dailyDetails.find((d: any) => d.date.startsWith(dateStr));
+                                                          return detail && detail.expenses ? formatCurrency(detail.expenses) : '—';
+                                                      }
+                                                      return '—';
+                                                  })()}
+                                              </span>
                                           </div>
                                           <div>
                                               <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Due</span>
@@ -2056,6 +2169,9 @@ const DriverPortalPage: React.FC = () => {
                                 <div className="flex justify-between"><span className="text-slate-600 font-medium">Wallet Earnings (Weekly)</span><span className="font-bold text-emerald-600">+ {formatCurrency(selectedBill.wallet)}</span></div>
                                 <div className="flex justify-between"><span className="text-slate-600 font-medium">Rental Collection</span><span className="font-bold text-emerald-600">+ {formatCurrency(selectedBill.collection)}</span></div>
                                 <div className="flex justify-between"><span className="text-slate-600 font-medium">Previous Dues/Credit</span><span className="font-bold text-slate-800">{formatCurrency(selectedBill.overdue)}</span></div>
+                                {(selectedBill.expenses || 0) > 0 && (
+                                    <div className="flex justify-between"><span className="text-slate-600 font-medium">Expenses</span><span className="font-bold text-rose-600">- {formatCurrency(selectedBill.expenses)}</span></div>
+                                )}
                             </div>
                             <div className="mt-6 bg-slate-100 p-4 rounded-xl flex justify-between items-center border-l-4 border-slate-800">
                                 <span className="text-sm font-bold text-slate-700 uppercase">Week Payout</span>
