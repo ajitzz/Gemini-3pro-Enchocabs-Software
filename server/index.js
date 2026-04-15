@@ -3181,17 +3181,18 @@ app.post('/api/leaves', async (req, res) => {
       return res.status(400).json({ error: 'actualReturnDate cannot be before startDate.' });
     }
 
+    const requestedEffectiveEndDate = actualReturnDate || endDate;
     const overlapCheck = await db.query(
       `
         SELECT id
         FROM leaves
         WHERE driver_id = $1
           AND id <> $2
-          AND daterange(start_date, COALESCE(actual_return_date + 1, 'infinity'::date), '[)')
-              && daterange($3::date, COALESCE($4::date + 1, 'infinity'::date), '[)')
+          AND daterange(start_date, COALESCE(actual_return_date + 1, end_date + 1, 'infinity'::date), '[)')
+              && daterange($3::date, $4::date + 1, '[)')
         LIMIT 1
       `,
-      [driverId, id, startDate, actualReturnDate, endDate],
+      [driverId, id, startDate, requestedEffectiveEndDate],
     );
 
     if ((overlapCheck.rowCount || 0) > 0) {
