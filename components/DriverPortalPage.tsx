@@ -1935,7 +1935,7 @@ const DriverPortalPage: React.FC = () => {
                                        <p className="text-sm font-bold text-emerald-600">+{formatCurrency(entry.collection)}</p>
                                        <p className="text-[10px] text-slate-400">Rent: {formatCurrency(entry.rent)}</p>
                                        {entryExpense > 0 && (
-                                           <p className="text-[10px] text-rose-500 font-semibold">Expenses: -{formatCurrency(entryExpense)}</p>
+                                           <p className="text-[10px] text-rose-500 font-semibold">Expe: -{formatCurrency(entryExpense)}</p>
                                        )}
                                    </div>
                               </div>
@@ -2021,6 +2021,8 @@ const DriverPortalPage: React.FC = () => {
                       ) : (
                           filteredDaily.map(entry => {
                                       const adjustedDue = getAdjustedDue(entry);
+                                      const entryExpense = expensesByDate[entry.date] || 0;
+                                      const showExpense = entryExpense > 0;
 
                               return (
                                   <div key={entry.id} className="p-4 hover:bg-slate-50 transition-colors">
@@ -2039,7 +2041,7 @@ const DriverPortalPage: React.FC = () => {
                                           </span>
                                       </div>
 
-                                      <div className="grid grid-cols-6 gap-2 text-[10px] text-slate-500 bg-slate-50/50 p-2 rounded-lg">
+                                      <div className={`grid ${showExpense ? 'grid-cols-6' : 'grid-cols-5'} gap-2 text-[10px] text-slate-500 bg-slate-50/50 p-2 rounded-lg`}>
                                           <div>
                                               <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Rent</span>
                                               {formatCurrency(entry.rent)}
@@ -2061,20 +2063,14 @@ const DriverPortalPage: React.FC = () => {
                                                   ) : null}
                                               </div>
                                           </div>
-                                          {(expensesByDate[entry.date] || 0) > 0 && (
+                                          {showExpense && (
                                               <div>
-                                                  <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Expense</span>
+                                                  <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Expe</span>
                                                   <span className="text-rose-600 font-semibold">
-                                                      - {formatCurrency(expensesByDate[entry.date] || 0)}
+                                                      - {formatCurrency(entryExpense)}
                                                   </span>
                                               </div>
                                           )}
-                                          <div>
-                                              <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Expense</span>
-                                              <span className="text-rose-600 font-semibold">
-                                                  - {formatCurrency(expensesByDate[entry.date] || 0)}
-                                              </span>
-                                          </div>
                                           <div>
                                               {(() => {
                                                   const weeklyWallet = weeklyWalletByEntryId.get(entry.id);
