@@ -990,19 +990,6 @@ const initDb = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
-
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS expenses (
-        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-        date DATE NOT NULL,
-        category TEXT NOT NULL,
-        description TEXT,
-        total_amount NUMERIC NOT NULL,
-        splits JSONB NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-
     // 2. Migrations / Updates
     await db.query(`
       DO $$
@@ -1018,9 +1005,6 @@ const initDb = async () => {
           END IF;
           IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='driver_billings' AND column_name='due') THEN
               ALTER TABLE driver_billings ADD COLUMN due NUMERIC DEFAULT 0;
-          END IF;
-          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='driver_billings' AND column_name='expenses') THEN
-              ALTER TABLE driver_billings ADD COLUMN expenses NUMERIC DEFAULT 0;
           END IF;
           IF NOT EXISTS (
               SELECT 1 FROM information_schema.table_constraints
@@ -1147,7 +1131,7 @@ const normalizeDailyRow = (row) => ({
   due: Number(row.due) || 0
 });
 
-const buildBillingRecord = ({ wallet, entries, driverInfo, driverRentalSlabs, expenses = 0 }) => {
+const buildBillingRecord = ({ wallet, entries, driverInfo, driverRentalSlabs }) => {
   if (!wallet || entries.length === 0) return null;
 
   const driverName = wallet?.driver || entries[0]?.driver;
@@ -1179,7 +1163,7 @@ const buildBillingRecord = ({ wallet, entries, driverInfo, driverRentalSlabs, ex
   const adjustments = wallet ? Number(wallet.adjustments || 0) : 0;
   const dueWithAdjustments = baseDue + adjustments;
 
-  const payout = collection - rentTotal - fuel + dueWithAdjustments + walletAmount - expenses;
+  const payout = collection - rentTotal - fuel + dueWithAdjustments + walletAmount;
 
   return {
     driver_id: driverInfo.id || null,
@@ -1197,19 +1181,17 @@ const buildBillingRecord = ({ wallet, entries, driverInfo, driverRentalSlabs, ex
     wallet: walletAmount,
     wallet_overdue: dueWithAdjustments,
     adjustments,
-    expenses,
     payout,
     status: 'Finalized'
   };
 };
 
 const calculateDriverBillings = async () => {
-  const [slabRes, walletRes, dailyRes, driverRes, expenseRes] = await Promise.all([
+  const [slabRes, walletRes, dailyRes, driverRes] = await Promise.all([
     db.query("SELECT min_trips as \"minTrips\", max_trips as \"maxTrips\", rent_amount as \"rentAmount\" FROM rental_slabs WHERE slab_type = 'driver' ORDER BY min_trips"),
     db.query("SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as week_start_date, to_char(week_end_date, 'YYYY-MM-DD') as week_end_date, earnings, refund, diff, cash, charges, trips, wallet_week, rent_override, days_worked_override, adjustments, notes FROM weekly_wallets"),
     db.query("SELECT id, to_char(date, 'YYYY-MM-DD') as date, driver, shift, qr_code, collection, fuel, due FROM daily_entries"),
-    db.query("SELECT id, name, qr_code FROM drivers WHERE COALESCE(is_hidden, FALSE) = FALSE"),
-    db.query("SELECT id, to_char(date, 'YYYY-MM-DD') as date, splits FROM expenses")
+    db.query("SELECT id, name, qr_code FROM drivers WHERE COALESCE(is_hidden, FALSE) = FALSE")
   ]);
 
   const rentalSlabs = slabRes.rows.map(r => ({
@@ -1243,18 +1225,6 @@ const driverRentalSlabs = rentalSlabs.length > 0 ? rentalSlabs : defaultDriverRe
     dailyGroups.set(key, group);
   });
 
-  const expensesByWeekAndDriver = new Map();
-  expenseRes.rows.forEach(e => {
-    const start = getMondayISO(e.date);
-    if (!start || !e.splits) return;
-    
-    e.splits.forEach(split => {
-      if (!split.driverId || !split.amount) return;
-      const key = `${start}__${split.driverId}`;
-      expensesByWeekAndDriver.set(key, (expensesByWeekAndDriver.get(key) || 0) + Number(split.amount));
-    });
-  });
-
   const allKeys = new Set([...walletMap.keys(), ...dailyGroups.keys()]);
   const billings = [];
 
@@ -1265,17 +1235,11 @@ const driverRentalSlabs = rentalSlabs.length > 0 ? rentalSlabs : defaultDriverRe
     if (!driverName) return;
 
     const driverInfo = driverIndex.get(normalizeDriver(driverName)) || {};
-    
-    // Find expenses for this driver and week
-    const expenseKey = `${key.split('__')[0]}__${driverInfo.id}`;
-    const expenses = expensesByWeekAndDriver.get(expenseKey) || 0;
-
     const record = buildBillingRecord({
       wallet,
       entries,
       driverInfo,
-      driverRentalSlabs,
-      expenses
+      driverRentalSlabs
     });
 
     if (record) {
@@ -1292,7 +1256,7 @@ const fetchDriverBillingForWeek = async ({ driverName, weekStart }) => {
   const weekEnd = getSundayISO(weekStart);
   if (!weekEnd) return null;
 
-  const [slabRes, walletRes, dailyRes, driverRes, expenseRes] = await Promise.all([
+  const [slabRes, walletRes, dailyRes, driverRes] = await Promise.all([
     db.query("SELECT min_trips as \"minTrips\", max_trips as \"maxTrips\", rent_amount as \"rentAmount\" FROM rental_slabs WHERE slab_type = 'driver' ORDER BY min_trips"),
     db.query(
       `SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as week_start_date, to_char(week_end_date, 'YYYY-MM-DD') as week_end_date, earnings, refund, diff, cash, charges, trips, wallet_week, rent_override, days_worked_override, adjustments, notes
@@ -1309,11 +1273,7 @@ const fetchDriverBillingForWeek = async ({ driverName, weekStart }) => {
          AND date BETWEEN $2::date AND $3::date`,
       [driverName, weekStart, weekEnd]
     ),
-    db.query("SELECT id, name, qr_code FROM drivers WHERE lower(name) = lower($1) AND COALESCE(is_hidden, FALSE) = FALSE LIMIT 1", [driverName]),
-    db.query(
-      `SELECT splits FROM expenses WHERE date BETWEEN $1::date AND $2::date`,
-      [weekStart, weekEnd]
-    )
+    db.query("SELECT id, name, qr_code FROM drivers WHERE lower(name) = lower($1) AND COALESCE(is_hidden, FALSE) = FALSE LIMIT 1", [driverName])
   ]);
 
   const rentalSlabs = slabRes.rows.map((r) => ({
@@ -1333,25 +1293,11 @@ const fetchDriverBillingForWeek = async ({ driverName, weekStart }) => {
     qrCode: driverInfoRow.qr_code || null
   };
 
-  let expenses = 0;
-  if (driverInfo.id) {
-    expenseRes.rows.forEach(e => {
-      if (e.splits) {
-        e.splits.forEach(split => {
-          if (split.driverId === driverInfo.id) {
-            expenses += Number(split.amount);
-          }
-        });
-      }
-    });
-  }
-
   return buildBillingRecord({
     wallet,
     entries,
     driverInfo,
-    driverRentalSlabs,
-    expenses
+    driverRentalSlabs
   });
 };
 
@@ -1445,23 +1391,23 @@ const syncDriverBillings = async () => {
         `INSERT INTO driver_billings (
           id, driver_id, driver_name, qr_code, week_start_date, week_end_date,
           days_worked, trips, rent_per_day, rent_total, collection, due, fuel,
-          wallet, wallet_overdue, adjustments, expenses, payout, status, generated_at
+          wallet, wallet_overdue, adjustments, payout, status, generated_at
         ) VALUES (
           $1, $2, $3, $4, $5, $6,
           $7, $8, $9, $10, $11, $12, $13,
-          $14, $15, $16, $17, $18, $19, NOW()
+          $14, $15, $16, $17, $18, NOW()
         )
         ON CONFLICT (id) DO UPDATE SET
           driver_id = $2, driver_name = $3, qr_code = $4,
           week_start_date = $5, week_end_date = $6,
           days_worked = $7, trips = $8, rent_per_day = $9, rent_total = $10,
           collection = $11, due = $12, fuel = $13, wallet = $14, wallet_overdue = $15,
-          adjustments = $16, expenses = $17, payout = $18, status = $19, generated_at = NOW();
+          adjustments = $16, payout = $17, status = $18, generated_at = NOW();
         `,
         [
           idToUse, bill.driver_id, bill.driver_name, bill.qr_code, bill.week_start_date, bill.week_end_date,
           bill.days_worked, bill.trips, bill.rent_per_day, bill.rent_total, bill.collection, bill.due, bill.fuel,
-          bill.wallet, bill.wallet_overdue, bill.adjustments, bill.expenses || 0, bill.payout, bill.status
+          bill.wallet, bill.wallet_overdue, bill.adjustments, bill.payout, bill.status
         ]
       );
   // Keep daily entries in sync with the computed rent/day for the week.
@@ -1698,7 +1644,7 @@ app.get('/api/driver-billings', async (req, res) => {
         to_char(week_end_date, 'YYYY-MM-DD') as "weekEndDate",
         days_worked as "daysWorked", trips, rent_per_day as "rentPerDay",
         rent_total as "rentTotal", collection, due, fuel, wallet,
-        wallet_overdue as "walletOverdue", adjustments, expenses, payout, status,
+        wallet_overdue as "walletOverdue", adjustments, payout, status,
         generated_at as "generatedAt"
       FROM driver_billings
       ORDER BY week_start_date DESC, driver_name ASC
@@ -1709,7 +1655,7 @@ app.get('/api/driver-billings', async (req, res) => {
       rentPerDay: Number(r.rentPerDay), rentTotal: Number(r.rentTotal),
       collection: Number(r.collection), due: Number(r.due), fuel: Number(r.fuel),
       wallet: Number(r.wallet), walletOverdue: Number(r.walletOverdue),
-      adjustments: Number(r.adjustments), expenses: Number(r.expenses || 0), payout: Number(r.payout)
+      adjustments: Number(r.adjustments), payout: Number(r.payout)
     }));
 
     const etag = computeEtag(safeRows);
@@ -2171,7 +2117,7 @@ app.get('/api/daily-entries/bootstrap', async (req, res) => {
     )`;
     const walletsWhereClause = `WHERE ${[...walletsFilters, walletVisibilityFilter].join(' AND ')}`;
 
-    const [dailyRes, driversRes, leavesRes, walletsRes, expensesRes] = await Promise.all([
+    const [dailyRes, driversRes, leavesRes, walletsRes] = await Promise.all([
       metaOnly
         ? Promise.resolve({ rows: [] })
         : db.query(
@@ -2196,9 +2142,6 @@ app.get('/api/daily-entries/bootstrap', async (req, res) => {
        FROM weekly_wallets
        ${walletsWhereClause}
        ORDER BY week_start_date DESC`, walletsValues),
-      includeMeta
-        ? db.query(`SELECT id, to_char(date, 'YYYY-MM-DD') as date, category, description, total_amount as "totalAmount", splits, created_at as "createdAt" FROM expenses ORDER BY date DESC, created_at DESC`)
-        : Promise.resolve({ rows: [] }),
     ]);
 
     const payload = {
@@ -2215,10 +2158,6 @@ app.get('/api/daily-entries/bootstrap', async (req, res) => {
         rentOverride: r.rentOverride !== null ? Number(r.rentOverride) : undefined,
         adjustments: Number(r.adjustments || 0)
       })),
-      expenses: expensesRes.rows.map(r => ({
-        ...r,
-        totalAmount: Number(r.totalAmount)
-      })),
     };
 
     if (!cacheBypass) {
@@ -2234,69 +2173,6 @@ app.get('/api/daily-entries/bootstrap', async (req, res) => {
     if (err.message && err.message.startsWith('Invalid')) {
       return res.status(400).json({ error: err.message });
     }
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// --- Expenses ---
-app.get('/api/expenses', async (req, res) => {
-  try {
-    const result = await db.query('SELECT * FROM expenses ORDER BY date DESC, created_at DESC');
-    const expenses = result.rows.map(row => ({
-      id: row.id,
-      date: toISODate(row.date),
-      category: row.category,
-      description: row.description,
-      totalAmount: parseFloat(row.total_amount),
-      splits: row.splits,
-      createdAt: row.created_at
-    }));
-    res.json(expenses);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/expenses', async (req, res) => {
-  const e = req.body;
-  try {
-    const isoDate = toISODate(e.date);
-    if (!isoDate) return res.status(400).json({ error: 'Invalid date format' });
-
-    const result = await db.query(
-      `INSERT INTO expenses (id, date, category, description, total_amount, splits)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (id) DO UPDATE SET
-       date = EXCLUDED.date,
-       category = EXCLUDED.category,
-       description = EXCLUDED.description,
-       total_amount = EXCLUDED.total_amount,
-       splits = EXCLUDED.splits
-       RETURNING *`,
-      [e.id || uuidv4(), isoDate, e.category, e.description, e.totalAmount, JSON.stringify(e.splits)]
-    );
-    
-    // Invalidate caches that might rely on expenses
-    await invalidateNamespace(QUERY_CACHE_NAMESPACE.dailyEntries);
-    await invalidateNamespace(QUERY_CACHE_NAMESPACE.driverBillings);
-    
-    res.json({
-      ...result.rows[0],
-      date: toISODate(result.rows[0].date),
-      totalAmount: parseFloat(result.rows[0].total_amount)
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.delete('/api/expenses/:id', async (req, res) => {
-  try {
-    await db.query('DELETE FROM expenses WHERE id = $1', [req.params.id]);
-    await invalidateNamespace(QUERY_CACHE_NAMESPACE.dailyEntries);
-    await invalidateNamespace(QUERY_CACHE_NAMESPACE.driverBillings);
-    res.json({ success: true });
-  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

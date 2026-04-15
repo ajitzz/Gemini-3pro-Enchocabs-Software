@@ -252,8 +252,7 @@ const DriverBillingsPage: React.FC = () => {
             rentPerDay: derivedRentPerDay,
             rentTotal: derivedRentTotal,
             daysWorked: derivedDaysWorked,
-            appliedAdjustment: derivedAdjustments,
-            expenses: bill.expenses || 0
+            appliedAdjustment: derivedAdjustments
         };
     });
 
@@ -305,7 +304,6 @@ const DriverBillingsPage: React.FC = () => {
                   wallet: 0,
                   walletOverdue: 0,
                   payout: 0,
-                  expenses: 0,
                   weekRange: 'All Time',
                   isAggregate: true,
                   isProvisional: false,
@@ -328,7 +326,6 @@ const DriverBillingsPage: React.FC = () => {
               entry.wallet += (bill.wallet || 0);
               entry.walletOverdue += ovr;
               entry.payout += (bill.payout || 0);
-              entry.expenses += (bill.expenses || 0);
           });
 
           return Array.from(aggMap.values()).map(e => ({
@@ -377,7 +374,6 @@ const DriverBillingsPage: React.FC = () => {
           acc.wallet += deriveWalletWeek(bill);
           acc.walletOverdue += bill.walletOverdue || 0;
           acc.payout += bill.payout || 0;
-          acc.expenses += bill.expenses || 0;
           return acc;
       }, {
           daysWorked: 0,
@@ -389,8 +385,7 @@ const DriverBillingsPage: React.FC = () => {
           fuel: 0,
           wallet: 0,
           walletOverdue: 0,
-          payout: 0,
-          expenses: 0
+          payout: 0
       });
 
       return {
@@ -403,8 +398,7 @@ const DriverBillingsPage: React.FC = () => {
           fuel: Math.round(totals.fuel),
           wallet: Math.round(totals.wallet),
           walletOverdue: Math.round(totals.walletOverdue),
-          payout: Math.round(totals.payout),
-          expenses: Math.round(totals.expenses)
+          payout: Math.round(totals.payout)
       };
   }, [displayedBills]);
 
@@ -485,7 +479,6 @@ const DriverBillingsPage: React.FC = () => {
           wallet: bill.wallet,
           walletOverdue: bill.walletOverdue, // Uses normalized field
           adjustments: Math.max(0, bill.adjustments ?? 0),
-          expenses: bill.expenses || 0,
           payout: bill.payout,
           status: 'Finalized',
           generatedAt: new Date().toISOString()
@@ -557,7 +550,6 @@ const DriverBillingsPage: React.FC = () => {
                <div class="label">Rental Collection</div><div class="value positive">+ ${formatCurrency(bill.collection)}</div>
                <div class="label">Daily Dues</div><div class="value">${formatCurrency(bill.due)}</div>
                <div class="label">Wallet Overdue (Dues)</div><div class="value">${formatCurrency(bill.walletOverdue)}</div>
-               ${bill.expenses > 0 ? `<div class="label">Expenses</div><div class="value negative">- ${formatCurrency(bill.expenses)}</div>` : ''}
             </div>
             <div class="total-section"><div class="total-row"><div>NET PAYOUT</div><div>${formatCurrency(bill.payout)}</div></div></div>
             ${dailyRows ? `<div class="section-title">DAILY ACTIVITY LOG</div><table><thead><tr><th>DATE</th><th>DRIVER</th><th style="text-align:right">RENT</th><th style="text-align:right">COLLECTION</th><th style="text-align:right">FUEL</th><th style="text-align:right">DUES</th><th style="text-align:right">ADJUSTMENTS</th></tr></thead><tbody>${dailyRows}</tbody></table>` : ''}
@@ -737,7 +729,6 @@ const DriverBillingsPage: React.FC = () => {
                           <td className="px-6 py-3 text-right text-rose-500">-{formatIntegerCurrency(billingTotals.fuel)}</td>
                           <td className="px-6 py-3 text-right text-indigo-600">+{formatIntegerCurrency(billingTotals.wallet)}</td>
                           <td className="px-6 py-3 text-right">{formatIntegerCurrency(billingTotals.walletOverdue)}</td>
-                          <td className="px-6 py-3 text-right text-rose-500">-{formatIntegerCurrency(billingTotals.expenses)}</td>
                           <td className="px-6 py-3 text-right">{formatIntegerCurrency(billingTotals.payout)}</td>
                           <td className="px-6 py-3 text-center bg-white sticky right-0 shadow-[-4px_0_10px_-2px_rgba(0,0,0,0.02)]">—</td>
                         </tr>
@@ -855,7 +846,6 @@ const DriverBillingsPage: React.FC = () => {
                              <th className="px-6 py-4 text-right">FUEL</th>
                              <th className="px-6 py-4 text-right">WALLET</th>
                              <th className="px-6 py-4 text-right">WALLET OVERDUE</th>
-                             <th className="px-6 py-4 text-right">EXPENSES</th>
                              <th className="px-6 py-4 text-right">PAYOUT</th>
                              <th className="px-6 py-4 text-center bg-slate-50 sticky right-0 z-10 shadow-[-4px_0_10px_-2px_rgba(0,0,0,0.05)]">ACTIONS</th>
                           </tr>
@@ -912,7 +902,6 @@ const DriverBillingsPage: React.FC = () => {
                                        {bill.isProvisional ? <span className="text-slate-300">-</span> : `+${formatCurrency(bill.wallet)}`}
                                    </td>
                                    <td className="px-6 py-4 text-right text-slate-500">{formatCurrency(bill.walletOverdue)}</td>
-                                   <td className="px-6 py-4 text-right text-rose-500">-{formatCurrency(bill.expenses)}</td>
                                    <td className="px-6 py-4 text-right">
                                       <span className={`px-3 py-1 rounded-lg font-bold border ${bill.payout < 0 ? 'bg-rose-50 text-rose-700 border-rose-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>
                                          {formatCurrency(bill.payout)}
@@ -955,7 +944,7 @@ const DriverBillingsPage: React.FC = () => {
                                 </tr>
                                 {expandedBillIds.has(bill.id) && (
                                   <tr key={`${bill.id}-expanded`}>
-                                      <td colSpan={15} className="px-6 py-4 bg-slate-50/50 shadow-inner">
+                                      <td colSpan={14} className="px-6 py-4 bg-slate-50/50 shadow-inner">
                                           <div className="text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Daily Breakdown for {bill.driver}</div>
                                           <table className="w-full text-xs bg-white rounded-lg border border-slate-200 overflow-hidden">
                                               <thead className="bg-slate-100 text-slate-500 font-semibold">

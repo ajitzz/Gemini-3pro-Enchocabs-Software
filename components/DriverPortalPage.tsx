@@ -986,20 +986,6 @@ const DriverPortalPage: React.FC = () => {
         const monthEarningRanges = currentMonthWeeks.map(w => `${formatDate(w.weekStartDate)} - ${formatDate(w.weekEndDate)}`);
         monthWallet = currentMonthWeeks.reduce((sum, w) => sum + calculateWalletWeek(w), 0);
 
-        // Calculate month expenses from billing data
-        let monthExpenses = 0;
-        const monthBills = billingData.filter(b => {
-            if (b.isAggregate) return false;
-            if (!b.dailyDetails || b.dailyDetails.length === 0) return false;
-            
-            // Check if any daily detail falls within the current month
-            return b.dailyDetails.some((d: any) => {
-                const date = new Date(d.date);
-                return date.getFullYear() === currentYear && date.getMonth() === currentMonth;
-            });
-        });
-        monthExpenses = monthBills.reduce((sum, bill) => sum + (bill.expenses || 0), 0);
-
         const monthDaily = rawDaily.filter(entry => {
             const d = new Date(entry.date);
             return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
@@ -1040,7 +1026,6 @@ const DriverPortalPage: React.FC = () => {
         let rangeTrips = 0;
         let rangeWallet = 0;
         let rangeFuel = 0;
-        let rangeExpenses = 0;
 
         let rangeLabel: string | undefined;
         let rangeSummary: string | undefined;
@@ -1083,21 +1068,6 @@ const DriverPortalPage: React.FC = () => {
 
             rangeWallet = rangeWeekly.reduce((sum, week) => sum + calculateWalletWeek(week), 0);
             rangeEarnings = rangeWeekly.reduce((sum, week) => sum + (week.earnings || 0), 0);
-            
-            // Calculate range expenses from billing data
-            const rangeBills = billingData.filter(b => {
-                if (b.isAggregate) return false;
-                if (!b.dailyDetails || b.dailyDetails.length === 0) return false;
-                
-                // Check if any daily detail falls within the range
-                return b.dailyDetails.some((d: any) => {
-                    const date = new Date(d.date).getTime();
-                    if (filterStart !== null && date < filterStart) return false;
-                    if (filterEnd !== null && date > filterEnd) return false;
-                    return true;
-                });
-            });
-            rangeExpenses = rangeBills.reduce((sum, bill) => sum + (bill.expenses || 0), 0);
         }
 
         // Latest Week Details
@@ -1114,7 +1084,6 @@ const DriverPortalPage: React.FC = () => {
             monthPayout,
             monthWallet,
             monthFuel,
-            monthExpenses,
             totalDues,
             yearCollection,
             latestWeekTrips,
@@ -1127,7 +1096,6 @@ const DriverPortalPage: React.FC = () => {
             monthNetPayout: monthStats.netPayout,
             rangeWallet,
             rangeFuel,
-            rangeExpenses,
             rangeCollection,
             rangeRent,
             rangeDues,
@@ -1138,7 +1106,7 @@ const DriverPortalPage: React.FC = () => {
             rangeWalletWeeksLabel,
             rangeSummary,
         };
-    }, [dailyWithAdjustments, filteredDaily, fromDate, getAdjustedDue, isDateFilterActive, rawDaily, rawWeekly, rentalSlabs, toDate, viewingAsDriver, billingData]);
+    }, [dailyWithAdjustments, filteredDaily, fromDate, getAdjustedDue, isDateFilterActive, rawDaily, rawWeekly, rentalSlabs, toDate, viewingAsDriver]);
 
   // --- 4. DYNAMIC CARD DATA ---
     const topCards: any = useMemo(() => {
@@ -1213,11 +1181,6 @@ const DriverPortalPage: React.FC = () => {
                                 colorClass: 'text-amber-600'
                             },
                             {
-                                label: 'Expenses',
-                                value: aggregatedStats.rangeExpenses,
-                                colorClass: 'text-rose-500'
-                            },
-                            {
                                 label: 'Dues',
                                 value: aggregatedStats.rangeDues,
                                 colorClass: 'text-rose-500'
@@ -1248,11 +1211,6 @@ const DriverPortalPage: React.FC = () => {
                                 label: 'Month Fuel',
                                 value: aggregatedStats.monthFuel,
                                 colorClass: 'text-amber-600'
-                            },
-                            {
-                                label: 'Expenses',
-                                value: aggregatedStats.monthExpenses,
-                                colorClass: 'text-rose-500'
                             },
                             {
                                 label: 'Dues',
@@ -1362,7 +1320,6 @@ const DriverPortalPage: React.FC = () => {
                <div class="st-row"><span class="st-label">Wallet Earnings (Weekly)</span><span class="st-val green">+ ${formatCurrency(bill.wallet)}</span></div>
                <div class="st-row"><span class="st-label">Rental Collection</span><span class="st-val green">+ ${formatCurrency(bill.collection)}</span></div>
                <div class="st-row"><span class="st-label">Previous Dues/Credit</span><span class="st-val">${formatCurrency(bill.overdue)}</span></div>
-               ${(bill.expenses || 0) > 0 ? `<div class="st-row"><span class="st-label">Expenses</span><span class="st-val red">- ${formatCurrency(bill.expenses)}</span></div>` : ''}
             </div>
             <div class="net-box">
                <span class="net-label">WEEK PAYOUT</span>
@@ -1998,7 +1955,7 @@ const DriverPortalPage: React.FC = () => {
                                           </span>
                                       </div>
 
-                                      <div className="grid grid-cols-6 gap-2 text-[10px] text-slate-500 bg-slate-50/50 p-2 rounded-lg">
+                                      <div className="grid grid-cols-5 gap-2 text-[10px] text-slate-500 bg-slate-50/50 p-2 rounded-lg">
                                           <div>
                                               <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Rent</span>
                                               {formatCurrency(entry.rent)}
@@ -2006,21 +1963,6 @@ const DriverPortalPage: React.FC = () => {
                                           <div>
                                               <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Fuel</span>
                                               {formatCurrency(entry.fuel)}
-                                          </div>
-                                          <div>
-                                              <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Exp</span>
-                                              <span className="text-rose-600 font-bold">
-                                                  {(() => {
-                                                      // Find expenses for this date
-                                                      const dateStr = new Date(entry.date).toISOString().split('T')[0];
-                                                      const billForDate = billingData.find(b => !b.isAggregate && b.dailyDetails?.some((d: any) => d.date.startsWith(dateStr)));
-                                                      if (billForDate && billForDate.dailyDetails) {
-                                                          const detail = billForDate.dailyDetails.find((d: any) => d.date.startsWith(dateStr));
-                                                          return detail && detail.expenses ? formatCurrency(detail.expenses) : '—';
-                                                      }
-                                                      return '—';
-                                                  })()}
-                                              </span>
                                           </div>
                                           <div>
                                               <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Due</span>
@@ -2169,9 +2111,6 @@ const DriverPortalPage: React.FC = () => {
                                 <div className="flex justify-between"><span className="text-slate-600 font-medium">Wallet Earnings (Weekly)</span><span className="font-bold text-emerald-600">+ {formatCurrency(selectedBill.wallet)}</span></div>
                                 <div className="flex justify-between"><span className="text-slate-600 font-medium">Rental Collection</span><span className="font-bold text-emerald-600">+ {formatCurrency(selectedBill.collection)}</span></div>
                                 <div className="flex justify-between"><span className="text-slate-600 font-medium">Previous Dues/Credit</span><span className="font-bold text-slate-800">{formatCurrency(selectedBill.overdue)}</span></div>
-                                {(selectedBill.expenses || 0) > 0 && (
-                                    <div className="flex justify-between"><span className="text-slate-600 font-medium">Expenses</span><span className="font-bold text-rose-600">- {formatCurrency(selectedBill.expenses)}</span></div>
-                                )}
                             </div>
                             <div className="mt-6 bg-slate-100 p-4 rounded-xl flex justify-between items-center border-l-4 border-slate-800">
                                 <span className="text-sm font-bold text-slate-700 uppercase">Week Payout</span>
