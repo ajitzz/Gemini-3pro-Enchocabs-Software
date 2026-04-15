@@ -27,6 +27,13 @@ const DriverExpensesPage: React.FC = () => {
     selectedDrivers: [],
   });
   const [error, setError] = useState<string | null>(null);
+  const getReadableError = (err: any) => {
+    const message = String(err?.message || 'Unexpected error');
+    if (/\b404\b/.test(message)) {
+      return 'Expense API is not available on the server yet (404). Please deploy the latest backend.';
+    }
+    return message;
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -40,7 +47,7 @@ const DriverExpensesPage: React.FC = () => {
       setDrivers(allDrivers);
       setLeaves(allLeaves);
     } catch (err: any) {
-      setError(err?.message || 'Failed to load expenses');
+      setError(getReadableError(err) || 'Failed to load expenses');
     } finally {
       setLoading(false);
     }
@@ -149,7 +156,7 @@ const DriverExpensesPage: React.FC = () => {
       await loadData();
       resetForm();
     } catch (err: any) {
-      setError(err?.message || 'Failed to save expense');
+      setError(getReadableError(err) || 'Failed to save expense');
     } finally {
       setSaving(false);
     }
@@ -179,7 +186,7 @@ const DriverExpensesPage: React.FC = () => {
       await loadData();
       if (form.id === groupId) resetForm();
     } catch (err: any) {
-      setError(err?.message || 'Failed to delete expense');
+      setError(getReadableError(err) || 'Failed to delete expense');
     } finally {
       setDeletingGroupId(null);
     }

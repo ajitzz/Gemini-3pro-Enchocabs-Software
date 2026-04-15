@@ -156,6 +156,11 @@ const api = {
   }
 };
 
+const isNotFoundError = (error: unknown) => {
+  const message = String((error as any)?.message || '');
+  return /\b404\b/.test(message);
+};
+
 // Shared helper to keep all driver balance calculations aligned with Driver Portal logic
 export const getDriverBalanceSummaries = async () => {
   const [dailyEntries, weeklyWallets, rentalSlabs, drivers, expenses] = await Promise.all([
@@ -422,7 +427,17 @@ export const storageService = {
   getDriverExpenses: async (
     params?: { from?: string; to?: string; driver?: string; drivers?: string[]; fresh?: number },
     options?: GetOptions,
-  ): Promise<DriverExpense[]> => api.get(`/driver-expenses${buildQueryString(params)}`, options),
+  ): Promise<DriverExpense[]> => {
+    try {
+      return await api.get(`/driver-expenses${buildQueryString(params)}`, options);
+    } catch (error) {
+      if (isNotFoundError(error)) {
+        console.warn('Driver expenses endpoint is unavailable (404). Continuing with empty expenses.');
+        return [];
+      }
+      throw error;
+    }
+  },
   saveDriverExpenseGroup: async (expense: DriverExpenseGroupInput): Promise<{ groupId: string; entries: DriverExpense[] }> =>
     api.post('/driver-expenses', expense),
   deleteDriverExpenseGroup: async (groupId: string): Promise<void> => api.delete(`/driver-expenses/${groupId}`),
