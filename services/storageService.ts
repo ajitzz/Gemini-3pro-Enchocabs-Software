@@ -1,5 +1,5 @@
 
-import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping, ManagerAccess, AdminAccess, DriverBillingRecord, CashMode, DriverWidgetSummary } from '../types';
+import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping, ManagerAccess, AdminAccess, DriverBillingRecord, CashMode, DriverWidgetSummary, DriverExpense, DriverExpenseGroupInput } from '../types';
 import { getApiBase } from '../lib/apiBase';
 
 type DailyEntryBootstrapResponse = {
@@ -156,13 +156,19 @@ const api = {
   }
 };
 
+const isNotFoundError = (error: unknown) => {
+  const message = String((error as any)?.message || '');
+  return /\b404\b/.test(message);
+};
+
 // Shared helper to keep all driver balance calculations aligned with Driver Portal logic
 export const getDriverBalanceSummaries = async () => {
-  const [dailyEntries, weeklyWallets, rentalSlabs, drivers] = await Promise.all([
+  const [dailyEntries, weeklyWallets, rentalSlabs, drivers, expenses] = await Promise.all([
     storageService.getDailyEntries(),
     storageService.getWeeklyWallets(),
     storageService.getDriverRentalSlabs(),
-    storageService.getDrivers()
+    storageService.getDrivers(),
+    storageService.getDriverExpenses()
   ]);
 
   const sortedSlabs = [...rentalSlabs].sort((a, b) => a.minTrips - b.minTrips);
@@ -171,11 +177,12 @@ export const getDriverBalanceSummaries = async () => {
   const driverNames = Array.from(new Set([
     ...drivers.map(d => d.name),
     ...sortedDaily.map(d => d.driver),
-    ...weeklyWallets.map(w => w.driver)
+    ...weeklyWallets.map(w => w.driver),
+    ...expenses.map(e => e.driver)
   ])).sort((a, b) => a.localeCompare(b));
 
   const summaries = driverNames.map(driver =>
-    calculateDriverStats(driver, sortedDaily, weeklyWallets, sortedSlabs)
+    calculateDriverStats(driver, sortedDaily, weeklyWallets, sortedSlabs, expenses)
   );
 
   return {
@@ -216,16 +223,19 @@ const calculateDriverStats = (
     driverName: string,
     allDaily: DailyEntry[],
     allWallets: WeeklyWallet[],
-    sortedSlabs: RentalSlab[]
+    sortedSlabs: RentalSlab[],
+    allExpenses: DriverExpense[] = []
 ): DriverSummary => {
     const driverWallets = allWallets.filter(w => w.driver === driverName);
     const driverDaily = allDaily.filter(d => d.driver === driverName);
+    const driverExpenses = allExpenses.filter(e => e.driver === driverName);
 
     let totalCollection = 0;
     let totalRent = 0;
     let totalFuel = 0;
     let totalDue = 0;
     let totalPayout = 0;
+    let totalExpenses = 0;
     let totalWalletWeek = 0;
 
     const processedDailyIds = new Set<string>();
@@ -237,6 +247,7 @@ const calculateDriverStats = (
     let cutoffFuel = 0;
     let cutoffDue = 0;
     let cutoffPayout = 0;
+    let cutoffExpenses = 0;
     let cutoffWalletWeek = 0;
 
     const sortedWallets = [...driverWallets].sort((a, b) => b.weekEndDate.localeCompare(a.weekEndDate));
@@ -329,10 +340,19 @@ const calculateDriverStats = (
         }
     });
 
-    const finalTotal = totalCollection - totalRent - totalFuel + totalDue + totalWalletWeek - totalPayout;
+    driverExpenses.forEach(expense => {
+        const amount = Number(expense.amount) || 0;
+        totalExpenses += amount;
+
+        if (latestWalletEndDate && expense.expenseDate <= latestWalletEndDate) {
+            cutoffExpenses += amount;
+        }
+    });
+
+    const finalTotal = totalCollection - totalRent - totalFuel + totalDue + totalWalletWeek - totalPayout - totalExpenses;
 
     const cutoffTotal = latestWalletEndDate
-        ? (cutoffCollection - cutoffRent - cutoffFuel + cutoffDue + cutoffWalletWeek - cutoffPayout)
+        ? (cutoffCollection - cutoffRent - cutoffFuel + cutoffDue + cutoffWalletWeek - cutoffPayout - cutoffExpenses)
         : finalTotal;
 
     let netPayout = finalTotal;
@@ -357,6 +377,7 @@ const calculateDriverStats = (
         totalFuel,
         totalDue,
         totalPayout,
+        totalExpenses,
         totalWalletWeek,
         finalTotal,
         netPayout,
@@ -401,6 +422,25 @@ export const storageService = {
   saveWeeklyWallet: async (wallet: WeeklyWallet): Promise<WeeklyWallet> => api.post('/weekly-wallets', wallet),
   saveWeeklyWalletsBulk: async (newWallets: WeeklyWallet[]): Promise<void> => Promise.all(newWallets.map(w => api.post('/weekly-wallets', w))).then(() => {}),
   deleteWeeklyWallet: async (id: string): Promise<void> => api.delete(`/weekly-wallets/${id}`),
+
+  // --- Driver Expenses ---
+  getDriverExpenses: async (
+    params?: { from?: string; to?: string; driver?: string; drivers?: string[]; fresh?: number },
+    options?: GetOptions,
+  ): Promise<DriverExpense[]> => {
+    try {
+      return await api.get(`/driver-expenses${buildQueryString(params)}`, options);
+    } catch (error) {
+      if (isNotFoundError(error)) {
+        console.warn('Driver expenses endpoint is unavailable (404). Continuing with empty expenses.');
+        return [];
+      }
+      throw error;
+    }
+  },
+  saveDriverExpenseGroup: async (expense: DriverExpenseGroupInput): Promise<{ groupId: string; entries: DriverExpense[] }> =>
+    api.post('/driver-expenses', expense),
+  deleteDriverExpenseGroup: async (groupId: string): Promise<void> => api.delete(`/driver-expenses/${groupId}`),
 
   // --- Driver Billings (NEW) ---
   getDriverWidgetSummary: async (driverId: string, token?: string): Promise<DriverWidgetSummary> => {
@@ -560,10 +600,11 @@ export const storageService = {
     }
 
     // Fallback path: compute on the client if the optimized endpoint is unavailable
-    const [dailyEntries, weeklyWallets, rentalSlabs] = await Promise.all([
+    const [dailyEntries, weeklyWallets, rentalSlabs, expenses] = await Promise.all([
       storageService.getDailyEntries(),
       storageService.getWeeklyWallets(),
-      storageService.getDriverRentalSlabs()
+      storageService.getDriverRentalSlabs(),
+      storageService.getDriverExpenses()
     ]);
     const sortedSlabs = rentalSlabs.sort((a, b) => a.minTrips - b.minTrips);
 
@@ -573,7 +614,7 @@ export const storageService = {
     ])).sort();
 
     const driverSummaries: DriverSummary[] = drivers.map(driver =>
-      calculateDriverStats(driver, dailyEntries, weeklyWallets, sortedSlabs)
+      calculateDriverStats(driver, dailyEntries, weeklyWallets, sortedSlabs, expenses)
     );
 
     const global: GlobalSummary = {
@@ -582,6 +623,7 @@ export const storageService = {
       totalFuel: driverSummaries.reduce((sum, d) => sum + d.totalFuel, 0),
       totalDue: driverSummaries.reduce((sum, d) => sum + d.totalDue, 0),
       totalPayout: driverSummaries.reduce((sum, d) => sum + d.totalPayout, 0),
+      totalExpenses: driverSummaries.reduce((sum, d) => sum + d.totalExpenses, 0),
       totalWalletWeek: driverSummaries.reduce((sum, d) => sum + d.totalWalletWeek, 0),
       pendingFromDrivers: driverSummaries.filter(d => d.finalTotal < 0).reduce((sum, d) => sum + Math.abs(d.finalTotal), 0),
       payableToDrivers: driverSummaries.filter(d => d.finalTotal > 0).reduce((sum, d) => sum + d.finalTotal, 0),

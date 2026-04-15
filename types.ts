@@ -119,11 +119,37 @@ export interface DriverSummary {
   totalFuel: number;
   totalDue: number;
   totalPayout: number;
+  totalExpenses: number;
   totalWalletWeek: number;
   finalTotal: number; // Represents overall net balance from start to end
   netPayout: number; // Represents the lowest payout amount (overall vs latest wallet window)
   netPayoutSource: 'overall' | 'latest-wallet';
   netPayoutRange?: string;
+}
+
+export interface DriverExpense {
+  id: string;
+  groupId: string;
+  expenseDate: string;
+  category: string;
+  customType?: string;
+  driver: string;
+  amount: number;
+  notes?: string;
+  splitMode: 'all' | 'selected';
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface DriverExpenseGroupInput {
+  id?: string;
+  expenseDate: string;
+  category: string;
+  customType?: string;
+  amount: number;
+  notes?: string;
+  splitMode: 'all' | 'selected';
+  selectedDrivers?: string[];
 }
 
 export interface GlobalSummary {
@@ -132,6 +158,7 @@ export interface GlobalSummary {
   totalFuel: number;
   totalDue: number;
   totalPayout: number;
+  totalExpenses: number;
   totalWalletWeek: number;
   pendingFromDrivers: number;
   payableToDrivers: number;
@@ -230,7 +257,7 @@ export interface LeadSheet {
   leads: LeadRecord[];
 }
 
-export type UserRole = 'super_admin' | 'admin' | 'driver';
+export type UserRole = 'super_admin' | 'admin' | 'manager' | 'driver';
 
 export type CashMode = 'blocked' | 'trips';
 

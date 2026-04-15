@@ -101,10 +101,11 @@ const DriverBalanceInsightsPage: React.FC = () => {
       due: acc.due + driver.totalDue,
       wallet: acc.wallet + driver.totalWalletWeek,
       payout: acc.payout + driver.totalPayout,
+      expenses: acc.expenses + driver.totalExpenses,
       netPayout: acc.netPayout + driver.netPayout,
       finalTotal: acc.finalTotal + driver.finalTotal,
     }),
-    { collection: 0, rent: 0, fuel: 0, due: 0, wallet: 0, payout: 0, netPayout: 0, finalTotal: 0 }
+    { collection: 0, rent: 0, fuel: 0, due: 0, wallet: 0, payout: 0, expenses: 0, netPayout: 0, finalTotal: 0 }
   ), [filteredSummaries]);
 
   if (loading) {
@@ -203,7 +204,7 @@ const DriverBalanceInsightsPage: React.FC = () => {
           </div>
         )}
         <div className="px-6 py-2 border-b border-slate-100 bg-slate-50/40 text-[11px] text-slate-500 font-medium">
-          Net Balance = Collection - Rent - Fuel + Due + Wallet Week - Payout · Net Payout = min(Net Balance, latest wallet cutoff balance).
+          Net Balance = Collection - Rent - Fuel + Due + Wallet Week - Payout - Expenses · Net Payout = min(Net Balance, latest wallet cutoff balance).
         </div>
 
         <div className="overflow-x-auto">
@@ -217,6 +218,7 @@ const DriverBalanceInsightsPage: React.FC = () => {
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Dues</th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet Week</th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Payout</th>
+                <th className="px-6 py-4 font-semibold text-right tracking-wider">Expenses</th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Payout</th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Balance</th>
                 <th className="px-6 py-4 font-semibold text-right tracking-wider">Actions</th>
@@ -237,6 +239,7 @@ const DriverBalanceInsightsPage: React.FC = () => {
                   <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalDue)}</td>
                   <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalWalletWeek)}</td>
                   <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalPayout)}</td>
+                  <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalExpenses)}</td>
                   <td className="px-6 py-4 text-right">
                     <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-bold border ${
                       driver.netPayout < 0
@@ -268,7 +271,7 @@ const DriverBalanceInsightsPage: React.FC = () => {
               ))}
               {filteredSummaries.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-6 py-20 text-center text-slate-400">
+                  <td colSpan={11} className="px-6 py-20 text-center text-slate-400">
                     <div className="flex flex-col items-center gap-2">
                       <Users size={32} className="opacity-20" />
                       <p>No drivers found matching "{filterDriver}"</p>
@@ -286,6 +289,7 @@ const DriverBalanceInsightsPage: React.FC = () => {
                 <td className="px-6 py-3 text-right">{formatCurrency(totals.due)}</td>
                 <td className="px-6 py-3 text-right">{formatCurrency(totals.wallet)}</td>
                 <td className="px-6 py-3 text-right">{formatCurrency(totals.payout)}</td>
+                <td className="px-6 py-3 text-right">{formatCurrency(totals.expenses)}</td>
                 <td className="px-6 py-3 text-right">{formatCurrency(totals.netPayout)}</td>
                 <td className="px-6 py-3 text-right">{formatCurrency(totals.finalTotal)}</td>
                 <td className="px-6 py-3 text-right">-</td>

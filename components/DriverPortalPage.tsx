@@ -3,7 +3,7 @@ import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import type { LucideIcon } from 'lucide-react';
 import { storageService } from '../services/storageService';
 import { useLiveUpdates, type LiveUpdateEvent } from '../lib/useLiveUpdates';
-import { CashMode, DailyEntry, WeeklyWallet, Driver, RentalSlab } from '../types';
+import { CashMode, DailyEntry, WeeklyWallet, Driver, RentalSlab, DriverExpense } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import {
   Download, Calendar, Wallet, FileText, ChevronRight, LogOut, 
@@ -37,6 +37,7 @@ const DriverPortalPage: React.FC = () => {
   // Data (Filtered for viewingAsDriver)
   const [rawDaily, setRawDaily] = useState<DailyEntry[]>([]);
   const [rawWeekly, setRawWeekly] = useState<WeeklyWallet[]>([]);
+  const [rawExpenses, setRawExpenses] = useState<DriverExpense[]>([]);
   const [rentalSlabs, setRentalSlabs] = useState<RentalSlab[]>([]);
 
   // UI State
@@ -61,6 +62,7 @@ const DriverPortalPage: React.FC = () => {
           due: number;
           wallet: number;
           payout: number;
+          expenses: number;
       };
       netValue: number;
       title?: string;
@@ -248,6 +250,18 @@ const DriverPortalPage: React.FC = () => {
       });
   }, [fromDate, rawWeekly, toDate]);
 
+  const filteredExpenses = useMemo(() => {
+      const start = fromDate ? new Date(`${fromDate}T00:00:00`).getTime() : null;
+      const end = toDate ? new Date(`${toDate}T23:59:59`).getTime() : null;
+
+      return rawExpenses.filter(expense => {
+          const expenseTime = new Date(expense.expenseDate).getTime();
+          if (start !== null && expenseTime < start) return false;
+          if (end !== null && expenseTime > end) return false;
+          return true;
+      });
+  }, [fromDate, rawExpenses, toDate]);
+
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
   useEffect(() => {
@@ -359,6 +373,7 @@ const DriverPortalPage: React.FC = () => {
 
           let allDaily: DailyEntry[] = [];
           let allWeekly: WeeklyWallet[] = [];
+          let allExpenses: DriverExpense[] = [];
 
           let teamMembers: Driver[] = [];
           if (targetDriver.isManager) {
@@ -372,20 +387,25 @@ const DriverPortalPage: React.FC = () => {
           const driversToLoad = [targetDriver.name, ...teamMembers.map(member => member.name)].filter(Boolean);
           const uniqueDrivers = Array.from(new Set(driversToLoad));
 
-          const bootstrapPayload = await storageService.getDailyEntriesBootstrap({
-              drivers: uniqueDrivers,
-              includeMeta: false,
-          });
+          const [bootstrapPayload, expensesPayload] = await Promise.all([
+              storageService.getDailyEntriesBootstrap({
+                  drivers: uniqueDrivers,
+                  includeMeta: false,
+              }),
+              storageService.getDriverExpenses({ drivers: uniqueDrivers })
+          ]);
           allDaily = bootstrapPayload.entries;
           allWeekly = bootstrapPayload.weeklyWallets;
+          allExpenses = expensesPayload;
 
           setGlobalDaily(allDaily);
           setGlobalWeekly(allWeekly);
+          setRawExpenses(allExpenses.filter(e => e.driver === targetDriver.name).sort((a, b) => new Date(b.expenseDate).getTime() - new Date(a.expenseDate).getTime()));
 
           if (teamMembers.length > 0) {
               const balances: Record<string, number> = {};
               teamMembers.forEach(member => {
-                  const stats = storageService.calculateDriverStats(member.name, allDaily, allWeekly, sortedSlabs);
+                  const stats = storageService.calculateDriverStats(member.name, allDaily, allWeekly, sortedSlabs, allExpenses);
                   balances[member.id] = stats.finalTotal;
               });
               setTeamBalances(balances);
@@ -399,7 +419,7 @@ const DriverPortalPage: React.FC = () => {
           }
 
           setPrimaryDriver(targetDriver);
-          switchToDriverView(targetDriver, allDaily, allWeekly);
+          switchToDriverView(targetDriver, allDaily, allWeekly, allExpenses);
           refreshCashMode(targetDriver.id, true);
       } catch (err: any) {
           console.error("Portal Initialization Error:", err);
@@ -423,12 +443,14 @@ const DriverPortalPage: React.FC = () => {
           const shouldLoadDrivers = options?.includeDrivers ?? false;
           const scopedDriverNames = getScopedDriverNames(viewingAsDriver.name);
 
-          const [drivers, bootstrapPayload] = await Promise.all([
+          const [drivers, bootstrapPayload, expensesPayload] = await Promise.all([
               shouldLoadDrivers ? storageService.getDrivers() : Promise.resolve(null),
-              storageService.getDailyEntriesBootstrap({ drivers: scopedDriverNames, fresh: 1, includeMeta: false })
+              storageService.getDailyEntriesBootstrap({ drivers: scopedDriverNames, fresh: 1, includeMeta: false }),
+              storageService.getDriverExpenses({ drivers: scopedDriverNames, fresh: 1 })
           ]);
           const dailyEntries = bootstrapPayload.entries;
           const weeklyWallets = bootstrapPayload.weeklyWallets;
+          const expenses = expensesPayload;
 
           if (drivers) {
               const visibleDrivers = drivers.filter(d => !d.isHidden);
@@ -452,11 +474,12 @@ const DriverPortalPage: React.FC = () => {
           const activeName = updatedDriver?.name || viewingAsDriver.name;
           setRawDaily(allDaily.filter(d => d.driver === activeName).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
           setRawWeekly(allWeekly.filter(w => w.driver === activeName).sort((a,b) => new Date(b.weekStartDate).getTime() - new Date(a.weekStartDate).getTime()));
+          setRawExpenses(expenses.filter(e => e.driver === activeName).sort((a, b) => new Date(b.expenseDate).getTime() - new Date(a.expenseDate).getTime()));
 
           if (myTeam.length > 0) {
               const balances: Record<string, number> = {};
               myTeam.forEach(member => {
-                  const stats = storageService.calculateDriverStats(member.name, allDaily, allWeekly, rentalSlabs);
+                  const stats = storageService.calculateDriverStats(member.name, allDaily, allWeekly, rentalSlabs, expenses);
                   balances[member.id] = stats.finalTotal;
               });
               setTeamBalances(balances);
@@ -484,6 +507,7 @@ const DriverPortalPage: React.FC = () => {
 
           const updateLabels: Record<string, string> = {
               daily_entries_changed: 'Daily log updated',
+              driver_expenses_changed: 'Expenses updated',
               drivers_changed: 'Driver profile updated',
               leaves_changed: 'Leave data updated',
               cash_mode_changed: 'Cash mode changed'
@@ -498,7 +522,7 @@ const DriverPortalPage: React.FC = () => {
           setLastUpdateLabel(notificationLabel);
       }
 
-      if (['daily_entries_changed', 'weekly_wallets_changed', 'drivers_changed', 'leaves_changed'].includes(type)) {
+      if (['daily_entries_changed', 'weekly_wallets_changed', 'driver_expenses_changed', 'drivers_changed', 'leaves_changed'].includes(type)) {
           if (portalRefreshTimerRef.current !== null) {
               window.clearTimeout(portalRefreshTimerRef.current);
           }
@@ -554,12 +578,14 @@ const DriverPortalPage: React.FC = () => {
       };
   }, [liveUpdatesConnected, refreshPortalData, user, viewingAsDriver]);
 
-  const switchToDriverView = (targetDriver: Driver, allDaily: DailyEntry[], allWeekly: WeeklyWallet[]) => {
+  const switchToDriverView = (targetDriver: Driver, allDaily: DailyEntry[], allWeekly: WeeklyWallet[], allExpenses: DriverExpense[] = []) => {
       setViewingAsDriver(targetDriver);
       const myDaily = allDaily.filter(d => d.driver === targetDriver.name).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       const myWeekly = allWeekly.filter(w => w.driver === targetDriver.name).sort((a,b) => new Date(b.weekStartDate).getTime() - new Date(a.weekStartDate).getTime());
+      const myExpenses = allExpenses.filter(e => e.driver === targetDriver.name).sort((a, b) => new Date(b.expenseDate).getTime() - new Date(a.expenseDate).getTime());
       setRawDaily(myDaily);
       setRawWeekly(myWeekly);
+      setRawExpenses(myExpenses);
       setActiveTab('home');
       window.scrollTo(0, 0);
       refreshCashMode(targetDriver.id, true);
@@ -579,7 +605,8 @@ const DriverPortalPage: React.FC = () => {
 
               setGlobalDaily(dailyEntries);
               setGlobalWeekly(weeklyWallets);
-              switchToDriverView(target, dailyEntries, weeklyWallets);
+              const expenses = await storageService.getDriverExpenses({ drivers: getScopedDriverNames(target.name), fresh: 1 });
+              switchToDriverView(target, dailyEntries, weeklyWallets, expenses);
           } catch (err) {
               console.error('Failed to switch admin driver view', err);
               alert('Could not load selected driver data. Please try again.');
@@ -594,7 +621,9 @@ const DriverPortalPage: React.FC = () => {
   const exitView = async () => {
       if (user?.role === 'driver') {
           if (user.driverId && viewingAsDriver && primaryDriver && viewingAsDriver.id !== user.driverId) {
-              switchToDriverView(primaryDriver, globalDaily, globalWeekly);
+              const scopedDrivers = getScopedDriverNames(primaryDriver.name);
+              const expenses = await storageService.getDriverExpenses({ drivers: scopedDrivers, fresh: 1 });
+              switchToDriverView(primaryDriver, globalDaily, globalWeekly, expenses);
               return;
           }
           logout();
@@ -662,7 +691,9 @@ const DriverPortalPage: React.FC = () => {
         const bootstrapPayload = await storageService.getDailyEntriesBootstrap({ driver: member.name, includeMeta: false });
         const allDaily = bootstrapPayload.entries;
         const allWeekly = bootstrapPayload.weeklyWallets;
-        switchToDriverView(member, allDaily, allWeekly);
+        const scopedDrivers = getScopedDriverNames(member.name);
+        const expenses = await storageService.getDriverExpenses({ drivers: scopedDrivers, fresh: 1 });
+        switchToDriverView(member, allDaily, allWeekly, expenses);
       } catch (err) {
           alert("Could not load team member data.");
       }
@@ -780,14 +811,14 @@ const DriverPortalPage: React.FC = () => {
   // --- 2. BALANCE CALCULATION ---
   const driverStats = useMemo(() => {
       if (!viewingAsDriver) return null;
-      return storageService.calculateDriverStats(viewingAsDriver.name, rawDaily, rawWeekly, rentalSlabs);
-  }, [viewingAsDriver, rawDaily, rawWeekly, rentalSlabs]);
+      return storageService.calculateDriverStats(viewingAsDriver.name, rawDaily, rawWeekly, rentalSlabs, rawExpenses);
+  }, [viewingAsDriver, rawDaily, rawWeekly, rentalSlabs, rawExpenses]);
 
   const openCalculationPopup = (metric: 'netPayout' | 'netBalance') => {
       if (!viewingAsDriver) return;
 
       const activeStats = isDateFilterActive
-          ? storageService.calculateDriverStats(viewingAsDriver.name, filteredDaily, filteredWeekly, rentalSlabs)
+          ? storageService.calculateDriverStats(viewingAsDriver.name, filteredDaily, filteredWeekly, rentalSlabs, filteredExpenses)
           : driverStats;
 
       if (!activeStats) return;
@@ -813,7 +844,8 @@ const DriverPortalPage: React.FC = () => {
               fuel: activeStats.totalFuel,
               due: activeStats.totalDue,
               wallet: activeStats.totalWalletWeek,
-              payout: activeStats.totalPayout
+              payout: activeStats.totalPayout,
+              expenses: activeStats.totalExpenses
           },
           netValue: metric === 'netPayout' ? activeStats.netPayout : activeStats.finalTotal,
           title: `${metric === 'netPayout' ? 'Net Payout' : 'Net Balance'}${viewingAsDriver ? ` • ${viewingAsDriver.name}` : ''}`,
@@ -996,12 +1028,17 @@ const DriverPortalPage: React.FC = () => {
             const endD = new Date(w.weekEndDate);
             return startD <= monthEnd && endD >= monthStart;
         });
+        const monthExpenses = rawExpenses.filter(expense => {
+            const e = new Date(expense.expenseDate);
+            return e.getFullYear() === currentYear && e.getMonth() === currentMonth;
+        });
 
         const monthStats = storageService.calculateDriverStats(
             viewingAsDriver.name,
             monthDaily,
             monthWeekly,
-            rentalSlabs
+            rentalSlabs,
+            monthExpenses
         );
 
         const rangeDaily = filteredDaily;
@@ -1106,7 +1143,7 @@ const DriverPortalPage: React.FC = () => {
             rangeWalletWeeksLabel,
             rangeSummary,
         };
-    }, [dailyWithAdjustments, filteredDaily, fromDate, getAdjustedDue, isDateFilterActive, rawDaily, rawWeekly, rentalSlabs, toDate, viewingAsDriver]);
+    }, [dailyWithAdjustments, filteredDaily, fromDate, getAdjustedDue, isDateFilterActive, rawDaily, rawWeekly, rentalSlabs, rawExpenses, toDate, viewingAsDriver]);
 
   // --- 4. DYNAMIC CARD DATA ---
     const topCards: any = useMemo(() => {
