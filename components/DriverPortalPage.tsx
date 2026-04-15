@@ -2070,6 +2070,12 @@ const DriverPortalPage: React.FC = () => {
                                               </div>
                                           )}
                                           <div>
+                                              <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Expense</span>
+                                              <span className="text-rose-600 font-semibold">
+                                                  - {formatCurrency(expensesByDate[entry.date] || 0)}
+                                              </span>
+                                          </div>
+                                          <div>
                                               {(() => {
                                                   const weeklyWallet = weeklyWalletByEntryId.get(entry.id);
                                                   if (!weeklyWallet) return null;
