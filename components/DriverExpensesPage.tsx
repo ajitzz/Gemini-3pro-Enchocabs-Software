@@ -11,6 +11,22 @@ const CATEGORY_OPTIONS = [
   { value: 'Custom', label: '✨ Custom' },
 ];
 
+type DatePreset = 'all' | 'today' | 'thisWeek' | 'lastWeek' | 'thisMonth' | 'lastMonth' | 'custom';
+
+const toIsoDate = (date: Date) => date.toISOString().slice(0, 10);
+const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+const startOfWeek = (date: Date) => {
+  const day = date.getDay();
+  const diff = day === 0 ? -6 : 1 - day; // Monday-start week
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + diff);
+};
+const endOfWeek = (date: Date) => {
+  const start = startOfWeek(date);
+  return new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6);
+};
+const startOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);
+const endOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0);
+
 const DriverExpensesPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -27,6 +43,9 @@ const DriverExpensesPage: React.FC = () => {
     selectedDrivers: [],
   });
   const [error, setError] = useState<string | null>(null);
+  const [datePreset, setDatePreset] = useState<DatePreset>('all');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
   const getReadableError = (err: any) => {
     const message = String(err?.message || 'Unexpected error');
     if (/\b404\b/.test(message)) {
@@ -35,11 +54,47 @@ const DriverExpensesPage: React.FC = () => {
     return message;
   };
 
+  const dateFilter = useMemo(() => {
+    const now = new Date();
+    const currentDay = startOfDay(now);
+
+    if (datePreset === 'today') {
+      const date = toIsoDate(currentDay);
+      return { from: date, to: date, label: 'Today' };
+    }
+
+    if (datePreset === 'thisWeek') {
+      return { from: toIsoDate(startOfWeek(currentDay)), to: toIsoDate(endOfWeek(currentDay)), label: 'This week' };
+    }
+
+    if (datePreset === 'lastWeek') {
+      const anchor = new Date(currentDay.getFullYear(), currentDay.getMonth(), currentDay.getDate() - 7);
+      return { from: toIsoDate(startOfWeek(anchor)), to: toIsoDate(endOfWeek(anchor)), label: 'Last week' };
+    }
+
+    if (datePreset === 'thisMonth') {
+      return { from: toIsoDate(startOfMonth(currentDay)), to: toIsoDate(endOfMonth(currentDay)), label: 'This month' };
+    }
+
+    if (datePreset === 'lastMonth') {
+      const anchor = new Date(currentDay.getFullYear(), currentDay.getMonth() - 1, 1);
+      return { from: toIsoDate(startOfMonth(anchor)), to: toIsoDate(endOfMonth(anchor)), label: 'Last month' };
+    }
+
+    if (datePreset === 'custom') {
+      const from = customFrom || undefined;
+      const to = customTo || undefined;
+      return { from, to, label: from || to ? 'Custom range' : 'Custom range (unselected)' };
+    }
+
+    return { from: undefined, to: undefined, label: 'All time' };
+  }, [customFrom, customTo, datePreset]);
+
   const loadData = async () => {
     setLoading(true);
     try {
       const [allExpenses, allDrivers, allLeaves] = await Promise.all([
-        storageService.getDriverExpenses({ fresh: 1 }),
+        storageService.getDriverExpenses({ from: dateFilter.from, to: dateFilter.to, fresh: 1 }),
         storageService.getDrivers(),
         storageService.getLeaves(),
       ]);
@@ -55,7 +110,7 @@ const DriverExpensesPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [dateFilter.from, dateFilter.to]);
 
   const expenseDate = form.expenseDate || new Date().toISOString().slice(0, 10);
 
@@ -229,6 +284,60 @@ const DriverExpensesPage: React.FC = () => {
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="rounded-3xl border border-slate-200 bg-white p-5 md:p-6 shadow-sm space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-lg font-bold text-slate-900">Date Filters</h3>
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Showing: {dateFilter.label}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {[
+            { key: 'all', label: 'All Time' },
+            { key: 'today', label: 'Today' },
+            { key: 'thisWeek', label: 'This Week' },
+            { key: 'lastWeek', label: 'Last Week' },
+            { key: 'thisMonth', label: 'This Month' },
+            { key: 'lastMonth', label: 'Last Month' },
+            { key: 'custom', label: 'Custom Range' },
+          ].map((preset) => (
+            <button
+              key={preset.key}
+              type="button"
+              onClick={() => setDatePreset(preset.key as DatePreset)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
+                datePreset === preset.key
+                  ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+
+        {datePreset === 'custom' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <label className="space-y-1">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">From date</span>
+              <input
+                type="date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">To date</span>
+              <input
+                type="date"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold"
+              />
+            </label>
+          </div>
+        )}
       </div>
 
       {error && (
