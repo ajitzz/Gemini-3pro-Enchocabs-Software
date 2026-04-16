@@ -182,6 +182,39 @@ const DriverExpensesPage: React.FC = () => {
     return Array.from(groups.values()).sort((a, b) => b.expenseDate.localeCompare(a.expenseDate));
   }, [expenses]);
 
+  const payableByDriver = useMemo(() => {
+    const totals = new Map<string, { driver: string; total: number; entries: number }>();
+
+    expenses.forEach((expense) => {
+      const driverName = String(expense.driver || '').trim();
+      if (!driverName) return;
+      const key = driverName.toLowerCase();
+      if (!totals.has(key)) {
+        totals.set(key, { driver: driverName, total: 0, entries: 0 });
+      }
+      const row = totals.get(key)!;
+      row.total += Number(expense.amount) || 0;
+      row.entries += 1;
+    });
+
+    const visibleDrivers = drivers
+      .filter((driver) => !driver.isHidden)
+      .map((driver) => String(driver.name || '').trim())
+      .filter(Boolean);
+
+    visibleDrivers.forEach((driverName) => {
+      const key = driverName.toLowerCase();
+      if (!totals.has(key)) {
+        totals.set(key, { driver: driverName, total: 0, entries: 0 });
+      }
+    });
+
+    return Array.from(totals.values()).sort((a, b) => {
+      if (b.total !== a.total) return b.total - a.total;
+      return a.driver.localeCompare(b.driver);
+    });
+  }, [drivers, expenses]);
+
   const resetForm = () => {
     setForm({
       expenseDate: new Date().toISOString().slice(0, 10),
@@ -558,6 +591,35 @@ const DriverExpensesPage: React.FC = () => {
             ))
           )}
         </div>
+      </div>
+
+      <div className="rounded-3xl border border-slate-200 bg-white p-5 md:p-6 shadow-sm">
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <h3 className="text-lg font-bold text-slate-900">Driver Payable Expenses</h3>
+          <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">{dateFilter.label}</p>
+        </div>
+        {payableByDriver.length === 0 ? (
+          <p className="text-sm text-slate-500">No drivers available.</p>
+        ) : (
+          <div className="rounded-2xl border border-slate-100 bg-slate-50 overflow-hidden">
+            <div className="grid grid-cols-[minmax(0,1fr)_120px_80px] px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
+              <span>Driver</span>
+              <span className="text-right">Payable Expense</span>
+              <span className="text-right">Entries</span>
+            </div>
+            <div className="max-h-[360px] overflow-y-auto divide-y divide-slate-100">
+              {payableByDriver.map((row) => (
+                <div key={row.driver} className="grid grid-cols-[minmax(0,1fr)_120px_80px] items-center px-4 py-2.5 text-sm">
+                  <span className="font-semibold text-slate-700 truncate pr-2">{row.driver}</span>
+                  <span className={`text-right font-black ${row.total > 0 ? 'text-rose-600' : 'text-slate-400'}`}>
+                    {formatCurrency(row.total)}
+                  </span>
+                  <span className="text-right text-slate-500 font-semibold">{row.entries}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
