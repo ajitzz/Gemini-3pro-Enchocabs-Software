@@ -137,6 +137,7 @@ export interface DriverExpense {
   amount: number;
   notes?: string;
   splitMode: 'all' | 'selected';
+  distributionMode?: 'split' | 'common';
   createdAt?: string;
   updatedAt?: string;
 }
@@ -149,6 +150,7 @@ export interface DriverExpenseGroupInput {
   amount: number;
   notes?: string;
   splitMode: 'all' | 'selected';
+  distributionMode?: 'split' | 'common';
   selectedDrivers?: string[];
 }
 

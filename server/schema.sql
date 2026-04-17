@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS driver_expenses (
   amount NUMERIC NOT NULL CHECK (amount >= 0),
   notes TEXT,
   split_mode TEXT NOT NULL DEFAULT 'selected',
+  distribution_mode TEXT NOT NULL DEFAULT 'split',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
