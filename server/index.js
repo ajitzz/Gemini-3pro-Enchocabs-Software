@@ -1563,9 +1563,11 @@ app.post('/api/auth/google', async (req, res) => {
         }
         driverId = driverRes.rows[0].id;
         name = driverRes.rows[0].name || name;
-        if (driverRes.rows[0].isManager) {
-          role = 'manager';
-        }
+        // STRICT ACCESS POLICY:
+        // - Only super admin + emails explicitly listed in admin_access can reach Driver Tracker (/app).
+        // - Every other registered staff account (including is_manager staff from registration page)
+        //   is treated as driver-level access and can only use Driver Portal (/portal).
+        role = 'driver';
       }
     }
 
