@@ -913,7 +913,6 @@ const initDb = async () => {
         collection NUMERIC,
         fuel NUMERIC DEFAULT 0,
         due NUMERIC DEFAULT 0,
-        due_label TEXT DEFAULT 'Due',
         payout NUMERIC DEFAULT 0,
         payout_date DATE,
         notes TEXT
@@ -921,7 +920,6 @@ const initDb = async () => {
     `);
 
     await db.query(`ALTER TABLE daily_entries ADD COLUMN IF NOT EXISTS payout_date DATE;`);
-    await db.query(`ALTER TABLE daily_entries ADD COLUMN IF NOT EXISTS due_label TEXT DEFAULT 'Due';`);
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS weekly_wallets (
@@ -2117,7 +2115,7 @@ app.get('/api/daily-entries', async (req, res) => {
     if (limit) values.push(limit);
 
     const result = await db.query(
-      `SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, due_label as "dueLabel", payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes
+      `SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes
        FROM daily_entries
        ${whereClause}
        ORDER BY date DESC
@@ -2232,7 +2230,7 @@ app.get('/api/daily-entries/bootstrap', async (req, res) => {
       metaOnly
         ? Promise.resolve({ rows: [] })
         : db.query(
-            `SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, due_label as "dueLabel", payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes
+            `SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes
              FROM daily_entries
              ${whereClause}
              ORDER BY date DESC`,
@@ -2315,14 +2313,13 @@ app.post('/api/daily-entries', async (req, res) => {
     await assertDriverEntryAllowedOnDate({ client: db, driverName: e.driver, isoDate });
 
     const q = `
-      INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, due_label, payout, payout_date, notes)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, payout, payout_date, notes)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       ON CONFLICT (id) DO UPDATE SET
-        date=$2, day=$3, vehicle=$4, driver=$5, shift=$6, qr_code=$7, rent=$8, collection=$9, fuel=$10, due=$11, due_label=$12, payout=$13, payout_date=$14, notes=$15
+        date=$2, day=$3, vehicle=$4, driver=$5, shift=$6, qr_code=$7, rent=$8, collection=$9, fuel=$10, due=$11, payout=$12, payout_date=$13, notes=$14
       RETURNING *;
     `;
-    const dueLabel = String(e.dueLabel || 'Due').trim() || 'Due';
-    const result = await db.query(q, [entryId || uuidv4(), isoDate, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, dueLabel, e.payout, payoutDateISO, e.notes]);
+    const result = await db.query(q, [entryId || uuidv4(), isoDate, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, payoutDateISO, e.notes]);
 
     const newWeekStart = getMondayISO(isoDate);
     if (newWeekStart) {
@@ -2403,14 +2400,13 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
       await assertDriverEntryAllowedOnDate({ client, driverName: canonicalDriver, isoDate });
 
       const q = `
-        INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, due_label, payout, payout_date, notes)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, payout, payout_date, notes)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
         ON CONFLICT (id) DO UPDATE SET
           date=$2, day=$3, vehicle=$4, driver=$5, shift=$6, qr_code=$7,
-          rent=$8, collection=$9, fuel=$10, due=$11, due_label=$12, payout=$13, payout_date=$14, notes=$15;
+          rent=$8, collection=$9, fuel=$10, due=$11, payout=$12, payout_date=$13, notes=$14;
       `;
-      const dueLabel = String(e.dueLabel || 'Due').trim() || 'Due';
-      await client.query(q, [e.id, isoDate, e.day, e.vehicle, canonicalDriver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, dueLabel, e.payout, payoutDateISO, e.notes]);
+      await client.query(q, [e.id, isoDate, e.day, e.vehicle, canonicalDriver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, payoutDateISO, e.notes]);
     }
 
     const keyList = Array.from(keyToId.keys());
@@ -2776,23 +2772,11 @@ app.post('/api/driver-expenses', async (req, res) => {
     );
 
     const eligibleDrivers = allActiveDrivers.filter((name) => !blockedByLeave.has(normalizeDriver(name)));
-    const presentRes = await client.query(
-      `SELECT DISTINCT driver
-       FROM daily_entries
-       WHERE date = $1`,
-      [expenseDate]
-    );
-    const presentDrivers = new Set(
-      presentRes.rows
-        .map((row) => normalizeDriver(row.driver))
-        .filter(Boolean)
-    );
-    const eligibleAndPresentDrivers = eligibleDrivers.filter((name) => presentDrivers.has(normalizeDriver(name)));
     const targets = splitMode === 'all'
-      ? eligibleAndPresentDrivers
-      : selectedDrivers.filter((name) => eligibleAndPresentDrivers.some((eligible) => normalizeDriver(eligible) === normalizeDriver(name)));
+      ? eligibleDrivers
+      : selectedDrivers.filter((name) => eligibleDrivers.some((eligible) => normalizeDriver(eligible) === normalizeDriver(name)));
 
-    if (!targets.length) return res.status(400).json({ error: 'No active/present drivers available for the selected date.' });
+    if (!targets.length) return res.status(400).json({ error: 'No eligible drivers available for split.' });
 
     const normalizedTargets = Array.from(new Set(targets.map((name) => name.trim()))).sort((a, b) => a.localeCompare(b));
     const allocations = distributionMode === 'common'

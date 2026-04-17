@@ -360,7 +360,6 @@ const DailyEntryPage: React.FC = () => {
     collection: undefined,
     fuel: 0,
     due: 0,
-    dueLabel: 'Due',
     payout: 0,
     payoutDate: '',
     qrCode: '',
@@ -823,7 +822,6 @@ const DailyEntryPage: React.FC = () => {
           collection: Number(formData.collection),
           fuel: Number(formData.fuel || 0),
           due: Number(formData.due || 0),
-          dueLabel: String(formData.dueLabel || 'Due').trim() || 'Due',
           payout: Number(formData.payout || 0),
           payoutDate: formData.payoutDate || undefined,
           qrCode: formData.qrCode,
@@ -1502,24 +1500,6 @@ const DailyEntryPage: React.FC = () => {
                <div className="relative">
                   <InputField label="Due (+/-)" name="due" type="number" inputMode="decimal" value={formData.due === 0 ? '' : formData.due} onChange={handleInputChange} placeholder="0" />
                   <p className="text-[10px] text-slate-400 mt-1 ml-1">+ Driver Owes / - You Owe</p>
-               </div>
-               <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">Due Head Name</label>
-                  <input
-                    name="dueLabel"
-                    list="due-label-options"
-                    value={formData.dueLabel || 'Due'}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 text-base placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none"
-                    placeholder="Due"
-                  />
-                  <datalist id="due-label-options">
-                    <option value="Due" />
-                    <option value="Traffic" />
-                    <option value="Credit" />
-                    <option value="Late" />
-                  </datalist>
-                  <p className="text-[10px] text-slate-400 mt-1 ml-1">Label only (does not change calculations)</p>
                </div>
                <InputField label="Payout (Paid to Driver)" name="payout" type="number" inputMode="decimal" value={formData.payout === 0 ? '' : formData.payout} onChange={handleInputChange} className="border-emerald-200 focus:ring-emerald-500 text-emerald-700" placeholder="0" />
                <div className="relative">
