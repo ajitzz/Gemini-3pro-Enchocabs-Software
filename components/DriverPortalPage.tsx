@@ -263,8 +263,16 @@ const DriverPortalPage: React.FC = () => {
   }, [fromDate, rawExpenses, toDate]);
 
   const expensesByDate = useMemo(() => {
-      return rawExpenses.reduce<Record<string, number>>((acc, expense) => {
-          acc[expense.expenseDate] = (acc[expense.expenseDate] || 0) + (expense.amount || 0);
+      return rawExpenses.reduce<Record<string, { total: number; labels: string[] }>>((acc, expense) => {
+          if (!acc[expense.expenseDate]) {
+              acc[expense.expenseDate] = { total: 0, labels: [] };
+          }
+          const bucket = acc[expense.expenseDate];
+          bucket.total += (expense.amount || 0);
+          const label = String(expense.customType || expense.category || 'Expense').trim();
+          if (label && !bucket.labels.includes(label)) {
+              bucket.labels.push(label);
+          }
           return acc;
       }, {});
   }, [rawExpenses]);
@@ -1918,7 +1926,8 @@ const DriverPortalPage: React.FC = () => {
                       </div>
                       <div className="space-y-3">
                           {recentLogs.map(entry => {
-                              const entryExpense = expensesByDate[entry.date] || 0;
+                              const expenseMeta = expensesByDate[entry.date];
+                              const entryExpense = expenseMeta?.total || 0;
 
                               return (
                               <div key={entry.id} className="bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center">
@@ -1935,7 +1944,9 @@ const DriverPortalPage: React.FC = () => {
                                        <p className="text-sm font-bold text-emerald-600">+{formatCurrency(entry.collection)}</p>
                                        <p className="text-[10px] text-slate-400">Rent: {formatCurrency(entry.rent)}</p>
                                        {entryExpense > 0 && (
-                                           <p className="text-[10px] text-rose-500 font-semibold">Expe: {formatCurrency(entryExpense)}</p>
+                                           <p className="text-[10px] text-rose-500 font-semibold">
+                                               {(expenseMeta?.labels || []).slice(0, 2).join(', ') || 'Expense'}: {formatCurrency(entryExpense)}
+                                           </p>
                                        )}
                                    </div>
                               </div>
@@ -2021,7 +2032,8 @@ const DriverPortalPage: React.FC = () => {
                       ) : (
                           filteredDaily.map(entry => {
                                       const adjustedDue = getAdjustedDue(entry);
-                                      const entryExpense = expensesByDate[entry.date] || 0;
+                                      const expenseMeta = expensesByDate[entry.date];
+                                      const entryExpense = expenseMeta?.total || 0;
                                       const showExpense = entryExpense > 0;
 
                               return (
@@ -2051,7 +2063,7 @@ const DriverPortalPage: React.FC = () => {
                                               {formatCurrency(entry.fuel)}
                                           </div>
                                           <div>
-                                              <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Due</span>
+                                              <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">{entry.dueLabel || 'Due'}</span>
                                               <div className="flex flex-col items-start gap-0.5">
                                                   <span className={adjustedDue !== 0 ? (adjustedDue > 0 ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold') : ''}>
                                                       {adjustedDue > 0 ? '+' : ''}{adjustedDue}
@@ -2065,7 +2077,9 @@ const DriverPortalPage: React.FC = () => {
                                           </div>
                                           {showExpense && (
                                               <div>
-                                                  <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Expe</span>
+                                                  <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">
+                                                      {(expenseMeta?.labels || []).slice(0, 1)[0] || 'Expense'}
+                                                  </span>
                                                   <span className="text-rose-600 font-semibold">
                                                       {formatCurrency(entryExpense)}
                                                   </span>

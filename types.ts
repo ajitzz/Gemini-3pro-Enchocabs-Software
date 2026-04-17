@@ -11,6 +11,7 @@ export interface DailyEntry {
   collection: number;
   fuel: number;
   due: number; // positive = driver owes me, negative = I owe driver
+  dueLabel?: string;
   payout: number; // New field: Amount paid out to driver
   payoutDate?: string; // Date when payout was issued (required when payout is entered)
   notes?: string;
