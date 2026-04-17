@@ -913,6 +913,7 @@ const initDb = async () => {
         collection NUMERIC,
         fuel NUMERIC DEFAULT 0,
         due NUMERIC DEFAULT 0,
+        due_label TEXT DEFAULT 'Due',
         payout NUMERIC DEFAULT 0,
         payout_date DATE,
         notes TEXT
@@ -920,6 +921,7 @@ const initDb = async () => {
     `);
 
     await db.query(`ALTER TABLE daily_entries ADD COLUMN IF NOT EXISTS payout_date DATE;`);
+    await db.query(`ALTER TABLE daily_entries ADD COLUMN IF NOT EXISTS due_label TEXT DEFAULT 'Due';`);
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS weekly_wallets (
@@ -952,10 +954,12 @@ const initDb = async () => {
         amount NUMERIC NOT NULL CHECK (amount >= 0),
         notes TEXT,
         split_mode TEXT NOT NULL DEFAULT 'selected',
+        distribution_mode TEXT NOT NULL DEFAULT 'split',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+    await db.query(`ALTER TABLE driver_expenses ADD COLUMN IF NOT EXISTS distribution_mode TEXT NOT NULL DEFAULT 'split';`);
     await db.query(`CREATE INDEX IF NOT EXISTS driver_expenses_group_idx ON driver_expenses (group_id);`);
     await db.query(`CREATE INDEX IF NOT EXISTS driver_expenses_date_idx ON driver_expenses (expense_date);`);
     await db.query(`CREATE INDEX IF NOT EXISTS driver_expenses_driver_idx ON driver_expenses (LOWER(driver));`);
@@ -2113,7 +2117,7 @@ app.get('/api/daily-entries', async (req, res) => {
     if (limit) values.push(limit);
 
     const result = await db.query(
-      `SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes
+      `SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, due_label as "dueLabel", payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes
        FROM daily_entries
        ${whereClause}
        ORDER BY date DESC
@@ -2228,7 +2232,7 @@ app.get('/api/daily-entries/bootstrap', async (req, res) => {
       metaOnly
         ? Promise.resolve({ rows: [] })
         : db.query(
-            `SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes
+            `SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, due_label as "dueLabel", payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes
              FROM daily_entries
              ${whereClause}
              ORDER BY date DESC`,
@@ -2311,13 +2315,14 @@ app.post('/api/daily-entries', async (req, res) => {
     await assertDriverEntryAllowedOnDate({ client: db, driverName: e.driver, isoDate });
 
     const q = `
-      INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, payout, payout_date, notes)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, due_label, payout, payout_date, notes)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       ON CONFLICT (id) DO UPDATE SET
-        date=$2, day=$3, vehicle=$4, driver=$5, shift=$6, qr_code=$7, rent=$8, collection=$9, fuel=$10, due=$11, payout=$12, payout_date=$13, notes=$14
+        date=$2, day=$3, vehicle=$4, driver=$5, shift=$6, qr_code=$7, rent=$8, collection=$9, fuel=$10, due=$11, due_label=$12, payout=$13, payout_date=$14, notes=$15
       RETURNING *;
     `;
-    const result = await db.query(q, [entryId || uuidv4(), isoDate, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, payoutDateISO, e.notes]);
+    const dueLabel = String(e.dueLabel || 'Due').trim() || 'Due';
+    const result = await db.query(q, [entryId || uuidv4(), isoDate, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, dueLabel, e.payout, payoutDateISO, e.notes]);
 
     const newWeekStart = getMondayISO(isoDate);
     if (newWeekStart) {
@@ -2398,13 +2403,14 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
       await assertDriverEntryAllowedOnDate({ client, driverName: canonicalDriver, isoDate });
 
       const q = `
-        INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, payout, payout_date, notes)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, due_label, payout, payout_date, notes)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
         ON CONFLICT (id) DO UPDATE SET
           date=$2, day=$3, vehicle=$4, driver=$5, shift=$6, qr_code=$7,
-          rent=$8, collection=$9, fuel=$10, due=$11, payout=$12, payout_date=$13, notes=$14;
+          rent=$8, collection=$9, fuel=$10, due=$11, due_label=$12, payout=$13, payout_date=$14, notes=$15;
       `;
-      await client.query(q, [e.id, isoDate, e.day, e.vehicle, canonicalDriver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, payoutDateISO, e.notes]);
+      const dueLabel = String(e.dueLabel || 'Due').trim() || 'Due';
+      await client.query(q, [e.id, isoDate, e.day, e.vehicle, canonicalDriver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, dueLabel, e.payout, payoutDateISO, e.notes]);
     }
 
     const keyList = Array.from(keyToId.keys());
@@ -2701,7 +2707,7 @@ app.get('/api/driver-expenses', async (req, res) => {
     const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
     const result = await db.query(
       `SELECT id, group_id as "groupId", to_char(expense_date, 'YYYY-MM-DD') as "expenseDate", category, custom_type as "customType",
-              driver, amount, notes, split_mode as "splitMode", created_at as "createdAt", updated_at as "updatedAt"
+              driver, amount, notes, split_mode as "splitMode", distribution_mode as "distributionMode", created_at as "createdAt", updated_at as "updatedAt"
        FROM driver_expenses
        ${whereClause}
        ORDER BY expense_date DESC, created_at DESC`,
@@ -2734,6 +2740,7 @@ app.post('/api/driver-expenses', async (req, res) => {
     const expenseDate = toISODate(payload.expenseDate);
     const amount = Math.round(Number(payload.amount) || 0);
     const splitMode = payload.splitMode === 'all' ? 'all' : 'selected';
+    const distributionMode = payload.distributionMode === 'common' ? 'common' : 'split';
     const notes = String(payload.notes || '').trim();
     const category = String(payload.category || '').trim();
     const customType = String(payload.customType || '').trim();
@@ -2769,14 +2776,28 @@ app.post('/api/driver-expenses', async (req, res) => {
     );
 
     const eligibleDrivers = allActiveDrivers.filter((name) => !blockedByLeave.has(normalizeDriver(name)));
+    const presentRes = await client.query(
+      `SELECT DISTINCT driver
+       FROM daily_entries
+       WHERE date = $1`,
+      [expenseDate]
+    );
+    const presentDrivers = new Set(
+      presentRes.rows
+        .map((row) => normalizeDriver(row.driver))
+        .filter(Boolean)
+    );
+    const eligibleAndPresentDrivers = eligibleDrivers.filter((name) => presentDrivers.has(normalizeDriver(name)));
     const targets = splitMode === 'all'
-      ? eligibleDrivers
-      : selectedDrivers.filter((name) => eligibleDrivers.some((eligible) => normalizeDriver(eligible) === normalizeDriver(name)));
+      ? eligibleAndPresentDrivers
+      : selectedDrivers.filter((name) => eligibleAndPresentDrivers.some((eligible) => normalizeDriver(eligible) === normalizeDriver(name)));
 
-    if (!targets.length) return res.status(400).json({ error: 'No eligible drivers available for split.' });
+    if (!targets.length) return res.status(400).json({ error: 'No active/present drivers available for the selected date.' });
 
     const normalizedTargets = Array.from(new Set(targets.map((name) => name.trim()))).sort((a, b) => a.localeCompare(b));
-    const allocations = splitAmountEquallyInRupees(amount, normalizedTargets.length);
+    const allocations = distributionMode === 'common'
+      ? normalizedTargets.map(() => amount)
+      : splitAmountEquallyInRupees(amount, normalizedTargets.length);
 
     await client.query('BEGIN');
     await client.query('DELETE FROM driver_expenses WHERE group_id = $1', [groupId]);
@@ -2788,11 +2809,11 @@ app.post('/api/driver-expenses', async (req, res) => {
       if (allocatedAmount <= 0) continue;
 
       const row = await client.query(
-        `INSERT INTO driver_expenses (id, group_id, expense_date, category, custom_type, driver, amount, notes, split_mode, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+        `INSERT INTO driver_expenses (id, group_id, expense_date, category, custom_type, driver, amount, notes, split_mode, distribution_mode, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
          RETURNING id, group_id as "groupId", to_char(expense_date, 'YYYY-MM-DD') as "expenseDate", category, custom_type as "customType",
-                   driver, amount, notes, split_mode as "splitMode", created_at as "createdAt", updated_at as "updatedAt"`,
-        [uuidv4(), groupId, expenseDate, category, customType || null, driver, allocatedAmount, notes || null, splitMode]
+                   driver, amount, notes, split_mode as "splitMode", distribution_mode as "distributionMode", created_at as "createdAt", updated_at as "updatedAt"`,
+        [uuidv4(), groupId, expenseDate, category, customType || null, driver, allocatedAmount, notes || null, splitMode, distributionMode]
       );
       inserted.push({ ...row.rows[0], amount: Number(row.rows[0].amount) || 0 });
     }

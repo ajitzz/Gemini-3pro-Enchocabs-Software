@@ -11,6 +11,7 @@ export interface DailyEntry {
   collection: number;
   fuel: number;
   due: number; // positive = driver owes me, negative = I owe driver
+  dueLabel?: string;
   payout: number; // New field: Amount paid out to driver
   payoutDate?: string; // Date when payout was issued (required when payout is entered)
   notes?: string;
@@ -137,6 +138,7 @@ export interface DriverExpense {
   amount: number;
   notes?: string;
   splitMode: 'all' | 'selected';
+  distributionMode?: 'split' | 'common';
   createdAt?: string;
   updatedAt?: string;
 }
@@ -149,6 +151,7 @@ export interface DriverExpenseGroupInput {
   amount: number;
   notes?: string;
   splitMode: 'all' | 'selected';
+  distributionMode?: 'split' | 'common';
   selectedDrivers?: string[];
 }
 

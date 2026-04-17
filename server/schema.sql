@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS daily_entries (
   collection NUMERIC,
   fuel NUMERIC DEFAULT 0,
   due NUMERIC DEFAULT 0,
+  due_label TEXT DEFAULT 'Due',
   payout NUMERIC DEFAULT 0,
   payout_date DATE,
   notes TEXT
@@ -79,6 +80,7 @@ CREATE TABLE IF NOT EXISTS driver_expenses (
   amount NUMERIC NOT NULL CHECK (amount >= 0),
   notes TEXT,
   split_mode TEXT NOT NULL DEFAULT 'selected',
+  distribution_mode TEXT NOT NULL DEFAULT 'split',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
