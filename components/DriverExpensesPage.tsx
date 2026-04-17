@@ -1,13 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Calendar, CheckCircle2, Coins, PlusCircle, ReceiptText, Trash2, Users } from 'lucide-react';
 import { storageService } from '../services/storageService';
-import { DailyEntry, Driver, DriverExpense, DriverExpenseGroupInput, LeaveRecord } from '../types';
+import { Driver, DriverExpense, DriverExpenseGroupInput, LeaveRecord } from '../types';
 
 const CATEGORY_OPTIONS = [
   { value: 'Food', label: '🍛 Food' },
   { value: 'Travel', label: '🚕 Travel' },
   { value: 'Ticket', label: '🎫 Ticket' },
-  { value: 'Hotel', label: '🏨 Hotel' },
   { value: 'Etc', label: '🧾 Etc' },
   { value: 'Custom', label: '✨ Custom' },
 ];
@@ -35,7 +34,6 @@ const DriverExpensesPage: React.FC = () => {
   const [expenses, setExpenses] = useState<DriverExpense[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [leaves, setLeaves] = useState<LeaveRecord[]>([]);
-  const [presentEntries, setPresentEntries] = useState<DailyEntry[]>([]);
   const [form, setForm] = useState<DriverExpenseGroupInput>({
     expenseDate: new Date().toISOString().slice(0, 10),
     category: 'Food',
@@ -115,36 +113,12 @@ const DriverExpensesPage: React.FC = () => {
     loadData();
   }, [dateFilter.from, dateFilter.to]);
 
-  useEffect(() => {
-    const selectedDate = form.expenseDate || new Date().toISOString().slice(0, 10);
-    let isMounted = true;
-    storageService.getDailyEntries({ from: selectedDate, to: selectedDate, fresh: 1 })
-      .then((rows) => {
-        if (!isMounted) return;
-        setPresentEntries(Array.isArray(rows) ? rows : []);
-      })
-      .catch(() => {
-        if (!isMounted) return;
-        setPresentEntries([]);
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [form.expenseDate]);
-
   const expenseDate = form.expenseDate || new Date().toISOString().slice(0, 10);
 
   const eligibleDrivers = useMemo(() => {
-    const presentDriverSet = new Set(
-      presentEntries
-        .map((entry) => String(entry.driver || '').trim().toLowerCase())
-        .filter(Boolean)
-    );
     return drivers.filter((driver) => {
       if (driver.isHidden) return false;
       if (driver.status !== 'Active') return false;
-      if (!presentDriverSet.has(String(driver.name || '').trim().toLowerCase())) return false;
       if (driver.terminationDate && driver.terminationDate < expenseDate) return false;
       const leaveConflict = leaves.some((leave) => {
         if (leave.driverId !== driver.id) return false;
@@ -154,7 +128,7 @@ const DriverExpensesPage: React.FC = () => {
       });
       return !leaveConflict;
     });
-  }, [drivers, expenseDate, leaves, presentEntries]);
+  }, [drivers, expenseDate, leaves]);
 
   const targetedDrivers = useMemo(() => {
     if (form.splitMode === 'all') return eligibleDrivers.map((d) => d.name);
@@ -490,7 +464,7 @@ const DriverExpensesPage: React.FC = () => {
                 }`}
               >
                 <p className="font-bold text-sm">All eligible drivers</p>
-                <p className="text-xs mt-1">Active + present on selected date + not on leave</p>
+                <p className="text-xs mt-1">Active + not on leave + not terminated</p>
               </button>
               <button
                 type="button"
@@ -502,37 +476,7 @@ const DriverExpensesPage: React.FC = () => {
                 }`}
               >
                 <p className="font-bold text-sm">Selected drivers</p>
-                <p className="text-xs mt-1">Pick from active drivers present on selected date</p>
-              </button>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Distribution</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setForm((prev) => ({ ...prev, distributionMode: 'split' }))}
-                className={`rounded-2xl border px-4 py-3 text-left transition ${
-                  (form.distributionMode || 'split') === 'split'
-                    ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
-                    : 'border-slate-200 bg-white text-slate-600'
-                }`}
-              >
-                <p className="font-bold text-sm">Split amount</p>
-                <p className="text-xs mt-1">Amount is divided among selected drivers</p>
-              </button>
-              <button
-                type="button"
-                onClick={() => setForm((prev) => ({ ...prev, distributionMode: 'common' }))}
-                className={`rounded-2xl border px-4 py-3 text-left transition ${
-                  form.distributionMode === 'common'
-                    ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
-                    : 'border-slate-200 bg-white text-slate-600'
-                }`}
-              >
-                <p className="font-bold text-sm">Add full amount to each</p>
-                <p className="text-xs mt-1">Every selected driver gets this full amount</p>
+                <p className="text-xs mt-1">Pick who should share this expense</p>
               </button>
             </div>
           </div>
@@ -597,11 +541,6 @@ const DriverExpensesPage: React.FC = () => {
                     </button>
                   );
                 })}
-                {eligibleDrivers.length === 0 && (
-                  <p className="text-xs text-slate-500">
-                    No active & present drivers found for {form.expenseDate}.
-                  </p>
-                )}
               </div>
             </div>
           )}

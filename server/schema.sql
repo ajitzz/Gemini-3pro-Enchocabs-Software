@@ -34,7 +34,6 @@ CREATE TABLE IF NOT EXISTS daily_entries (
   collection NUMERIC,
   fuel NUMERIC DEFAULT 0,
   due NUMERIC DEFAULT 0,
-  due_label TEXT DEFAULT 'Due',
   payout NUMERIC DEFAULT 0,
   payout_date DATE,
   notes TEXT
