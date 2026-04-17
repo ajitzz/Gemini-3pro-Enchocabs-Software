@@ -178,7 +178,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (user.role === 'super_admin') return true;
 
     const now = Date.now();
-    if (now - lastValidationRef.current < VALIDATION_GRACE_MS) {
+    const shouldUseGraceWindow = user.role !== 'admin';
+    if (shouldUseGraceWindow && now - lastValidationRef.current < VALIDATION_GRACE_MS) {
       return true;
     }
 
@@ -186,22 +187,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (user.role === 'admin') {
         const isAuthorized = (admins: AdminAccess[] | null) =>
           !!admins && admins.some(a => normalizeEmail(a.email) === normalizeEmail(user.email));
-
-        const freshCachedAdmins = getFreshCachedAdmins();
-        const fallbackAdmins = adminCache?.admins || null;
-
-        if (isAuthorized(freshCachedAdmins)) {
-          lastValidationRef.current = now;
-          return true;
-        }
-
-        if (!freshCachedAdmins && isAuthorized(fallbackAdmins)) {
-          // Use stale cache to keep the UI responsive, refresh in the background
-          fetchAndCacheAdmins().catch(error => console.error('Background admin refresh failed:', error));
-          lastValidationRef.current = now;
-          return true;
-        }
-
+        // Strict security check for Driver Tracker admins:
+        // always re-validate against live admin_access, no stale-cache fallback.
         const admins = await fetchAndCacheAdmins();
         const authorized = isAuthorized(admins);
         lastValidationRef.current = Date.now();
@@ -215,18 +202,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return true;
     } catch (error) {
       console.error('Failed to validate session:', error);
-
-      const hasCachedAccess = adminCache?.admins?.some(a => normalizeEmail(a.email) === normalizeEmail(user.email));
-      if (hasCachedAccess) {
-        lastValidationRef.current = Date.now();
-        return true;
-      }
-
-      // Fail closed so revoked admins cannot continue if the check fails on Vercel
+      // Fail closed so revoked or unauthorized admins cannot continue.
       logout();
       return false;
     }
-  }, [adminCache, fetchAndCacheAdmins, getFreshCachedAdmins, logout, user]);
+  }, [fetchAndCacheAdmins, logout, user]);
 
   useEffect(() => {
     if (!user || user.role === 'super_admin') return;

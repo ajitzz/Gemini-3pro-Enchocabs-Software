@@ -1516,6 +1516,13 @@ app.post('/api/auth/google', async (req, res) => {
     const tokenHash = createHash('sha256').update(token).digest('hex');
     const cachedSession = await getCacheJSON(sessionCacheKey(tokenHash));
     if (cachedSession) {
+      if (cachedSession.role === 'admin') {
+        const adminRes = await db.query('SELECT email FROM admin_access WHERE lower(email) = lower($1) LIMIT 1', [cachedSession.email]);
+        if (adminRes.rows.length === 0) {
+          await invalidateKeys(sessionCacheKey(tokenHash));
+          return res.status(403).json({ error: 'Unauthorized: admin access revoked' });
+        }
+      }
       res.set('X-Cache', 'REDIS');
       return res.json(cachedSession);
     }
