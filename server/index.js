@@ -1516,6 +1516,13 @@ app.post('/api/auth/google', async (req, res) => {
     const tokenHash = createHash('sha256').update(token).digest('hex');
     const cachedSession = await getCacheJSON(sessionCacheKey(tokenHash));
     if (cachedSession) {
+      if (cachedSession.role === 'admin') {
+        const adminRes = await db.query('SELECT email FROM admin_access WHERE lower(email) = lower($1) LIMIT 1', [cachedSession.email]);
+        if (adminRes.rows.length === 0) {
+          await invalidateKeys(sessionCacheKey(tokenHash));
+          return res.status(403).json({ error: 'Unauthorized: admin access revoked' });
+        }
+      }
       res.set('X-Cache', 'REDIS');
       return res.json(cachedSession);
     }
@@ -1563,9 +1570,11 @@ app.post('/api/auth/google', async (req, res) => {
         }
         driverId = driverRes.rows[0].id;
         name = driverRes.rows[0].name || name;
-        if (driverRes.rows[0].isManager) {
-          role = 'manager';
-        }
+        // STRICT ACCESS POLICY:
+        // - Only super admin + emails explicitly listed in admin_access can reach Driver Tracker (/app).
+        // - Every other registered staff account (including is_manager staff from registration page)
+        //   is treated as driver-level access and can only use Driver Portal (/portal).
+        role = 'driver';
       }
     }
 

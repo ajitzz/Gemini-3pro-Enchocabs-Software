@@ -102,8 +102,8 @@ const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode
   }
 
   if (!allowedRoles.includes(user.role)) {
-     // Redirect logic based on role mismatch
-     if (user.role === 'driver') return <Navigate to="/portal" replace />;
+     // Strictly keep non-admin roles in Driver Portal.
+     if (user.role === 'driver' || user.role === 'manager') return <Navigate to="/portal" replace />;
      return <Navigate to="/app" replace />;
   }
 
@@ -292,7 +292,7 @@ const App: React.FC = () => {
 
               {/* Driver Portal Route (Secure) */}
               <Route path="/portal" element={
-                  <ProtectedRoute allowedRoles={['driver', 'manager', 'admin', 'super_admin']}>
+                  <ProtectedRoute allowedRoles={['driver', 'admin', 'super_admin']}>
                       <LazyPage><DriverPortalPage /></LazyPage>
                   </ProtectedRoute>
               } />
@@ -301,7 +301,7 @@ const App: React.FC = () => {
               <Route
                 path="/app"
                 element={
-                  <ProtectedRoute allowedRoles={['manager', 'admin', 'super_admin']}>
+                  <ProtectedRoute allowedRoles={['admin', 'super_admin']}>
                     <Layout />
                   </ProtectedRoute>
                 }
