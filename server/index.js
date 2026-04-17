@@ -952,10 +952,12 @@ const initDb = async () => {
         amount NUMERIC NOT NULL CHECK (amount >= 0),
         notes TEXT,
         split_mode TEXT NOT NULL DEFAULT 'selected',
+        distribution_mode TEXT NOT NULL DEFAULT 'split',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+    await db.query(`ALTER TABLE driver_expenses ADD COLUMN IF NOT EXISTS distribution_mode TEXT NOT NULL DEFAULT 'split';`);
     await db.query(`CREATE INDEX IF NOT EXISTS driver_expenses_group_idx ON driver_expenses (group_id);`);
     await db.query(`CREATE INDEX IF NOT EXISTS driver_expenses_date_idx ON driver_expenses (expense_date);`);
     await db.query(`CREATE INDEX IF NOT EXISTS driver_expenses_driver_idx ON driver_expenses (LOWER(driver));`);
@@ -2701,7 +2703,7 @@ app.get('/api/driver-expenses', async (req, res) => {
     const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
     const result = await db.query(
       `SELECT id, group_id as "groupId", to_char(expense_date, 'YYYY-MM-DD') as "expenseDate", category, custom_type as "customType",
-              driver, amount, notes, split_mode as "splitMode", created_at as "createdAt", updated_at as "updatedAt"
+              driver, amount, notes, split_mode as "splitMode", distribution_mode as "distributionMode", created_at as "createdAt", updated_at as "updatedAt"
        FROM driver_expenses
        ${whereClause}
        ORDER BY expense_date DESC, created_at DESC`,
@@ -2734,6 +2736,7 @@ app.post('/api/driver-expenses', async (req, res) => {
     const expenseDate = toISODate(payload.expenseDate);
     const amount = Math.round(Number(payload.amount) || 0);
     const splitMode = payload.splitMode === 'all' ? 'all' : 'selected';
+    const distributionMode = payload.distributionMode === 'common' ? 'common' : 'split';
     const notes = String(payload.notes || '').trim();
     const category = String(payload.category || '').trim();
     const customType = String(payload.customType || '').trim();
@@ -2776,7 +2779,9 @@ app.post('/api/driver-expenses', async (req, res) => {
     if (!targets.length) return res.status(400).json({ error: 'No eligible drivers available for split.' });
 
     const normalizedTargets = Array.from(new Set(targets.map((name) => name.trim()))).sort((a, b) => a.localeCompare(b));
-    const allocations = splitAmountEquallyInRupees(amount, normalizedTargets.length);
+    const allocations = distributionMode === 'common'
+      ? normalizedTargets.map(() => amount)
+      : splitAmountEquallyInRupees(amount, normalizedTargets.length);
 
     await client.query('BEGIN');
     await client.query('DELETE FROM driver_expenses WHERE group_id = $1', [groupId]);
@@ -2788,11 +2793,11 @@ app.post('/api/driver-expenses', async (req, res) => {
       if (allocatedAmount <= 0) continue;
 
       const row = await client.query(
-        `INSERT INTO driver_expenses (id, group_id, expense_date, category, custom_type, driver, amount, notes, split_mode, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+        `INSERT INTO driver_expenses (id, group_id, expense_date, category, custom_type, driver, amount, notes, split_mode, distribution_mode, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
          RETURNING id, group_id as "groupId", to_char(expense_date, 'YYYY-MM-DD') as "expenseDate", category, custom_type as "customType",
-                   driver, amount, notes, split_mode as "splitMode", created_at as "createdAt", updated_at as "updatedAt"`,
-        [uuidv4(), groupId, expenseDate, category, customType || null, driver, allocatedAmount, notes || null, splitMode]
+                   driver, amount, notes, split_mode as "splitMode", distribution_mode as "distributionMode", created_at as "createdAt", updated_at as "updatedAt"`,
+        [uuidv4(), groupId, expenseDate, category, customType || null, driver, allocatedAmount, notes || null, splitMode, distributionMode]
       );
       inserted.push({ ...row.rows[0], amount: Number(row.rows[0].amount) || 0 });
     }

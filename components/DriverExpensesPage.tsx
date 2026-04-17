@@ -40,6 +40,7 @@ const DriverExpensesPage: React.FC = () => {
     amount: 0,
     notes: '',
     splitMode: 'all',
+    distributionMode: 'split',
     selectedDrivers: [],
   });
   const [error, setError] = useState<string | null>(null);
@@ -141,13 +142,19 @@ const DriverExpensesPage: React.FC = () => {
     const count = targetedDrivers.length;
     const amount = Math.max(0, Math.round(Number(form.amount) || 0));
     if (!count || amount <= 0) return [];
+    if (form.distributionMode === 'common') {
+      return targetedDrivers.map((driver) => ({
+        driver,
+        amount,
+      }));
+    }
     const base = Math.floor(amount / count);
     const remainder = amount % count;
     return targetedDrivers.map((driver, index) => ({
       driver,
       amount: base + (index < remainder ? 1 : 0),
     }));
-  }, [form.amount, targetedDrivers]);
+  }, [form.amount, form.distributionMode, targetedDrivers]);
 
   const groupedExpenses = useMemo(() => {
     const groups = new Map<string, {
@@ -156,6 +163,7 @@ const DriverExpensesPage: React.FC = () => {
       category: string;
       customType?: string;
       splitMode: 'all' | 'selected';
+      distributionMode: 'split' | 'common';
       notes?: string;
       entries: DriverExpense[];
       totalAmount: number;
@@ -169,6 +177,7 @@ const DriverExpensesPage: React.FC = () => {
           category: expense.category,
           customType: expense.customType,
           splitMode: expense.splitMode,
+          distributionMode: expense.distributionMode === 'common' ? 'common' : 'split',
           notes: expense.notes,
           entries: [],
           totalAmount: 0,
@@ -222,6 +231,7 @@ const DriverExpensesPage: React.FC = () => {
       amount: 0,
       notes: '',
       splitMode: 'all',
+      distributionMode: 'split',
       selectedDrivers: [],
     });
   };
@@ -235,10 +245,11 @@ const DriverExpensesPage: React.FC = () => {
         throw new Error('Amount must be greater than zero.');
       }
       if (targetedDrivers.length === 0) {
-        throw new Error('No eligible drivers selected for split.');
+        throw new Error('No eligible drivers selected for this expense.');
       }
       await storageService.saveDriverExpenseGroup({
         ...form,
+        distributionMode: form.distributionMode === 'common' ? 'common' : 'split',
         selectedDrivers: form.splitMode === 'all' ? [] : targetedDrivers,
       });
       await loadData();
@@ -258,9 +269,12 @@ const DriverExpensesPage: React.FC = () => {
       expenseDate: group.expenseDate,
       category: group.category,
       customType: group.customType || '',
-      amount: group.totalAmount,
+      amount: group.distributionMode === 'common'
+        ? Number(group.entries[0]?.amount || 0)
+        : group.totalAmount,
       notes: group.notes || '',
       splitMode: group.splitMode,
+      distributionMode: group.distributionMode,
       selectedDrivers: group.entries.map((entry) => entry.driver),
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -467,6 +481,36 @@ const DriverExpensesPage: React.FC = () => {
             </div>
           </div>
 
+          <div className="space-y-2">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Distribution</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setForm((prev) => ({ ...prev, distributionMode: 'split' }))}
+                className={`rounded-2xl border px-4 py-3 text-left transition ${
+                  (form.distributionMode || 'split') === 'split'
+                    ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                    : 'border-slate-200 bg-white text-slate-600'
+                }`}
+              >
+                <p className="font-bold text-sm">Split amount</p>
+                <p className="text-xs mt-1">Amount is divided among selected drivers</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setForm((prev) => ({ ...prev, distributionMode: 'common' }))}
+                className={`rounded-2xl border px-4 py-3 text-left transition ${
+                  form.distributionMode === 'common'
+                    ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                    : 'border-slate-200 bg-white text-slate-600'
+                }`}
+              >
+                <p className="font-bold text-sm">Add full amount to each</p>
+                <p className="text-xs mt-1">Every selected driver gets this full amount</p>
+              </button>
+            </div>
+          </div>
+
           {form.splitMode === 'selected' && (
             <div className="rounded-2xl border border-slate-200 p-3">
               <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Choose drivers</p>
@@ -523,14 +567,17 @@ const DriverExpensesPage: React.FC = () => {
         </form>
 
         <div className="rounded-3xl border border-slate-200 bg-white p-5 md:p-6 shadow-sm">
-          <h3 className="text-lg font-bold text-slate-900 mb-4">Split Preview</h3>
+          <h3 className="text-lg font-bold text-slate-900 mb-4">Distribution Preview</h3>
           <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 space-y-3 max-h-[520px] overflow-y-auto">
             <div className="flex items-center justify-between text-xs text-slate-500 font-semibold">
               <span className="inline-flex items-center gap-1"><Users size={14} /> Drivers: {targetedDrivers.length}</span>
-              <span className="inline-flex items-center gap-1"><Coins size={14} /> {formatCurrency(Number(form.amount) || 0)}</span>
+              <span className="inline-flex items-center gap-1">
+                <Coins size={14} />
+                {(form.distributionMode || 'split') === 'split' ? 'Total' : 'Per driver'}: {formatCurrency(Number(form.amount) || 0)}
+              </span>
             </div>
             {previewSplit.length === 0 ? (
-              <p className="text-sm text-slate-500">Enter amount and select eligible drivers to preview split.</p>
+              <p className="text-sm text-slate-500">Enter amount and select eligible drivers to preview distribution.</p>
             ) : (
               previewSplit.map((row) => (
                 <div key={row.driver} className="flex items-center justify-between rounded-xl bg-white border border-slate-200 px-3 py-2">
@@ -557,7 +604,7 @@ const DriverExpensesPage: React.FC = () => {
                       {(group.customType || group.category)} · {formatCurrency(group.totalAmount)}
                     </p>
                     <p className="text-xs text-slate-500 font-medium mt-1">
-                      {group.expenseDate} · {group.entries.length} driver{group.entries.length === 1 ? '' : 's'} · split {group.splitMode}
+                      {group.expenseDate} · {group.entries.length} driver{group.entries.length === 1 ? '' : 's'} · {group.distributionMode === 'common' ? 'common add' : 'split'} · target {group.splitMode}
                     </p>
                     {group.notes && <p className="text-xs text-slate-500 mt-1">{group.notes}</p>}
                   </div>
