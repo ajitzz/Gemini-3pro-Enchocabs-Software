@@ -7,7 +7,8 @@ const CATEGORY_OPTIONS = [
   { value: 'Food', label: '🍛 Food' },
   { value: 'Travel', label: '🚕 Travel' },
   { value: 'Ticket', label: '🎫 Ticket' },
-  { value: 'Etc', label: '🧾 Etc' },
+  { value: 'Hotel', label: '🏨 Hotel' },
+  { value: 'Expense', label: '🧾 Expense' },
   { value: 'Custom', label: '✨ Custom' },
 ];
 

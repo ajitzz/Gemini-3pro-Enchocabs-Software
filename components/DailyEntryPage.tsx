@@ -360,6 +360,7 @@ const DailyEntryPage: React.FC = () => {
     collection: undefined,
     fuel: 0,
     due: 0,
+    dueLabel: '',
     payout: 0,
     payoutDate: '',
     qrCode: '',
@@ -457,6 +458,7 @@ const DailyEntryPage: React.FC = () => {
         left.rent !== right.rent ||
         left.fuel !== right.fuel ||
         left.due !== right.due ||
+        (left.dueLabel || '') !== (right.dueLabel || '') ||
         left.payout !== right.payout ||
         (left.payoutDate || '') !== (right.payoutDate || '') ||
         (left.qrCode || '') !== (right.qrCode || '') ||
@@ -822,6 +824,7 @@ const DailyEntryPage: React.FC = () => {
           collection: Number(formData.collection),
           fuel: Number(formData.fuel || 0),
           due: Number(formData.due || 0),
+          dueLabel: (formData.dueLabel || '').trim() || undefined,
           payout: Number(formData.payout || 0),
           payoutDate: formData.payoutDate || undefined,
           qrCode: formData.qrCode,
@@ -917,7 +920,7 @@ const DailyEntryPage: React.FC = () => {
       payoutDate: normalizeDateValue(entry.payoutDate) || '',
     });
     setEditingId(entry.id);
-    if ((entry.fuel && entry.fuel !== 0) || (entry.due && entry.due !== 0) || (entry.payout && entry.payout !== 0) || entry.payoutDate) {
+    if ((entry.fuel && entry.fuel !== 0) || (entry.due && entry.due !== 0) || (entry.dueLabel && entry.dueLabel.trim()) || (entry.payout && entry.payout !== 0) || entry.payoutDate) {
         setShowOptionalFields(true);
     } else {
         setShowOptionalFields(false);
@@ -1489,7 +1492,7 @@ const DailyEntryPage: React.FC = () => {
                 className="text-sm font-medium text-indigo-600 flex items-center gap-1.5 hover:text-indigo-800 transition-colors focus:outline-none bg-indigo-50 px-4 py-2.5 rounded-xl w-full md:w-auto justify-center"
               >
                 {showOptionalFields ? <ChevronUp size={18}/> : <ChevronDown size={18} />}
-                <span>{showOptionalFields ? 'Hide' : 'Add'} Fuel, Due & Payout</span>
+                <span>{showOptionalFields ? 'Hide' : 'Add'} Fuel, Due Label & Payout</span>
               </button>
            </div>
 
@@ -1501,6 +1504,7 @@ const DailyEntryPage: React.FC = () => {
                   <InputField label="Due (+/-)" name="due" type="number" inputMode="decimal" value={formData.due === 0 ? '' : formData.due} onChange={handleInputChange} placeholder="0" />
                   <p className="text-[10px] text-slate-400 mt-1 ml-1">+ Driver Owes / - You Owe</p>
                </div>
+               <InputField label="Due Label (Optional)" name="dueLabel" type="text" value={formData.dueLabel || ''} onChange={handleInputChange} placeholder="Due / Traffic / Credit / Late" />
                <InputField label="Payout (Paid to Driver)" name="payout" type="number" inputMode="decimal" value={formData.payout === 0 ? '' : formData.payout} onChange={handleInputChange} className="border-emerald-200 focus:ring-emerald-500 text-emerald-700" placeholder="0" />
                <div className="relative">
                   <InputField label="Payout Date" name="payoutDate" type="date" value={formData.payoutDate} onChange={handleInputChange} required={!!(formData.payout && formData.payout !== 0)} />
