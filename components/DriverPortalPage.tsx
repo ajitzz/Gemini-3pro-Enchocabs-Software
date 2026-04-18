@@ -15,6 +15,28 @@ import NetCalculationPopup from './NetCalculationPopup';
 import { registerDriverPushNotifications } from '../lib/pushNotifications';
 
 type PortalDailyEntry = DailyEntry & { adjustmentApplied?: number; adjustedDue?: number };
+type ActivityLogRow = {
+  id: string;
+  date: string;
+  day: string;
+  collection: number;
+  rent: number;
+  fuel: number;
+  due: number;
+  adjustedDue: number;
+  adjustmentApplied: number;
+  shift: string;
+  payout?: number;
+  payoutDate?: string;
+  hasDailyEntry: boolean;
+  expense: number;
+};
+
+const PORTAL_ACTIVITY_LABELS_STORAGE_KEY = 'driver_portal_activity_labels_v1';
+const DEFAULT_ACTIVITY_LABELS = {
+  due: 'Due',
+  expense: 'Expense'
+};
 
 const DriverPortalPage: React.FC = () => {
   const { user, logout } = useAuth();
@@ -53,6 +75,8 @@ const DriverPortalPage: React.FC = () => {
   const [teamCashModeUpdating, setTeamCashModeUpdating] = useState<Record<string, boolean>>({});
   const [unreadUpdateCount, setUnreadUpdateCount] = useState(0);
   const [lastUpdateLabel, setLastUpdateLabel] = useState<string | null>(null);
+  const [customDueLabel, setCustomDueLabel] = useState(DEFAULT_ACTIVITY_LABELS.due);
+  const [customExpenseLabel, setCustomExpenseLabel] = useState(DEFAULT_ACTIVITY_LABELS.expense);
   const [calcPopup, setCalcPopup] = useState<{
       metric: 'netPayout' | 'netBalance';
       values: {
@@ -89,6 +113,27 @@ const DriverPortalPage: React.FC = () => {
 
   const activeTabMeta = tabOptions.find(tab => tab.key === activeTab) || tabOptions[0];
   const ActiveTabIcon = activeTabMeta.icon;
+  const dueLabel = customDueLabel.trim() || DEFAULT_ACTIVITY_LABELS.due;
+  const expenseLabel = customExpenseLabel.trim() || DEFAULT_ACTIVITY_LABELS.expense;
+
+  useEffect(() => {
+      try {
+          const persisted = localStorage.getItem(PORTAL_ACTIVITY_LABELS_STORAGE_KEY);
+          if (!persisted) return;
+          const parsed = JSON.parse(persisted) as { due?: string; expense?: string };
+          setCustomDueLabel((parsed.due || DEFAULT_ACTIVITY_LABELS.due).trim() || DEFAULT_ACTIVITY_LABELS.due);
+          setCustomExpenseLabel((parsed.expense || DEFAULT_ACTIVITY_LABELS.expense).trim() || DEFAULT_ACTIVITY_LABELS.expense);
+      } catch (error) {
+          console.warn('Failed to parse portal activity labels', error);
+      }
+  }, []);
+
+  useEffect(() => {
+      localStorage.setItem(PORTAL_ACTIVITY_LABELS_STORAGE_KEY, JSON.stringify({
+          due: dueLabel,
+          expense: expenseLabel
+      }));
+  }, [dueLabel, expenseLabel]);
 
   const isDateFilterActive = useMemo(() => {
       if (fromDate && toDate) {
@@ -268,6 +313,66 @@ const DriverPortalPage: React.FC = () => {
           return acc;
       }, {});
   }, [rawExpenses]);
+
+  const activityLogByDate = useMemo<ActivityLogRow[]>(() => {
+      const map = new Map<string, ActivityLogRow>();
+
+      dailyWithAdjustments.forEach((entry) => {
+          map.set(entry.date, {
+              id: entry.id,
+              date: entry.date,
+              day: entry.day || new Date(entry.date).toLocaleDateString('en-US', { weekday: 'long' }),
+              collection: entry.collection || 0,
+              rent: entry.rent || 0,
+              fuel: entry.fuel || 0,
+              due: entry.due || 0,
+              adjustedDue: entry.adjustedDue ?? (entry.due || 0) + (entry.adjustmentApplied || 0),
+              adjustmentApplied: entry.adjustmentApplied || 0,
+              shift: entry.shift || 'N/A',
+              payout: entry.payout,
+              payoutDate: entry.payoutDate,
+              hasDailyEntry: true,
+              expense: expensesByDate[entry.date] || 0
+          });
+      });
+
+      Object.entries(expensesByDate).forEach(([expenseDate, totalExpense]) => {
+          if (map.has(expenseDate)) {
+              const existing = map.get(expenseDate)!;
+              map.set(expenseDate, { ...existing, expense: totalExpense });
+              return;
+          }
+
+          map.set(expenseDate, {
+              id: `expense-${expenseDate}`,
+              date: expenseDate,
+              day: new Date(expenseDate).toLocaleDateString('en-US', { weekday: 'long' }),
+              collection: 0,
+              rent: 0,
+              fuel: 0,
+              due: 0,
+              adjustedDue: 0,
+              adjustmentApplied: 0,
+              shift: 'N/A',
+              hasDailyEntry: false,
+              expense: totalExpense
+          });
+      });
+
+      return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
+  }, [dailyWithAdjustments, expensesByDate]);
+
+  const filteredActivityLogByDate = useMemo<ActivityLogRow[]>(() => {
+      const start = fromDate ? new Date(`${fromDate}T00:00:00`).getTime() : null;
+      const end = toDate ? new Date(`${toDate}T23:59:59`).getTime() : null;
+
+      return activityLogByDate.filter((entry) => {
+          const entryTime = new Date(entry.date).getTime();
+          if (start !== null && entryTime < start) return false;
+          if (end !== null && entryTime > end) return false;
+          return true;
+      });
+  }, [activityLogByDate, fromDate, toDate]);
 
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
@@ -1430,7 +1535,7 @@ const DriverPortalPage: React.FC = () => {
   };
 
   // Helper for recent logs
-  const recentLogs = rawDaily.slice(0, 3);
+  const recentLogs = activityLogByDate.slice(0, 3);
   // Helper for latest bill
   const latestBill = billingData.length > 0 ? billingData[0] : null;
 
@@ -1917,11 +2022,8 @@ const DriverPortalPage: React.FC = () => {
                           <button onClick={() => setActiveTab('daily')} className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700">View All</button>
                       </div>
                       <div className="space-y-3">
-                          {recentLogs.map(entry => {
-                              const entryExpense = expensesByDate[entry.date] || 0;
-
-                              return (
-                              <div key={entry.id} className="bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center">
+                          {recentLogs.map(entry => (
+                              <div key={entry.date} className="bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center">
                                    <div className="flex items-center gap-3">
                                        <div className="bg-slate-50 p-2.5 rounded-xl text-slate-400">
                                            <Calendar size={16} />
@@ -1934,13 +2036,14 @@ const DriverPortalPage: React.FC = () => {
                                    <div className="text-right">
                                        <p className="text-sm font-bold text-emerald-600">+{formatCurrency(entry.collection)}</p>
                                        <p className="text-[10px] text-slate-400">Rent: {formatCurrency(entry.rent)}</p>
-                                       {entryExpense > 0 && (
-                                           <p className="text-[10px] text-rose-500 font-semibold">Expe: {formatCurrency(entryExpense)}</p>
+                                       <p className="text-[10px] text-slate-400">{dueLabel}: {entry.adjustedDue > 0 ? '+' : ''}{entry.adjustedDue}</p>
+                                       {entry.expense > 0 && (
+                                           <p className="text-[10px] text-rose-500 font-semibold">{expenseLabel}: {formatCurrency(entry.expense)}</p>
                                        )}
+                                       {!entry.hasDailyEntry && <p className="text-[10px] text-indigo-500 font-semibold">Expense-only date</p>}
                                    </div>
                               </div>
-                              );
-                          })}
+                          ))}
                           {recentLogs.length === 0 && <p className="text-center text-xs text-slate-400 py-4 bg-white rounded-2xl border border-slate-100 border-dashed">No recent activity found</p>}
                       </div>
                   </div>
@@ -1984,7 +2087,7 @@ const DriverPortalPage: React.FC = () => {
               <div className="p-4 border-b border-slate-100 bg-slate-50/50 space-y-3">
                   <div className="flex justify-between items-center">
                       <h3 className="font-bold text-slate-800 text-sm">Recent Activity</h3>
-                      <span className="text-[10px] bg-white border border-slate-200 px-2 py-1 rounded-full text-slate-500 font-bold">{filteredDaily.length} Entries</span>
+                      <span className="text-[10px] bg-white border border-slate-200 px-2 py-1 rounded-full text-slate-500 font-bold">{filteredActivityLogByDate.length} Entries</span>
                   </div>
                   <div className="flex flex-wrap gap-3 items-center text-[11px] font-bold text-slate-600">
                       <div className="flex items-center gap-2">
@@ -2014,18 +2117,40 @@ const DriverPortalPage: React.FC = () => {
                           </button>
                       )}
                   </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">
+                          Due Label
+                          <input
+                              type="text"
+                              value={customDueLabel}
+                              maxLength={20}
+                              onChange={(e) => setCustomDueLabel(e.target.value)}
+                              placeholder={DEFAULT_ACTIVITY_LABELS.due}
+                              className="normal-case tracking-normal text-[11px] font-semibold border border-slate-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 w-full"
+                          />
+                      </label>
+                      <label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">
+                          Expense Label
+                          <input
+                              type="text"
+                              value={customExpenseLabel}
+                              maxLength={20}
+                              onChange={(e) => setCustomExpenseLabel(e.target.value)}
+                              placeholder={DEFAULT_ACTIVITY_LABELS.expense}
+                              className="normal-case tracking-normal text-[11px] font-semibold border border-slate-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 w-full"
+                          />
+                      </label>
+                  </div>
               </div>
                   <div className="divide-y divide-slate-50">
-                      {filteredDaily.length === 0 ? (
+                      {filteredActivityLogByDate.length === 0 ? (
                           <div className="p-8 text-center text-slate-400 text-sm">No daily records found for the selected dates.</div>
                       ) : (
-                          filteredDaily.map(entry => {
-                                      const adjustedDue = getAdjustedDue(entry);
-                                      const entryExpense = expensesByDate[entry.date] || 0;
-                                      const showExpense = entryExpense > 0;
+                          filteredActivityLogByDate.map(entry => {
+                                      const showExpense = entry.expense > 0;
 
                               return (
-                                  <div key={entry.id} className="p-4 hover:bg-slate-50 transition-colors">
+                                  <div key={entry.date} className="p-4 hover:bg-slate-50 transition-colors">
                                       <div className="flex justify-between items-start mb-2">
                                           <div className="flex items-center gap-2">
                                               <div className="bg-indigo-50 text-indigo-600 p-1.5 rounded-lg">
@@ -2036,10 +2161,13 @@ const DriverPortalPage: React.FC = () => {
                                                   <p className="text-[10px] text-slate-400 uppercase font-medium">{entry.day.substring(0,3)} • {entry.shift}</p>
                                               </div>
                                           </div>
-                                          <span className="font-bold text-emerald-600 text-sm bg-emerald-50 px-2 py-1 rounded-lg">
+                                          <span className={`font-bold text-sm px-2 py-1 rounded-lg ${entry.hasDailyEntry ? 'text-emerald-600 bg-emerald-50' : 'text-indigo-600 bg-indigo-50'}`}>
                                               {formatCurrency(entry.collection)}
                                           </span>
                                       </div>
+                                      {!entry.hasDailyEntry && (
+                                          <p className="mb-2 text-[10px] font-semibold text-indigo-600">No daily trip entry. Showing driver expense for this date.</p>
+                                      )}
 
                                       <div className={`grid ${showExpense ? 'grid-cols-6' : 'grid-cols-5'} gap-2 text-[10px] text-slate-500 bg-slate-50/50 p-2 rounded-lg`}>
                                           <div>
@@ -2051,10 +2179,10 @@ const DriverPortalPage: React.FC = () => {
                                               {formatCurrency(entry.fuel)}
                                           </div>
                                           <div>
-                                              <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Due</span>
+                                              <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">{dueLabel}</span>
                                               <div className="flex flex-col items-start gap-0.5">
-                                                  <span className={adjustedDue !== 0 ? (adjustedDue > 0 ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold') : ''}>
-                                                      {adjustedDue > 0 ? '+' : ''}{adjustedDue}
+                                                  <span className={entry.adjustedDue !== 0 ? (entry.adjustedDue > 0 ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold') : ''}>
+                                                      {entry.adjustedDue > 0 ? '+' : ''}{entry.adjustedDue}
                                                   </span>
                                                   {entry.adjustmentApplied ? (
                                                       <span className="text-[9px] font-semibold text-amber-600 uppercase tracking-wide">
@@ -2065,14 +2193,15 @@ const DriverPortalPage: React.FC = () => {
                                           </div>
                                           {showExpense && (
                                               <div>
-                                                  <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Expe</span>
+                                                  <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">{expenseLabel}</span>
                                                   <span className="text-rose-600 font-semibold">
-                                                      {formatCurrency(entryExpense)}
+                                                      {formatCurrency(entry.expense)}
                                                   </span>
                                               </div>
                                           )}
                                           <div>
                                               {(() => {
+                                                  if (!entry.hasDailyEntry) return null;
                                                   const weeklyWallet = weeklyWalletByEntryId.get(entry.id);
                                                   if (!weeklyWallet) return null;
                                                   const walletAmount = calculateWalletWeek(weeklyWallet);
