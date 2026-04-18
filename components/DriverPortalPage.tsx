@@ -1971,9 +1971,9 @@ const DriverPortalPage: React.FC = () => {
                                    <div className="text-right">
                                        <p className="text-sm font-bold text-emerald-600">+{formatCurrency(entry.collection)}</p>
                                        <p className="text-[10px] text-slate-400">Rent: {formatCurrency(entry.rent)}</p>
-                                       {entryExpense > 0 && (
-                                           <p className="text-[10px] text-rose-500 font-semibold">Expe: {formatCurrency(entryExpense)}</p>
-                                       )}
+                                       <p className={`text-[10px] font-semibold ${entryExpense > 0 ? 'text-rose-500' : 'text-slate-400'}`}>
+                                           Expense: {formatCurrency(entryExpense)}
+                                       </p>
                                    </div>
                               </div>
                               );
