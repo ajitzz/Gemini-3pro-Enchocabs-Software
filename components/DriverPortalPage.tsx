@@ -1429,6 +1429,65 @@ const DriverPortalPage: React.FC = () => {
       a.click();
   };
 
+  const filteredExpensesByDate = useMemo(() => {
+      return filteredExpenses.reduce<Record<string, number>>((acc, expense) => {
+          acc[expense.expenseDate] = (acc[expense.expenseDate] || 0) + (expense.amount || 0);
+          return acc;
+      }, {});
+  }, [filteredExpenses]);
+
+  const dailyLogRows = useMemo(() => {
+      const dailyByDate = filteredDaily.reduce<Record<string, {
+          day?: string;
+          collection: number;
+          rent: number;
+          fuel: number;
+          due: number;
+          payout: number;
+          wallet: number;
+      }>>((acc, entry) => {
+          if (!acc[entry.date]) {
+              acc[entry.date] = { day: entry.day, collection: 0, rent: 0, fuel: 0, due: 0, payout: 0, wallet: 0 };
+          }
+
+          const row = acc[entry.date];
+          row.collection += entry.collection || 0;
+          row.rent += entry.rent || 0;
+          row.fuel += entry.fuel || 0;
+          row.due += getAdjustedDue(entry);
+          row.payout += entry.payout || 0;
+          row.wallet += weeklyWalletByEntryId.get(entry.id) ? calculateWalletWeek(weeklyWalletByEntryId.get(entry.id) as WeeklyWallet) : 0;
+          if (!row.day && entry.day) row.day = entry.day;
+          return acc;
+      }, {});
+
+      const allDates = new Set<string>([
+          ...Object.keys(dailyByDate),
+          ...Object.keys(filteredExpensesByDate)
+      ]);
+
+      return Array.from(allDates)
+          .sort((a, b) => b.localeCompare(a))
+          .map(date => {
+              const daily = dailyByDate[date];
+              const fallbackDay = new Date(`${date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long' });
+
+              return {
+                  id: `daily-${date}`,
+                  date,
+                  day: daily?.day || fallbackDay,
+                  hasDaily: Boolean(daily),
+                  collection: daily?.collection || 0,
+                  rent: daily?.rent || 0,
+                  fuel: daily?.fuel || 0,
+                  due: daily?.due || 0,
+                  payout: daily?.payout || 0,
+                  wallet: daily?.wallet || 0,
+                  expense: filteredExpensesByDate[date] || 0
+              };
+          });
+  }, [calculateWalletWeek, filteredDaily, filteredExpensesByDate, getAdjustedDue, weeklyWalletByEntryId]);
+
   // Helper for recent logs (date-wise daily + expense coverage)
   const recentLogs = useMemo(() => {
       const dailyByDate = rawDaily.reduce<Record<string, { collection: number; rent: number; day?: string }>>((acc, entry) => {
@@ -1463,6 +1522,7 @@ const DriverPortalPage: React.FC = () => {
                   id: `recent-${date}`,
                   date,
                   day: daily?.day || fallbackDay,
+                  hasDaily: Boolean(daily),
                   collection: daily?.collection || 0,
                   rent: daily?.rent || 0
               };
@@ -1970,7 +2030,9 @@ const DriverPortalPage: React.FC = () => {
                                    </div>
                                    <div className="text-right">
                                        <p className="text-sm font-bold text-emerald-600">+{formatCurrency(entry.collection)}</p>
-                                       <p className="text-[10px] text-slate-400">Rent: {formatCurrency(entry.rent)}</p>
+                                       {entry.hasDaily && (
+                                           <p className="text-[10px] text-slate-400">Rent: {formatCurrency(entry.rent)}</p>
+                                       )}
                                        <p className={`text-[10px] font-semibold ${entryExpense > 0 ? 'text-rose-500' : 'text-slate-400'}`}>
                                            Expense: {formatCurrency(entryExpense)}
                                        </p>
@@ -2021,7 +2083,7 @@ const DriverPortalPage: React.FC = () => {
               <div className="p-4 border-b border-slate-100 bg-slate-50/50 space-y-3">
                   <div className="flex justify-between items-center">
                       <h3 className="font-bold text-slate-800 text-sm">Recent Activity</h3>
-                      <span className="text-[10px] bg-white border border-slate-200 px-2 py-1 rounded-full text-slate-500 font-bold">{filteredDaily.length} Entries</span>
+                      <span className="text-[10px] bg-white border border-slate-200 px-2 py-1 rounded-full text-slate-500 font-bold">{dailyLogRows.length} Entries</span>
                   </div>
                   <div className="flex flex-wrap gap-3 items-center text-[11px] font-bold text-slate-600">
                       <div className="flex items-center gap-2">
@@ -2053,13 +2115,12 @@ const DriverPortalPage: React.FC = () => {
                   </div>
               </div>
                   <div className="divide-y divide-slate-50">
-                      {filteredDaily.length === 0 ? (
-                          <div className="p-8 text-center text-slate-400 text-sm">No daily records found for the selected dates.</div>
+                      {dailyLogRows.length === 0 ? (
+                          <div className="p-8 text-center text-slate-400 text-sm">No daily records or expenses found for the selected dates.</div>
                       ) : (
-                          filteredDaily.map(entry => {
-                                      const adjustedDue = getAdjustedDue(entry);
-                                      const entryExpense = expensesByDate[entry.date] || 0;
-                                      const showExpense = entryExpense > 0;
+                          dailyLogRows.map(entry => {
+                                      const showExpenseOnly = !entry.hasDaily && entry.expense > 0;
+                                      const showExpense = entry.expense > 0;
 
                               return (
                                   <div key={entry.id} className="p-4 hover:bg-slate-50 transition-colors">
@@ -2070,76 +2131,62 @@ const DriverPortalPage: React.FC = () => {
                                               </div>
                                               <div>
                                                   <p className="text-sm font-bold text-slate-800">{formatDate(entry.date)}</p>
-                                                  <p className="text-[10px] text-slate-400 uppercase font-medium">{entry.day.substring(0,3)} • {entry.shift}</p>
+                                                  <p className="text-[10px] text-slate-400 uppercase font-medium">{entry.day.substring(0,3)}</p>
                                               </div>
                                           </div>
                                           <span className="font-bold text-emerald-600 text-sm bg-emerald-50 px-2 py-1 rounded-lg">
-                                              {formatCurrency(entry.collection)}
+                                              {showExpenseOnly ? formatCurrency(entry.expense) : formatCurrency(entry.collection)}
                                           </span>
                                       </div>
 
-                                      <div className={`grid ${showExpense ? 'grid-cols-6' : 'grid-cols-5'} gap-2 text-[10px] text-slate-500 bg-slate-50/50 p-2 rounded-lg`}>
-                                          <div>
-                                              <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Rent</span>
-                                              {formatCurrency(entry.rent)}
-                                          </div>
-                                          <div>
-                                              <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Fuel</span>
-                                              {formatCurrency(entry.fuel)}
-                                          </div>
-                                          <div>
-                                              <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Due</span>
-                                              <div className="flex flex-col items-start gap-0.5">
-                                                  <span className={adjustedDue !== 0 ? (adjustedDue > 0 ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold') : ''}>
-                                                      {adjustedDue > 0 ? '+' : ''}{adjustedDue}
-                                                  </span>
-                                                  {entry.adjustmentApplied ? (
-                                                      <span className="text-[9px] font-semibold text-amber-600 uppercase tracking-wide">
-                                                          Adjustment: {entry.adjustmentApplied > 0 ? '+' : ''}{entry.adjustmentApplied}
-                                                      </span>
-                                                  ) : null}
-                                              </div>
-                                          </div>
-                                          {showExpense && (
+                                      <div className={`grid ${showExpenseOnly ? 'grid-cols-1' : (showExpense ? 'grid-cols-6' : 'grid-cols-5')} gap-2 text-[10px] text-slate-500 bg-slate-50/50 p-2 rounded-lg`}>
+                                          {showExpenseOnly ? (
                                               <div>
                                                   <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Expe</span>
                                                   <span className="text-rose-600 font-semibold">
-                                                      {formatCurrency(entryExpense)}
+                                                      {formatCurrency(entry.expense)}
                                                   </span>
                                               </div>
-                                          )}
-                                          <div>
-                                              {(() => {
-                                                  const weeklyWallet = weeklyWalletByEntryId.get(entry.id);
-                                                  if (!weeklyWallet) return null;
-                                                  const walletAmount = calculateWalletWeek(weeklyWallet);
-                                                  const walletColor = walletAmount === 0
-                                                      ? ''
-                                                      : walletAmount > 0
-                                                          ? 'text-emerald-600 font-bold'
-                                                          : 'text-rose-600 font-bold';
-
-                                                  return (
-                                                      <>
-                                                          <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Wallet</span>
-                                                          <span className={walletColor}>
-                                                              {formatCurrency(walletAmount)}
+                                          ) : (
+                                              <>
+                                                  <div>
+                                                      <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Rent</span>
+                                                      {formatCurrency(entry.rent)}
+                                                  </div>
+                                                  <div>
+                                                      <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Fuel</span>
+                                                      {formatCurrency(entry.fuel)}
+                                                  </div>
+                                                  <div>
+                                                      <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Due</span>
+                                                      <div className="flex flex-col items-start gap-0.5">
+                                                          <span className={entry.due !== 0 ? (entry.due > 0 ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold') : ''}>
+                                                              {entry.due > 0 ? '+' : ''}{entry.due}
                                                           </span>
-                                                      </>
-                                                  );
-                                              })()}
-                                          </div>
-                                          <div>
-                                              <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Payout</span>
-                                              <div className="flex flex-col items-start gap-0.5">
-                                                  <span className="text-slate-600 font-semibold">
-                                                      {typeof entry.payout === 'number' ? formatCurrency(entry.payout) : '—'}
-                                                  </span>
-                                                  <span className="text-[9px] text-slate-400">
-                                                      {entry.payoutDate ? formatDate(entry.payoutDate) : '—'}
-                                                  </span>
-                                              </div>
-                                          </div>
+                                                      </div>
+                                                  </div>
+                                                  {showExpense && (
+                                                      <div>
+                                                          <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Expe</span>
+                                                          <span className="text-rose-600 font-semibold">
+                                                              {formatCurrency(entry.expense)}
+                                                          </span>
+                                                      </div>
+                                                  )}
+                                                  <div>
+                                                      <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Wallet</span>
+                                                      <span className={entry.wallet === 0 ? '' : entry.wallet > 0 ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold'}>
+                                                          {formatCurrency(entry.wallet)}
+                                                      </span>
+                                                  </div>
+                                                  <div>
+                                                      <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Payout</span>
+                                                      <span className="text-slate-600 font-semibold">
+                                                          {formatCurrency(entry.payout)}
+                                                      </span>
+                                                  </div>
+                                              </>
+                                          )}
                                       </div>
                                   </div>
                               );
