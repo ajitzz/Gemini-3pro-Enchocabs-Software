@@ -347,7 +347,7 @@ const RevenuePage: React.FC = () => {
         strictProfit,
         isWalletSafe: Math.abs(base.fraudCheckDiff) < (100 * weeksCount)
     };
-  }, [activeWeeks]);
+  }, [activeWeeks, weeklyRoomRent]);
 
   const pendingEntries = useMemo(() => {
     return activeWeeks.flatMap(week =>
