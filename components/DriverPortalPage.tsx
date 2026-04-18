@@ -1429,8 +1429,45 @@ const DriverPortalPage: React.FC = () => {
       a.click();
   };
 
-  // Helper for recent logs
-  const recentLogs = rawDaily.slice(0, 3);
+  // Helper for recent logs (date-wise daily + expense coverage)
+  const recentLogs = useMemo(() => {
+      const dailyByDate = rawDaily.reduce<Record<string, { collection: number; rent: number; day?: string }>>((acc, entry) => {
+          if (!acc[entry.date]) {
+              acc[entry.date] = {
+                  collection: 0,
+                  rent: 0,
+                  day: entry.day
+              };
+          }
+          acc[entry.date].collection += entry.collection || 0;
+          acc[entry.date].rent += entry.rent || 0;
+          if (!acc[entry.date].day && entry.day) {
+              acc[entry.date].day = entry.day;
+          }
+          return acc;
+      }, {});
+
+      const allDates = new Set<string>([
+          ...Object.keys(dailyByDate),
+          ...Object.keys(expensesByDate)
+      ]);
+
+      return Array.from(allDates)
+          .sort((a, b) => b.localeCompare(a))
+          .slice(0, 3)
+          .map(date => {
+              const daily = dailyByDate[date];
+              const fallbackDay = new Date(`${date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long' });
+
+              return {
+                  id: `recent-${date}`,
+                  date,
+                  day: daily?.day || fallbackDay,
+                  collection: daily?.collection || 0,
+                  rent: daily?.rent || 0
+              };
+          });
+  }, [expensesByDate, rawDaily]);
   // Helper for latest bill
   const latestBill = billingData.length > 0 ? billingData[0] : null;
 
