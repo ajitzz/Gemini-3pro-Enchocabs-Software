@@ -15,6 +15,19 @@ import NetCalculationPopup from './NetCalculationPopup';
 import { registerDriverPushNotifications } from '../lib/pushNotifications';
 
 type PortalDailyEntry = DailyEntry & { adjustmentApplied?: number; adjustedDue?: number };
+type ExpenseDailySummary = { total: number; labels: string[] };
+
+const getDueLabel = (entry: DailyEntry) => {
+  const custom = String(entry.dueLabel || '').trim();
+  return custom || 'Due';
+};
+
+const getExpenseLabel = (expense: DriverExpense) => {
+  const custom = String(expense.customType || '').trim();
+  if (custom) return custom;
+  const category = String(expense.category || '').trim();
+  return category || 'Expense';
+};
 
 const DriverPortalPage: React.FC = () => {
   const { user, logout } = useAuth();
@@ -263,8 +276,16 @@ const DriverPortalPage: React.FC = () => {
   }, [fromDate, rawExpenses, toDate]);
 
   const expensesByDate = useMemo(() => {
-      return rawExpenses.reduce<Record<string, number>>((acc, expense) => {
-          acc[expense.expenseDate] = (acc[expense.expenseDate] || 0) + (expense.amount || 0);
+      return rawExpenses.reduce<Record<string, ExpenseDailySummary>>((acc, expense) => {
+          const key = expense.expenseDate;
+          if (!acc[key]) {
+              acc[key] = { total: 0, labels: [] };
+          }
+          acc[key].total += Number(expense.amount || 0);
+          const label = getExpenseLabel(expense);
+          if (label && !acc[key].labels.includes(label)) {
+              acc[key].labels.push(label);
+          }
           return acc;
       }, {});
   }, [rawExpenses]);
@@ -723,6 +744,7 @@ const DriverPortalPage: React.FC = () => {
       if(!dateString) return '-';
       return dateString.split('-').reverse().join('-');
   };
+
 
   const getAdjustedDue = useCallback((entry: DailyEntry | PortalDailyEntry) => {
       const adjusted = (entry as PortalDailyEntry).adjustedDue;
@@ -1918,7 +1940,8 @@ const DriverPortalPage: React.FC = () => {
                       </div>
                       <div className="space-y-3">
                           {recentLogs.map(entry => {
-                              const entryExpense = expensesByDate[entry.date] || 0;
+                              const expenseSummary = expensesByDate[entry.date] || { total: 0, labels: [] };
+                              const dueLabel = getDueLabel(entry);
 
                               return (
                               <div key={entry.id} className="bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center">
@@ -1934,8 +1957,11 @@ const DriverPortalPage: React.FC = () => {
                                    <div className="text-right">
                                        <p className="text-sm font-bold text-emerald-600">+{formatCurrency(entry.collection)}</p>
                                        <p className="text-[10px] text-slate-400">Rent: {formatCurrency(entry.rent)}</p>
-                                       {entryExpense > 0 && (
-                                           <p className="text-[10px] text-rose-500 font-semibold">Expe: {formatCurrency(entryExpense)}</p>
+                                       <p className="text-[10px] text-slate-500 font-semibold">{dueLabel}: {getAdjustedDue(entry) > 0 ? '+' : ''}{getAdjustedDue(entry)}</p>
+                                       {expenseSummary.total > 0 && (
+                                           <p className="text-[10px] text-rose-500 font-semibold">
+                                             {expenseSummary.labels.length ? expenseSummary.labels.join(', ') : 'Expense'}: {formatCurrency(expenseSummary.total)}
+                                           </p>
                                        )}
                                    </div>
                               </div>
@@ -2021,8 +2047,9 @@ const DriverPortalPage: React.FC = () => {
                       ) : (
                           filteredDaily.map(entry => {
                                       const adjustedDue = getAdjustedDue(entry);
-                                      const entryExpense = expensesByDate[entry.date] || 0;
-                                      const showExpense = entryExpense > 0;
+                                      const expenseSummary = expensesByDate[entry.date] || { total: 0, labels: [] };
+                                      const showExpense = expenseSummary.total > 0;
+                                      const dueLabel = getDueLabel(entry);
 
                               return (
                                   <div key={entry.id} className="p-4 hover:bg-slate-50 transition-colors">
@@ -2051,7 +2078,7 @@ const DriverPortalPage: React.FC = () => {
                                               {formatCurrency(entry.fuel)}
                                           </div>
                                           <div>
-                                              <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Due</span>
+                                              <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">{dueLabel}</span>
                                               <div className="flex flex-col items-start gap-0.5">
                                                   <span className={adjustedDue !== 0 ? (adjustedDue > 0 ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold') : ''}>
                                                       {adjustedDue > 0 ? '+' : ''}{adjustedDue}
@@ -2065,10 +2092,8 @@ const DriverPortalPage: React.FC = () => {
                                           </div>
                                           {showExpense && (
                                               <div>
-                                                  <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Expe</span>
-                                                  <span className="text-rose-600 font-semibold">
-                                                      {formatCurrency(entryExpense)}
-                                                  </span>
+                                                  <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">{expenseSummary.labels.length ? expenseSummary.labels.join(', ') : 'Expense'}</span>
+                                                  <span className="text-rose-600 font-semibold">{formatCurrency(expenseSummary.total)}</span>
                                               </div>
                                           )}
                                           <div>
