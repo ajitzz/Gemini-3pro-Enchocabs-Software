@@ -47,6 +47,8 @@ const LEGACY_ROOM_RENT_PER_WEEK = 4666;
 const DEFAULT_MONTHLY_ROOM_RENT = (LEGACY_ROOM_RENT_PER_WEEK * 30) / 7;
 const ROOM_RENT_STORAGE_KEY = 'revenue:monthlyRoomRentByWeek';
 
+const getWeekRoomRentKey = (weekStartDate: string, weekEndDate: string) => `${weekStartDate}__${weekEndDate}`;
+
 const RevenuePage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [rawSummaries, setRawSummaries] = useState<CompanyWeeklySummary[]>([]);
@@ -58,7 +60,7 @@ const RevenuePage: React.FC = () => {
   const [pendingFilter, setPendingFilter] = useState('');
   const [openCardKey, setOpenCardKey] = useState<string | null>(null);
   const [monthlyRoomRentByWeek, setMonthlyRoomRentByWeek] = useState<Record<string, number>>({});
-  const [roomRentEditWeekId, setRoomRentEditWeekId] = useState<string>('');
+  const [roomRentEditWeekKey, setRoomRentEditWeekKey] = useState<string>('');
 
   // Selection State
   const [selectionMode, setSelectionMode] = useState<'SINGLE' | 'RANGE'>('SINGLE');
@@ -90,17 +92,18 @@ const RevenuePage: React.FC = () => {
     }
   }, []);
 
-  const getWeeklyRoomRent = (weekId: string) => {
-    const monthlyRent = monthlyRoomRentByWeek[weekId] ?? DEFAULT_MONTHLY_ROOM_RENT;
+  const getWeeklyRoomRent = (weekStartDate: string, weekEndDate: string) => {
+    const weekKey = getWeekRoomRentKey(weekStartDate, weekEndDate);
+    const monthlyRent = monthlyRoomRentByWeek[weekKey] ?? DEFAULT_MONTHLY_ROOM_RENT;
     return (monthlyRent / 30) * 7;
   };
 
-  const handleMonthlyRoomRentChange = (weekId: string, value: string) => {
-    if (!weekId) return;
+  const handleMonthlyRoomRentChange = (weekKey: string, value: string) => {
+    if (!weekKey) return;
     const parsed = Number(value);
     const safeValue = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
     setMonthlyRoomRentByWeek(prev => {
-      const next = { ...prev, [weekId]: safeValue };
+      const next = { ...prev, [weekKey]: safeValue };
       if (typeof window !== 'undefined') {
         window.localStorage.setItem(ROOM_RENT_STORAGE_KEY, JSON.stringify(next));
       }
@@ -244,7 +247,7 @@ const RevenuePage: React.FC = () => {
       const driversWalletAdjusted = driversWalletRaw + totalCharges; 
 
       // Profit / Loss Logic
-      const weeklyRoomRent = getWeeklyRoomRent(summary.id);
+      const weeklyRoomRent = getWeeklyRoomRent(summary.startDate, summary.endDate);
       const profitLoss = driversPayments - driversWalletRaw - currentOs - weeklyRoomRent;
 
       // Validations
@@ -282,9 +285,9 @@ const RevenuePage: React.FC = () => {
 
   useEffect(() => {
     if (!processedWeeks.length) return;
-    if (roomRentEditWeekId && processedWeeks.some(w => w.id === roomRentEditWeekId)) return;
-    setRoomRentEditWeekId(processedWeeks[0].id);
-  }, [processedWeeks, roomRentEditWeekId]);
+    if (roomRentEditWeekKey && processedWeeks.some(w => getWeekRoomRentKey(w.startDate, w.endDate) === roomRentEditWeekKey)) return;
+    setRoomRentEditWeekKey(getWeekRoomRentKey(processedWeeks[0].startDate, processedWeeks[0].endDate));
+  }, [processedWeeks, roomRentEditWeekKey]);
 
   // --- 2. SELECTION LOGIC ---
   const activeWeeks = useMemo(() => {
@@ -347,7 +350,7 @@ const RevenuePage: React.FC = () => {
         strictProfit,
         isWalletSafe: Math.abs(base.fraudCheckDiff) < (100 * weeksCount)
     };
-  }, [activeWeeks, weeklyRoomRent]);
+  }, [activeWeeks]);
 
   const pendingEntries = useMemo(() => {
     return activeWeeks.flatMap(week =>
@@ -394,11 +397,11 @@ const RevenuePage: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const editMonthlyRoomRent = roomRentEditWeekId
-    ? (monthlyRoomRentByWeek[roomRentEditWeekId] ?? DEFAULT_MONTHLY_ROOM_RENT)
+  const editMonthlyRoomRent = roomRentEditWeekKey
+    ? (monthlyRoomRentByWeek[roomRentEditWeekKey] ?? DEFAULT_MONTHLY_ROOM_RENT)
     : DEFAULT_MONTHLY_ROOM_RENT;
-  const editWeeklyRoomRent = roomRentEditWeekId
-    ? getWeeklyRoomRent(roomRentEditWeekId)
+  const editWeeklyRoomRent = roomRentEditWeekKey
+    ? ((monthlyRoomRentByWeek[roomRentEditWeekKey] ?? DEFAULT_MONTHLY_ROOM_RENT) / 30) * 7
     : (DEFAULT_MONTHLY_ROOM_RENT / 30) * 7;
 
   if (loading) return (
@@ -477,12 +480,12 @@ const RevenuePage: React.FC = () => {
           <div className="bg-white p-3 rounded-2xl shadow-sm border border-slate-200 w-full lg:w-auto">
             <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mb-2">Room Rent (Per Week)</p>
             <select
-              value={roomRentEditWeekId}
-              onChange={(e) => setRoomRentEditWeekId(e.target.value)}
+              value={roomRentEditWeekKey}
+              onChange={(e) => setRoomRentEditWeekKey(e.target.value)}
               className="w-full mb-2 px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
               {processedWeeks.map(week => (
-                <option key={week.id} value={week.id}>
+                <option key={week.id} value={getWeekRoomRentKey(week.startDate, week.endDate)}>
                   {week.label}
                 </option>
               ))}
@@ -493,7 +496,7 @@ const RevenuePage: React.FC = () => {
                 min={0}
                 step={1}
                 value={Number.isFinite(editMonthlyRoomRent) ? editMonthlyRoomRent : 0}
-                onChange={(e) => handleMonthlyRoomRentChange(roomRentEditWeekId, e.target.value)}
+                onChange={(e) => handleMonthlyRoomRentChange(roomRentEditWeekKey, e.target.value)}
                 className="w-40 px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-semibold text-slate-700"
                 aria-label="Monthly room rent"
               />
