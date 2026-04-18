@@ -32,6 +32,12 @@ type ActivityLogRow = {
   expense: number;
 };
 
+const PORTAL_ACTIVITY_LABELS_STORAGE_KEY = 'driver_portal_activity_labels_v1';
+const DEFAULT_ACTIVITY_LABELS = {
+  due: 'Due',
+  expense: 'Expense'
+};
+
 const DriverPortalPage: React.FC = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -69,6 +75,8 @@ const DriverPortalPage: React.FC = () => {
   const [teamCashModeUpdating, setTeamCashModeUpdating] = useState<Record<string, boolean>>({});
   const [unreadUpdateCount, setUnreadUpdateCount] = useState(0);
   const [lastUpdateLabel, setLastUpdateLabel] = useState<string | null>(null);
+  const [customDueLabel, setCustomDueLabel] = useState(DEFAULT_ACTIVITY_LABELS.due);
+  const [customExpenseLabel, setCustomExpenseLabel] = useState(DEFAULT_ACTIVITY_LABELS.expense);
   const [calcPopup, setCalcPopup] = useState<{
       metric: 'netPayout' | 'netBalance';
       values: {
@@ -105,6 +113,27 @@ const DriverPortalPage: React.FC = () => {
 
   const activeTabMeta = tabOptions.find(tab => tab.key === activeTab) || tabOptions[0];
   const ActiveTabIcon = activeTabMeta.icon;
+  const dueLabel = customDueLabel.trim() || DEFAULT_ACTIVITY_LABELS.due;
+  const expenseLabel = customExpenseLabel.trim() || DEFAULT_ACTIVITY_LABELS.expense;
+
+  useEffect(() => {
+      try {
+          const persisted = localStorage.getItem(PORTAL_ACTIVITY_LABELS_STORAGE_KEY);
+          if (!persisted) return;
+          const parsed = JSON.parse(persisted) as { due?: string; expense?: string };
+          setCustomDueLabel((parsed.due || DEFAULT_ACTIVITY_LABELS.due).trim() || DEFAULT_ACTIVITY_LABELS.due);
+          setCustomExpenseLabel((parsed.expense || DEFAULT_ACTIVITY_LABELS.expense).trim() || DEFAULT_ACTIVITY_LABELS.expense);
+      } catch (error) {
+          console.warn('Failed to parse portal activity labels', error);
+      }
+  }, []);
+
+  useEffect(() => {
+      localStorage.setItem(PORTAL_ACTIVITY_LABELS_STORAGE_KEY, JSON.stringify({
+          due: dueLabel,
+          expense: expenseLabel
+      }));
+  }, [dueLabel, expenseLabel]);
 
   const isDateFilterActive = useMemo(() => {
       if (fromDate && toDate) {
@@ -2007,8 +2036,9 @@ const DriverPortalPage: React.FC = () => {
                                    <div className="text-right">
                                        <p className="text-sm font-bold text-emerald-600">+{formatCurrency(entry.collection)}</p>
                                        <p className="text-[10px] text-slate-400">Rent: {formatCurrency(entry.rent)}</p>
+                                       <p className="text-[10px] text-slate-400">{dueLabel}: {entry.adjustedDue > 0 ? '+' : ''}{entry.adjustedDue}</p>
                                        {entry.expense > 0 && (
-                                           <p className="text-[10px] text-rose-500 font-semibold">Expense: {formatCurrency(entry.expense)}</p>
+                                           <p className="text-[10px] text-rose-500 font-semibold">{expenseLabel}: {formatCurrency(entry.expense)}</p>
                                        )}
                                        {!entry.hasDailyEntry && <p className="text-[10px] text-indigo-500 font-semibold">Expense-only date</p>}
                                    </div>
@@ -2087,6 +2117,30 @@ const DriverPortalPage: React.FC = () => {
                           </button>
                       )}
                   </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">
+                          Due Label
+                          <input
+                              type="text"
+                              value={customDueLabel}
+                              maxLength={20}
+                              onChange={(e) => setCustomDueLabel(e.target.value)}
+                              placeholder={DEFAULT_ACTIVITY_LABELS.due}
+                              className="normal-case tracking-normal text-[11px] font-semibold border border-slate-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 w-full"
+                          />
+                      </label>
+                      <label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">
+                          Expense Label
+                          <input
+                              type="text"
+                              value={customExpenseLabel}
+                              maxLength={20}
+                              onChange={(e) => setCustomExpenseLabel(e.target.value)}
+                              placeholder={DEFAULT_ACTIVITY_LABELS.expense}
+                              className="normal-case tracking-normal text-[11px] font-semibold border border-slate-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 w-full"
+                          />
+                      </label>
+                  </div>
               </div>
                   <div className="divide-y divide-slate-50">
                       {filteredActivityLogByDate.length === 0 ? (
@@ -2125,7 +2179,7 @@ const DriverPortalPage: React.FC = () => {
                                               {formatCurrency(entry.fuel)}
                                           </div>
                                           <div>
-                                              <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Due</span>
+                                              <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">{dueLabel}</span>
                                               <div className="flex flex-col items-start gap-0.5">
                                                   <span className={entry.adjustedDue !== 0 ? (entry.adjustedDue > 0 ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold') : ''}>
                                                       {entry.adjustedDue > 0 ? '+' : ''}{entry.adjustedDue}
@@ -2139,7 +2193,7 @@ const DriverPortalPage: React.FC = () => {
                                           </div>
                                           {showExpense && (
                                               <div>
-                                                  <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Expense</span>
+                                                  <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">{expenseLabel}</span>
                                                   <span className="text-rose-600 font-semibold">
                                                       {formatCurrency(entry.expense)}
                                                   </span>
