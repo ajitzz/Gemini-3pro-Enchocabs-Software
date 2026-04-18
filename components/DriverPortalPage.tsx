@@ -2008,7 +2008,7 @@ const DriverPortalPage: React.FC = () => {
                                        <p className="text-sm font-bold text-emerald-600">+{formatCurrency(entry.collection)}</p>
                                        <p className="text-[10px] text-slate-400">Rent: {formatCurrency(entry.rent)}</p>
                                        {entry.expense > 0 && (
-                                           <p className="text-[10px] text-rose-500 font-semibold">Expe: {formatCurrency(entry.expense)}</p>
+                                           <p className="text-[10px] text-rose-500 font-semibold">Expense: {formatCurrency(entry.expense)}</p>
                                        )}
                                        {!entry.hasDailyEntry && <p className="text-[10px] text-indigo-500 font-semibold">Expense-only date</p>}
                                    </div>
@@ -2139,7 +2139,7 @@ const DriverPortalPage: React.FC = () => {
                                           </div>
                                           {showExpense && (
                                               <div>
-                                                  <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Expe</span>
+                                                  <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Expense</span>
                                                   <span className="text-rose-600 font-semibold">
                                                       {formatCurrency(entry.expense)}
                                                   </span>
