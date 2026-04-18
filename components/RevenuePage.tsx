@@ -35,6 +35,7 @@ interface ProcessedWeek {
   
   // Results
   profitLoss: number;
+  weeklyRoomRent: number;
   
   // Validations
   hasSettlementIssue: boolean;
@@ -42,7 +43,9 @@ interface ProcessedWeek {
   fraudCheckDiff: number;
 }
 
-const ROOM_RENT_PER_WEEK = 4666;
+const LEGACY_ROOM_RENT_PER_WEEK = 4666;
+const DEFAULT_MONTHLY_ROOM_RENT = (LEGACY_ROOM_RENT_PER_WEEK * 30) / 7;
+const ROOM_RENT_STORAGE_KEY = 'revenue:monthlyRoomRentByWeek';
 
 const RevenuePage: React.FC = () => {
   const [loading, setLoading] = useState(true);
@@ -54,6 +57,8 @@ const RevenuePage: React.FC = () => {
   const [driverBillings, setDriverBillings] = useState<DriverBillingRecord[]>([]);
   const [pendingFilter, setPendingFilter] = useState('');
   const [openCardKey, setOpenCardKey] = useState<string | null>(null);
+  const [monthlyRoomRentByWeek, setMonthlyRoomRentByWeek] = useState<Record<string, number>>({});
+  const [roomRentEditWeekId, setRoomRentEditWeekId] = useState<string>('');
 
   // Selection State
   const [selectionMode, setSelectionMode] = useState<'SINGLE' | 'RANGE'>('SINGLE');
@@ -66,6 +71,42 @@ const RevenuePage: React.FC = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = window.localStorage.getItem(ROOM_RENT_STORAGE_KEY);
+    if (!stored) return;
+    try {
+      const parsed = JSON.parse(stored) as Record<string, unknown>;
+      if (!parsed || typeof parsed !== 'object') return;
+      const safeEntries = Object.entries(parsed).reduce<Record<string, number>>((acc, [weekId, val]) => {
+        const num = Number(val);
+        if (Number.isFinite(num) && num >= 0) acc[weekId] = num;
+        return acc;
+      }, {});
+      setMonthlyRoomRentByWeek(safeEntries);
+    } catch {
+      // ignore malformed local data
+    }
+  }, []);
+
+  const getWeeklyRoomRent = (weekId: string) => {
+    const monthlyRent = monthlyRoomRentByWeek[weekId] ?? DEFAULT_MONTHLY_ROOM_RENT;
+    return (monthlyRent / 30) * 7;
+  };
+
+  const handleMonthlyRoomRentChange = (weekId: string, value: string) => {
+    if (!weekId) return;
+    const parsed = Number(value);
+    const safeValue = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+    setMonthlyRoomRentByWeek(prev => {
+      const next = { ...prev, [weekId]: safeValue };
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(ROOM_RENT_STORAGE_KEY, JSON.stringify(next));
+      }
+      return next;
+    });
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -203,7 +244,8 @@ const RevenuePage: React.FC = () => {
       const driversWalletAdjusted = driversWalletRaw + totalCharges; 
 
       // Profit / Loss Logic
-      const profitLoss = driversPayments - driversWalletRaw - currentOs - ROOM_RENT_PER_WEEK;
+      const weeklyRoomRent = getWeeklyRoomRent(summary.id);
+      const profitLoss = driversPayments - driversWalletRaw - currentOs - weeklyRoomRent;
 
       // Validations
       const settlementDiff = Math.abs(currentOs - totalRent);
@@ -230,12 +272,19 @@ const RevenuePage: React.FC = () => {
         driverPendingTotal,
         driverPendingBreakdown,
         profitLoss,
+        weeklyRoomRent,
         hasSettlementIssue,
         isWalletSafe,
         fraudCheckDiff
       };
     });
-  }, [rawSummaries, dailyEntries, weeklyWallets, rentalSlabs, driverBillings, driverExpenses]);
+  }, [rawSummaries, dailyEntries, weeklyWallets, rentalSlabs, driverBillings, driverExpenses, monthlyRoomRentByWeek]);
+
+  useEffect(() => {
+    if (!processedWeeks.length) return;
+    if (roomRentEditWeekId && processedWeeks.some(w => w.id === roomRentEditWeekId)) return;
+    setRoomRentEditWeekId(processedWeeks[0].id);
+  }, [processedWeeks, roomRentEditWeekId]);
 
   // --- 2. SELECTION LOGIC ---
   const activeWeeks = useMemo(() => {
@@ -287,7 +336,7 @@ const RevenuePage: React.FC = () => {
     });
     
     const weeksCount = activeWeeks.length;
-    const totalRoomRent = ROOM_RENT_PER_WEEK * weeksCount;
+    const totalRoomRent = activeWeeks.reduce((sum, week) => sum + week.weeklyRoomRent, 0);
 
     const strictProfit = base.driversPayments - base.driversWalletRaw - base.currentOs - totalRoomRent;
 
@@ -344,6 +393,13 @@ const RevenuePage: React.FC = () => {
     setSelectedWeekId(id);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  const editMonthlyRoomRent = roomRentEditWeekId
+    ? (monthlyRoomRentByWeek[roomRentEditWeekId] ?? DEFAULT_MONTHLY_ROOM_RENT)
+    : DEFAULT_MONTHLY_ROOM_RENT;
+  const editWeeklyRoomRent = roomRentEditWeekId
+    ? getWeeklyRoomRent(roomRentEditWeekId)
+    : (DEFAULT_MONTHLY_ROOM_RENT / 30) * 7;
 
   if (loading) return (
     <div className="flex h-screen items-center justify-center flex-col gap-4">
@@ -416,6 +472,37 @@ const RevenuePage: React.FC = () => {
                    <RefreshCcw size={18} />
                  </button>
               </div>
+          </div>
+
+          <div className="bg-white p-3 rounded-2xl shadow-sm border border-slate-200 w-full lg:w-auto">
+            <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mb-2">Room Rent (Per Week)</p>
+            <select
+              value={roomRentEditWeekId}
+              onChange={(e) => setRoomRentEditWeekId(e.target.value)}
+              className="w-full mb-2 px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              {processedWeeks.map(week => (
+                <option key={week.id} value={week.id}>
+                  {week.label}
+                </option>
+              ))}
+            </select>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={Number.isFinite(editMonthlyRoomRent) ? editMonthlyRoomRent : 0}
+                onChange={(e) => handleMonthlyRoomRentChange(roomRentEditWeekId, e.target.value)}
+                className="w-40 px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-semibold text-slate-700"
+                aria-label="Monthly room rent"
+              />
+              <div className="text-right">
+                <p className="text-[10px] text-slate-400 font-medium">Weekly (auto)</p>
+                <p className="text-xs font-bold text-indigo-600">{formatCurrency(editWeeklyRoomRent)}</p>
+              </div>
+            </div>
+            <p className="text-[10px] text-slate-400 mt-2">Formula: monthly ÷ 30 × 7</p>
           </div>
        </div>
 
@@ -542,7 +629,9 @@ const RevenuePage: React.FC = () => {
                                   {selectionMode === 'RANGE' ? `Aggregated Report (${consolidatedStats.weeksCount} Weeks)` : processedWeeks.find(w => w.id === selectedWeekId)?.label}
                                </h4>
                                <p className="text-[10px] text-slate-400 font-mono">
-                                  {selectionMode === 'RANGE' ? `Room Rent Applied: ${consolidatedStats.weeksCount} x ${ROOM_RENT_PER_WEEK}` : processedWeeks.find(w => w.id === selectedWeekId)?.fileName}
+                                  {selectionMode === 'RANGE'
+                                    ? `Room Rent Applied: Week-wise custom (Total ${formatCurrency(consolidatedStats.totalRoomRent)})`
+                                    : processedWeeks.find(w => w.id === selectedWeekId)?.fileName}
                                </p>
                             </div>
                          </div>
@@ -730,7 +819,7 @@ const RevenuePage: React.FC = () => {
                                    <div className="bg-slate-100 p-1.5 md:p-2 rounded-lg text-slate-500"><Calendar size={16}/></div>
                                       <div>
                                       <p className="text-xs md:text-sm font-bold text-slate-800">{week.label}</p>
-                                      <p className="text-[10px] md:text-xs text-slate-400">Rev: {formatCurrency(week.driversPayments)} • Exp: {formatCurrency(week.currentOs + week.driversWalletRaw + ROOM_RENT_PER_WEEK)} • Pending: {formatCurrency(week.driverPendingTotal)}</p>
+                                      <p className="text-[10px] md:text-xs text-slate-400">Rev: {formatCurrency(week.driversPayments)} • Exp: {formatCurrency(week.currentOs + week.driversWalletRaw + week.weeklyRoomRent)} • Pending: {formatCurrency(week.driverPendingTotal)}</p>
                                    </div>
                                 </div>
                                 <div className={`text-xs md:text-sm font-bold px-2 md:px-3 py-1 rounded-lg ${week.profitLoss >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
