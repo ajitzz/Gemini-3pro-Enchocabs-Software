@@ -1594,6 +1594,23 @@ const DailyEntryPage: React.FC = () => {
                   )}
                   <p className="text-[10px] text-slate-400 mt-1 ml-1">+ Driver Owes / - You Owe</p>
                </div>
+               <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">Due Label</label>
+                  <input
+                    name="dueLabel"
+                    list="daily-due-label-options"
+                    value={formData.dueLabel || ''}
+                    onChange={handleInputChange}
+                    placeholder="Due (default), Traffic, Credit..."
+                    className="w-full px-4 py-2.5 bg-white/70 border-0 ring-1 ring-slate-200 rounded-xl text-slate-700 text-sm placeholder-slate-400 focus:ring-2 focus:ring-indigo-400 transition-all outline-none"
+                  />
+                  <datalist id="daily-due-label-options">
+                    {dueLabelOptions.map((label) => (
+                      <option key={label} value={label} />
+                    ))}
+                  </datalist>
+                  <p className="text-[10px] text-slate-400 ml-1">Leave blank to use default “Due”.</p>
+               </div>
                <InputField label="Payout (Paid to Driver)" name="payout" type="number" inputMode="decimal" value={formData.payout === 0 ? '' : formData.payout} onChange={handleInputChange} className="border-emerald-200 focus:ring-emerald-500 text-emerald-700" placeholder="0" />
                <div className="relative">
                   <InputField label="Payout Date" name="payoutDate" type="date" value={formData.payoutDate} onChange={handleInputChange} required={!!(formData.payout && formData.payout !== 0)} />
