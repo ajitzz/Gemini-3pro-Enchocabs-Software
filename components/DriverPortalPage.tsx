@@ -2135,7 +2135,7 @@ const DriverPortalPage: React.FC = () => {
                                               </div>
                                           </div>
                                           <span className="font-bold text-emerald-600 text-sm bg-emerald-50 px-2 py-1 rounded-lg">
-                                              {showExpenseOnly ? formatCurrency(entry.expense) : formatCurrency(entry.collection)}
+                                              {formatCurrency(entry.collection)}
                                           </span>
                                       </div>
 
