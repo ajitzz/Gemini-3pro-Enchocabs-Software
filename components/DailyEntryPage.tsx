@@ -360,6 +360,7 @@ const DailyEntryPage: React.FC = () => {
     collection: undefined,
     fuel: 0,
     due: 0,
+    dueLabel: '',
     payout: 0,
     payoutDate: '',
     qrCode: '',
@@ -457,6 +458,7 @@ const DailyEntryPage: React.FC = () => {
         left.rent !== right.rent ||
         left.fuel !== right.fuel ||
         left.due !== right.due ||
+        (left.dueLabel || '') !== (right.dueLabel || '') ||
         left.payout !== right.payout ||
         (left.payoutDate || '') !== (right.payoutDate || '') ||
         (left.qrCode || '') !== (right.qrCode || '') ||
@@ -649,6 +651,15 @@ const DailyEntryPage: React.FC = () => {
       return Array.from(uniqueNames).sort();
   }, [entriesWithAdjustments]);
 
+  const dueLabelOptions = useMemo(() => {
+    const labels = new Set<string>();
+    entries.forEach((entry) => {
+      const label = (entry.dueLabel || '').trim();
+      if (label) labels.add(label);
+    });
+    return Array.from(labels).sort((a, b) => a.localeCompare(b));
+  }, [entries]);
+
   const getDriverAssignedDefaults = useCallback((driverName?: string) => {
     const selectedDriver = drivers.find(d => d.name === driverName);
     return {
@@ -822,6 +833,7 @@ const DailyEntryPage: React.FC = () => {
           collection: Number(formData.collection),
           fuel: Number(formData.fuel || 0),
           due: Number(formData.due || 0),
+          dueLabel: (formData.dueLabel || '').trim() || undefined,
           payout: Number(formData.payout || 0),
           payoutDate: formData.payoutDate || undefined,
           qrCode: formData.qrCode,
@@ -917,7 +929,7 @@ const DailyEntryPage: React.FC = () => {
       payoutDate: normalizeDateValue(entry.payoutDate) || '',
     });
     setEditingId(entry.id);
-    if ((entry.fuel && entry.fuel !== 0) || (entry.due && entry.due !== 0) || (entry.payout && entry.payout !== 0) || entry.payoutDate) {
+    if ((entry.fuel && entry.fuel !== 0) || (entry.due && entry.due !== 0) || (entry.dueLabel && entry.dueLabel.trim().length > 0) || (entry.payout && entry.payout !== 0) || entry.payoutDate) {
         setShowOptionalFields(true);
     } else {
         setShowOptionalFields(false);
@@ -1500,6 +1512,23 @@ const DailyEntryPage: React.FC = () => {
                <div className="relative">
                   <InputField label="Due (+/-)" name="due" type="number" inputMode="decimal" value={formData.due === 0 ? '' : formData.due} onChange={handleInputChange} placeholder="0" />
                   <p className="text-[10px] text-slate-400 mt-1 ml-1">+ Driver Owes / - You Owe</p>
+               </div>
+               <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">Due Label</label>
+                  <input
+                    name="dueLabel"
+                    list="daily-due-label-options"
+                    value={formData.dueLabel || ''}
+                    onChange={handleInputChange}
+                    placeholder="Due (default), Traffic, Credit..."
+                    className="w-full px-4 py-2.5 bg-white/70 border-0 ring-1 ring-slate-200 rounded-xl text-slate-700 text-sm placeholder-slate-400 focus:ring-2 focus:ring-indigo-400 transition-all outline-none"
+                  />
+                  <datalist id="daily-due-label-options">
+                    {dueLabelOptions.map((label) => (
+                      <option key={label} value={label} />
+                    ))}
+                  </datalist>
+                  <p className="text-[10px] text-slate-400 ml-1">Leave blank to use default “Due”.</p>
                </div>
                <InputField label="Payout (Paid to Driver)" name="payout" type="number" inputMode="decimal" value={formData.payout === 0 ? '' : formData.payout} onChange={handleInputChange} className="border-emerald-200 focus:ring-emerald-500 text-emerald-700" placeholder="0" />
                <div className="relative">

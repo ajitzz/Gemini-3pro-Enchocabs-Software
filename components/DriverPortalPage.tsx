@@ -1443,11 +1443,12 @@ const DriverPortalPage: React.FC = () => {
           rent: number;
           fuel: number;
           due: number;
+          dueLabel?: string;
           payout: number;
           wallet: number;
       }>>((acc, entry) => {
           if (!acc[entry.date]) {
-              acc[entry.date] = { day: entry.day, collection: 0, rent: 0, fuel: 0, due: 0, payout: 0, wallet: 0 };
+              acc[entry.date] = { day: entry.day, collection: 0, rent: 0, fuel: 0, due: 0, dueLabel: '', payout: 0, wallet: 0 };
           }
 
           const row = acc[entry.date];
@@ -1455,6 +1456,9 @@ const DriverPortalPage: React.FC = () => {
           row.rent += entry.rent || 0;
           row.fuel += entry.fuel || 0;
           row.due += getAdjustedDue(entry);
+          if (!row.dueLabel && entry.dueLabel) {
+              row.dueLabel = entry.dueLabel;
+          }
           row.payout += entry.payout || 0;
           row.wallet += weeklyWalletByEntryId.get(entry.id) ? calculateWalletWeek(weeklyWalletByEntryId.get(entry.id) as WeeklyWallet) : 0;
           if (!row.day && entry.day) row.day = entry.day;
@@ -1481,6 +1485,7 @@ const DriverPortalPage: React.FC = () => {
                   rent: daily?.rent || 0,
                   fuel: daily?.fuel || 0,
                   due: daily?.due || 0,
+                  dueLabel: (daily?.dueLabel || '').trim() || 'Due',
                   payout: daily?.payout || 0,
                   wallet: daily?.wallet || 0,
                   expense: filteredExpensesByDate[date] || 0
@@ -2158,7 +2163,7 @@ const DriverPortalPage: React.FC = () => {
                                                       {formatCurrency(entry.fuel)}
                                                   </div>
                                                   <div>
-                                                      <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">Due</span>
+                                                      <span className="block text-slate-400 font-bold uppercase tracking-wider text-[8px]">{entry.dueLabel || 'Due'}</span>
                                                       <div className="flex flex-col items-start gap-0.5">
                                                           <span className={entry.due !== 0 ? (entry.due > 0 ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold') : ''}>
                                                               {entry.due > 0 ? '+' : ''}{entry.due}
