@@ -309,6 +309,19 @@ const DailyEntryPage: React.FC = () => {
   
   // UI State for optional fields
   const [showOptionalFields, setShowOptionalFields] = useState(false);
+  const [customDueLabels, setCustomDueLabels] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem('daily_entry_due_labels_v1');
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter((item) => typeof item === 'string') : [];
+    } catch (error) {
+      console.warn('Failed to load due labels', error);
+      return [];
+    }
+  });
+  const [isAddingDueLabel, setIsAddingDueLabel] = useState(false);
+  const [newDueLabelDraft, setNewDueLabelDraft] = useState('');
   const [showFullHistory, setShowFullHistory] = useState(false);
   const [quickEntryPanelPreferences, setQuickEntryPanelPreferences] = useState<QuickEntryPanelPreferences>(() => {
     const defaultPreferences: QuickEntryPanelPreferences = {
@@ -360,6 +373,7 @@ const DailyEntryPage: React.FC = () => {
     collection: undefined,
     fuel: 0,
     due: 0,
+    dueLabel: '',
     payout: 0,
     payoutDate: '',
     qrCode: '',
@@ -397,6 +411,14 @@ const DailyEntryPage: React.FC = () => {
       console.warn('Failed to save quick entry panel preferences', e);
     }
   }, [quickEntryPanelPreferences]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('daily_entry_due_labels_v1', JSON.stringify(customDueLabels));
+    } catch (error) {
+      console.warn('Failed to save due labels', error);
+    }
+  }, [customDueLabels]);
 
   const syncOfflineQueue = useCallback(async () => {
     if (offlineQueue.length === 0 || isSyncing || !navigator.onLine) return;
@@ -457,6 +479,7 @@ const DailyEntryPage: React.FC = () => {
         left.rent !== right.rent ||
         left.fuel !== right.fuel ||
         left.due !== right.due ||
+        (left.dueLabel || '') !== (right.dueLabel || '') ||
         left.payout !== right.payout ||
         (left.payoutDate || '') !== (right.payoutDate || '') ||
         (left.qrCode || '') !== (right.qrCode || '') ||
@@ -649,6 +672,28 @@ const DailyEntryPage: React.FC = () => {
       return Array.from(uniqueNames).sort();
   }, [entriesWithAdjustments]);
 
+  const dueLabelOptions = useMemo(() =>
+    [...customDueLabels].sort((a, b) => a.localeCompare(b)),
+  [customDueLabels]);
+
+  const addDueLabel = () => {
+    const trimmed = newDueLabelDraft.trim();
+    if (!trimmed) return;
+    if (!customDueLabels.some((label) => label.toLowerCase() === trimmed.toLowerCase())) {
+      setCustomDueLabels((prev) => [...prev, trimmed]);
+    }
+    setFormData((prev) => ({ ...prev, dueLabel: trimmed }));
+    setNewDueLabelDraft('');
+    setIsAddingDueLabel(false);
+  };
+
+  const removeSelectedDueLabel = () => {
+    const selected = (formData.dueLabel || '').trim();
+    if (!selected) return;
+    setCustomDueLabels((prev) => prev.filter((label) => label.toLowerCase() !== selected.toLowerCase()));
+    setFormData((prev) => ({ ...prev, dueLabel: '' }));
+  };
+
   const getDriverAssignedDefaults = useCallback((driverName?: string) => {
     const selectedDriver = drivers.find(d => d.name === driverName);
     return {
@@ -822,6 +867,7 @@ const DailyEntryPage: React.FC = () => {
           collection: Number(formData.collection),
           fuel: Number(formData.fuel || 0),
           due: Number(formData.due || 0),
+          dueLabel: (formData.dueLabel || '').trim() || undefined,
           payout: Number(formData.payout || 0),
           payoutDate: formData.payoutDate || undefined,
           qrCode: formData.qrCode,
@@ -917,7 +963,7 @@ const DailyEntryPage: React.FC = () => {
       payoutDate: normalizeDateValue(entry.payoutDate) || '',
     });
     setEditingId(entry.id);
-    if ((entry.fuel && entry.fuel !== 0) || (entry.due && entry.due !== 0) || (entry.payout && entry.payout !== 0) || entry.payoutDate) {
+    if ((entry.fuel && entry.fuel !== 0) || (entry.due && entry.due !== 0) || (entry.dueLabel && entry.dueLabel.trim().length > 0) || (entry.payout && entry.payout !== 0) || entry.payoutDate) {
         setShowOptionalFields(true);
     } else {
         setShowOptionalFields(false);
@@ -1497,8 +1543,55 @@ const DailyEntryPage: React.FC = () => {
            {showOptionalFields && (
              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 bg-slate-50 p-5 rounded-2xl border border-slate-100 animate-fade-in">
                <InputField label="Fuel Given (₹)" name="fuel" type="number" inputMode="decimal" value={formData.fuel === 0 ? '' : formData.fuel} onChange={handleInputChange} className="border-amber-200 focus:ring-amber-500 text-amber-700" placeholder="0" />
-               <div className="relative">
+               <div className="relative space-y-2">
                   <InputField label="Due (+/-)" name="due" type="number" inputMode="decimal" value={formData.due === 0 ? '' : formData.due} onChange={handleInputChange} placeholder="0" />
+                  <div className="flex items-center gap-2 pl-1">
+                    <select
+                      name="dueLabel"
+                      value={formData.dueLabel || ''}
+                      onChange={handleInputChange}
+                      className="flex-1 px-2.5 py-1.5 bg-white/70 border-0 ring-1 ring-slate-200 rounded-lg text-[11px] text-slate-600 focus:ring-2 focus:ring-indigo-300 outline-none"
+                    >
+                      <option value="">Due (default)</option>
+                      {dueLabelOptions.map((label) => (
+                        <option key={label} value={label}>{label}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingDueLabel((prev) => !prev)}
+                      className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
+                      title="Add due label"
+                    >
+                      <Plus size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={removeSelectedDueLabel}
+                      disabled={!formData.dueLabel}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                      title="Delete selected label"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                  {isAddingDueLabel && (
+                    <div className="flex items-center gap-2 pl-1">
+                      <input
+                        value={newDueLabelDraft}
+                        onChange={(event) => setNewDueLabelDraft(event.target.value)}
+                        placeholder="New label"
+                        className="flex-1 px-2.5 py-1.5 bg-white border-0 ring-1 ring-slate-200 rounded-lg text-[11px] text-slate-700 focus:ring-2 focus:ring-indigo-300 outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={addDueLabel}
+                        className="px-2 py-1 text-[10px] font-semibold text-indigo-600 bg-indigo-50 rounded-md hover:bg-indigo-100 transition-colors"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  )}
                   <p className="text-[10px] text-slate-400 mt-1 ml-1">+ Driver Owes / - You Owe</p>
                </div>
                <InputField label="Payout (Paid to Driver)" name="payout" type="number" inputMode="decimal" value={formData.payout === 0 ? '' : formData.payout} onChange={handleInputChange} className="border-emerald-200 focus:ring-emerald-500 text-emerald-700" placeholder="0" />
