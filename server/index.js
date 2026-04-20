@@ -1604,6 +1604,17 @@ app.get('/api/drivers/:driverId/widget-summary', async (req, res) => {
     if (!driverId) {
       return res.status(400).json({ error: 'driverId is required' });
     }
+    const from = req.query.from ? toISODate(req.query.from) : null;
+    const to = req.query.to ? toISODate(req.query.to) : null;
+    if (req.query.from && !from) {
+      return res.status(400).json({ error: 'Invalid from date format' });
+    }
+    if (req.query.to && !to) {
+      return res.status(400).json({ error: 'Invalid to date format' });
+    }
+    if (from && to && from > to) {
+      return res.status(400).json({ error: 'from date cannot be after to date' });
+    }
 
     const [driverRes, dailyRes, walletRes, slabsRes, expenseRes] = await Promise.all([
       db.query('SELECT id, name FROM drivers WHERE id = $1 AND COALESCE(is_hidden, FALSE) = FALSE LIMIT 1', [driverId]),
@@ -1677,14 +1688,59 @@ app.get('/api/drivers/:driverId/widget-summary', async (req, res) => {
       return res.status(404).json({ error: 'Unable to compute widget summary' });
     }
 
+    const isDateInRange = (dateValue) => {
+      if (!dateValue) return false;
+      if (from && dateValue < from) return false;
+      if (to && dateValue > to) return false;
+      return true;
+    };
+
+    const filteredDailyEntries = (from || to)
+      ? dailyEntries.filter((entry) => isDateInRange(entry.date))
+      : dailyEntries;
+    const filteredWeeklyWallets = (from || to)
+      ? weeklyWallets.filter((wallet) => {
+          const weekStart = wallet.weekStartDate || wallet.week_start_date;
+          const weekEnd = wallet.weekEndDate || wallet.week_end_date || weekStart;
+          if (!weekStart) return false;
+          if (from && weekEnd < from) return false;
+          if (to && weekStart > to) return false;
+          return true;
+        })
+      : weeklyWallets;
+    const filteredExpenses = (from || to)
+      ? expenses.filter((expense) => isDateInRange(expense.expenseDate))
+      : expenses;
+
+    // For date-scoped Daily Log summaries:
+    // - Keep full wallet-week values for overlapping weeks.
+    // - Restrict rent/due/fuel/payout contributors to daily entries within the selected range.
+    //   This prevents weekly overrides/adjustments from pulling values outside the selected dates.
+    const scopedWallets = (from || to)
+      ? filteredWeeklyWallets.map((wallet) => ({
+          ...wallet,
+          rentOverride: null,
+          daysWorkedOverride: null,
+          adjustments: 0,
+        }))
+      : filteredWeeklyWallets;
+
+    const scopedSummary = calculateDriverStatsServer(
+      driver.name,
+      filteredDailyEntries,
+      scopedWallets,
+      sortedSlabs,
+      filteredExpenses
+    ) || summary;
+
     res.set('Cache-Control', 'no-store');
     return res.json({
       driverId: driver.id,
       driverName: driver.name,
-      netBalance: Number(summary.finalTotal) || 0,
-      netPayout: Number(summary.netPayout) || 0,
-      netPayoutSource: summary.netPayoutSource,
-      netPayoutRange: summary.netPayoutRange || null,
+      netBalance: Number(scopedSummary.finalTotal) || 0,
+      netPayout: Number(scopedSummary.netPayout) || 0,
+      netPayoutSource: scopedSummary.netPayoutSource,
+      netPayoutRange: scopedSummary.netPayoutRange || null,
       updatedAt: new Date().toISOString(),
     });
   } catch (err) {

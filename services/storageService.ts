@@ -443,8 +443,16 @@ export const storageService = {
   deleteDriverExpenseGroup: async (groupId: string): Promise<void> => api.delete(`/driver-expenses/${groupId}`),
 
   // --- Driver Billings (NEW) ---
-  getDriverWidgetSummary: async (driverId: string, token?: string): Promise<DriverWidgetSummary> => {
-    const query = token ? `?token=${encodeURIComponent(token)}` : '';
+  getDriverWidgetSummary: async (
+    driverId: string,
+    token?: string,
+    params?: { from?: string; to?: string },
+  ): Promise<DriverWidgetSummary> => {
+    const queryParams = new URLSearchParams();
+    if (token) queryParams.set('token', token);
+    if (params?.from) queryParams.set('from', params.from);
+    if (params?.to) queryParams.set('to', params.to);
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
     return api.get(`/drivers/${encodeURIComponent(driverId)}/widget-summary${query}`);
   },
   getDriverBillings: async (): Promise<DriverBillingRecord[]> => api.get('/driver-billings'),
