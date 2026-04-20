@@ -15,6 +15,7 @@ import NetCalculationPopup from './NetCalculationPopup';
 import { registerDriverPushNotifications } from '../lib/pushNotifications';
 
 type PortalDailyEntry = DailyEntry & { adjustmentApplied?: number; adjustedDue?: number };
+type DailyNetSummary = { netPayout: number; netBalance: number; netPayoutRange?: string | null };
 
 const DriverPortalPage: React.FC = () => {
   const { user, logout } = useAuth();
@@ -68,6 +69,7 @@ const DriverPortalPage: React.FC = () => {
       title?: string;
       sourceNote?: string;
   } | null>(null);
+  const [dailyNetSummary, setDailyNetSummary] = useState<DailyNetSummary | null>(null);
 
   const PORTAL_FALLBACK_REFRESH_MS = 60000;
   const CASHMODE_FALLBACK_REFRESH_MS = 20000;
@@ -884,6 +886,8 @@ const DriverPortalPage: React.FC = () => {
   }, [driverStats]);
 
   const netBalance = driverStats?.finalTotal ?? 0;
+  const dailyTabNetPayout = dailyNetSummary?.netPayout ?? balanceSummary.netPayout;
+  const dailyTabNetBalance = dailyNetSummary?.netBalance ?? netBalance;
   const hasFoodAccess = user?.role === 'driver' && Boolean(viewingAsDriver?.foodOption);
 
   const vehiclePartnerDriver = useMemo(() => {
@@ -911,6 +915,40 @@ const DriverPortalPage: React.FC = () => {
       return digits;
   };
   const isFoodTicketActive = netBalance >= 0;
+
+  useEffect(() => {
+      let ignore = false;
+
+      const loadDailyNetSummary = async () => {
+          if (activeTab !== 'daily' || !viewingAsDriver?.id) {
+              if (!ignore) setDailyNetSummary(null);
+              return;
+          }
+
+          try {
+              const summary = await storageService.getDriverWidgetSummary(viewingAsDriver.id, undefined, {
+                  from: fromDate || undefined,
+                  to: toDate || undefined,
+              });
+              if (!ignore) {
+                  setDailyNetSummary({
+                      netPayout: Number(summary.netPayout) || 0,
+                      netBalance: Number(summary.netBalance) || 0,
+                      netPayoutRange: summary.netPayoutRange || null,
+                  });
+              }
+          } catch (error) {
+              console.warn('Failed to load date-scoped net summary for Daily Log. Falling back to local calculation.', error);
+              if (!ignore) setDailyNetSummary(null);
+          }
+      };
+
+      loadDailyNetSummary();
+
+      return () => {
+          ignore = true;
+      };
+  }, [activeTab, fromDate, toDate, viewingAsDriver?.id]);
 
   useEffect(() => {
       if (!viewingAsDriver) return;
@@ -1708,48 +1746,86 @@ const DriverPortalPage: React.FC = () => {
                 </div>
            </div>
 
-           <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                  <div>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Assigned Vehicle</p>
-                      <p className="text-base font-bold text-slate-800 mt-1">{viewingAsDriver.vehicle || 'No Vehicle Assigned'}</p>
-                  </div>
-                  <div className="text-right">
-                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Current Shift</p>
-                      <p className="text-sm font-semibold text-slate-700 mt-1">{viewingAsDriver.currentShift}</p>
-                  </div>
-              </div>
+           {activeTab === 'daily' ? (
+               <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm">
+                  <div className="grid grid-cols-2 gap-3">
+                      <button
+                          onClick={() => openCalculationPopup('netPayout')}
+                          className={`text-left rounded-xl border px-3 py-3 transition ${
+                              dailyTabNetPayout < 0
+                                  ? 'border-rose-100 bg-rose-50 hover:bg-rose-100/70'
+                                  : 'border-emerald-100 bg-emerald-50 hover:bg-emerald-100/70'
+                          }`}
+                      >
+                          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">Net Payout</p>
+                          <p className={`text-xl font-extrabold mt-1 ${dailyTabNetPayout < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
+                              {formatCurrencyInt(dailyTabNetPayout)}
+                          </p>
+                          <p className="text-[10px] text-slate-400 font-semibold mt-1">
+                              {dailyNetSummary?.netPayoutRange || 'Filtered daily log range'}
+                          </p>
+                      </button>
 
-              <div className="mt-4 pt-4 border-t border-slate-100">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 mb-2">Other Driver on Same Vehicle</p>
-                  {vehiclePartnerDriver ? (
-                      <div className="flex items-start justify-between gap-3">
-                          <div>
-                              <p className="text-sm font-bold text-slate-800">{vehiclePartnerDriver.name}</p>
-                              <p className="text-xs text-slate-500">📞 {vehiclePartnerDriver.mobile}</p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                              <a
-                                  href={`tel:${vehiclePartnerDriver.mobile}`}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 transition-colors"
-                              >
-                                  <Phone size={12} /> Call
-                              </a>
-                              <a
-                                  href={`https://wa.me/${normalizePhoneForWhatsApp(vehiclePartnerDriver.mobile)}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
-                              >
-                                  <MessageCircle size={12} /> WhatsApp
-                              </a>
-                          </div>
+                      <button
+                          onClick={() => openCalculationPopup('netBalance')}
+                          className={`text-left rounded-xl border px-3 py-3 transition ${
+                              dailyTabNetBalance < 0
+                                  ? 'border-rose-100 bg-rose-50 hover:bg-rose-100/70'
+                                  : 'border-emerald-100 bg-emerald-50 hover:bg-emerald-100/70'
+                          }`}
+                      >
+                          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">Net Balance</p>
+                          <p className={`text-xl font-extrabold mt-1 ${dailyTabNetBalance < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
+                              {formatCurrencyInt(dailyTabNetBalance)}
+                          </p>
+                          <p className="text-[10px] text-slate-400 font-semibold mt-1">Based on date filter</p>
+                      </button>
+                  </div>
+               </div>
+           ) : (
+               <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                      <div>
+                          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Assigned Vehicle</p>
+                          <p className="text-base font-bold text-slate-800 mt-1">{viewingAsDriver.vehicle || 'No Vehicle Assigned'}</p>
                       </div>
-                  ) : (
-                      <p className="text-xs text-slate-500">No other driver assigned to this vehicle right now.</p>
-                  )}
-              </div>
-           </div>
+                      <div className="text-right">
+                          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Current Shift</p>
+                          <p className="text-sm font-semibold text-slate-700 mt-1">{viewingAsDriver.currentShift}</p>
+                      </div>
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t border-slate-100">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 mb-2">Other Driver on Same Vehicle</p>
+                      {vehiclePartnerDriver ? (
+                          <div className="flex items-start justify-between gap-3">
+                              <div>
+                                  <p className="text-sm font-bold text-slate-800">{vehiclePartnerDriver.name}</p>
+                                  <p className="text-xs text-slate-500">📞 {vehiclePartnerDriver.mobile}</p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                  <a
+                                      href={`tel:${vehiclePartnerDriver.mobile}`}
+                                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 transition-colors"
+                                  >
+                                      <Phone size={12} /> Call
+                                  </a>
+                                  <a
+                                      href={`https://wa.me/${normalizePhoneForWhatsApp(vehiclePartnerDriver.mobile)}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+                                  >
+                                      <MessageCircle size={12} /> WhatsApp
+                                  </a>
+                              </div>
+                          </div>
+                      ) : (
+                          <p className="text-xs text-slate-500">No other driver assigned to this vehicle right now.</p>
+                      )}
+                  </div>
+               </div>
+           )}
 
            {/* Top Cards Grid (Dynamic) */}
            <div className="grid grid-cols-2 gap-4 mb-2">
