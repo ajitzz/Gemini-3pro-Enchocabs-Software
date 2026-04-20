@@ -830,8 +830,17 @@ const DriverPortalPage: React.FC = () => {
   const openCalculationPopup = (metric: 'netPayout' | 'netBalance') => {
       if (!viewingAsDriver) return;
 
+      const scopedWeekly = isDateFilterActive
+          ? filteredWeekly.map(week => ({
+              ...week,
+              rentOverride: undefined,
+              daysWorkedOverride: undefined,
+              adjustments: 0,
+          }))
+          : filteredWeekly;
+
       const activeStats = isDateFilterActive
-          ? storageService.calculateDriverStats(viewingAsDriver.name, filteredDaily, filteredWeekly, rentalSlabs, filteredExpenses)
+          ? storageService.calculateDriverStats(viewingAsDriver.name, filteredDaily, scopedWeekly, rentalSlabs, filteredExpenses)
           : driverStats;
 
       if (!activeStats) return;

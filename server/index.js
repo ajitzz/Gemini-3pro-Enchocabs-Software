@@ -1712,10 +1712,23 @@ app.get('/api/drivers/:driverId/widget-summary', async (req, res) => {
       ? expenses.filter((expense) => isDateInRange(expense.expenseDate))
       : expenses;
 
+    // For date-scoped Daily Log summaries:
+    // - Keep full wallet-week values for overlapping weeks.
+    // - Restrict rent/due/fuel/payout contributors to daily entries within the selected range.
+    //   This prevents weekly overrides/adjustments from pulling values outside the selected dates.
+    const scopedWallets = (from || to)
+      ? filteredWeeklyWallets.map((wallet) => ({
+          ...wallet,
+          rentOverride: null,
+          daysWorkedOverride: null,
+          adjustments: 0,
+        }))
+      : filteredWeeklyWallets;
+
     const scopedSummary = calculateDriverStatsServer(
       driver.name,
       filteredDailyEntries,
-      filteredWeeklyWallets,
+      scopedWallets,
       sortedSlabs,
       filteredExpenses
     ) || summary;
