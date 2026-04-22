@@ -1518,9 +1518,41 @@ const DriverPortalPage: React.FC = () => {
       a.click();
   };
 
+  const encodeSharePayload = (payload: Record<string, unknown>) => {
+      const json = JSON.stringify(payload);
+      const utf8 = encodeURIComponent(json).replace(/%([0-9A-F]{2})/g, (_, hex) =>
+          String.fromCharCode(parseInt(hex, 16))
+      );
+      return btoa(utf8).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  };
+
   const getBillShareLink = (bill: any) => {
-      // Keep WhatsApp share links short and resilient; the shared page fetches the bill data by ID.
-      return `${window.location.origin}/bill/${bill.id}`;
+      // Include a compact fallback payload so shared links keep working even if the bill ID
+      // is not yet synced in the backend on the environment where the link is opened.
+      const fallbackPayload = encodeSharePayload({
+          id: bill.id,
+          driverName: bill.driver,
+          driver: bill.driver,
+          qrCode: bill.qrCode,
+          weekRange: bill.weekRange,
+          weekStartDate: bill.startDate,
+          weekEndDate: bill.endDate,
+          trips: bill.trips,
+          rentPerDay: bill.rentPerDay,
+          daysWorked: bill.daysWorked,
+          rentTotal: bill.rentTotal,
+          collection: bill.collection,
+          fuel: bill.fuel,
+          due: bill.overdue ?? 0,
+          wallet: bill.wallet,
+          walletOverdue: bill.overdue ?? 0,
+          adjustments: bill.appliedAdjustment ?? bill.adjustments ?? 0,
+          payout: bill.payout,
+          status: 'generated',
+          generatedAt: new Date().toISOString(),
+      });
+
+      return `${window.location.origin}/bill/${bill.id}?p=${fallbackPayload}`;
   };
 
   const copyBillShareLink = async (bill: any) => {

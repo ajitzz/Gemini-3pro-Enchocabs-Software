@@ -18,7 +18,23 @@ const BillSharePage: React.FC = () => {
         const decoded = JSON.parse(decodeURIComponent(encodedPayload));
         return decoded as DriverBillingRecord;
       } catch (error) {
-        console.error('Failed to decode bill payload:', error);
+        console.error('Failed to decode legacy bill payload:', error);
+        return null;
+      }
+    };
+
+    const decodeCompactPayload = (compactPayload: string): DriverBillingRecord | null => {
+      try {
+        const normalized = compactPayload.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = normalized + '='.repeat((4 - (normalized.length % 4 || 4)) % 4);
+        const binary = atob(padded);
+        const percentEncoded = Array.from(binary)
+          .map((char) => `%${char.charCodeAt(0).toString(16).padStart(2, '0')}`)
+          .join('');
+        const decodedJson = decodeURIComponent(percentEncoded);
+        return JSON.parse(decodedJson) as DriverBillingRecord;
+      } catch (error) {
+        console.error('Failed to decode compact bill payload:', error);
         return null;
       }
     };
@@ -26,7 +42,10 @@ const BillSharePage: React.FC = () => {
     const loadBill = async () => {
       const query = new URLSearchParams(location.search);
       const encodedPayload = query.get('payload');
-      const payloadBill = encodedPayload ? decodePayload(encodedPayload) : null;
+      const compactPayload = query.get('p');
+      const payloadBill = compactPayload
+        ? decodeCompactPayload(compactPayload)
+        : (encodedPayload ? decodePayload(encodedPayload) : null);
 
       if (payloadBill) {
         setBill(payloadBill);
