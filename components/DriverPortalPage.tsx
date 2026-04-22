@@ -735,6 +735,14 @@ const DriverPortalPage: React.FC = () => {
       return entry.due;
   }, []);
 
+  const normalizeDueLabel = useCallback((label?: string) => {
+      const trimmed = (label || '').trim();
+      if (!trimmed || trimmed.toLowerCase() === 'due') {
+          return '';
+      }
+      return trimmed;
+  }, []);
+
   const calculateWalletWeek = (wallet: WeeklyWallet) => {
       const earnings = Number(wallet.earnings) || 0;
       const refund = Number(wallet.refund) || 0;
@@ -781,7 +789,24 @@ const DriverPortalPage: React.FC = () => {
 
        const collection = relevantDaily.reduce((sum, d) => sum + d.collection, 0);
        const fuel = relevantDaily.reduce((sum, d) => sum + d.fuel, 0);
-       const overdue = relevantDaily.reduce((sum, d) => sum + getAdjustedDue(d), 0);
+       const dueSummary = relevantDaily.reduce((acc, d) => {
+           const amount = getAdjustedDue(d);
+           const labelKey = normalizeDueLabel(d.dueLabel);
+
+           if (labelKey) {
+               acc.labeled[labelKey] = (acc.labeled[labelKey] || 0) + amount;
+           } else {
+               acc.default += amount;
+           }
+
+           return acc;
+       }, { default: 0, labeled: {} as Record<string, number> });
+       const labeledDueRows = Object.entries(dueSummary.labeled)
+           .filter(([, amount]) => amount !== 0)
+           .map(([label, amount]) => ({ label, amount }));
+       const overdue = dueSummary.default;
+       const labeledDueTotal = labeledDueRows.reduce((sum, row) => sum + row.amount, 0);
+       const totalDueForPayout = overdue + labeledDueTotal;
        const weeklyExpenses = rawExpenses
            .filter(expense => expense.expenseDate >= wallet.weekStartDate && expense.expenseDate <= wallet.weekEndDate)
            .reduce((sum, expense) => sum + (expense.amount || 0), 0);
@@ -790,7 +815,7 @@ const DriverPortalPage: React.FC = () => {
 
       const adjustments = Math.max(0, wallet.adjustments || 0);
 
-      const payout = collection - rentTotal - fuel + overdue + walletAmount - weeklyExpenses;
+      const payout = collection - rentTotal - fuel + totalDueForPayout + walletAmount - weeklyExpenses;
        
        const avgPerTrip = totalTrips > 0 ? grossEarnings / totalTrips : 0;
 
@@ -812,6 +837,7 @@ const DriverPortalPage: React.FC = () => {
            expenses: weeklyExpenses,
            wallet: walletAmount,
            overdue,
+           labeledDueRows,
            adjustments,
            payout,
            dailyDetails: relevantDaily,
@@ -1381,6 +1407,10 @@ const DriverPortalPage: React.FC = () => {
       const genDate = new Date();
       const genDateStr = `${String(genDate.getDate()).padStart(2,'0')}/${String(genDate.getMonth()+1).padStart(2,'0')}/${genDate.getFullYear()}`;
       const walletDeductions = (bill.weeklyDetails.diff || 0) + (bill.weeklyDetails.charges || 0);
+      const labeledDueRows = Array.isArray(bill.labeledDueRows) ? bill.labeledDueRows : [];
+      const labeledDueHtml = labeledDueRows.map((item: { label: string; amount: number; }) => `
+               <div class="st-row"><span class="st-label">${item.label}</span><span class="st-val">${formatCurrency(item.amount)}</span></div>
+      `).join('');
 
       return `<!DOCTYPE html>
         <html>
@@ -1440,6 +1470,7 @@ const DriverPortalPage: React.FC = () => {
                <div class="st-row"><span class="st-label">Wallet Earnings (Weekly)</span><span class="st-val green">+ ${formatCurrency(bill.wallet)}</span></div>
                <div class="st-row"><span class="st-label">Rental Collection</span><span class="st-val green">+ ${formatCurrency(bill.collection)}</span></div>
                <div class="st-row"><span class="st-label">Previous Dues/Credit</span><span class="st-val">${formatCurrency(bill.overdue)}</span></div>
+               ${labeledDueHtml}
             </div>
             <div class="net-box">
                <span class="net-label">WEEK PAYOUT</span>
@@ -2380,6 +2411,12 @@ const DriverPortalPage: React.FC = () => {
                                 <div className="flex justify-between"><span className="text-slate-600 font-medium">Wallet Earnings (Weekly)</span><span className="font-bold text-emerald-600">+ {formatCurrency(selectedBill.wallet)}</span></div>
                                 <div className="flex justify-between"><span className="text-slate-600 font-medium">Rental Collection</span><span className="font-bold text-emerald-600">+ {formatCurrency(selectedBill.collection)}</span></div>
                                 <div className="flex justify-between"><span className="text-slate-600 font-medium">Previous Dues/Credit</span><span className="font-bold text-slate-800">{formatCurrency(selectedBill.overdue)}</span></div>
+                                {Array.isArray(selectedBill.labeledDueRows) && selectedBill.labeledDueRows.map((item: { label: string; amount: number; }) => (
+                                    <div key={`bill-due-${item.label}`} className="flex justify-between">
+                                        <span className="text-slate-600 font-medium">{item.label}</span>
+                                        <span className="font-bold text-slate-800">{formatCurrency(item.amount)}</span>
+                                    </div>
+                                ))}
                             </div>
                             <div className="mt-6 bg-slate-100 p-4 rounded-xl flex justify-between items-center border-l-4 border-slate-800">
                                 <span className="text-sm font-bold text-slate-700 uppercase">Week Payout</span>
