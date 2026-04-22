@@ -572,7 +572,33 @@ const DriverBillingsPage: React.FC = () => {
       a.click();
   };
 
-  const getPublicBillLink = (bill: any) => `${window.location.origin}/bill/${bill.id}`;
+  const getPublicBillLink = (bill: any) => {
+      const payload = encodeURIComponent(JSON.stringify({
+          id: bill.id,
+          driver: bill.driver,
+          driverName: bill.driver,
+          qrCode: bill.qrCode,
+          weekRange: bill.weekRange,
+          weekStartDate: bill.startDate || bill.weekStartDate,
+          weekEndDate: bill.endDate || bill.weekEndDate,
+          trips: bill.trips,
+          rentPerDay: bill.rentPerDay,
+          daysWorked: bill.daysWorked,
+          rentTotal: bill.rentTotal,
+          collection: bill.collection,
+          fuel: bill.fuel,
+          due: bill.due ?? bill.overdue ?? 0,
+          wallet: bill.wallet,
+          walletOverdue: bill.walletOverdue ?? bill.overdue ?? 0,
+          expenses: bill.expenses || 0,
+          payout: bill.payout,
+          status: bill.isSaved ? 'finalized' : (bill.isProvisional ? 'provisional' : 'generated'),
+          labeledDueRows: bill.labeledDueRows || [],
+          dailyDetails: bill.dailyDetails || [],
+          weeklyDetails: bill.weeklyDetails || null
+      }));
+      return `${window.location.origin}/bill/${bill.id}?payload=${payload}`;
+  };
 
   const copyBillLink = async (bill: any) => {
       const shareLink = getPublicBillLink(bill);
