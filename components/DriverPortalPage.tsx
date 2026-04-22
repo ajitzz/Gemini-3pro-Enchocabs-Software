@@ -1407,10 +1407,15 @@ const DriverPortalPage: React.FC = () => {
       const genDate = new Date();
       const genDateStr = `${String(genDate.getDate()).padStart(2,'0')}/${String(genDate.getMonth()+1).padStart(2,'0')}/${genDate.getFullYear()}`;
       const walletDeductions = (bill.weeklyDetails.diff || 0) + (bill.weeklyDetails.charges || 0);
+      const driverCashCollected = (bill.weeklyDetails?.cash || 0) - (bill.collection || 0);
+      const shouldShowDriverCashWarning = driverCashCollected > 0;
       const labeledDueRows = Array.isArray(bill.labeledDueRows) ? bill.labeledDueRows : [];
       const labeledDueHtml = labeledDueRows.map((item: { label: string; amount: number; }) => `
                <div class="st-row"><span class="st-label">${item.label}</span><span class="st-val">${formatCurrency(item.amount)}</span></div>
       `).join('');
+      const driverCashWarningHtml = shouldShowDriverCashWarning
+        ? `<div class="warn-box"><div class="warn-title">⚠ Cash Collection Warning</div><div class="warn-desc">Cash collected by driver = Cash (Wallet) - Rental Collection</div><div class="warn-amount">${formatCurrency(driverCashCollected)}</div></div>`
+        : '';
 
       return `<!DOCTYPE html>
         <html>
@@ -1437,6 +1442,10 @@ const DriverPortalPage: React.FC = () => {
               .net-box { background: #f1f5f9; padding: 20px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-top: 10px; border-top: 2px solid #cbd5e1; }
               .net-label { font-size: 18px; font-weight: 800; color: #334155; text-transform: uppercase; }
               .net-val { font-size: 24px; font-weight: 800; color: #0f172a; }
+              .warn-box { margin-top: 14px; border: 1px solid #fecaca; background: #fff1f2; border-radius: 10px; padding: 12px; }
+              .warn-title { color: #b91c1c; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 0.4px; }
+              .warn-desc { color: #9f1239; font-weight: 600; font-size: 12px; margin-top: 3px; }
+              .warn-amount { color: #dc2626; font-weight: 800; font-size: 18px; margin-top: 8px; }
               table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
               th { text-align: left; background: #f8fafc; padding: 12px 10px; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #e2e8f0; }
               .wallet-section { margin-top: 40px; border-top: 2px solid #f1f5f9; padding-top: 20px; }
@@ -1472,6 +1481,7 @@ const DriverPortalPage: React.FC = () => {
                <div class="st-row"><span class="st-label">Previous Dues/Credit</span><span class="st-val">${formatCurrency(bill.overdue)}</span></div>
                ${labeledDueHtml}
             </div>
+            ${driverCashWarningHtml}
             <div class="net-box">
                <span class="net-label">WEEK PAYOUT</span>
                <span class="net-val">${formatCurrency(bill.payout)}</span>
@@ -2418,6 +2428,15 @@ const DriverPortalPage: React.FC = () => {
                                     </div>
                                 ))}
                             </div>
+                            {((selectedBill.weeklyDetails?.cash || 0) - (selectedBill.collection || 0)) > 0 && (
+                                <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+                                    <p className="text-[11px] font-extrabold uppercase tracking-wider text-rose-700">⚠ Cash Collection Warning</p>
+                                    <p className="text-[11px] text-rose-600 mt-1 font-semibold">Cash collected by driver = Cash (Wallet) - Rental Collection</p>
+                                    <p className="text-xl font-black text-rose-700 mt-2">
+                                        {formatCurrency((selectedBill.weeklyDetails?.cash || 0) - (selectedBill.collection || 0))}
+                                    </p>
+                                </div>
+                            )}
                             <div className="mt-6 bg-slate-100 p-4 rounded-xl flex justify-between items-center border-l-4 border-slate-800">
                                 <span className="text-sm font-bold text-slate-700 uppercase">Week Payout</span>
                                 <span className="text-2xl font-black text-slate-900">{formatCurrency(selectedBill.payout)}</span>
