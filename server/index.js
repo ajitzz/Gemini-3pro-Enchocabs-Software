@@ -704,6 +704,24 @@ const weeklyWalletsCacheKey = (driver) =>
 const driverExpensesCacheKey = (driver) =>
   driver ? `driver-expenses:driver:${normalizeDriver(driver)}` : DRIVER_EXPENSES_CACHE_KEY;
 const systemFlagCacheKey = (key) => `system-flag:${key}`;
+const billShareCacheKey = (token) => `driver-billing-share:${token}`;
+
+const BILL_SHARE_TTL_SECONDS = Math.max(60, Number(process.env.BILL_SHARE_TTL_SECONDS || 60 * 60 * 24 * 30) || 60 * 60 * 24 * 30);
+const inMemoryBillShares = new Map();
+
+const setInMemoryBillShare = (token, bill) => {
+  inMemoryBillShares.set(token, { bill, expiresAt: Date.now() + BILL_SHARE_TTL_SECONDS * 1000 });
+};
+
+const getInMemoryBillShare = (token) => {
+  const entry = inMemoryBillShares.get(token);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    inMemoryBillShares.delete(token);
+    return null;
+  }
+  return entry.bill;
+};
 
 const queryCacheRegistry = new Map();
 
@@ -1748,6 +1766,47 @@ app.get('/api/drivers/:driverId/widget-summary', async (req, res) => {
   }
 });
 
+
+app.post('/api/driver-billings/share-link', async (req, res) => {
+  const bill = req.body?.bill;
+  if (!bill || typeof bill !== 'object' || Array.isArray(bill)) {
+    return res.status(400).json({ error: 'bill payload is required' });
+  }
+
+  try {
+    const token = uuidv4().replace(/-/g, '').slice(0, 12);
+    await setCacheJSON(billShareCacheKey(token), bill, BILL_SHARE_TTL_SECONDS);
+    setInMemoryBillShare(token, bill);
+    return res.json({ token, expiresIn: BILL_SHARE_TTL_SECONDS });
+  } catch (err) {
+    console.error('Failed to create bill share link:', err);
+    return res.status(500).json({ error: err.message || 'Failed to create share link' });
+  }
+});
+
+app.get('/api/driver-billings/share-link/:token', async (req, res) => {
+  const token = String(req.params.token || '').trim();
+  if (!token) {
+    return res.status(400).json({ error: 'Share token is required' });
+  }
+
+  try {
+    let bill = await getCacheJSON(billShareCacheKey(token));
+    if (!bill) {
+      bill = getInMemoryBillShare(token);
+    }
+
+    if (!bill) {
+      return res.status(404).json({ error: 'Billing share link not found or expired' });
+    }
+
+    return res.json(bill);
+  } catch (err) {
+    console.error('Failed to load bill by share token:', err);
+    return res.status(500).json({ error: err.message || 'Failed to load shared bill' });
+  }
+});
+
 app.get('/api/driver-billings', async (req, res) => {
   const now = Date.now();
   if (billingsCache.data && billingsCache.expiresAt <= now) {
@@ -1818,6 +1877,49 @@ app.get('/api/driver-billings', async (req, res) => {
     return respondWithCacheHeaders(req, res, safeRows, etag, 'MISS', BILLINGS_CACHE_TTL_SECONDS);
   } catch (err) {
     console.error("Error fetching billings:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+app.get('/api/driver-billings/:id/public', async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT
+        id, driver_id as "driverId", driver_name as "driverName", qr_code as "qrCode",
+        to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate",
+        to_char(week_end_date, 'YYYY-MM-DD') as "weekEndDate",
+        days_worked as "daysWorked", trips, rent_per_day as "rentPerDay",
+        rent_total as "rentTotal", collection, due, fuel, wallet,
+        wallet_overdue as "walletOverdue", adjustments, payout, status,
+        generated_at as "generatedAt"
+      FROM driver_billings
+      WHERE id = $1
+      LIMIT 1`,
+      [req.params.id]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: 'Billing record not found' });
+    }
+
+    const bill = result.rows[0];
+    return res.json({
+      ...bill,
+      daysWorked: Number(bill.daysWorked),
+      trips: Number(bill.trips),
+      rentPerDay: Number(bill.rentPerDay),
+      rentTotal: Number(bill.rentTotal),
+      collection: Number(bill.collection),
+      due: Number(bill.due),
+      fuel: Number(bill.fuel),
+      wallet: Number(bill.wallet),
+      walletOverdue: Number(bill.walletOverdue),
+      adjustments: Number(bill.adjustments),
+      payout: Number(bill.payout),
+    });
+  } catch (err) {
+    console.error('Error fetching billing by ID:', err);
     res.status(500).json({ error: err.message });
   }
 });
