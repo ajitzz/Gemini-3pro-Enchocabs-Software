@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import NetCalculationPopup from './NetCalculationPopup';
+import BillDetailContent, { BillDetailData } from './BillDetailContent';
+import { buildBillSharePayload } from '../lib/driverBilling';
 import { registerDriverPushNotifications } from '../lib/pushNotifications';
 
 type PortalDailyEntry = DailyEntry & { adjustmentApplied?: number; adjustedDue?: number };
@@ -45,7 +47,7 @@ const DriverPortalPage: React.FC = () => {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [activeTab, setActiveTab] = useState<'home' | 'daily' | 'billing'>('home');
-  const [selectedBill, setSelectedBill] = useState<any | null>(null);
+  const [selectedBill, setSelectedBill] = useState<BillDetailData | null>(null);
   const [cashMode, setCashMode] = useState<CashMode>('trips');
   const [globalCashMode, setGlobalCashMode] = useState<CashMode>('trips');
   const [updatingCashMode, setUpdatingCashMode] = useState(false);
@@ -1518,37 +1520,10 @@ const DriverPortalPage: React.FC = () => {
       a.click();
   };
 
-  const getBillSharePayload = (bill: any) => ({
-      id: bill.id,
-      driver: bill.driver,
-      driverName: bill.driver,
-      qrCode: bill.qrCode,
-      weekRange: bill.weekRange,
-      weekStartDate: bill.startDate,
-      weekEndDate: bill.endDate,
-      trips: bill.trips,
-      rentPerDay: bill.rentPerDay,
-      daysWorked: bill.daysWorked,
-      rentTotal: bill.rentTotal,
-      collection: bill.collection,
-      fuel: bill.fuel,
-      overdue: bill.overdue ?? 0,
-      due: bill.overdue ?? 0,
-      wallet: bill.wallet,
-      walletOverdue: bill.overdue ?? 0,
-      expenses: bill.expenses || 0,
-      payout: bill.payout,
-      status: 'generated',
-      generatedAt: bill.generatedAt || new Date().toISOString(),
-      labeledDueRows: bill.labeledDueRows || [],
-      weeklyDetails: bill.weeklyDetails || null,
-      deposit: bill.deposit || 0,
-  });
-
   const getBillShareLink = async (bill: any) => {
-      const payload = getBillSharePayload(bill);
+      const payload = buildBillSharePayload(bill);
       const response = await storageService.createDriverBillingShareLink(payload);
-      return `${window.location.origin}/bill/share/${response.token}`;
+      return `${window.location.origin}/b/${response.token}`;
   };
 
   const copyBillShareLink = async (bill: any) => {
@@ -2443,79 +2418,7 @@ const DriverPortalPage: React.FC = () => {
                    </div>
                    
                    <div className="p-6 md:p-8 bg-white space-y-8">
-                        {/* Header Branding */}
-                        <div className="text-center">
-                            <h2 className="text-3xl font-extrabold text-indigo-700 uppercase tracking-tight">Encho Cabs</h2>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">A Unit of Encho Enterprises</p>
-                        </div>
-
-                        {/* Info Block */}
-                        <div className="bg-slate-50 rounded-2xl border border-slate-100 p-5 flex flex-col md:flex-row justify-between gap-4 text-xs">
-                            <div className="space-y-1.5">
-                                <p className="text-slate-500 uppercase font-bold text-[10px]">Driver Name</p>
-                                <p className="text-slate-900 font-bold text-base">{selectedBill.driver}</p>
-                                <p className="text-slate-500">Vehicle QR: <strong className="text-slate-700">{selectedBill.qrCode}</strong></p>
-                            </div>
-                            <div className="md:text-right space-y-1.5 border-t md:border-t-0 md:border-l border-slate-200 pt-3 md:pt-0 md:pl-5">
-                                <p className="text-slate-500 uppercase font-bold text-[10px]">Billing Period</p>
-                                <p className="text-slate-900 font-bold">{selectedBill.weekRange}</p>
-                                <p className="text-slate-500">Generated: <strong className="text-slate-700">{new Date().toLocaleDateString()}</strong></p>
-                            </div>
-                        </div>
-
-                        {/* Payment Statement Table */}
-                        <div>
-                            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-4 border-b-2 border-slate-100 pb-2">Payment Statement</h4>
-                            <div className="space-y-3 text-sm">
-                                <div className="flex justify-between"><span className="text-slate-600 font-medium">Total Trips Completed</span><span className="font-bold text-slate-800">{formatInt(selectedBill.trips)}</span></div>
-                                <div className="flex justify-between"><span className="text-slate-600 font-medium">Rent / Day (Applied)</span><span className="font-bold text-slate-800">{formatCurrency(selectedBill.rentPerDay)}</span></div>
-                                <div className="flex justify-between"><span className="text-slate-600 font-medium">Days Worked</span><span className="font-bold text-slate-800">{selectedBill.daysWorked}</span></div>
-                                <div className="flex justify-between"><span className="text-slate-600 font-medium">Weekly Rent Deduction</span><span className="font-bold text-rose-600">- {formatCurrency(selectedBill.rentTotal)}</span></div>
-                                <div className="flex justify-between"><span className="text-slate-600 font-medium">Fuel Advances</span><span className="font-bold text-rose-600">- {formatCurrency(selectedBill.fuel)}</span></div>
-                                <div className="flex justify-between"><span className="text-slate-600 font-medium">Shared Expenses</span><span className="font-bold text-rose-600">- {formatCurrency(selectedBill.expenses || 0)}</span></div>
-                                <div className="flex justify-between"><span className="text-slate-600 font-medium">Wallet Earnings (Weekly)</span><span className="font-bold text-emerald-600">+ {formatCurrency(selectedBill.wallet)}</span></div>
-                                <div className="flex justify-between"><span className="text-slate-600 font-medium">Rental Collection</span><span className="font-bold text-emerald-600">+ {formatCurrency(selectedBill.collection)}</span></div>
-                                <div className="flex justify-between"><span className="text-slate-600 font-medium">Previous Dues/Credit</span><span className="font-bold text-slate-800">{formatCurrency(selectedBill.overdue)}</span></div>
-                                {Array.isArray(selectedBill.labeledDueRows) && selectedBill.labeledDueRows.map((item: { label: string; amount: number; }) => (
-                                    <div key={`bill-due-${item.label}`} className="flex justify-between">
-                                        <span className="text-slate-600 font-medium">{item.label}</span>
-                                        <span className="font-bold text-slate-800">{formatCurrency(item.amount)}</span>
-                                    </div>
-                                ))}
-                            </div>
-                            {((selectedBill.weeklyDetails?.cash || 0) - (selectedBill.collection || 0)) > 0 && (
-                                <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
-                                    <p className="text-[11px] font-extrabold uppercase tracking-wider text-rose-700">⚠ Cash Collection Warning</p>
-                                    <p className="text-[11px] text-rose-600 mt-1 font-semibold">Cash collected by driver = Cash (Wallet) - Rental Collection</p>
-                                    <p className="text-xl font-black text-rose-700 mt-2">
-                                        {formatCurrency((selectedBill.weeklyDetails?.cash || 0) - (selectedBill.collection || 0))}
-                                    </p>
-                                </div>
-                            )}
-                            <div className="mt-6 bg-slate-100 p-4 rounded-xl flex justify-between items-center border-l-4 border-slate-800">
-                                <span className="text-sm font-bold text-slate-700 uppercase">Week Payout</span>
-                                <span className="text-2xl font-black text-slate-900">{formatCurrency(selectedBill.payout)}</span>
-                            </div>
-                        </div>
-
-                        {/* Weekly Wallet Breakdown */}
-                        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
-                            <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-4">Weekly Wallet Breakdown</h4>
-                            <div className="grid grid-cols-2 gap-y-3 text-xs">
-                                <div className="text-slate-500 font-medium">Gross Earnings</div><div className="text-right font-bold text-slate-800">{formatCurrency(selectedBill.weeklyDetails.earnings)}</div>
-                                <div className="text-slate-500 font-medium">Refunds</div><div className="text-right font-bold text-slate-800">{formatCurrency(selectedBill.weeklyDetails.refund)}</div>
-                                <div className="text-slate-500 font-medium">Deductions</div><div className="text-right font-bold text-rose-600">-{formatCurrency(selectedBill.weeklyDetails.diff)}</div>
-                                <div className="text-slate-500 font-medium">Charges</div><div className="text-right font-bold text-rose-600">-{formatCurrency(selectedBill.weeklyDetails.charges)}</div>
-                                <div className="text-slate-500 font-medium">Cash (Wallet)</div><div className="text-right font-bold text-rose-600">-{formatCurrency(selectedBill.weeklyDetails.cash)}</div>
-                                <div className="col-span-2 h-px bg-slate-100 my-1"></div>
-                                <div className="text-indigo-600 font-bold">Wallet Total</div><div className="text-right font-bold text-indigo-600">{formatCurrency(selectedBill.wallet)}</div>
-                            </div>
-                        </div>
-
-                        {/* Footer */}
-                        <div className="text-center text-[10px] text-slate-400 font-medium pt-4 border-t border-slate-100">
-                            System Generated Bill • Encho Cabs
-                        </div>
+                        <BillDetailContent bill={selectedBill} generatedDateOverride={new Date().toISOString()} />
                    </div>
 
                    <div className="p-5 border-t border-slate-100 bg-slate-50 flex gap-3 sticky bottom-0 z-10">
