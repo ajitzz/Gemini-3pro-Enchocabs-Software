@@ -1822,6 +1822,49 @@ app.get('/api/driver-billings', async (req, res) => {
   }
 });
 
+
+app.get('/api/driver-billings/:id/public', async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT
+        id, driver_id as "driverId", driver_name as "driverName", qr_code as "qrCode",
+        to_char(week_start_date, 'YYYY-MM-DD') as "weekStartDate",
+        to_char(week_end_date, 'YYYY-MM-DD') as "weekEndDate",
+        days_worked as "daysWorked", trips, rent_per_day as "rentPerDay",
+        rent_total as "rentTotal", collection, due, fuel, wallet,
+        wallet_overdue as "walletOverdue", adjustments, payout, status,
+        generated_at as "generatedAt"
+      FROM driver_billings
+      WHERE id = $1
+      LIMIT 1`,
+      [req.params.id]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: 'Billing record not found' });
+    }
+
+    const bill = result.rows[0];
+    return res.json({
+      ...bill,
+      daysWorked: Number(bill.daysWorked),
+      trips: Number(bill.trips),
+      rentPerDay: Number(bill.rentPerDay),
+      rentTotal: Number(bill.rentTotal),
+      collection: Number(bill.collection),
+      due: Number(bill.due),
+      fuel: Number(bill.fuel),
+      wallet: Number(bill.wallet),
+      walletOverdue: Number(bill.walletOverdue),
+      adjustments: Number(bill.adjustments),
+      payout: Number(bill.payout),
+    });
+  } catch (err) {
+    console.error('Error fetching billing by ID:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/driver-billings/refresh', async (req, res) => {
   const expectedToken = (process.env.QSTASH_REFRESH_TOKEN || '').trim();
   const providedToken = (req.get('x-refresh-token') || '').trim();

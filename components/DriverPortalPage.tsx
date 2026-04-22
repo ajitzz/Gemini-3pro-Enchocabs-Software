@@ -1519,31 +1519,8 @@ const DriverPortalPage: React.FC = () => {
   };
 
   const getBillShareLink = (bill: any) => {
-      const payload = encodeURIComponent(JSON.stringify({
-          id: bill.id,
-          driver: bill.driver,
-          driverName: bill.driver,
-          qrCode: bill.qrCode,
-          weekRange: bill.weekRange,
-          weekStartDate: bill.startDate,
-          weekEndDate: bill.endDate,
-          trips: bill.trips,
-          rentPerDay: bill.rentPerDay,
-          daysWorked: bill.daysWorked,
-          rentTotal: bill.rentTotal,
-          collection: bill.collection,
-          fuel: bill.fuel,
-          due: bill.overdue ?? 0,
-          wallet: bill.wallet,
-          walletOverdue: bill.overdue ?? 0,
-          expenses: bill.expenses || 0,
-          payout: bill.payout,
-          status: bill.isAdjusted ? 'generated' : 'generated',
-          labeledDueRows: bill.labeledDueRows || [],
-          dailyDetails: bill.dailyDetails || [],
-          weeklyDetails: bill.weeklyDetails || null
-      }));
-      return `${window.location.origin}/bill/${bill.id}?payload=${payload}`;
+      // Keep WhatsApp share links short and resilient; the shared page fetches the bill data by ID.
+      return `${window.location.origin}/bill/${bill.id}`;
   };
 
   const copyBillShareLink = async (bill: any) => {
