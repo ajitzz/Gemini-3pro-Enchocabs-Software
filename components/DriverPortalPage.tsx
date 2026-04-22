@@ -50,6 +50,7 @@ const DriverPortalPage: React.FC = () => {
   const [globalCashMode, setGlobalCashMode] = useState<CashMode>('trips');
   const [updatingCashMode, setUpdatingCashMode] = useState(false);
   const [copiedDriverId, setCopiedDriverId] = useState<string | null>(null);
+  const [copiedBillId, setCopiedBillId] = useState<string | null>(null);
   const [teamCashModes, setTeamCashModes] = useState<Record<string, CashMode>>({});
   const [teamCashModeUpdating, setTeamCashModeUpdating] = useState<Record<string, boolean>>({});
   const [unreadUpdateCount, setUnreadUpdateCount] = useState(0);
@@ -1517,6 +1518,20 @@ const DriverPortalPage: React.FC = () => {
       a.click();
   };
 
+  const getBillShareLink = (bill: any) => `${window.location.origin}/bill/${bill.id}`;
+
+  const copyBillShareLink = async (bill: any) => {
+      const shareLink = getBillShareLink(bill);
+      try {
+          await navigator.clipboard.writeText(shareLink);
+          setCopiedBillId(bill.id);
+          window.setTimeout(() => setCopiedBillId((current) => (current === bill.id ? null : current)), 1800);
+      } catch (error) {
+          console.error('Failed to copy bill share link', error);
+          alert('Could not copy bill link. Please try again.');
+      }
+  };
+
   const filteredExpensesByDate = useMemo(() => {
       return filteredExpenses.reduce<Record<string, number>>((acc, expense) => {
           acc[expense.expenseDate] = (acc[expense.expenseDate] || 0) + (expense.amount || 0);
@@ -2343,9 +2358,18 @@ const DriverPortalPage: React.FC = () => {
                                           <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Weekly Bill</p>
                                           <p className="font-bold text-slate-800 mt-1">{bill.weekRange}</p>
                                       </div>
-                                      <button onClick={() => downloadBill(bill)} className="bg-indigo-50 text-indigo-600 p-2 rounded-xl hover:bg-indigo-100 transition-colors">
-                                          <Download size={20} />
-                                      </button>
+                                      <div className="flex items-center gap-2">
+                                        <button
+                                          onClick={() => copyBillShareLink(bill)}
+                                          className="bg-emerald-50 text-emerald-600 p-2 rounded-xl hover:bg-emerald-100 transition-colors"
+                                          title="Copy bill link for WhatsApp"
+                                        >
+                                          {copiedBillId === bill.id ? <CheckCircle size={20} /> : <Copy size={20} />}
+                                        </button>
+                                        <button onClick={() => downloadBill(bill)} className="bg-indigo-50 text-indigo-600 p-2 rounded-xl hover:bg-indigo-100 transition-colors">
+                                            <Download size={20} />
+                                        </button>
+                                      </div>
                                   </div>
 
                                   <div className="grid grid-cols-2 gap-4 mb-6">
