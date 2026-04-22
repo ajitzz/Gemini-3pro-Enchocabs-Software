@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { storageService } from '../services/storageService';
 import { DriverSummary, RentalSlab, WeeklyWallet, DailyEntry, Driver, DriverBillingRecord } from '../types';
-import { Users, ChevronDown, FileText, Briefcase, Download, Edit2, Save, X, Calendar, ChevronLeft, ChevronRight, Check, Copy, RotateCcw, Search, Clock, ChevronUp, Lock, AlertTriangle } from 'lucide-react';
+import { Users, ChevronDown, FileText, Briefcase, Download, Edit2, Save, X, Calendar, ChevronLeft, ChevronRight, Check, Copy, RotateCcw, Search, Clock, ChevronUp, Lock, AlertTriangle, MessageCircle } from 'lucide-react';
 import NetCalculationPopup from './NetCalculationPopup';
 
 const DriverBillingsPage: React.FC = () => {
@@ -572,9 +572,25 @@ const DriverBillingsPage: React.FC = () => {
       a.click();
   };
 
-  const copyBillLink = (bill: any) => {
+  const getPublicBillLink = (bill: any) => `${window.location.origin}/bill/${bill.id}`;
+
+  const copyBillLink = async (bill: any) => {
+      const shareLink = getPublicBillLink(bill);
+      try {
+          await navigator.clipboard.writeText(shareLink);
+      } catch (error) {
+          console.warn('Clipboard copy failed:', error);
+      }
       setCopiedId(bill.id);
       setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const shareBillOnWhatsApp = (bill: any) => {
+      const shareLink = getPublicBillLink(bill);
+      const text = encodeURIComponent(
+          `Hi ${bill.driver}, your bill is ready.\nDownload options are available on this link (Image/PDF): ${shareLink}`
+      );
+      window.open(`https://wa.me/?text=${text}`, '_blank', 'noopener,noreferrer');
   };
 
   const toggleExpandBill = (id: string) => {
@@ -939,6 +955,13 @@ const DriverBillingsPage: React.FC = () => {
                                                 </button>
                                                 <button onClick={() => downloadBill(bill)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Download Bill">
                                                     <Download size={16} />
+                                                </button>
+                                                <button
+                                                    onClick={() => shareBillOnWhatsApp(bill)}
+                                                    className="p-2 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                                    title="Share Bill on WhatsApp"
+                                                >
+                                                    <MessageCircle size={16} />
                                                 </button>
                                             </>
                                          )}
