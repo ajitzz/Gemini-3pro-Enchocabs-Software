@@ -1518,7 +1518,33 @@ const DriverPortalPage: React.FC = () => {
       a.click();
   };
 
-  const getBillShareLink = (bill: any) => `${window.location.origin}/bill/${bill.id}`;
+  const getBillShareLink = (bill: any) => {
+      const payload = encodeURIComponent(JSON.stringify({
+          id: bill.id,
+          driver: bill.driver,
+          driverName: bill.driver,
+          qrCode: bill.qrCode,
+          weekRange: bill.weekRange,
+          weekStartDate: bill.startDate,
+          weekEndDate: bill.endDate,
+          trips: bill.trips,
+          rentPerDay: bill.rentPerDay,
+          daysWorked: bill.daysWorked,
+          rentTotal: bill.rentTotal,
+          collection: bill.collection,
+          fuel: bill.fuel,
+          due: bill.overdue ?? 0,
+          wallet: bill.wallet,
+          walletOverdue: bill.overdue ?? 0,
+          expenses: bill.expenses || 0,
+          payout: bill.payout,
+          status: bill.isAdjusted ? 'generated' : 'generated',
+          labeledDueRows: bill.labeledDueRows || [],
+          dailyDetails: bill.dailyDetails || [],
+          weeklyDetails: bill.weeklyDetails || null
+      }));
+      return `${window.location.origin}/bill/${bill.id}?payload=${payload}`;
+  };
 
   const copyBillShareLink = async (bill: any) => {
       const shareLink = getBillShareLink(bill);
@@ -2488,6 +2514,12 @@ const DriverPortalPage: React.FC = () => {
                    </div>
 
                    <div className="p-5 border-t border-slate-100 bg-slate-50 flex gap-3 sticky bottom-0 z-10">
+                       <button
+                          onClick={() => copyBillShareLink(selectedBill)}
+                          className="flex-1 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-all flex items-center justify-center gap-2"
+                       >
+                          {copiedBillId === selectedBill.id ? <CheckCircle size={18} /> : <Copy size={18} />} Copy Bill Link
+                       </button>
                        <button onClick={() => downloadBill(selectedBill)} className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2">
                            <Download size={18} /> Download PDF
                        </button>
