@@ -13,17 +13,25 @@ const BillSharePage: React.FC = () => {
   const billRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    const decodePayload = (encodedPayload: string): DriverBillingRecord | null => {
+      try {
+        const decoded = JSON.parse(decodeURIComponent(encodedPayload));
+        return decoded as DriverBillingRecord;
+      } catch (error) {
+        console.error('Failed to decode bill payload:', error);
+        return null;
+      }
+    };
+
     const loadBill = async () => {
       const query = new URLSearchParams(location.search);
       const encodedPayload = query.get('payload');
+      const payloadBill = encodedPayload ? decodePayload(encodedPayload) : null;
 
-      if (encodedPayload) {
-        try {
-          const decoded = JSON.parse(decodeURIComponent(encodedPayload));
-          setBill(decoded as DriverBillingRecord);
-        } catch (error) {
-          console.error('Failed to decode bill payload:', error);
-        }
+      if (payloadBill) {
+        setBill(payloadBill);
+        setLoading(false);
+        return;
       }
 
       if (!billId) {
@@ -32,10 +40,9 @@ const BillSharePage: React.FC = () => {
       }
 
       try {
-        const bills = await storageService.getDriverBillings();
-        const targetBill = bills.find((entry) => entry.id === billId) || null;
-        if (targetBill) {
-          setBill(targetBill);
+        const remoteBill = await storageService.getDriverBillingById(billId);
+        if (remoteBill) {
+          setBill(remoteBill);
         }
       } catch (error) {
         console.error('Failed to load bill for sharing:', error);
