@@ -1518,52 +1518,48 @@ const DriverPortalPage: React.FC = () => {
       a.click();
   };
 
-  const encodeSharePayload = (payload: Record<string, unknown>) => {
-      const json = JSON.stringify(payload);
-      const utf8 = encodeURIComponent(json).replace(/%([0-9A-F]{2})/g, (_, hex) =>
-          String.fromCharCode(parseInt(hex, 16))
-      );
-      return btoa(utf8).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  };
+  const getBillSharePayload = (bill: any) => ({
+      id: bill.id,
+      driver: bill.driver,
+      driverName: bill.driver,
+      qrCode: bill.qrCode,
+      weekRange: bill.weekRange,
+      weekStartDate: bill.startDate,
+      weekEndDate: bill.endDate,
+      trips: bill.trips,
+      rentPerDay: bill.rentPerDay,
+      daysWorked: bill.daysWorked,
+      rentTotal: bill.rentTotal,
+      collection: bill.collection,
+      fuel: bill.fuel,
+      overdue: bill.overdue ?? 0,
+      due: bill.overdue ?? 0,
+      wallet: bill.wallet,
+      walletOverdue: bill.overdue ?? 0,
+      expenses: bill.expenses || 0,
+      payout: bill.payout,
+      status: 'generated',
+      generatedAt: bill.generatedAt || new Date().toISOString(),
+      labeledDueRows: bill.labeledDueRows || [],
+      weeklyDetails: bill.weeklyDetails || null,
+      deposit: bill.deposit || 0,
+  });
 
-  const getBillShareLink = (bill: any) => {
-      // Include a compact fallback payload so shared links keep working even if the bill ID
-      // is not yet synced in the backend on the environment where the link is opened.
-      const fallbackPayload = encodeSharePayload({
-          id: bill.id,
-          driverName: bill.driver,
-          driver: bill.driver,
-          qrCode: bill.qrCode,
-          weekRange: bill.weekRange,
-          weekStartDate: bill.startDate,
-          weekEndDate: bill.endDate,
-          trips: bill.trips,
-          rentPerDay: bill.rentPerDay,
-          daysWorked: bill.daysWorked,
-          rentTotal: bill.rentTotal,
-          collection: bill.collection,
-          fuel: bill.fuel,
-          due: bill.overdue ?? 0,
-          wallet: bill.wallet,
-          walletOverdue: bill.overdue ?? 0,
-          adjustments: bill.appliedAdjustment ?? bill.adjustments ?? 0,
-          payout: bill.payout,
-          status: 'generated',
-          generatedAt: new Date().toISOString(),
-      });
-
-      return `${window.location.origin}/bill/${bill.id}?p=${fallbackPayload}`;
+  const getBillShareLink = async (bill: any) => {
+      const payload = getBillSharePayload(bill);
+      const response = await storageService.createDriverBillingShareLink(payload);
+      return `${window.location.origin}/bill/share/${response.token}`;
   };
 
   const copyBillShareLink = async (bill: any) => {
-      const shareLink = getBillShareLink(bill);
       try {
+          const shareLink = await getBillShareLink(bill);
           await navigator.clipboard.writeText(shareLink);
           setCopiedBillId(bill.id);
           window.setTimeout(() => setCopiedBillId((current) => (current === bill.id ? null : current)), 1800);
       } catch (error) {
           console.error('Failed to copy bill share link', error);
-          alert('Could not copy bill link. Please try again.');
+          alert('Could not create bill link. Please try again.');
       }
   };
 

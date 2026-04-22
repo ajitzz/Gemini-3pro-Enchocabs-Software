@@ -704,6 +704,24 @@ const weeklyWalletsCacheKey = (driver) =>
 const driverExpensesCacheKey = (driver) =>
   driver ? `driver-expenses:driver:${normalizeDriver(driver)}` : DRIVER_EXPENSES_CACHE_KEY;
 const systemFlagCacheKey = (key) => `system-flag:${key}`;
+const billShareCacheKey = (token) => `driver-billing-share:${token}`;
+
+const BILL_SHARE_TTL_SECONDS = Math.max(60, Number(process.env.BILL_SHARE_TTL_SECONDS || 60 * 60 * 24 * 30) || 60 * 60 * 24 * 30);
+const inMemoryBillShares = new Map();
+
+const setInMemoryBillShare = (token, bill) => {
+  inMemoryBillShares.set(token, { bill, expiresAt: Date.now() + BILL_SHARE_TTL_SECONDS * 1000 });
+};
+
+const getInMemoryBillShare = (token) => {
+  const entry = inMemoryBillShares.get(token);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    inMemoryBillShares.delete(token);
+    return null;
+  }
+  return entry.bill;
+};
 
 const queryCacheRegistry = new Map();
 
@@ -1745,6 +1763,47 @@ app.get('/api/drivers/:driverId/widget-summary', async (req, res) => {
     });
   } catch (err) {
     return res.status(500).json({ error: err.message });
+  }
+});
+
+
+app.post('/api/driver-billings/share-link', async (req, res) => {
+  const bill = req.body?.bill;
+  if (!bill || typeof bill !== 'object' || Array.isArray(bill)) {
+    return res.status(400).json({ error: 'bill payload is required' });
+  }
+
+  try {
+    const token = uuidv4().replace(/-/g, '').slice(0, 12);
+    await setCacheJSON(billShareCacheKey(token), bill, BILL_SHARE_TTL_SECONDS);
+    setInMemoryBillShare(token, bill);
+    return res.json({ token, expiresIn: BILL_SHARE_TTL_SECONDS });
+  } catch (err) {
+    console.error('Failed to create bill share link:', err);
+    return res.status(500).json({ error: err.message || 'Failed to create share link' });
+  }
+});
+
+app.get('/api/driver-billings/share-link/:token', async (req, res) => {
+  const token = String(req.params.token || '').trim();
+  if (!token) {
+    return res.status(400).json({ error: 'Share token is required' });
+  }
+
+  try {
+    let bill = await getCacheJSON(billShareCacheKey(token));
+    if (!bill) {
+      bill = getInMemoryBillShare(token);
+    }
+
+    if (!bill) {
+      return res.status(404).json({ error: 'Billing share link not found or expired' });
+    }
+
+    return res.json(bill);
+  } catch (err) {
+    console.error('Failed to load bill by share token:', err);
+    return res.status(500).json({ error: err.message || 'Failed to load shared bill' });
   }
 });
 

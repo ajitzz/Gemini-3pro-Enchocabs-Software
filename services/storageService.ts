@@ -464,6 +464,17 @@ export const storageService = {
       throw error;
     }
   },
+  createDriverBillingShareLink: async (billPayload: Record<string, unknown>): Promise<{ token: string }> => {
+    return api.post('/driver-billings/share-link', { bill: billPayload });
+  },
+  getDriverBillingByShareToken: async (token: string): Promise<DriverBillingRecord | null> => {
+    try {
+      return await api.get(`/driver-billings/share-link/${encodeURIComponent(token)}`);
+    } catch (error) {
+      if (isNotFoundError(error)) return null;
+      throw error;
+    }
+  },
   saveDriverBilling: async (billing: DriverBillingRecord): Promise<DriverBillingRecord> => api.post('/driver-billings', billing),
   deleteDriverBilling: async (id: string): Promise<void> => api.delete(`/driver-billings/${id}`),
 

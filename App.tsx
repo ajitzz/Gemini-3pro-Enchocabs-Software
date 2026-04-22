@@ -290,6 +290,7 @@ const App: React.FC = () => {
               <Route path="/" element={<LazyPage><HomePage /></LazyPage>} />
               <Route path="/drivers-earnings" element={<LazyPage><DriversEarningsPublicPage /></LazyPage>} />
               <Route path="/bill/:billId" element={<LazyPage><BillSharePage /></LazyPage>} />
+              <Route path="/bill/share/:shareToken" element={<LazyPage><BillSharePage /></LazyPage>} />
               <Route path="/staff" element={<LazyPage><LoginPage /></LazyPage>} />
               <Route path="/login" element={<Navigate to="/staff" replace />} />
 
