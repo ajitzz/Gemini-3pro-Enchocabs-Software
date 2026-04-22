@@ -1527,14 +1527,35 @@ const DriverPortalPage: React.FC = () => {
   };
 
   const copyBillShareLink = async (bill: any) => {
+      let shareLink = '';
       try {
-          const shareLink = await getBillShareLink(bill);
+          shareLink = await getBillShareLink(bill);
+      } catch (error) {
+          console.error('Failed to create bill share link', error);
+          alert('Could not create bill link. Please try again.');
+          return;
+      }
+
+      const fallbackManualCopy = () => {
+          const copiedViaPrompt = window.prompt('Copy this bill link:', shareLink);
+          if (copiedViaPrompt !== null) {
+              setCopiedBillId(bill.id);
+              window.setTimeout(() => setCopiedBillId((current) => (current === bill.id ? null : current)), 1800);
+          }
+      };
+
+      try {
+          if (!navigator.clipboard || !window.isSecureContext) {
+              fallbackManualCopy();
+              return;
+          }
+
           await navigator.clipboard.writeText(shareLink);
           setCopiedBillId(bill.id);
           window.setTimeout(() => setCopiedBillId((current) => (current === bill.id ? null : current)), 1800);
       } catch (error) {
-          console.error('Failed to copy bill share link', error);
-          alert('Could not create bill link. Please try again.');
+          console.warn('Clipboard write failed. Falling back to manual copy.', error);
+          fallbackManualCopy();
       }
   };
 
