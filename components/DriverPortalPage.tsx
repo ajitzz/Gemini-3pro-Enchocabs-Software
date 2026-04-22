@@ -1518,11 +1518,21 @@ const DriverPortalPage: React.FC = () => {
       a.click();
   };
 
+  const encodeSharePayload = (payload: Record<string, unknown>) => {
+      const json = JSON.stringify(payload);
+      const utf8 = encodeURIComponent(json).replace(/%([0-9A-F]{2})/g, (_, hex) =>
+          String.fromCharCode(parseInt(hex, 16))
+      );
+      return btoa(utf8).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  };
+
   const getBillShareLink = (bill: any) => {
-      const payload = encodeURIComponent(JSON.stringify({
+      // Include a compact fallback payload so shared links keep working even if the bill ID
+      // is not yet synced in the backend on the environment where the link is opened.
+      const fallbackPayload = encodeSharePayload({
           id: bill.id,
-          driver: bill.driver,
           driverName: bill.driver,
+          driver: bill.driver,
           qrCode: bill.qrCode,
           weekRange: bill.weekRange,
           weekStartDate: bill.startDate,
@@ -1536,14 +1546,13 @@ const DriverPortalPage: React.FC = () => {
           due: bill.overdue ?? 0,
           wallet: bill.wallet,
           walletOverdue: bill.overdue ?? 0,
-          expenses: bill.expenses || 0,
+          adjustments: bill.appliedAdjustment ?? bill.adjustments ?? 0,
           payout: bill.payout,
-          status: bill.isAdjusted ? 'generated' : 'generated',
-          labeledDueRows: bill.labeledDueRows || [],
-          dailyDetails: bill.dailyDetails || [],
-          weeklyDetails: bill.weeklyDetails || null
-      }));
-      return `${window.location.origin}/bill/${bill.id}?payload=${payload}`;
+          status: 'generated',
+          generatedAt: new Date().toISOString(),
+      });
+
+      return `${window.location.origin}/bill/${bill.id}?p=${fallbackPayload}`;
   };
 
   const copyBillShareLink = async (bill: any) => {

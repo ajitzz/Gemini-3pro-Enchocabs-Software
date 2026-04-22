@@ -13,17 +13,44 @@ const BillSharePage: React.FC = () => {
   const billRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    const decodePayload = (encodedPayload: string): DriverBillingRecord | null => {
+      try {
+        const decoded = JSON.parse(decodeURIComponent(encodedPayload));
+        return decoded as DriverBillingRecord;
+      } catch (error) {
+        console.error('Failed to decode legacy bill payload:', error);
+        return null;
+      }
+    };
+
+    const decodeCompactPayload = (compactPayload: string): DriverBillingRecord | null => {
+      try {
+        const normalized = compactPayload.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = normalized + '='.repeat((4 - (normalized.length % 4 || 4)) % 4);
+        const binary = atob(padded);
+        const percentEncoded = Array.from(binary)
+          .map((char) => `%${char.charCodeAt(0).toString(16).padStart(2, '0')}`)
+          .join('');
+        const decodedJson = decodeURIComponent(percentEncoded);
+        return JSON.parse(decodedJson) as DriverBillingRecord;
+      } catch (error) {
+        console.error('Failed to decode compact bill payload:', error);
+        return null;
+      }
+    };
+
     const loadBill = async () => {
       const query = new URLSearchParams(location.search);
       const encodedPayload = query.get('payload');
+      const compactPayload = query.get('p');
+      const payloadBill = compactPayload
+        ? decodeCompactPayload(compactPayload)
+        : (encodedPayload ? decodePayload(encodedPayload) : null);
 
-      if (encodedPayload) {
-        try {
-          const decoded = JSON.parse(decodeURIComponent(encodedPayload));
-          setBill(decoded as DriverBillingRecord);
-        } catch (error) {
-          console.error('Failed to decode bill payload:', error);
-        }
+      if (payloadBill) {
+        setBill(payloadBill);
+        setLoading(false);
+        return;
       }
 
       if (!billId) {
@@ -32,10 +59,9 @@ const BillSharePage: React.FC = () => {
       }
 
       try {
-        const bills = await storageService.getDriverBillings();
-        const targetBill = bills.find((entry) => entry.id === billId) || null;
-        if (targetBill) {
-          setBill(targetBill);
+        const remoteBill = await storageService.getDriverBillingById(billId);
+        if (remoteBill) {
+          setBill(remoteBill);
         }
       } catch (error) {
         console.error('Failed to load bill for sharing:', error);
