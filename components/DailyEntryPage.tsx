@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState, useRef, useMemo, useCallback, useDeferredValue } from 'react';
-import { DailyEntry, Driver, LeaveRecord, WeeklyWallet } from '../types';
+import { DailyEntry, Driver, DriverExpense, DriverSummary, LeaveRecord, RentalSlab, WeeklyWallet } from '../types';
 import { storageService } from '../services/storageService';
 import { useLiveUpdates } from '../lib/useLiveUpdates';
 import { isDriverUnavailableOnDate } from '../lib/leaveUtils';
@@ -303,6 +303,8 @@ const DailyEntryPage: React.FC = () => {
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [leaves, setLeaves] = useState<LeaveRecord[]>([]); // Added Leaves state
   const [weeklyWallets, setWeeklyWallets] = useState<WeeklyWallet[]>([]);
+  const [driverRentalSlabs, setDriverRentalSlabs] = useState<RentalSlab[]>([]);
+  const [driverExpenses, setDriverExpenses] = useState<DriverExpense[]>([]);
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -460,6 +462,8 @@ const DailyEntryPage: React.FC = () => {
 
   const sortEntriesByDateDesc = useCallback((records: DailyEntry[]) =>
     [...records].sort((a, b) => b.date.localeCompare(a.date)), []);
+  const sortSlabsByMinTrips = useCallback((records: RentalSlab[]) =>
+    [...records].sort((a, b) => a.minTrips - b.minTrips), []);
 
   const areEntriesEquivalent = useCallback((a: DailyEntry[], b: DailyEntry[]) => {
     if (a.length !== b.length) return false;
@@ -497,12 +501,18 @@ const DailyEntryPage: React.FC = () => {
     const dailyParams = showFullHistory ? undefined : { from: recentFromDate };
 
     try {
-      const bootstrap = await storageService.getDailyEntriesBootstrap(dailyParams);
+      const [bootstrap, slabs, expenses] = await Promise.all([
+        storageService.getDailyEntriesBootstrap(dailyParams),
+        storageService.getDriverRentalSlabs(),
+        storageService.getDriverExpenses(),
+      ]);
 
       setEntries(sortEntriesByDateDesc(bootstrap.entries.map(sanitizeEntryDate)));
       setDrivers(bootstrap.drivers.filter(driver => !driver.terminationDate));
       setLeaves(bootstrap.leaves);
       setWeeklyWallets(bootstrap.weeklyWallets);
+      setDriverRentalSlabs(sortSlabsByMinTrips(slabs));
+      setDriverExpenses(expenses);
       setLoading(false);
     } catch (error) {
       console.warn('Daily bootstrap failed, falling back to parallel requests:', error);
@@ -512,7 +522,9 @@ const DailyEntryPage: React.FC = () => {
         const asyncMetaPromise = Promise.all([
           storageService.getDrivers(),
           storageService.getLeaves(),
-          storageService.getWeeklyWallets()
+          storageService.getWeeklyWallets(),
+          storageService.getDriverRentalSlabs(),
+          storageService.getDriverExpenses(),
         ]);
 
         const e = await entriesPromise;
@@ -520,10 +532,12 @@ const DailyEntryPage: React.FC = () => {
         setLoading(false);
 
         asyncMetaPromise
-          .then(([d, l, w]) => {
+          .then(([d, l, w, slabs, expenses]) => {
             setDrivers(d.filter(driver => !driver.terminationDate));
             setLeaves(l);
             setWeeklyWallets(w);
+            setDriverRentalSlabs(sortSlabsByMinTrips(slabs));
+            setDriverExpenses(expenses);
           })
           .catch((metaError) => {
             console.error('Failed to load secondary daily entry metadata:', metaError);
@@ -533,7 +547,7 @@ const DailyEntryPage: React.FC = () => {
         setLoading(false);
       }
     }
-  }, [showFullHistory, recentFromDate, sortEntriesByDateDesc]);
+  }, [showFullHistory, recentFromDate, sortEntriesByDateDesc, sortSlabsByMinTrips]);
 
   const refreshEntriesOnly = useCallback(async () => {
     const dailyParams = showFullHistory ? undefined : { from: recentFromDate };
@@ -554,7 +568,11 @@ const DailyEntryPage: React.FC = () => {
       }
 
       const dailyParams = showFullHistory ? undefined : { from: recentFromDate };
-      const bootstrap = await storageService.getDailyEntriesBootstrap(dailyParams, { skipMemoryCache: true });
+      const [bootstrap, slabs, expenses] = await Promise.all([
+        storageService.getDailyEntriesBootstrap(dailyParams, { skipMemoryCache: true }),
+        storageService.getDriverRentalSlabs(),
+        storageService.getDriverExpenses(undefined, { skipMemoryCache: true }),
+      ]);
       const nextEntries = sortEntriesByDateDesc(bootstrap.entries.map(sanitizeEntryDate));
       setEntries(prev => {
         if (areEntriesEquivalent(prev, nextEntries)) return prev;
@@ -563,10 +581,12 @@ const DailyEntryPage: React.FC = () => {
       setDrivers(bootstrap.drivers.filter(driver => !driver.terminationDate));
       setLeaves(bootstrap.leaves);
       setWeeklyWallets(bootstrap.weeklyWallets);
+      setDriverRentalSlabs(sortSlabsByMinTrips(slabs));
+      setDriverExpenses(expenses);
     } catch (error) {
       console.warn('Live refresh skipped due to transient failure:', error);
     }
-  }, [refreshEntriesOnly, showFullHistory, recentFromDate, sortEntriesByDateDesc, areEntriesEquivalent]);
+  }, [refreshEntriesOnly, showFullHistory, recentFromDate, sortEntriesByDateDesc, sortSlabsByMinTrips, areEntriesEquivalent]);
 
   useEffect(() => {
     loadData();
@@ -574,7 +594,7 @@ const DailyEntryPage: React.FC = () => {
 
   const { connected: liveUpdatesConnected } = useLiveUpdates((event) => {
     const type = event?.type;
-    if (!type || !['daily_entries_changed', 'weekly_wallets_changed', 'drivers_changed', 'leaves_changed'].includes(type)) {
+    if (!type || !['daily_entries_changed', 'weekly_wallets_changed', 'driver_expenses_changed', 'drivers_changed', 'leaves_changed'].includes(type)) {
       return;
     }
 
@@ -1262,6 +1282,23 @@ const DailyEntryPage: React.FC = () => {
       };
   }, [displayedEntries]);
 
+  const formatCurrencyInt = useCallback((amount: number) => {
+    const absValue = Math.abs(Number(amount || 0));
+    const formatted = `₹${absValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+    return amount < 0 ? `-${formatted}` : formatted;
+  }, []);
+
+  const selectedDriverStats = useMemo<DriverSummary | null>(() => {
+    if (!filterDriver) return null;
+    return storageService.calculateDriverStats(
+      filterDriver,
+      entriesWithAdjustments,
+      weeklyWallets,
+      driverRentalSlabs,
+      driverExpenses
+    );
+  }, [filterDriver, entriesWithAdjustments, weeklyWallets, driverRentalSlabs, driverExpenses]);
+
   const goToPreviousPage = () => {
       setCurrentPageIndex(prev => Math.max(0, prev - 1));
   };
@@ -1777,10 +1814,28 @@ const DailyEntryPage: React.FC = () => {
       {/* Table / Card View */}
       <div className="bg-white rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100 overflow-hidden">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 px-6 py-4 border-b border-slate-100 bg-slate-50/60">
-            <div>
+            <div className="flex flex-col lg:flex-row lg:items-start lg:gap-8">
+              <div>
                 <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Records Window</p>
                 <p className="text-sm font-bold text-slate-800">{currentPageLabel}</p>
                 {currentPageRange && <p className="text-xs text-slate-400">{currentPageRange}</p>}
+              </div>
+              {selectedDriverStats && (
+                <div className="mt-2 lg:mt-0 rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-2 space-y-1.5">
+                  <p className="text-[10px] uppercase font-bold tracking-wider text-indigo-500">{filterDriver} • Driver Overview</p>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                    <p className="text-xs font-semibold text-slate-700">
+                      Net Payout: <span className={selectedDriverStats.netPayout >= 0 ? 'text-emerald-600' : 'text-rose-600'}>{formatCurrencyInt(selectedDriverStats.netPayout)}</span>
+                    </p>
+                    <p className="text-xs font-semibold text-slate-700">
+                      Net Balance: <span className={selectedDriverStats.finalTotal >= 0 ? 'text-emerald-600' : 'text-rose-600'}>{formatCurrencyInt(selectedDriverStats.finalTotal)}</span>
+                    </p>
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Calc: Collection ({formatCurrencyInt(selectedDriverStats.totalCollection)}) - Rent ({formatCurrencyInt(selectedDriverStats.totalRent)}) - Fuel ({formatCurrencyInt(selectedDriverStats.totalFuel)}) + Due ({formatCurrencyInt(selectedDriverStats.totalDue)}) + Wallet ({formatCurrencyInt(selectedDriverStats.totalWalletWeek)}) - Payout ({formatCurrencyInt(selectedDriverStats.totalPayout)}) - Expenses ({formatCurrencyInt(selectedDriverStats.totalExpenses)}).
+                  </p>
+                </div>
+              )}
             </div>
             <div className="flex items-center justify-between md:justify-end gap-3">
                 <button
