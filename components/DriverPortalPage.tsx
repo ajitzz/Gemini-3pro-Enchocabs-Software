@@ -391,7 +391,10 @@ const DriverPortalPage: React.FC = () => {
           if (targetDriver.isManager) {
               const myAccess = await storageService.getManagerAccessByManagerId(targetDriver.id);
               if (myAccess && myAccess.childDriverIds.length > 0) {
-                  teamMembers = visibleDrivers.filter(d => myAccess.childDriverIds.includes(d.id));
+                  const driversById = new Map(allDrivers.map(driver => [driver.id, driver] as const));
+                  teamMembers = myAccess.childDriverIds
+                      .map(childId => driversById.get(childId))
+                      .filter((driver): driver is Driver => Boolean(driver));
                   setMyTeam(teamMembers);
               }
           }
@@ -474,6 +477,20 @@ const DriverPortalPage: React.FC = () => {
               setViewingAsDriver(updatedDriver);
               if (primaryDriver && primaryDriver.id === updatedDriver.id) {
                   setPrimaryDriver(updatedDriver);
+              }
+          }
+
+          const teamSourceDriver = updatedDriver || viewingAsDriver;
+          if (teamSourceDriver?.isManager && drivers) {
+              const myAccess = await storageService.getManagerAccessByManagerId(teamSourceDriver.id);
+              if (myAccess && myAccess.childDriverIds.length > 0) {
+                  const driversById = new Map(drivers.map(driver => [driver.id, driver] as const));
+                  const refreshedTeam = myAccess.childDriverIds
+                      .map(childId => driversById.get(childId))
+                      .filter((driver): driver is Driver => Boolean(driver));
+                  setMyTeam(refreshedTeam);
+              } else {
+                  setMyTeam([]);
               }
           }
 
