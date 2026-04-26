@@ -4,7 +4,38 @@ import { Upload, CheckCircle, XCircle, AlertTriangle, X, UserPlus, AlertOctagon,
 import { storageService } from '../services/storageService';
 import { DailyEntry, Driver, AssetMaster } from '../types';
 
-declare const XLSX: any;
+
+declare global {
+  interface Window {
+    XLSX?: any;
+  }
+}
+
+let xlsxScriptPromise: Promise<void> | null = null;
+
+const ensureXLSXLoaded = async () => {
+  if (window.XLSX) return;
+  if (!xlsxScriptPromise) {
+    xlsxScriptPromise = new Promise<void>((resolve, reject) => {
+      const existingScript = document.querySelector('script[data-xlsx-loader="true"]') as HTMLScriptElement | null;
+      if (existingScript) {
+        existingScript.addEventListener('load', () => resolve(), { once: true });
+        existingScript.addEventListener('error', () => reject(new Error('Failed to load XLSX library')), { once: true });
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      script.async = true;
+      script.dataset.xlsxLoader = 'true';
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Failed to load XLSX library'));
+      document.body.appendChild(script);
+    });
+  }
+
+  await xlsxScriptPromise;
+};
 
 // Configuration for Strict Daily Import
 const REQUIRED_DAILY_COLUMNS = [
@@ -56,7 +87,7 @@ interface ImportState {
 
 const ImportPage: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
-  const [isXLSXReady, setIsXLSXReady] = useState<boolean>(typeof XLSX !== 'undefined');
+  const [isXLSXReady, setIsXLSXReady] = useState<boolean>(typeof window !== 'undefined' && typeof window.XLSX !== 'undefined');
   // System Data State
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [existingEntries, setExistingEntries] = useState<DailyEntry[]>([]);
@@ -89,20 +120,17 @@ const ImportPage: React.FC = () => {
   }, []);
 
  useEffect(() => {
-    if (typeof XLSX !== 'undefined') {
-      setIsXLSXReady(true);
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-    script.async = true;
-    script.onload = () => setIsXLSXReady(true);
-    script.onerror = () => console.error('Failed to load XLSX library');
-    document.body.appendChild(script);
+    let active = true;
+    ensureXLSXLoaded()
+      .then(() => {
+        if (active) setIsXLSXReady(true);
+      })
+      .catch((error) => {
+        console.error(error.message || 'Failed to load XLSX library');
+      });
 
     return () => {
-      document.body.removeChild(script);
+      active = false;
     };
   }, []);
 
@@ -189,7 +217,7 @@ const ImportPage: React.FC = () => {
         }
       }
 
-      const datePattern = /^(\d{1,4})[\/.-](\d{1,2})[\/.-](\d{1,4})(.*)$/;
+      const datePattern = /^(\d{1,4})[/.-](\d{1,2})[/.-](\d{1,4})(.*)$/;
       const match = strVal.match(datePattern);
       
       if (match) {
@@ -269,7 +297,7 @@ const ImportPage: React.FC = () => {
 
   const startImport = async () => {
        if (!file) return;
-    if (!isXLSXReady || typeof XLSX === 'undefined') {
+    if (!isXLSXReady || typeof window.XLSX === 'undefined') {
         alert("Loading file parser. Please try again in a moment.");
         return;
     }
@@ -279,11 +307,11 @@ const ImportPage: React.FC = () => {
     reader.onload = (e) => {
       try {
         const data = e.target?.result;
-        const workbook = XLSX.read(data, { type: 'array' });
+        const workbook = window.XLSX.read(data, { type: 'array' });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
         
-        const rawRows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
+        const rawRows: any[][] = window.XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
         
         if (rawRows.length === 0) {
           alert("File appears empty.");
@@ -553,7 +581,7 @@ const ImportPage: React.FC = () => {
   };
 
   const resolveDriver_Reactivate = async () => {
-    const { driver } = currentConflict?.payload;
+    const driver = currentConflict?.payload?.driver;
     if (!driver) return;
 
     try {
@@ -596,7 +624,8 @@ const ImportPage: React.FC = () => {
   };
 
   const resolveDuplicate_Override = () => {
-    const { existing, isBatchDuplicate } = currentConflict?.payload;
+    const existing = currentConflict?.payload?.existing;
+    const isBatchDuplicate = currentConflict?.payload?.isBatchDuplicate;
     if (!isBatchDuplicate && existing?.id) {
       setImportState(prev => ({
         ...prev,
@@ -783,13 +812,13 @@ const ImportPage: React.FC = () => {
                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
                     <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Quick Register & Continue</p>
                     <input 
-                      className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
+                      className="w-full p-2.5 border border-slate-300 rounded-lg text-base focus:ring-2 focus:ring-indigo-500 outline-none" 
                       placeholder="Driver Name" 
                       value={newDriverName} 
                       onChange={e => setNewDriverName(e.target.value)} 
                     />
                     <input 
-                      className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
+                      className="w-full p-2.5 border border-slate-300 rounded-lg text-base focus:ring-2 focus:ring-indigo-500 outline-none" 
                       placeholder="Mobile (Optional)" 
                       value={newDriverMobile} 
                       onChange={e => setNewDriverMobile(e.target.value)} 

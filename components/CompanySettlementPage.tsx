@@ -118,7 +118,7 @@ const CompanySettlementPage: React.FC = () => {
       const updatedRows = [...tempSummaryRows];
       const numValue = parseFloat(value) || 0;
       
-      // @ts-ignore - Dynamic key assignment
+      // @ts-expect-error - Dynamic key assignment
       updatedRows[index][field] = numValue;
       setTempSummaryRows(updatedRows);
   };
@@ -629,7 +629,7 @@ const CompanySettlementPage: React.FC = () => {
                                           <input 
                                              value={m.excelHeader} 
                                              onChange={e => handleHeaderChange(i, e.target.value)}
-                                             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                                             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-base focus:ring-2 focus:ring-indigo-500 outline-none"
                                              placeholder="Enter Excel Column Name"
                                           />
                                       </td>
@@ -702,9 +702,9 @@ const CompanySettlementPage: React.FC = () => {
                                   <td className="px-8 py-5 pl-24">
                                      {isEditing ? (
                                         <div className="flex items-center gap-2">
-                                           <input type="number" value={tempSlab.minTrips ?? ''} onChange={e => handleInputChange('minTrips', parseInt(e.target.value))} className="w-20 p-2 border rounded-lg text-center font-bold" />
+                                           <input type="number" inputMode="decimal" value={tempSlab.minTrips ?? ''} onChange={e => handleInputChange('minTrips', parseInt(e.target.value))} className="w-20 p-2 border rounded-lg text-center text-base font-bold" />
                                            <span className="text-slate-400 font-bold">–</span>
-                                           <input type="number" placeholder="∞" value={tempSlab.maxTrips ?? ''} onChange={e => handleInputChange('maxTrips', e.target.value ? parseInt(e.target.value) : null)} className="w-20 p-2 border rounded-lg text-center font-bold" />
+                                           <input type="number" inputMode="decimal" placeholder="∞" value={tempSlab.maxTrips ?? ''} onChange={e => handleInputChange('maxTrips', e.target.value ? parseInt(e.target.value) : null)} className="w-20 p-2 border rounded-lg text-center text-base font-bold" />
                                         </div>
                                      ) : (
                                         <span className="font-bold text-slate-700 text-base">{slab.minTrips} – {slab.maxTrips === null ? '∞' : slab.maxTrips}</span>
@@ -712,7 +712,7 @@ const CompanySettlementPage: React.FC = () => {
                                   </td>
                                   <td className="px-8 py-5">
                                      {isEditing ? (
-                                        <div className="relative w-32"><span className="absolute left-3 top-2 text-slate-400 font-bold">₹</span><input type="number" value={tempSlab.rentAmount ?? ''} onChange={e => handleInputChange('rentAmount', parseFloat(e.target.value))} className="w-full pl-6 pr-3 py-2 border rounded-lg font-bold text-slate-800" /></div>
+                                        <div className="relative w-32"><span className="absolute left-3 top-2 text-slate-400 font-bold">₹</span><input type="number" inputMode="decimal" value={tempSlab.rentAmount ?? ''} onChange={e => handleInputChange('rentAmount', parseFloat(e.target.value))} className="w-full pl-6 pr-3 py-2 border rounded-lg text-base font-bold text-slate-800" /></div>
                                      ) : (
                                         <span className="font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-4 py-1.5 rounded-lg text-base">₹{slab.rentAmount}</span>
                                      )}
@@ -761,7 +761,7 @@ const CompanySettlementPage: React.FC = () => {
                                 value={selectedDate} 
                                 onChange={e => updateWeekFromDate(e.target.value)} 
                                 required
-                                className="bg-transparent text-sm font-medium text-slate-700 outline-none p-1"
+                                className="bg-transparent text-base font-medium text-slate-700 outline-none p-1"
                              />
                              <div className="h-4 w-px bg-slate-300"></div>
                              <span className="text-xs font-bold text-indigo-600">{computedWeek.label || 'Please select date'}</span>
@@ -791,7 +791,7 @@ const CompanySettlementPage: React.FC = () => {
                           <textarea 
                               value={currentWeekNote}
                               onChange={e => setCurrentWeekNote(e.target.value)}
-                              className="w-full mt-2 p-3 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none h-32 bg-slate-50"
+                              className="w-full mt-2 p-3 border border-slate-200 rounded-xl text-base focus:ring-2 focus:ring-indigo-500 outline-none resize-none h-32 bg-slate-50"
                               placeholder="Add notes for this week..."
                           />
                       </div>
@@ -945,7 +945,7 @@ const CompanySettlementPage: React.FC = () => {
                                     <tr key={i} className="hover:bg-slate-50 transition-colors">
                                         <td className="px-4 py-3 font-bold text-slate-700 sticky left-0 bg-white z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
                                             {isEditingSummary ? (
-                                                <input type="text" value={row.vehicleNumber} onChange={e => handleEditSummaryRowChange(i, 'vehicleNumber', e.target.value)} className="w-20 p-1 border rounded" />
+                                                <input type="text" value={row.vehicleNumber} onChange={e => handleEditSummaryRowChange(i, 'vehicleNumber', e.target.value)} className="w-20 p-1 border rounded text-base" />
                                             ) : row.vehicleNumber}
                                         </td>
                                         
@@ -957,10 +957,10 @@ const CompanySettlementPage: React.FC = () => {
                                         ].map((field: any) => (
                                             <td key={field} className={`px-4 py-3 ${['netWeeklyLeaseRental', 'uberWeekOs'].includes(field) ? 'bg-indigo-50/10 font-bold text-indigo-600' : ''}`}>
                                                 {isEditingSummary ? (
-                                                    // @ts-ignore
-                                                    <input type="number" value={row[field]} onChange={e => handleEditSummaryRowChange(i, field, e.target.value)} className="w-16 p-1 border rounded bg-white focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                                    // @ts-expect-error - Dynamic key access
+                                                    <input type="number" inputMode="decimal" value={row[field]} onChange={e => handleEditSummaryRowChange(i, field, e.target.value)} className="w-16 p-1 border rounded bg-white text-base focus:ring-2 focus:ring-indigo-500 outline-none" />
                                                 ) : (
-                                                    // @ts-ignore
+                                                    // @ts-expect-error - Dynamic key access
                                                     row[field]
                                                 )}
                                             </td>

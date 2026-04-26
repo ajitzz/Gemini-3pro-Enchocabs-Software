@@ -11,6 +11,7 @@ export interface DailyEntry {
   collection: number;
   fuel: number;
   due: number; // positive = driver owes me, negative = I owe driver
+  dueLabel?: string;
   payout: number; // New field: Amount paid out to driver
   payoutDate?: string; // Date when payout was issued (required when payout is entered)
   notes?: string;
@@ -64,6 +65,7 @@ export interface Driver {
   email?: string; // New: Optional Email/Gmail
   joinDate: string;
   terminationDate?: string;
+  isHidden?: boolean; // Hidden from records/portal when true
   deposit: number;
   qrCode: string; // Must be unique among active drivers
   vehicle: string; // Max 2 active drivers per vehicle
@@ -101,6 +103,14 @@ export interface LeaveRecord {
 export interface AssetMaster {
   vehicles: string[]; // List of all owned vehicles
   qrCodes: string[]; // List of all owned QR codes
+  vehicleFirstFuelRecords?: VehicleFirstFuelRecord[];
+}
+
+export interface VehicleFirstFuelRecord {
+  vehicle: string;
+  driverId: string;
+  driverName: string;
+  amount: number;
 }
 
 export interface DriverSummary {
@@ -110,11 +120,39 @@ export interface DriverSummary {
   totalFuel: number;
   totalDue: number;
   totalPayout: number;
+  totalExpenses: number;
   totalWalletWeek: number;
   finalTotal: number; // Represents overall net balance from start to end
   netPayout: number; // Represents the lowest payout amount (overall vs latest wallet window)
   netPayoutSource: 'overall' | 'latest-wallet';
   netPayoutRange?: string;
+}
+
+export interface DriverExpense {
+  id: string;
+  groupId: string;
+  expenseDate: string;
+  category: string;
+  customType?: string;
+  driver: string;
+  amount: number;
+  notes?: string;
+  splitMode: 'all' | 'selected';
+  distributionMode?: 'split' | 'common';
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface DriverExpenseGroupInput {
+  id?: string;
+  expenseDate: string;
+  category: string;
+  customType?: string;
+  amount: number;
+  notes?: string;
+  splitMode: 'all' | 'selected';
+  distributionMode?: 'split' | 'common';
+  selectedDrivers?: string[];
 }
 
 export interface GlobalSummary {
@@ -123,6 +161,7 @@ export interface GlobalSummary {
   totalFuel: number;
   totalDue: number;
   totalPayout: number;
+  totalExpenses: number;
   totalWalletWeek: number;
   pendingFromDrivers: number;
   payableToDrivers: number;
@@ -221,7 +260,7 @@ export interface LeadSheet {
   leads: LeadRecord[];
 }
 
-export type UserRole = 'super_admin' | 'admin' | 'driver';
+export type UserRole = 'super_admin' | 'admin' | 'manager' | 'driver';
 
 export type CashMode = 'blocked' | 'trips';
 
@@ -231,4 +270,15 @@ export interface AuthUser {
   role: UserRole;
   photoURL?: string;
   driverId?: string;
+}
+
+
+export interface DriverWidgetSummary {
+  driverId: string;
+  driverName: string;
+  netBalance: number;
+  netPayout: number;
+  netPayoutSource: 'overall' | 'latest-wallet';
+  netPayoutRange?: string | null;
+  updatedAt: string;
 }
