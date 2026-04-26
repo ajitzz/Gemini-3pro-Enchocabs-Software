@@ -391,7 +391,10 @@ const DriverPortalPage: React.FC = () => {
           if (targetDriver.isManager) {
               const myAccess = await storageService.getManagerAccessByManagerId(targetDriver.id);
               if (myAccess && myAccess.childDriverIds.length > 0) {
-                  teamMembers = visibleDrivers.filter(d => myAccess.childDriverIds.includes(d.id));
+                  const driversById = new Map(allDrivers.map(driver => [driver.id, driver] as const));
+                  teamMembers = myAccess.childDriverIds
+                      .map(childId => driversById.get(childId))
+                      .filter((driver): driver is Driver => Boolean(driver));
                   setMyTeam(teamMembers);
               }
           }
@@ -474,6 +477,20 @@ const DriverPortalPage: React.FC = () => {
               setViewingAsDriver(updatedDriver);
               if (primaryDriver && primaryDriver.id === updatedDriver.id) {
                   setPrimaryDriver(updatedDriver);
+              }
+          }
+
+          const teamSourceDriver = updatedDriver || viewingAsDriver;
+          if (teamSourceDriver?.isManager && drivers) {
+              const myAccess = await storageService.getManagerAccessByManagerId(teamSourceDriver.id);
+              if (myAccess && myAccess.childDriverIds.length > 0) {
+                  const driversById = new Map(drivers.map(driver => [driver.id, driver] as const));
+                  const refreshedTeam = myAccess.childDriverIds
+                      .map(childId => driversById.get(childId))
+                      .filter((driver): driver is Driver => Boolean(driver));
+                  setMyTeam(refreshedTeam);
+              } else {
+                  setMyTeam([]);
               }
           }
 
@@ -2124,25 +2141,26 @@ const DriverPortalPage: React.FC = () => {
                                                   <button
                                                       onClick={(e) => { e.stopPropagation(); toggleTeamMemberCashMode(member.id); }}
                                                       disabled={!!teamCashModeUpdating[member.id]}
-                                                      className={`hidden md:flex relative items-center gap-3 px-3 py-2 rounded-full border border-white/15 shadow-lg backdrop-blur-sm text-white transition-all duration-200 ${
+                                                      className={`flex relative items-center gap-2 md:gap-3 px-2.5 md:px-3 py-2 rounded-full border border-white/15 shadow-lg backdrop-blur-sm text-white transition-all duration-200 ${
                                                           memberCashMode === 'blocked'
                                                               ? 'bg-gradient-to-r from-rose-500/90 via-amber-400/90 to-orange-400/90 hover:from-rose-500 hover:to-orange-500'
                                                               : 'bg-gradient-to-r from-emerald-500/90 via-teal-400/90 to-cyan-400/90 hover:from-emerald-500 hover:to-cyan-500'
                                                       } ${teamCashModeUpdating[member.id] ? 'opacity-60 cursor-wait' : 'hover:-translate-y-0.5 hover:shadow-xl'}`}
-                                                      title="Toggle cash mode for this driver"
+                                                      title="Cash Block toggle for this driver"
                                                   >
                                                       <span className={`h-6 w-11 rounded-full bg-white/20 flex items-center p-1 transition-all duration-200 ${memberCashMode === 'blocked' ? 'justify-end' : 'justify-start'}`}>
                                                           <span className="h-4 w-4 rounded-full bg-white shadow-md shadow-black/20" />
                                                       </span>
-                                                      <div className="flex flex-col leading-tight text-left">
+                                                      <div className="hidden md:flex flex-col leading-tight text-left">
                                                           <span className="text-[9px] uppercase tracking-[0.14em] font-semibold text-white/80">Cash Mode</span>
                                                           <span className="text-[11px] font-extrabold">{memberCashMode === 'blocked' ? 'Blocked' : 'Trips On'}</span>
                                                       </div>
+                                                      <span className="md:hidden text-[10px] font-extrabold">{memberCashMode === 'blocked' ? 'Unblock' : 'Cash Block'}</span>
                                                       <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/15 backdrop-blur text-white shadow-inner">
                                                           {memberCashMode === 'blocked' ? <Lock size={14} /> : <DollarSign size={14} />}
                                                       </span>
                                                   </button>
-                                                  <ChevronRight className="text-white/70 md:hidden" size={18} />
+                                                  <ChevronRight className="text-white/70 hidden md:block" size={18} />
                                               </div>
                                           </div>
                                       );
