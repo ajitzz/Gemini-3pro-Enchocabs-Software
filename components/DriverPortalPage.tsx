@@ -297,6 +297,7 @@ const DriverPortalPage: React.FC = () => {
   }, [rawExpenses]);
 
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+  const isPortalUser = user?.role === 'driver' || user?.role === 'manager';
 
   useEffect(() => {
     // Initial Load based on Authenticated User
@@ -306,14 +307,14 @@ const DriverPortalPage: React.FC = () => {
   }, [user]);
 
   useEffect(() => {
-      if (user?.role !== 'driver') return;
+      if (!isPortalUser) return;
       const targetDriverId = user.driverId || viewingAsDriver?.id;
       if (!targetDriverId) return;
 
       registerDriverPushNotifications(targetDriverId).catch((error) => {
           console.warn('Push registration skipped:', error);
       });
-  }, [user?.driverId, user?.role, viewingAsDriver?.id]);
+  }, [isPortalUser, user?.driverId, viewingAsDriver?.id]);
 
   useEffect(() => {
     let isMounted = true;
@@ -385,15 +386,15 @@ const DriverPortalPage: React.FC = () => {
           setRentalSlabs(sortedSlabs);
 
           setDriversList(visibleDrivers.sort((a, b) => a.name.localeCompare(b.name)));
-          if (user?.role === 'admin' || user?.role === 'super_admin') {
+          if (isAdmin) {
               lastDriversRefreshRef.current = Date.now();
           }
 
           let targetDriver: Driver | undefined;
 
-          if (user?.role === 'driver' && user.driverId) {
+          if ((user?.role === 'driver' || user?.role === 'manager') && user.driverId) {
               targetDriver = visibleDrivers.find(d => d.id === user.driverId);
-          } else if ((user?.role === 'admin' || user?.role === 'super_admin')) {
+          } else if (isAdmin) {
               targetDriver = visibleDrivers.find(d => d.email === user.email);
               if (!targetDriver) {
                   targetDriver = visibleDrivers.find(d => !d.terminationDate) || visibleDrivers[0];
@@ -679,7 +680,7 @@ const DriverPortalPage: React.FC = () => {
   };
 
   const exitView = async () => {
-      if (user?.role === 'driver') {
+      if (isPortalUser) {
           if (user.driverId && viewingAsDriver && primaryDriver && viewingAsDriver.id !== user.driverId) {
               const scopedDrivers = getScopedDriverNames(primaryDriver.name);
               const expenses = await storageService.getDriverExpenses({ drivers: scopedDrivers, fresh: 1 });
@@ -974,7 +975,7 @@ const DriverPortalPage: React.FC = () => {
   const netBalance = driverStats?.finalTotal ?? 0;
   const dailyTabNetPayout = dailyNetSummary?.netPayout ?? balanceSummary.netPayout;
   const dailyTabNetBalance = dailyNetSummary?.netBalance ?? netBalance;
-  const hasFoodAccess = user?.role === 'driver' && Boolean(viewingAsDriver?.foodOption);
+  const hasFoodAccess = isPortalUser && Boolean(viewingAsDriver?.foodOption);
 
   const vehiclePartnerDriver = useMemo(() => {
       if (!viewingAsDriver?.vehicle) return null;
@@ -1730,7 +1731,7 @@ const DriverPortalPage: React.FC = () => {
           )}
           
           <div className="flex gap-3">
-              {user?.role !== 'driver' && (
+              {isAdmin && (
                  <button 
                     onClick={returnToDashboard}
                     className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-50 transition-colors flex items-center gap-2 shadow-sm"
@@ -1738,7 +1739,7 @@ const DriverPortalPage: React.FC = () => {
                     <LogOut size={16} /> Exit to Admin
                  </button>
               )}
-              {user?.role === 'driver' && (
+              {isPortalUser && (
                  <button 
                     onClick={logout}
                     className="px-5 py-2.5 bg-rose-50 text-rose-600 rounded-xl text-sm font-bold hover:bg-rose-100 transition-colors flex items-center gap-2"
@@ -1772,7 +1773,7 @@ const DriverPortalPage: React.FC = () => {
                    <div>
                        <h1 className="font-bold text-lg leading-none">Staff Room</h1>
                        <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mt-1">
-                           {user?.role === 'driver' ? 'My Dashboard' : 'View Mode'}
+                           {isPortalUser ? 'My Dashboard' : 'View Mode'}
                        </p>
                    </div>
                </div>
@@ -1792,12 +1793,12 @@ const DriverPortalPage: React.FC = () => {
                            </span>
                        )}
                    </button>
-                   {user?.role !== 'driver' && (
+                   {isAdmin && (
                        <button onClick={returnToDashboard} className="p-2 bg-slate-800 rounded-lg hover:bg-slate-700 text-slate-300" title="Exit View Mode">
                            <LogOut size={20} />
                        </button>
                    )}
-                   {user?.role === 'driver' && (
+                   {isPortalUser && (
                        <button onClick={exitView} className="p-2 bg-slate-800 rounded-lg hover:bg-slate-700 text-rose-400" title="Sign Out">
                            <LogOut size={20} />
                        </button>
