@@ -439,6 +439,7 @@ const DriverPortalPage: React.FC = () => {
                   ? visibleDrivers.filter(d => myAccess.childDriverIds.includes(d.id))
                   : [];
           }
+          setMyTeam(teamMembers);
 
           const driversToLoad = [targetDriver.name, ...teamMembers.map(member => member.name)].filter(Boolean);
           const uniqueDrivers = Array.from(new Set(driversToLoad));
