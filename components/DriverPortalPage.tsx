@@ -2196,6 +2196,9 @@ const DriverPortalPage: React.FC = () => {
                                                               {copiedDriverId === member.id ? 'Copied' : 'Copy'}
                                                           </button>
                                                       </div>
+                                                      <p className="text-[10px] text-indigo-200 font-semibold">
+                                                          QR Code: <span className="text-indigo-50">{member.qrCode || '-'}</span>
+                                                      </p>
                                                       <p className="text-[11px] text-indigo-200 font-medium">
                                                           Net Balance: <span className={bal < 0 ? "text-rose-300 font-bold" : "text-emerald-300 font-bold"}>{formatCurrency(bal)}</span>
                                                       </p>
