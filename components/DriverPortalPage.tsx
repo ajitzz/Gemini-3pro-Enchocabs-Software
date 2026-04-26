@@ -351,6 +351,52 @@ const DriverPortalPage: React.FC = () => {
       }
   };
 
+  const loadManagerTeamState = useCallback(async (
+      targetDriver: Driver,
+      availableDrivers: Driver[],
+      allDaily: DailyEntry[],
+      allWeekly: WeeklyWallet[],
+      allExpenses: DriverExpense[],
+      slabsForStats: RentalSlab[]
+  ) => {
+      if (!targetDriver.isManager) {
+          setMyTeam([]);
+          setTeamBalances({});
+          setTeamCashModes({});
+          return [];
+      }
+
+      const managerAccessList = await storageService.getManagerAccess();
+      const myAccess = managerAccessList.find(access => access.managerId === targetDriver.id);
+      const teamMembers = myAccess?.childDriverIds?.length
+          ? availableDrivers.filter(d => myAccess.childDriverIds.includes(d.id))
+          : [];
+
+      setMyTeam(teamMembers);
+
+      if (!teamMembers.length) {
+          setTeamBalances({});
+          setTeamCashModes({});
+          return [];
+      }
+
+      const balances: Record<string, number> = {};
+      teamMembers.forEach(member => {
+          const stats = storageService.calculateDriverStats(member.name, allDaily, allWeekly, slabsForStats, allExpenses);
+          balances[member.id] = stats.finalTotal;
+      });
+      setTeamBalances(balances);
+
+      const cashModes: Record<string, CashMode> = {};
+      await Promise.all(teamMembers.map(async member => {
+          const mode = await storageService.getDriverCashMode(member.id);
+          cashModes[member.id] = mode;
+      }));
+      setTeamCashModes(cashModes);
+
+      return teamMembers;
+  }, []);
+
   const initializePortal = async () => {
       setInitError(null);
       try {
@@ -385,46 +431,25 @@ const DriverPortalPage: React.FC = () => {
               return;
           }
 
-          let allExpenses: DriverExpense[] = [];
-
           let teamMembers: Driver[] = [];
           if (targetDriver.isManager) {
               const managerAccessList = await storageService.getManagerAccess();
               const myAccess = managerAccessList.find(access => access.managerId === targetDriver.id);
-              if (myAccess?.childDriverIds?.length) {
-                  teamMembers = visibleDrivers.filter(d => myAccess.childDriverIds.includes(d.id));
-              }
+              teamMembers = myAccess?.childDriverIds?.length
+                  ? visibleDrivers.filter(d => myAccess.childDriverIds.includes(d.id))
+                  : [];
           }
           setMyTeam(teamMembers);
 
           const driversToLoad = [targetDriver.name, ...teamMembers.map(member => member.name)].filter(Boolean);
           const uniqueDrivers = Array.from(new Set(driversToLoad));
 
-          const expensesPayload = await storageService.getDriverExpenses({ drivers: uniqueDrivers });
-          allExpenses = expensesPayload;
+          const allExpenses = await storageService.getDriverExpenses({ drivers: uniqueDrivers });
 
           setGlobalDaily(allDaily);
           setGlobalWeekly(allWeekly);
           setRawExpenses(allExpenses.filter(e => e.driver === targetDriver.name).sort((a, b) => new Date(b.expenseDate).getTime() - new Date(a.expenseDate).getTime()));
-
-          if (teamMembers.length > 0) {
-              const balances: Record<string, number> = {};
-              teamMembers.forEach(member => {
-                  const stats = storageService.calculateDriverStats(member.name, allDaily, allWeekly, sortedSlabs, allExpenses);
-                  balances[member.id] = stats.finalTotal;
-              });
-              setTeamBalances(balances);
-
-              const cashModes: Record<string, CashMode> = {};
-              await Promise.all(teamMembers.map(async member => {
-                  const mode = await storageService.getDriverCashMode(member.id);
-                  cashModes[member.id] = mode;
-              }));
-              setTeamCashModes(cashModes);
-          } else {
-              setTeamBalances({});
-              setTeamCashModes({});
-          }
+          await loadManagerTeamState(targetDriver, visibleDrivers, allDaily, allWeekly, allExpenses, sortedSlabs);
 
           setPrimaryDriver(targetDriver);
           switchToDriverView(targetDriver, allDaily, allWeekly, allExpenses);
@@ -603,17 +628,16 @@ const DriverPortalPage: React.FC = () => {
       const target = driversList.find(d => d.id === driverId);
       if (target) {
           try {
-              const bootstrapPayload = await storageService.getDailyEntriesBootstrap({
-                  drivers: getScopedDriverNames(target.name),
-                  fresh: 1,
-                  includeMeta: false,
-              });
-              const dailyEntries = bootstrapPayload.entries;
-              const weeklyWallets = bootstrapPayload.weeklyWallets;
+              const [dailyEntries, weeklyWallets] = await Promise.all([
+                  storageService.getDailyEntries(),
+                  storageService.getWeeklyWallets()
+              ]);
+              const scopedDrivers = getScopedDriverNames(target.name);
+              const expenses = await storageService.getDriverExpenses({ drivers: scopedDrivers, fresh: 1 });
 
               setGlobalDaily(dailyEntries);
               setGlobalWeekly(weeklyWallets);
-              const expenses = await storageService.getDriverExpenses({ drivers: getScopedDriverNames(target.name), fresh: 1 });
+              await loadManagerTeamState(target, driversList, dailyEntries, weeklyWallets, expenses, rentalSlabs);
               switchToDriverView(target, dailyEntries, weeklyWallets, expenses);
           } catch (err) {
               console.error('Failed to switch admin driver view', err);
