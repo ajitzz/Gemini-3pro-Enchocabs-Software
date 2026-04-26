@@ -75,7 +75,7 @@ const DriverPortalPage: React.FC = () => {
   const [dailyNetSummary, setDailyNetSummary] = useState<DailyNetSummary | null>(null);
 
   const PORTAL_FALLBACK_REFRESH_MS = 60000;
-  const CASHMODE_FALLBACK_REFRESH_MS = 20000;
+  const CASHMODE_FALLBACK_REFRESH_MS = 5000;
   const DRIVERS_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
   const portalRefreshTimerRef = useRef<number | null>(null);
   const cashModeRefreshTimerRef = useRef<number | null>(null);
@@ -310,7 +310,7 @@ const DriverPortalPage: React.FC = () => {
     };
   }, []);
 
-  const refreshCashMode = async (driverId?: string, skipTeamSync?: boolean) => {
+  const refreshCashMode = useCallback(async (driverId?: string, skipTeamSync?: boolean) => {
       try {
           const [systemMode, driverMode] = await Promise.all([
               storageService.getCashMode(),
@@ -333,7 +333,7 @@ const DriverPortalPage: React.FC = () => {
       } catch (err) {
           console.error('Failed to refresh cash mode state', err);
       }
-  };
+  }, [myTeam]);
 
   const toggleCashMode = async () => {
       if (!isAdmin || !viewingAsDriver) return;
@@ -354,8 +354,10 @@ const DriverPortalPage: React.FC = () => {
   const initializePortal = async () => {
       setInitError(null);
       try {
-          const [allDrivers, slabs] = await Promise.all([
+          const [allDrivers, allDaily, allWeekly, slabs] = await Promise.all([
               storageService.getDrivers(),
+              storageService.getDailyEntries(),
+              storageService.getWeeklyWallets(),
               storageService.getDriverRentalSlabs()
           ]);
           const visibleDrivers = allDrivers.filter(d => !d.isHidden);
@@ -383,31 +385,22 @@ const DriverPortalPage: React.FC = () => {
               return;
           }
 
-          let allDaily: DailyEntry[] = [];
-          let allWeekly: WeeklyWallet[] = [];
           let allExpenses: DriverExpense[] = [];
 
           let teamMembers: Driver[] = [];
           if (targetDriver.isManager) {
-              const myAccess = await storageService.getManagerAccessByManagerId(targetDriver.id);
-              if (myAccess && myAccess.childDriverIds.length > 0) {
+              const managerAccessList = await storageService.getManagerAccess();
+              const myAccess = managerAccessList.find(access => access.managerId === targetDriver.id);
+              if (myAccess?.childDriverIds?.length) {
                   teamMembers = visibleDrivers.filter(d => myAccess.childDriverIds.includes(d.id));
-                  setMyTeam(teamMembers);
               }
           }
+          setMyTeam(teamMembers);
 
           const driversToLoad = [targetDriver.name, ...teamMembers.map(member => member.name)].filter(Boolean);
           const uniqueDrivers = Array.from(new Set(driversToLoad));
 
-          const [bootstrapPayload, expensesPayload] = await Promise.all([
-              storageService.getDailyEntriesBootstrap({
-                  drivers: uniqueDrivers,
-                  includeMeta: false,
-              }),
-              storageService.getDriverExpenses({ drivers: uniqueDrivers })
-          ]);
-          allDaily = bootstrapPayload.entries;
-          allWeekly = bootstrapPayload.weeklyWallets;
+          const expensesPayload = await storageService.getDriverExpenses({ drivers: uniqueDrivers });
           allExpenses = expensesPayload;
 
           setGlobalDaily(allDaily);
@@ -428,6 +421,9 @@ const DriverPortalPage: React.FC = () => {
                   cashModes[member.id] = mode;
               }));
               setTeamCashModes(cashModes);
+          } else {
+              setTeamBalances({});
+              setTeamCashModes({});
           }
 
           setPrimaryDriver(targetDriver);
@@ -677,7 +673,7 @@ const DriverPortalPage: React.FC = () => {
       }
   };
 
-  // Continuously sync cash mode across admin/manager/driver views (fallback when live stream disconnects)
+  // Continuously sync cash mode across admin/manager/driver views
   useEffect(() => {
       if (!viewingAsDriver) return;
 
@@ -685,7 +681,7 @@ const DriverPortalPage: React.FC = () => {
       const driverId = viewingAsDriver.id;
 
       const sync = async () => {
-          if (!isMounted || liveUpdatesConnected) return;
+          if (!isMounted) return;
           await refreshCashMode(driverId);
       };
 
@@ -696,13 +692,14 @@ const DriverPortalPage: React.FC = () => {
           isMounted = false;
           clearInterval(interval);
       };
-  }, [liveUpdatesConnected, refreshCashMode, viewingAsDriver?.id]);
+  }, [refreshCashMode, viewingAsDriver?.id]);
   
   const viewTeamMember = async (member: Driver) => {
       try {
-        const bootstrapPayload = await storageService.getDailyEntriesBootstrap({ driver: member.name, includeMeta: false });
-        const allDaily = bootstrapPayload.entries;
-        const allWeekly = bootstrapPayload.weeklyWallets;
+        const [allDaily, allWeekly] = await Promise.all([
+            storageService.getDailyEntries(),
+            storageService.getWeeklyWallets()
+        ]);
         const scopedDrivers = getScopedDriverNames(member.name);
         const expenses = await storageService.getDriverExpenses({ drivers: scopedDrivers, fresh: 1 });
         switchToDriverView(member, allDaily, allWeekly, expenses);
