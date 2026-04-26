@@ -411,15 +411,15 @@ const DriverPortalPage: React.FC = () => {
           let allExpenses: DriverExpense[] = [];
 
           let teamMembers: Driver[] = [];
-          if (targetDriver.isManager) {
-              const myAccess = await storageService.getManagerAccessByManagerId(targetDriver.id);
-              if (myAccess && myAccess.childDriverIds.length > 0) {
-                  const driversById = new Map(allDrivers.map(driver => [driver.id, driver] as const));
-                  teamMembers = myAccess.childDriverIds
-                      .map(childId => driversById.get(childId))
-                      .filter((driver): driver is Driver => Boolean(driver));
-                  setMyTeam(teamMembers);
-              }
+          const myAccess = await storageService.getManagerAccessByManagerId(targetDriver.id);
+          if (myAccess && myAccess.childDriverIds.length > 0) {
+              const driversById = new Map(allDrivers.map(driver => [driver.id, driver] as const));
+              teamMembers = myAccess.childDriverIds
+                  .map(childId => driversById.get(childId))
+                  .filter((driver): driver is Driver => Boolean(driver));
+              setMyTeam(teamMembers);
+          } else {
+              setMyTeam([]);
           }
 
           const driversToLoad = [targetDriver.name, ...teamMembers.map(member => member.name)].filter(Boolean);
@@ -509,8 +509,9 @@ const DriverPortalPage: React.FC = () => {
 
           const teamSourceDriver = updatedDriver || viewingAsDriver;
           let refreshedTeamMembers = myTeam;
-          if (teamSourceDriver?.isManager && drivers) {
-              const myAccess = await storageService.getManagerAccessByManagerId(teamSourceDriver.id);
+          const managerIdForAccess = primaryDriver?.id || teamSourceDriver?.id;
+          if (managerIdForAccess && drivers) {
+              const myAccess = await storageService.getManagerAccessByManagerId(managerIdForAccess);
               if (myAccess && myAccess.childDriverIds.length > 0) {
                   const driversById = new Map(drivers.map(driver => [driver.id, driver] as const));
                   refreshedTeamMembers = myAccess.childDriverIds
@@ -1714,6 +1715,7 @@ const DriverPortalPage: React.FC = () => {
   }, [expensesByDate, rawDaily]);
   // Helper for latest bill
   const latestBill = billingData.length > 0 ? billingData[0] : null;
+  const shouldShowMyTeamSection = myTeam.length > 0 && Boolean(primaryDriver || viewingAsDriver);
 
   if (!viewingAsDriver) return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50 flex-col">
@@ -2116,7 +2118,7 @@ const DriverPortalPage: React.FC = () => {
               <div className="space-y-6 animate-fade-in">
                   
                   {/* Manager Section (If Applicable) */}
-                  {viewingAsDriver.isManager && myTeam.length > 0 && (
+                  {shouldShowMyTeamSection && (
                       <div className="bg-[#4C4E94] rounded-[32px] p-6 shadow-2xl shadow-indigo-900/30 overflow-hidden relative">
                            {/* Background Decor */}
                            <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
