@@ -104,6 +104,46 @@ const DriverPortalPage: React.FC = () => {
       return insights;
   }, []);
 
+  const resolveManagerTeamMembers = useCallback(async (manager: Driver, allDrivers: Driver[]) => {
+      const normalize = (value?: string | null) => (value || '').trim().toLowerCase();
+      const managerKeys = new Set([
+          manager.id,
+          normalize(manager.id),
+          normalize(manager.name),
+          normalize(manager.email)
+      ].filter(Boolean));
+
+      let access = await storageService.getManagerAccessByManagerId(manager.id);
+      if (!access || access.childDriverIds.length === 0) {
+          const allAccess = await storageService.getManagerAccess();
+          access = allAccess.find(record => managerKeys.has(normalize(record.managerId))) || null;
+      }
+
+      if (!access || access.childDriverIds.length === 0) {
+          return [];
+      }
+
+      const byId = new Map(allDrivers.map(driver => [driver.id, driver] as const));
+      const byLookup = new Map<string, Driver>();
+      allDrivers.forEach(driver => {
+          const keys = [driver.id, normalize(driver.name), normalize(driver.email), normalize(driver.qrCode)].filter(Boolean);
+          keys.forEach(key => {
+              if (!byLookup.has(key)) byLookup.set(key, driver);
+          });
+      });
+
+      const seen = new Set<string>();
+      return access.childDriverIds
+          .map(childRef => byId.get(childRef) || byLookup.get(normalize(childRef)))
+          .filter((driver): driver is Driver => Boolean(driver))
+          .filter(driver => driver.id !== manager.id)
+          .filter(driver => {
+              if (seen.has(driver.id)) return false;
+              seen.add(driver.id);
+              return true;
+          });
+  }, []);
+
   const tabOptions: {
       key: 'home' | 'daily' | 'billing';
       label: string;
@@ -410,17 +450,8 @@ const DriverPortalPage: React.FC = () => {
           let allWeekly: WeeklyWallet[] = [];
           let allExpenses: DriverExpense[] = [];
 
-          let teamMembers: Driver[] = [];
-          if (targetDriver.isManager) {
-              const myAccess = await storageService.getManagerAccessByManagerId(targetDriver.id);
-              if (myAccess && myAccess.childDriverIds.length > 0) {
-                  const driversById = new Map(allDrivers.map(driver => [driver.id, driver] as const));
-                  teamMembers = myAccess.childDriverIds
-                      .map(childId => driversById.get(childId))
-                      .filter((driver): driver is Driver => Boolean(driver));
-                  setMyTeam(teamMembers);
-              }
-          }
+          const teamMembers = await resolveManagerTeamMembers(targetDriver, allDrivers);
+          setMyTeam(teamMembers);
 
           const driversToLoad = [targetDriver.name, ...teamMembers.map(member => member.name)].filter(Boolean);
           const uniqueDrivers = Array.from(new Set(driversToLoad));
@@ -509,18 +540,10 @@ const DriverPortalPage: React.FC = () => {
 
           const teamSourceDriver = updatedDriver || viewingAsDriver;
           let refreshedTeamMembers = myTeam;
-          if (teamSourceDriver?.isManager && drivers) {
-              const myAccess = await storageService.getManagerAccessByManagerId(teamSourceDriver.id);
-              if (myAccess && myAccess.childDriverIds.length > 0) {
-                  const driversById = new Map(drivers.map(driver => [driver.id, driver] as const));
-                  refreshedTeamMembers = myAccess.childDriverIds
-                      .map(childId => driversById.get(childId))
-                      .filter((driver): driver is Driver => Boolean(driver));
-                  setMyTeam(refreshedTeamMembers);
-              } else {
-                  setMyTeam([]);
-                  refreshedTeamMembers = [];
-              }
+          const managerDriverForAccess = primaryDriver || teamSourceDriver;
+          if (managerDriverForAccess && drivers) {
+              refreshedTeamMembers = await resolveManagerTeamMembers(managerDriverForAccess, drivers);
+              setMyTeam(refreshedTeamMembers);
           }
 
           const allDaily = dailyEntries;
@@ -548,7 +571,7 @@ const DriverPortalPage: React.FC = () => {
       } catch (err) {
           console.error('Failed to refresh portal data', err);
       }
-  }, [buildTeamInsights, getScopedDriverNames, myTeam, primaryDriver, rentalSlabs, user, viewingAsDriver]);
+  }, [buildTeamInsights, getScopedDriverNames, myTeam, primaryDriver, rentalSlabs, resolveManagerTeamMembers, user, viewingAsDriver]);
 
   const { connected: liveUpdatesConnected } = useLiveUpdates((event) => {
       const type = event?.type;
@@ -1714,6 +1737,7 @@ const DriverPortalPage: React.FC = () => {
   }, [expensesByDate, rawDaily]);
   // Helper for latest bill
   const latestBill = billingData.length > 0 ? billingData[0] : null;
+  const shouldShowMyTeamSection = myTeam.length > 0 && Boolean(primaryDriver || viewingAsDriver);
 
   if (!viewingAsDriver) return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50 flex-col">
@@ -2116,7 +2140,7 @@ const DriverPortalPage: React.FC = () => {
               <div className="space-y-6 animate-fade-in">
                   
                   {/* Manager Section (If Applicable) */}
-                  {viewingAsDriver.isManager && myTeam.length > 0 && (
+                  {shouldShowMyTeamSection && (
                       <div className="bg-[#4C4E94] rounded-[32px] p-6 shadow-2xl shadow-indigo-900/30 overflow-hidden relative">
                            {/* Background Decor */}
                            <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
