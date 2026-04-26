@@ -18,6 +18,7 @@ import { registerDriverPushNotifications } from '../lib/pushNotifications';
 
 type PortalDailyEntry = DailyEntry & { adjustmentApplied?: number; adjustedDue?: number };
 type DailyNetSummary = { netPayout: number; netBalance: number; netPayoutRange?: string | null };
+type TeamDriverInsight = { netBalance: number; netPayout: number; lastDailyEntryDate: string | null };
 
 const DriverPortalPage: React.FC = () => {
   const { user, logout } = useAuth();
@@ -31,6 +32,7 @@ const DriverPortalPage: React.FC = () => {
   // Manager Context
   const [myTeam, setMyTeam] = useState<Driver[]>([]);
   const [teamBalances, setTeamBalances] = useState<Record<string, number>>({});
+  const [teamInsights, setTeamInsights] = useState<Record<string, TeamDriverInsight>>({});
   const [primaryDriver, setPrimaryDriver] = useState<Driver | null>(null);
   
   // View Context (Self vs Managed)
@@ -81,6 +83,26 @@ const DriverPortalPage: React.FC = () => {
   const cashModeRefreshTimerRef = useRef<number | null>(null);
   const lastDriversRefreshRef = useRef(0);
   const previousNetBalanceRef = useRef<number | null>(null);
+
+  const buildTeamInsights = useCallback((members: Driver[], dailyEntries: DailyEntry[], weeklyWallets: WeeklyWallet[], expenses: DriverExpense[], slabs: RentalSlab[]) => {
+      if (!members.length) return {};
+
+      const insights: Record<string, TeamDriverInsight> = {};
+      members.forEach(member => {
+          const stats = storageService.calculateDriverStats(member.name, dailyEntries, weeklyWallets, slabs, expenses);
+          const latestDailyDate = dailyEntries
+              .filter(entry => entry.driver === member.name)
+              .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]?.date || null;
+
+          insights[member.id] = {
+              netBalance: stats.finalTotal,
+              netPayout: stats.netPayout,
+              lastDailyEntryDate: latestDailyDate
+          };
+      });
+
+      return insights;
+  }, []);
 
   const tabOptions: {
       key: 'home' | 'daily' | 'billing';
@@ -275,6 +297,7 @@ const DriverPortalPage: React.FC = () => {
   }, [rawExpenses]);
 
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+  const isPortalUser = user?.role === 'driver' || user?.role === 'manager';
 
   useEffect(() => {
     // Initial Load based on Authenticated User
@@ -284,14 +307,14 @@ const DriverPortalPage: React.FC = () => {
   }, [user]);
 
   useEffect(() => {
-      if (user?.role !== 'driver') return;
+      if (!isPortalUser) return;
       const targetDriverId = user.driverId || viewingAsDriver?.id;
       if (!targetDriverId) return;
 
       registerDriverPushNotifications(targetDriverId).catch((error) => {
           console.warn('Push registration skipped:', error);
       });
-  }, [user?.driverId, user?.role, viewingAsDriver?.id]);
+  }, [isPortalUser, user?.driverId, viewingAsDriver?.id]);
 
   useEffect(() => {
     let isMounted = true;
@@ -363,15 +386,15 @@ const DriverPortalPage: React.FC = () => {
           setRentalSlabs(sortedSlabs);
 
           setDriversList(visibleDrivers.sort((a, b) => a.name.localeCompare(b.name)));
-          if (user?.role === 'admin' || user?.role === 'super_admin') {
+          if (isAdmin) {
               lastDriversRefreshRef.current = Date.now();
           }
 
           let targetDriver: Driver | undefined;
 
-          if (user?.role === 'driver' && user.driverId) {
+          if ((user?.role === 'driver' || user?.role === 'manager') && user.driverId) {
               targetDriver = visibleDrivers.find(d => d.id === user.driverId);
-          } else if ((user?.role === 'admin' || user?.role === 'super_admin')) {
+          } else if (isAdmin) {
               targetDriver = visibleDrivers.find(d => d.email === user.email);
               if (!targetDriver) {
                   targetDriver = visibleDrivers.find(d => !d.terminationDate) || visibleDrivers[0];
@@ -418,11 +441,11 @@ const DriverPortalPage: React.FC = () => {
           setRawExpenses(allExpenses.filter(e => e.driver === targetDriver.name).sort((a, b) => new Date(b.expenseDate).getTime() - new Date(a.expenseDate).getTime()));
 
           if (teamMembers.length > 0) {
-              const balances: Record<string, number> = {};
-              teamMembers.forEach(member => {
-                  const stats = storageService.calculateDriverStats(member.name, allDaily, allWeekly, sortedSlabs, allExpenses);
-                  balances[member.id] = stats.finalTotal;
-              });
+              const insights = buildTeamInsights(teamMembers, allDaily, allWeekly, allExpenses, sortedSlabs);
+              setTeamInsights(insights);
+              const balances = Object.fromEntries(
+                  Object.entries(insights).map(([driverId, insight]) => [driverId, insight.netBalance])
+              );
               setTeamBalances(balances);
 
               const cashModes: Record<string, CashMode> = {};
@@ -431,6 +454,10 @@ const DriverPortalPage: React.FC = () => {
                   cashModes[member.id] = mode;
               }));
               setTeamCashModes(cashModes);
+          }
+          if (teamMembers.length === 0) {
+              setTeamInsights({});
+              setTeamBalances({});
           }
 
           setPrimaryDriver(targetDriver);
@@ -481,16 +508,18 @@ const DriverPortalPage: React.FC = () => {
           }
 
           const teamSourceDriver = updatedDriver || viewingAsDriver;
+          let refreshedTeamMembers = myTeam;
           if (teamSourceDriver?.isManager && drivers) {
               const myAccess = await storageService.getManagerAccessByManagerId(teamSourceDriver.id);
               if (myAccess && myAccess.childDriverIds.length > 0) {
                   const driversById = new Map(drivers.map(driver => [driver.id, driver] as const));
-                  const refreshedTeam = myAccess.childDriverIds
+                  refreshedTeamMembers = myAccess.childDriverIds
                       .map(childId => driversById.get(childId))
                       .filter((driver): driver is Driver => Boolean(driver));
-                  setMyTeam(refreshedTeam);
+                  setMyTeam(refreshedTeamMembers);
               } else {
                   setMyTeam([]);
+                  refreshedTeamMembers = [];
               }
           }
 
@@ -505,18 +534,21 @@ const DriverPortalPage: React.FC = () => {
           setRawWeekly(allWeekly.filter(w => w.driver === activeName).sort((a,b) => new Date(b.weekStartDate).getTime() - new Date(a.weekStartDate).getTime()));
           setRawExpenses(expenses.filter(e => e.driver === activeName).sort((a, b) => new Date(b.expenseDate).getTime() - new Date(a.expenseDate).getTime()));
 
-          if (myTeam.length > 0) {
-              const balances: Record<string, number> = {};
-              myTeam.forEach(member => {
-                  const stats = storageService.calculateDriverStats(member.name, allDaily, allWeekly, rentalSlabs, expenses);
-                  balances[member.id] = stats.finalTotal;
-              });
+          if (refreshedTeamMembers.length > 0) {
+              const insights = buildTeamInsights(refreshedTeamMembers, allDaily, allWeekly, expenses, rentalSlabs);
+              setTeamInsights(insights);
+              const balances = Object.fromEntries(
+                  Object.entries(insights).map(([driverId, insight]) => [driverId, insight.netBalance])
+              );
               setTeamBalances(balances);
+          } else {
+              setTeamInsights({});
+              setTeamBalances({});
           }
       } catch (err) {
           console.error('Failed to refresh portal data', err);
       }
-  }, [getScopedDriverNames, myTeam, primaryDriver, rentalSlabs, user, viewingAsDriver]);
+  }, [buildTeamInsights, getScopedDriverNames, myTeam, primaryDriver, rentalSlabs, user, viewingAsDriver]);
 
   const { connected: liveUpdatesConnected } = useLiveUpdates((event) => {
       const type = event?.type;
@@ -648,7 +680,7 @@ const DriverPortalPage: React.FC = () => {
   };
 
   const exitView = async () => {
-      if (user?.role === 'driver') {
+      if (isPortalUser) {
           if (user.driverId && viewingAsDriver && primaryDriver && viewingAsDriver.id !== user.driverId) {
               const scopedDrivers = getScopedDriverNames(primaryDriver.name);
               const expenses = await storageService.getDriverExpenses({ drivers: scopedDrivers, fresh: 1 });
@@ -943,7 +975,7 @@ const DriverPortalPage: React.FC = () => {
   const netBalance = driverStats?.finalTotal ?? 0;
   const dailyTabNetPayout = dailyNetSummary?.netPayout ?? balanceSummary.netPayout;
   const dailyTabNetBalance = dailyNetSummary?.netBalance ?? netBalance;
-  const hasFoodAccess = user?.role === 'driver' && Boolean(viewingAsDriver?.foodOption);
+  const hasFoodAccess = isPortalUser && Boolean(viewingAsDriver?.foodOption);
 
   const vehiclePartnerDriver = useMemo(() => {
       if (!viewingAsDriver?.vehicle) return null;
@@ -1699,7 +1731,7 @@ const DriverPortalPage: React.FC = () => {
           )}
           
           <div className="flex gap-3">
-              {user?.role !== 'driver' && (
+              {isAdmin && (
                  <button 
                     onClick={returnToDashboard}
                     className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-50 transition-colors flex items-center gap-2 shadow-sm"
@@ -1707,7 +1739,7 @@ const DriverPortalPage: React.FC = () => {
                     <LogOut size={16} /> Exit to Admin
                  </button>
               )}
-              {user?.role === 'driver' && (
+              {isPortalUser && (
                  <button 
                     onClick={logout}
                     className="px-5 py-2.5 bg-rose-50 text-rose-600 rounded-xl text-sm font-bold hover:bg-rose-100 transition-colors flex items-center gap-2"
@@ -1741,7 +1773,7 @@ const DriverPortalPage: React.FC = () => {
                    <div>
                        <h1 className="font-bold text-lg leading-none">Staff Room</h1>
                        <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mt-1">
-                           {user?.role === 'driver' ? 'My Dashboard' : 'View Mode'}
+                           {isPortalUser ? 'My Dashboard' : 'View Mode'}
                        </p>
                    </div>
                </div>
@@ -1761,12 +1793,12 @@ const DriverPortalPage: React.FC = () => {
                            </span>
                        )}
                    </button>
-                   {user?.role !== 'driver' && (
+                   {isAdmin && (
                        <button onClick={returnToDashboard} className="p-2 bg-slate-800 rounded-lg hover:bg-slate-700 text-slate-300" title="Exit View Mode">
                            <LogOut size={20} />
                        </button>
                    )}
-                   {user?.role === 'driver' && (
+                   {isPortalUser && (
                        <button onClick={exitView} className="p-2 bg-slate-800 rounded-lg hover:bg-slate-700 text-rose-400" title="Sign Out">
                            <LogOut size={20} />
                        </button>
@@ -2103,6 +2135,7 @@ const DriverPortalPage: React.FC = () => {
                                <div className="space-y-3">
                                    {myTeam.map(member => {
                                        const bal = teamBalances[member.id] || 0;
+                                       const insight = teamInsights[member.id];
                                        const memberCashMode = teamCashModes[member.id] || 'trips';
                                        return (
                                            <div
@@ -2130,6 +2163,15 @@ const DriverPortalPage: React.FC = () => {
                                                       </div>
                                                       <p className="text-[11px] text-indigo-200 font-medium">
                                                           Net Balance: <span className={bal < 0 ? "text-rose-300 font-bold" : "text-emerald-300 font-bold"}>{formatCurrency(bal)}</span>
+                                                      </p>
+                                                      <p className="text-[11px] text-indigo-200 font-medium">
+                                                          Net Payout: <span className={(insight?.netPayout || 0) < 0 ? "text-rose-300 font-bold" : "text-emerald-300 font-bold"}>{formatCurrency(insight?.netPayout || 0)}</span>
+                                                      </p>
+                                                      <p className="text-[11px] text-indigo-200 font-medium">
+                                                          Last Daily Entry: <span className="text-indigo-50 font-bold">{insight?.lastDailyEntryDate ? formatDate(insight.lastDailyEntryDate) : 'No entries'}</span>
+                                                      </p>
+                                                      <p className="text-[11px] text-indigo-200 font-medium">
+                                                          Defaults: <span className="text-indigo-50 font-bold">QR {member.qrCode || 'N/A'} · {member.currentShift} · Rent {formatCurrency(member.defaultRent || 0)}</span>
                                                       </p>
                                                       <div className="flex flex-col text-[11px] text-indigo-100 font-medium">
                                                           <span className="truncate">📞 {member.mobile}</span>
@@ -2161,6 +2203,9 @@ const DriverPortalPage: React.FC = () => {
                                                       </span>
                                                   </button>
                                                   <ChevronRight className="text-white/70 hidden md:block" size={18} />
+                                                  <span className="hidden md:inline-flex px-2.5 py-1 text-[10px] font-extrabold text-indigo-100 bg-white/10 border border-white/10 rounded-full">
+                                                      God Eye
+                                                  </span>
                                               </div>
                                           </div>
                                       );
