@@ -1,17 +1,22 @@
 
-import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping, ManagerAccess, AdminAccess, DriverBillingRecord, CashMode } from '../types';
+import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping, ManagerAccess, AdminAccess, DriverBillingRecord, CashMode, DriverWidgetSummary, DriverExpense, DriverExpenseGroupInput } from '../types';
+import { getApiBase } from '../lib/apiBase';
 
-// logic: Use local proxy in dev (npm run dev), use Render URL in production (Vercel)
-const isLocal = ((import.meta as any).env && (import.meta as any).env.DEV) || 
-                (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'));
+type DailyEntryBootstrapResponse = {
+  entries: DailyEntry[];
+  drivers: Driver[];
+  leaves: LeaveRecord[];
+  weeklyWallets: WeeklyWallet[];
+};
 
-const getApiBase = () => {
-    if (isLocal) return '/api';
-    const env = (import.meta as any).env;
-    if (env && env.VITE_API_URL) {
-        return env.VITE_API_URL.replace(/\/$/, '');
-    }
-    return 'https://enchocabs-software-orginal-gemini3pro-1.onrender.com/api';
+type DriverScopedQueryParams = {
+  from?: string;
+  to?: string;
+  fresh?: number;
+  metaOnly?: boolean;
+  includeMeta?: boolean;
+  driver?: string;
+  drivers?: string[];
 };
 
 const API_BASE = getApiBase();
@@ -51,23 +56,40 @@ const invalidateCache = (endpoint: string) => {
   });
 };
 
-const buildQueryString = (params?: Record<string, string | number | boolean | undefined>) => {
+const buildQueryString = (params?: Record<string, string | number | boolean | string[] | number[] | undefined>) => {
   if (!params) return '';
   const entries = Object.entries(params).filter(([, value]) => value !== undefined && value !== '');
   if (entries.length === 0) return '';
   const search = new URLSearchParams();
   entries.forEach(([key, value]) => {
+    if (Array.isArray(value)) {
+      if (!value.length) return;
+      search.set(key, value.join(','));
+      return;
+    }
+
     search.set(key, String(value));
   });
   const query = search.toString();
   return query ? `?${query}` : '';
 };
 
+type GetOptions = {
+  skipMemoryCache?: boolean;
+};
+
 const api = {
-  get: async (endpoint: string) => {
-    const key = getCacheKey(endpoint);
+  get: async (endpoint: string, options: GetOptions = {}) => {
+    const { skipMemoryCache = false } = options;
+    const requestEndpoint = skipMemoryCache
+      ? (() => {
+          const separator = endpoint.includes('?') ? '&' : '?';
+          return `${endpoint}${separator}fresh=1`;
+        })()
+      : endpoint;
+    const key = getCacheKey(requestEndpoint);
     const cached = responseCache.get(key);
-    if (cached && isFresh(cached)) {
+    if (!skipMemoryCache && cached && isFresh(cached)) {
       return cached.payload;
     }
 
@@ -78,11 +100,11 @@ const api = {
 
     const request = (async () => {
       try {
-        const response = await fetch(`${API_BASE}${endpoint}`);
+        const response = await fetch(`${API_BASE}${requestEndpoint}`, skipMemoryCache ? { cache: 'no-store' } : undefined);
         if (!response.ok) {
           const text = await response.text();
           let msg = `API Error ${response.status}: ${response.statusText}`;
-          try { const json = JSON.parse(text); if(json.error) msg = json.error; } catch(e) {}
+          try { const json = JSON.parse(text); if(json.error) msg = json.error; } catch(e) { console.error(e); }
           throw new Error(msg);
         }
         const payload = await response.json();
@@ -109,7 +131,7 @@ const api = {
       if (!response.ok) {
         const text = await response.text();
         let msg = `API Error ${response.status}: ${response.statusText}`;
-        try { const json = JSON.parse(text); if(json.error) msg = json.error; } catch(e) {}
+        try { const json = JSON.parse(text); if(json.error) msg = json.error; } catch(e) { console.error(e); }
         throw new Error(msg);
       }
       const payload = await response.json();
@@ -134,13 +156,19 @@ const api = {
   }
 };
 
+const isNotFoundError = (error: unknown) => {
+  const message = String((error as any)?.message || '');
+  return /\b404\b/.test(message);
+};
+
 // Shared helper to keep all driver balance calculations aligned with Driver Portal logic
 export const getDriverBalanceSummaries = async () => {
-  const [dailyEntries, weeklyWallets, rentalSlabs, drivers] = await Promise.all([
+  const [dailyEntries, weeklyWallets, rentalSlabs, drivers, expenses] = await Promise.all([
     storageService.getDailyEntries(),
     storageService.getWeeklyWallets(),
     storageService.getDriverRentalSlabs(),
-    storageService.getDrivers()
+    storageService.getDrivers(),
+    storageService.getDriverExpenses()
   ]);
 
   const sortedSlabs = [...rentalSlabs].sort((a, b) => a.minTrips - b.minTrips);
@@ -149,11 +177,12 @@ export const getDriverBalanceSummaries = async () => {
   const driverNames = Array.from(new Set([
     ...drivers.map(d => d.name),
     ...sortedDaily.map(d => d.driver),
-    ...weeklyWallets.map(w => w.driver)
+    ...weeklyWallets.map(w => w.driver),
+    ...expenses.map(e => e.driver)
   ])).sort((a, b) => a.localeCompare(b));
 
   const summaries = driverNames.map(driver =>
-    calculateDriverStats(driver, sortedDaily, weeklyWallets, sortedSlabs)
+    calculateDriverStats(driver, sortedDaily, weeklyWallets, sortedSlabs, expenses)
   );
 
   return {
@@ -194,16 +223,19 @@ const calculateDriverStats = (
     driverName: string,
     allDaily: DailyEntry[],
     allWallets: WeeklyWallet[],
-    sortedSlabs: RentalSlab[]
+    sortedSlabs: RentalSlab[],
+    allExpenses: DriverExpense[] = []
 ): DriverSummary => {
     const driverWallets = allWallets.filter(w => w.driver === driverName);
     const driverDaily = allDaily.filter(d => d.driver === driverName);
+    const driverExpenses = allExpenses.filter(e => e.driver === driverName);
 
     let totalCollection = 0;
     let totalRent = 0;
     let totalFuel = 0;
     let totalDue = 0;
     let totalPayout = 0;
+    let totalExpenses = 0;
     let totalWalletWeek = 0;
 
     const processedDailyIds = new Set<string>();
@@ -215,6 +247,7 @@ const calculateDriverStats = (
     let cutoffFuel = 0;
     let cutoffDue = 0;
     let cutoffPayout = 0;
+    let cutoffExpenses = 0;
     let cutoffWalletWeek = 0;
 
     const sortedWallets = [...driverWallets].sort((a, b) => b.weekEndDate.localeCompare(a.weekEndDate));
@@ -307,10 +340,19 @@ const calculateDriverStats = (
         }
     });
 
-    const finalTotal = totalCollection - totalRent - totalFuel + totalDue + totalWalletWeek - totalPayout;
+    driverExpenses.forEach(expense => {
+        const amount = Number(expense.amount) || 0;
+        totalExpenses += amount;
+
+        if (latestWalletEndDate && expense.expenseDate <= latestWalletEndDate) {
+            cutoffExpenses += amount;
+        }
+    });
+
+    const finalTotal = totalCollection - totalRent - totalFuel + totalDue + totalWalletWeek - totalPayout - totalExpenses;
 
     const cutoffTotal = latestWalletEndDate
-        ? (cutoffCollection - cutoffRent - cutoffFuel + cutoffDue + cutoffWalletWeek - cutoffPayout)
+        ? (cutoffCollection - cutoffRent - cutoffFuel + cutoffDue + cutoffWalletWeek - cutoffPayout - cutoffExpenses)
         : finalTotal;
 
     let netPayout = finalTotal;
@@ -335,6 +377,7 @@ const calculateDriverStats = (
         totalFuel,
         totalDue,
         totalPayout,
+        totalExpenses,
         totalWalletWeek,
         finalTotal,
         netPayout,
@@ -345,23 +388,93 @@ const calculateDriverStats = (
 
 export const storageService = {
   // --- Daily Entries ---
-  getDailyEntries: async (params?: { from?: string; to?: string; limit?: number; driver?: string; fresh?: number }): Promise<DailyEntry[]> =>
-    api.get(`/daily-entries${buildQueryString(params)}`),
-  getDailyEntriesFresh: async (): Promise<DailyEntry[]> => api.get(`/daily-entries${buildQueryString({ fresh: Date.now() })}`),
+  getDailyEntries: async (
+    params?: { from?: string; to?: string; limit?: number; driver?: string; drivers?: string[]; fresh?: number },
+    options?: GetOptions,
+  ): Promise<DailyEntry[]> => api.get(`/daily-entries${buildQueryString(params)}`, options),
+  getDailyEntriesBootstrap: async (
+    params?: DriverScopedQueryParams,
+    options?: GetOptions,
+  ): Promise<DailyEntryBootstrapResponse> => api.get(`/daily-entries/bootstrap${buildQueryString(params)}`, options),
+  getDailyEntriesMeta: async (
+    params?: Omit<DriverScopedQueryParams, 'metaOnly'>,
+    options?: GetOptions,
+  ): Promise<Omit<DailyEntryBootstrapResponse, 'entries'>> => {
+    const query = buildQueryString({ ...(params || {}), metaOnly: true });
+    const payload = await api.get(`/daily-entries/bootstrap${query}`, options);
+    return {
+      drivers: payload.drivers,
+      leaves: payload.leaves,
+      weeklyWallets: payload.weeklyWallets,
+    };
+  },
+  getDailyEntriesFresh: async (): Promise<DailyEntry[]> => api.get(`/daily-entries${buildQueryString({ fresh: 1 })}`, { skipMemoryCache: true }),
   saveDailyEntry: async (entry: DailyEntry): Promise<DailyEntry> => api.post('/daily-entries', entry),
   saveDailyEntriesBulk: async (newEntries: DailyEntry[]): Promise<void> => api.post('/daily-entries/bulk', newEntries),
   deleteDailyEntry: async (id: string): Promise<void> => api.delete(`/daily-entries/${id}`),
 
   // --- Weekly Wallets ---
-  getWeeklyWallets: async (params?: { from?: string; to?: string; limit?: number; driver?: string; fresh?: number }): Promise<WeeklyWallet[]> =>
-    api.get(`/weekly-wallets${buildQueryString(params)}`),
-  getWeeklyWalletsFresh: async (): Promise<WeeklyWallet[]> => api.get(`/weekly-wallets${buildQueryString({ fresh: Date.now() })}`),
+  getWeeklyWallets: async (
+    params?: { from?: string; to?: string; limit?: number; driver?: string; drivers?: string[]; fresh?: number },
+    options?: GetOptions,
+  ): Promise<WeeklyWallet[]> => api.get(`/weekly-wallets${buildQueryString(params)}`, options),
+  getWeeklyWalletsFresh: async (): Promise<WeeklyWallet[]> => api.get(`/weekly-wallets${buildQueryString({ fresh: 1 })}`, { skipMemoryCache: true }),
   saveWeeklyWallet: async (wallet: WeeklyWallet): Promise<WeeklyWallet> => api.post('/weekly-wallets', wallet),
   saveWeeklyWalletsBulk: async (newWallets: WeeklyWallet[]): Promise<void> => Promise.all(newWallets.map(w => api.post('/weekly-wallets', w))).then(() => {}),
   deleteWeeklyWallet: async (id: string): Promise<void> => api.delete(`/weekly-wallets/${id}`),
 
+  // --- Driver Expenses ---
+  getDriverExpenses: async (
+    params?: { from?: string; to?: string; driver?: string; drivers?: string[]; fresh?: number },
+    options?: GetOptions,
+  ): Promise<DriverExpense[]> => {
+    try {
+      return await api.get(`/driver-expenses${buildQueryString(params)}`, options);
+    } catch (error) {
+      if (isNotFoundError(error)) {
+        console.warn('Driver expenses endpoint is unavailable (404). Continuing with empty expenses.');
+        return [];
+      }
+      throw error;
+    }
+  },
+  saveDriverExpenseGroup: async (expense: DriverExpenseGroupInput): Promise<{ groupId: string; entries: DriverExpense[] }> =>
+    api.post('/driver-expenses', expense),
+  deleteDriverExpenseGroup: async (groupId: string): Promise<void> => api.delete(`/driver-expenses/${groupId}`),
+
   // --- Driver Billings (NEW) ---
+  getDriverWidgetSummary: async (
+    driverId: string,
+    token?: string,
+    params?: { from?: string; to?: string },
+  ): Promise<DriverWidgetSummary> => {
+    const queryParams = new URLSearchParams();
+    if (token) queryParams.set('token', token);
+    if (params?.from) queryParams.set('from', params.from);
+    if (params?.to) queryParams.set('to', params.to);
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    return api.get(`/drivers/${encodeURIComponent(driverId)}/widget-summary${query}`);
+  },
   getDriverBillings: async (): Promise<DriverBillingRecord[]> => api.get('/driver-billings'),
+  getDriverBillingById: async (id: string): Promise<DriverBillingRecord | null> => {
+    try {
+      return await api.get(`/driver-billings/${encodeURIComponent(id)}/public`);
+    } catch (error) {
+      if (isNotFoundError(error)) return null;
+      throw error;
+    }
+  },
+  createDriverBillingShareLink: async (billPayload: Record<string, unknown>): Promise<{ token: string }> => {
+    return api.post('/driver-billings/share-link', { bill: billPayload });
+  },
+  getDriverBillingByShareToken: async (token: string): Promise<DriverBillingRecord | null> => {
+    try {
+      return await api.get(`/driver-billings/share-link/${encodeURIComponent(token)}`);
+    } catch (error) {
+      if (isNotFoundError(error)) return null;
+      throw error;
+    }
+  },
   saveDriverBilling: async (billing: DriverBillingRecord): Promise<DriverBillingRecord> => api.post('/driver-billings', billing),
   deleteDriverBilling: async (id: string): Promise<void> => api.delete(`/driver-billings/${id}`),
 
@@ -372,6 +485,14 @@ export const storageService = {
 
   // --- Access ---
   getManagerAccess: async (): Promise<ManagerAccess[]> => api.get('/manager-access'),
+  getManagerAccessByManagerId: async (managerId: string): Promise<ManagerAccess | null> => {
+    try {
+      return await api.get(`/manager-access/${managerId}`);
+    } catch (error) {
+      console.error(`Failed to load manager access for ${managerId}:`, error);
+      return null;
+    }
+  },
   saveManagerAccess: async (access: ManagerAccess): Promise<void> => api.post('/manager-access', access),
   getAuthorizedAdmins: async (): Promise<AdminAccess[]> => api.get('/admin-access'),
   addAuthorizedAdmin: async (admin: AdminAccess): Promise<void> => api.post('/admin-access', admin),
@@ -402,6 +523,20 @@ export const storageService = {
   },
   setDriverCashMode: async (driverId: string, mode: CashMode): Promise<void> => {
     await api.post(`/system-flags/cash-mode-${driverId}`, { value: mode });
+  },
+
+
+  // --- Web Push ---
+  getPushPublicKey: async (): Promise<{ enabled: boolean; publicKey: string | null }> => api.get('/push/public-key'),
+  savePushSubscription: async (driverId: string, subscription: any): Promise<void> => {
+    await api.post('/push-subscriptions', { driverId, subscription });
+  },
+  deletePushSubscription: async (endpoint: string): Promise<void> => {
+    await fetch(`${API_BASE}/push-subscriptions`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ endpoint })
+    });
   },
 
   // --- Shifts & Leaves ---
@@ -492,10 +627,11 @@ export const storageService = {
     }
 
     // Fallback path: compute on the client if the optimized endpoint is unavailable
-    const [dailyEntries, weeklyWallets, rentalSlabs] = await Promise.all([
+    const [dailyEntries, weeklyWallets, rentalSlabs, expenses] = await Promise.all([
       storageService.getDailyEntries(),
       storageService.getWeeklyWallets(),
-      storageService.getDriverRentalSlabs()
+      storageService.getDriverRentalSlabs(),
+      storageService.getDriverExpenses()
     ]);
     const sortedSlabs = rentalSlabs.sort((a, b) => a.minTrips - b.minTrips);
 
@@ -505,7 +641,7 @@ export const storageService = {
     ])).sort();
 
     const driverSummaries: DriverSummary[] = drivers.map(driver =>
-      calculateDriverStats(driver, dailyEntries, weeklyWallets, sortedSlabs)
+      calculateDriverStats(driver, dailyEntries, weeklyWallets, sortedSlabs, expenses)
     );
 
     const global: GlobalSummary = {
@@ -514,6 +650,7 @@ export const storageService = {
       totalFuel: driverSummaries.reduce((sum, d) => sum + d.totalFuel, 0),
       totalDue: driverSummaries.reduce((sum, d) => sum + d.totalDue, 0),
       totalPayout: driverSummaries.reduce((sum, d) => sum + d.totalPayout, 0),
+      totalExpenses: driverSummaries.reduce((sum, d) => sum + d.totalExpenses, 0),
       totalWalletWeek: driverSummaries.reduce((sum, d) => sum + d.totalWalletWeek, 0),
       pendingFromDrivers: driverSummaries.filter(d => d.finalTotal < 0).reduce((sum, d) => sum + Math.abs(d.finalTotal), 0),
       payableToDrivers: driverSummaries.filter(d => d.finalTotal > 0).reduce((sum, d) => sum + d.finalTotal, 0),

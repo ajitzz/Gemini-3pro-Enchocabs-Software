@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { storageService } from '../services/storageService';
 import { DriverSummary, RentalSlab, WeeklyWallet, DailyEntry, Driver, DriverBillingRecord } from '../types';
-import { Users, ChevronDown, FileText, Briefcase, Download, Edit2, Save, X, Calendar, ChevronLeft, ChevronRight, Check, Copy, RotateCcw, Search, Clock, ChevronUp, Lock, AlertTriangle } from 'lucide-react';
+import { Users, ChevronDown, FileText, Briefcase, Download, Edit2, Save, X, Calendar, ChevronLeft, ChevronRight, Check, Copy, RotateCcw, Search, Clock, ChevronUp, Lock, AlertTriangle, MessageCircle } from 'lucide-react';
 import NetCalculationPopup from './NetCalculationPopup';
 
 const DriverBillingsPage: React.FC = () => {
@@ -24,6 +24,7 @@ const DriverBillingsPage: React.FC = () => {
           due: number;
           wallet: number;
           payout: number;
+          expenses: number;
       };
       title?: string;
       sourceNote?: string;
@@ -103,7 +104,8 @@ const DriverBillingsPage: React.FC = () => {
               fuel: driver.totalFuel,
               due: driver.totalDue,
               wallet: driver.totalWalletWeek,
-              payout: driver.totalPayout
+              payout: driver.totalPayout,
+              expenses: driver.totalExpenses
           },
           title: `${metric === 'netPayout' ? 'Net Payout' : 'Net Balance'} • ${driver.driver}`,
           sourceNote:
@@ -172,10 +174,11 @@ const DriverBillingsPage: React.FC = () => {
       rent: acc.rent + driver.totalRent,
       fuel: acc.fuel + driver.totalFuel,
       wallet: acc.wallet + driver.totalWalletWeek,
+      expenses: acc.expenses + driver.totalExpenses,
       netPayout: acc.netPayout + driver.netPayout,
       finalTotal: acc.finalTotal + driver.finalTotal,
     }),
-    { collection: 0, rent: 0, fuel: 0, wallet: 0, netPayout: 0, finalTotal: 0 }
+    { collection: 0, rent: 0, fuel: 0, wallet: 0, expenses: 0, netPayout: 0, finalTotal: 0 }
   );
 
   const normalize = (s: string) => s ? s.toLowerCase().replace(/[^a-z0-9]/g, '').trim() : '';
@@ -569,9 +572,51 @@ const DriverBillingsPage: React.FC = () => {
       a.click();
   };
 
-  const copyBillLink = (bill: any) => {
+  const getPublicBillLink = (bill: any) => {
+      const payload = encodeURIComponent(JSON.stringify({
+          id: bill.id,
+          driver: bill.driver,
+          driverName: bill.driver,
+          qrCode: bill.qrCode,
+          weekRange: bill.weekRange,
+          weekStartDate: bill.startDate || bill.weekStartDate,
+          weekEndDate: bill.endDate || bill.weekEndDate,
+          trips: bill.trips,
+          rentPerDay: bill.rentPerDay,
+          daysWorked: bill.daysWorked,
+          rentTotal: bill.rentTotal,
+          collection: bill.collection,
+          fuel: bill.fuel,
+          due: bill.due ?? bill.overdue ?? 0,
+          wallet: bill.wallet,
+          walletOverdue: bill.walletOverdue ?? bill.overdue ?? 0,
+          expenses: bill.expenses || 0,
+          payout: bill.payout,
+          status: bill.isSaved ? 'finalized' : (bill.isProvisional ? 'provisional' : 'generated'),
+          labeledDueRows: bill.labeledDueRows || [],
+          dailyDetails: bill.dailyDetails || [],
+          weeklyDetails: bill.weeklyDetails || null
+      }));
+      return `${window.location.origin}/bill/${bill.id}?payload=${payload}`;
+  };
+
+  const copyBillLink = async (bill: any) => {
+      const shareLink = getPublicBillLink(bill);
+      try {
+          await navigator.clipboard.writeText(shareLink);
+      } catch (error) {
+          console.warn('Clipboard copy failed:', error);
+      }
       setCopiedId(bill.id);
       setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const shareBillOnWhatsApp = (bill: any) => {
+      const shareLink = getPublicBillLink(bill);
+      const text = encodeURIComponent(
+          `Hi ${bill.driver}, your bill is ready.\nDownload options are available on this link (Image/PDF): ${shareLink}`
+      );
+      window.open(`https://wa.me/?text=${text}`, '_blank', 'noopener,noreferrer');
   };
 
   const toggleExpandBill = (id: string) => {
@@ -634,7 +679,7 @@ const DriverBillingsPage: React.FC = () => {
                       placeholder="Filter drivers..." 
                       value={filterDriver}
                       onChange={(e) => setFilterDriver(e.target.value)}
-                      className="pl-9 pr-4 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all w-full"
+                      className="pl-9 pr-4 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all w-full"
                     />
                     <Search size={14} className="absolute left-3 top-2.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
                   </div>
@@ -649,15 +694,16 @@ const DriverBillingsPage: React.FC = () => {
                         <th className="px-6 py-4 font-semibold text-right tracking-wider">Rent</th>
                         <th className="px-6 py-4 font-semibold text-right tracking-wider">Fuel</th>
                         <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet</th>
+                        <th className="px-6 py-4 font-semibold text-right tracking-wider">Expenses</th>
                         <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Payout</th>
                         <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Balance</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {loading ? (
-                         <tr><td colSpan={7} className="p-8 text-center text-slate-400">Loading balances...</td></tr>
+                         <tr><td colSpan={8} className="p-8 text-center text-slate-400">Loading balances...</td></tr>
                       ) : filteredSummaries.length === 0 ? (
-                         <tr><td colSpan={7} className="p-8 text-center text-slate-400">No drivers found.</td></tr>
+                         <tr><td colSpan={8} className="p-8 text-center text-slate-400">No drivers found.</td></tr>
                       ) : (
                         filteredSummaries.map((driver) => (
                           <tr key={driver.driver} className="hover:bg-slate-50 transition-colors group">
@@ -666,6 +712,7 @@ const DriverBillingsPage: React.FC = () => {
                             <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalRent)}</td>
                             <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalFuel)}</td>
                             <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalWalletWeek)}</td>
+                            <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalExpenses)}</td>
                             <td className="px-6 py-4 text-right">
                               <div
                                 className="flex flex-col items-end gap-1 cursor-pointer"
@@ -710,6 +757,7 @@ const DriverBillingsPage: React.FC = () => {
                         <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.rent)}</td>
                         <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.fuel)}</td>
                         <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.wallet)}</td>
+                        <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.expenses)}</td>
                         <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.netPayout)}</td>
                         <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.finalTotal)}</td>
                       </tr>
@@ -793,7 +841,7 @@ const DriverBillingsPage: React.FC = () => {
                                     <select
                                         value={currentWeekIndex}
                                         onChange={(e) => setCurrentWeekIndex(Number(e.target.value))}
-                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer appearance-none"
+                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer appearance-none text-base"
                                         title="Select Week"
                                     >
                                         {weekOptions.map((opt) => (
@@ -824,7 +872,7 @@ const DriverBillingsPage: React.FC = () => {
                           placeholder="Search driver in selected week..." 
                           value={filterDriver}
                           onChange={(e) => setFilterDriver(e.target.value)}
-                          className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
+                          className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
                         />
                         <Search size={18} className="absolute left-3.5 top-3.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
                     </div>
@@ -933,6 +981,13 @@ const DriverBillingsPage: React.FC = () => {
                                                 </button>
                                                 <button onClick={() => downloadBill(bill)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Download Bill">
                                                     <Download size={16} />
+                                                </button>
+                                                <button
+                                                    onClick={() => shareBillOnWhatsApp(bill)}
+                                                    className="p-2 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                                    title="Share Bill on WhatsApp"
+                                                >
+                                                    <MessageCircle size={16} />
                                                 </button>
                                             </>
                                          )}
@@ -1048,9 +1103,10 @@ const DriverBillingsPage: React.FC = () => {
                           <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Days Worked</label>
                           <input 
                               type="number" 
+                              inputMode="decimal"
                               value={editFormData.daysWorked}
                               onChange={(e) => setEditFormData({...editFormData, daysWorked: parseFloat(e.target.value) || 0})}
-                              className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
+                              className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 text-base focus:ring-2 focus:ring-indigo-500 outline-none"
                           />
                       </div>
                       
@@ -1058,9 +1114,10 @@ const DriverBillingsPage: React.FC = () => {
                           <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Rent / Day (₹)</label>
                           <input
                               type="number"
+                              inputMode="decimal"
                               value={editFormData.rentPerDay}
                               onChange={(e) => setEditFormData({...editFormData, rentPerDay: parseFloat(e.target.value) || 0})}
-                              className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
+                              className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 text-base focus:ring-2 focus:ring-indigo-500 outline-none"
                           />
                           <p className="text-[10px] text-amber-600 mt-1">This will override standard slab calculations.</p>
                       </div>
@@ -1069,9 +1126,10 @@ const DriverBillingsPage: React.FC = () => {
                           <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Adjustment (₹)</label>
                           <input
                               type="number"
+                              inputMode="decimal"
                               value={editFormData.adjustments}
                               onChange={(e) => setEditFormData({ ...editFormData, adjustments: parseFloat(e.target.value) || 0 })}
-                              className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
+                              className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 text-base focus:ring-2 focus:ring-indigo-500 outline-none"
                           />
                           <p className="text-[10px] text-slate-500 mt-1">Adjustment will be added to the weekly due total.</p>
                       </div>

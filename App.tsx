@@ -1,28 +1,78 @@
-import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation, Outlet } from 'react-router-dom';
-import { LayoutDashboard, Calendar, Wallet, Menu, X, Users, Coffee, Upload, Settings, Briefcase, FileText, Calculator, UserCircle, LogOut, Shield, ClipboardList } from 'lucide-react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
+import { BrowserRouter, Routes, Route, NavLink, Navigate, Outlet } from 'react-router-dom';
+import { LayoutDashboard, Calendar, Wallet, Menu, X, Users, Coffee, Upload, Settings, Briefcase, FileText, Calculator, UserCircle, LogOut, Shield, ClipboardList, ReceiptText } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import DailyEntryPage from './components/DailyEntryPage';
-import WeeklyWalletPage from './components/WeeklyWalletPage';
-import DashboardPage from './components/DashboardPage';
-import RegistrationPage from './components/RegistrationPage';
-import LeavePage from './components/LeavePage';
-import ImportPage from './components/ImportPage';
-import ManageDefaultsPage from './components/ManageDefaultsPage';
-import CompanySettlementPage from './components/CompanySettlementPage';
-import DriverBillingsPage from './components/DriverBillingsPage';
-import RevenuePage from './components/RevenuePage';
-import DriverPortalPage from './components/DriverPortalPage';
-import LoginPage from './components/LoginPage';
-import AdminAccessPage from './components/AdminAccessPage';
-import DriverLeadsPage from './components/DriverLeadsPage';
-import HomePage from './components/HomePage';
-import DriversEarningsPublicPage from './components/DriversEarningsPublicPage';
+
+
+const HomePage = lazy(() => import('./components/HomePage'));
+const DriversEarningsPublicPage = lazy(() => import('./components/DriversEarningsPublicPage'));
+const LoginPage = lazy(() => import('./components/LoginPage'));
+const DriverPortalPage = lazy(() => import('./components/DriverPortalPage'));
+const DashboardPage = lazy(() => import('./components/DashboardPage'));
+const DailyEntryPage = lazy(() => import('./components/DailyEntryPage'));
+const WeeklyWalletPage = lazy(() => import('./components/WeeklyWalletPage'));
+const RegistrationPage = lazy(() => import('./components/RegistrationPage'));
+const ManageDefaultsPage = lazy(() => import('./components/ManageDefaultsPage'));
+const LeavePage = lazy(() => import('./components/LeavePage'));
+const CompanySettlementPage = lazy(() => import('./components/CompanySettlementPage'));
+const DriverBillingsPage = lazy(() => import('./components/DriverBillingsPage'));
+const RevenuePage = lazy(() => import('./components/RevenuePage'));
+const DriverLeadsPage = lazy(() => import('./components/DriverLeadsPage'));
+const ImportPage = lazy(() => import('./components/ImportPage'));
+const AdminAccessPage = lazy(() => import('./components/AdminAccessPage'));
+const DriverBalanceInsightsPage = lazy(() => import('./components/DriverBalanceInsightsPage'));
+const DriverExpensesPage = lazy(() => import('./components/DriverExpensesPage'));
+const BillSharePage = lazy(() => import('./components/BillSharePage'));
+
+
+const routePrefetchers: Record<string, () => Promise<unknown>> = {
+  '/': () => import('./components/HomePage'),
+  '/drivers-earnings': () => import('./components/DriversEarningsPublicPage'),
+  '/staff': () => import('./components/LoginPage'),
+  '/portal': () => import('./components/DriverPortalPage'),
+  '/app': () => import('./components/DashboardPage'),
+  '/app/daily': () => import('./components/DailyEntryPage'),
+  '/app/weekly': () => import('./components/WeeklyWalletPage'),
+  '/app/registration': () => import('./components/RegistrationPage'),
+  '/app/defaults': () => import('./components/ManageDefaultsPage'),
+  '/app/leaves': () => import('./components/LeavePage'),
+  '/app/settlement': () => import('./components/CompanySettlementPage'),
+  '/app/billings': () => import('./components/DriverBillingsPage'),
+  '/app/revenue': () => import('./components/RevenuePage'),
+  '/app/driver-leads': () => import('./components/DriverLeadsPage'),
+  '/app/import': () => import('./components/ImportPage'),
+  '/app/expenses': () => import('./components/DriverExpensesPage'),
+  '/app/admin-access': () => import('./components/AdminAccessPage'),
+  '/app/driver-balances': () => import('./components/DriverBalanceInsightsPage'),
+  '/bill/:billId': () => import('./components/BillSharePage'),
+};
+
+const prefetchedRoutes = new Set<string>();
+
+const prefetchRoute = (route: string) => {
+  if (!route || prefetchedRoutes.has(route)) return;
+  const prefetcher = routePrefetchers[route];
+  if (!prefetcher) return;
+
+  prefetchedRoutes.add(route);
+  prefetcher().catch(() => {
+    prefetchedRoutes.delete(route);
+  });
+};
+
+const RouteFallback = () => (
+  <div className="min-h-[240px] flex items-center justify-center bg-slate-50 rounded-2xl border border-slate-100">
+    <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+  </div>
+);
+
+const LazyPage = ({ children }: { children: React.ReactNode }) => (
+  <Suspense fallback={<RouteFallback />}>{children}</Suspense>
+);
 
 // --- PROTECTED ROUTE WRAPPER ---
 const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode, allowedRoles: string[] }) => {
   const { user, loading, refreshSession } = useAuth();
-  const location = useLocation();
   const [validatingAccess, setValidatingAccess] = useState(false);
 
   useEffect(() => {
@@ -30,24 +80,32 @@ const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode
 
     const verifyAccess = async () => {
       if (user?.role !== 'admin') return;
-      setValidatingAccess(true);
-      await refreshSession();
-      if (isMounted) setValidatingAccess(false);
+
+      const spinnerDelay = window.setTimeout(() => {
+        if (isMounted) setValidatingAccess(true);
+      }, 120);
+
+      try {
+        await refreshSession();
+      } finally {
+        window.clearTimeout(spinnerDelay);
+        if (isMounted) setValidatingAccess(false);
+      }
     };
 
     verifyAccess();
     return () => { isMounted = false; };
-  }, [refreshSession, user, location.pathname]);
+  }, [refreshSession, user]);
 
   if (loading || validatingAccess) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div></div>;
 
   if (!user) {
-    return <Navigate to="/staff" state={{ from: location }} replace />;
+    return <Navigate to="/staff" replace />;
   }
 
   if (!allowedRoles.includes(user.role)) {
-     // Redirect logic based on role mismatch
-     if (user.role === 'driver') return <Navigate to="/portal" replace />;
+     // Strictly keep non-admin roles in Driver Portal.
+     if (user.role === 'driver' || user.role === 'manager') return <Navigate to="/portal" replace />;
      return <Navigate to="/app" replace />;
   }
 
@@ -64,6 +122,8 @@ const Layout: React.FC = () => {
       to={to}
       end={end}
       onClick={() => setIsMobileMenuOpen(false)}
+      onMouseEnter={() => prefetchRoute(to)}
+      onFocus={() => prefetchRoute(to)}
       className={({ isActive }) =>
         `flex items-center justify-between px-4 py-3.5 rounded-xl transition-all duration-300 group cursor-pointer ${
           isActive
@@ -131,6 +191,7 @@ const Layout: React.FC = () => {
               <NavItem to="/app/settlement" icon={Briefcase} label="Company Settlement" />
               <NavItem to="/app/billings" icon={FileText} label="Driver Billings" />
               <NavItem to="/app/revenue" icon={Calculator} label="Revenue Calculation" />
+              <NavItem to="/app/expenses" icon={ReceiptText} label="Driver Expenses" />
               <NavItem to="/app/driver-leads" icon={ClipboardList} label="Driver Leads" />
               <NavItem to="/app/import" icon={Upload} label="Import Data" />
             </nav>
@@ -177,7 +238,7 @@ const Layout: React.FC = () => {
       </div>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto p-4 md:p-8 lg:p-10 max-w-[1920px] mx-auto w-full">
+      <main className="flex-1 overflow-auto p-4 pb-24 md:p-8 lg:p-10 max-w-[1920px] mx-auto w-full">
          <div className="hidden md:flex items-center mb-6">
            <button
              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
@@ -190,6 +251,26 @@ const Layout: React.FC = () => {
          <Outlet />
       </main>
       
+      {/* Mobile Bottom Navigation */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex justify-around items-center pb-safe z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+        <NavLink to="/app" end className={({ isActive }) => `flex flex-col items-center py-3 px-4 w-full ${isActive ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-800'}`}>
+          <LayoutDashboard size={22} strokeWidth={2.5} />
+          <span className="text-[10px] font-bold mt-1">Home</span>
+        </NavLink>
+        <NavLink to="/app/daily" className={({ isActive }) => `flex flex-col items-center py-3 px-4 w-full ${isActive ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-800'}`}>
+          <Calendar size={22} strokeWidth={2.5} />
+          <span className="text-[10px] font-bold mt-1">Entry</span>
+        </NavLink>
+        <NavLink to="/app/weekly" className={({ isActive }) => `flex flex-col items-center py-3 px-4 w-full ${isActive ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-800'}`}>
+          <Wallet size={22} strokeWidth={2.5} />
+          <span className="text-[10px] font-bold mt-1">Wallet</span>
+        </NavLink>
+        <button onClick={() => setIsMobileMenuOpen(true)} className="flex flex-col items-center py-3 px-4 w-full text-slate-500 hover:text-slate-800">
+          <Menu size={22} strokeWidth={2.5} />
+          <span className="text-[10px] font-bold mt-1">More</span>
+        </button>
+      </nav>
+
       {/* Overlay for mobile menu */}
       {isMobileMenuOpen && (
         <div 
@@ -206,15 +287,18 @@ const App: React.FC = () => {
     <AuthProvider>
         <BrowserRouter>
           <Routes>
-              <Route path="/" element={<HomePage />} />
-              <Route path="/drivers-earnings" element={<DriversEarningsPublicPage />} />
-              <Route path="/staff" element={<LoginPage />} />
+              <Route path="/" element={<LazyPage><HomePage /></LazyPage>} />
+              <Route path="/drivers-earnings" element={<LazyPage><DriversEarningsPublicPage /></LazyPage>} />
+              <Route path="/bill/:billId" element={<LazyPage><BillSharePage /></LazyPage>} />
+              <Route path="/bill/share/:shareToken" element={<LazyPage><BillSharePage /></LazyPage>} />
+              <Route path="/b/:shareToken" element={<LazyPage><BillSharePage /></LazyPage>} />
+              <Route path="/staff" element={<LazyPage><LoginPage /></LazyPage>} />
               <Route path="/login" element={<Navigate to="/staff" replace />} />
 
               {/* Driver Portal Route (Secure) */}
               <Route path="/portal" element={
                   <ProtectedRoute allowedRoles={['driver', 'admin', 'super_admin']}>
-                      <DriverPortalPage />
+                      <LazyPage><DriverPortalPage /></LazyPage>
                   </ProtectedRoute>
               } />
 
@@ -227,18 +311,20 @@ const App: React.FC = () => {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<DashboardPage />} />
-                <Route path="daily" element={<DailyEntryPage />} />
-                <Route path="weekly" element={<WeeklyWalletPage />} />
-                <Route path="registration" element={<RegistrationPage />} />
-                <Route path="defaults" element={<ManageDefaultsPage />} />
-                <Route path="leaves" element={<LeavePage />} />
-                <Route path="settlement" element={<CompanySettlementPage />} />
-                <Route path="billings" element={<DriverBillingsPage />} />
-                <Route path="revenue" element={<RevenuePage />} />
-                <Route path="driver-leads" element={<DriverLeadsPage />} />
-                <Route path="import" element={<ImportPage />} />
-                <Route path="admin-access" element={<AdminAccessPage />} />
+                <Route index element={<LazyPage><DashboardPage /></LazyPage>} />
+                <Route path="daily" element={<LazyPage><DailyEntryPage /></LazyPage>} />
+                <Route path="weekly" element={<LazyPage><WeeklyWalletPage /></LazyPage>} />
+                <Route path="registration" element={<LazyPage><RegistrationPage /></LazyPage>} />
+                <Route path="defaults" element={<LazyPage><ManageDefaultsPage /></LazyPage>} />
+                <Route path="leaves" element={<LazyPage><LeavePage /></LazyPage>} />
+                <Route path="settlement" element={<LazyPage><CompanySettlementPage /></LazyPage>} />
+                <Route path="billings" element={<LazyPage><DriverBillingsPage /></LazyPage>} />
+                <Route path="revenue" element={<LazyPage><RevenuePage /></LazyPage>} />
+                <Route path="expenses" element={<LazyPage><DriverExpensesPage /></LazyPage>} />
+                <Route path="driver-leads" element={<LazyPage><DriverLeadsPage /></LazyPage>} />
+                <Route path="import" element={<LazyPage><ImportPage /></LazyPage>} />
+                <Route path="admin-access" element={<LazyPage><AdminAccessPage /></LazyPage>} />
+                <Route path="driver-balances" element={<LazyPage><DriverBalanceInsightsPage /></LazyPage>} />
               </Route>
           </Routes>
         </BrowserRouter>
