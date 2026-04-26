@@ -75,7 +75,7 @@ const DriverPortalPage: React.FC = () => {
   const [dailyNetSummary, setDailyNetSummary] = useState<DailyNetSummary | null>(null);
 
   const PORTAL_FALLBACK_REFRESH_MS = 60000;
-  const CASHMODE_FALLBACK_REFRESH_MS = 20000;
+  const CASHMODE_FALLBACK_REFRESH_MS = 5000;
   const DRIVERS_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
   const portalRefreshTimerRef = useRef<number | null>(null);
   const cashModeRefreshTimerRef = useRef<number | null>(null);
@@ -310,7 +310,7 @@ const DriverPortalPage: React.FC = () => {
     };
   }, []);
 
-  const refreshCashMode = async (driverId?: string, skipTeamSync?: boolean) => {
+  const refreshCashMode = useCallback(async (driverId?: string, skipTeamSync?: boolean) => {
       try {
           const [systemMode, driverMode] = await Promise.all([
               storageService.getCashMode(),
@@ -333,7 +333,7 @@ const DriverPortalPage: React.FC = () => {
       } catch (err) {
           console.error('Failed to refresh cash mode state', err);
       }
-  };
+  }, [myTeam]);
 
   const toggleCashMode = async () => {
       if (!isAdmin || !viewingAsDriver) return;
@@ -351,11 +351,59 @@ const DriverPortalPage: React.FC = () => {
       }
   };
 
+  const loadManagerTeamState = useCallback(async (
+      targetDriver: Driver,
+      availableDrivers: Driver[],
+      allDaily: DailyEntry[],
+      allWeekly: WeeklyWallet[],
+      allExpenses: DriverExpense[],
+      slabsForStats: RentalSlab[]
+  ) => {
+      if (!targetDriver.isManager) {
+          setMyTeam([]);
+          setTeamBalances({});
+          setTeamCashModes({});
+          return [];
+      }
+
+      const managerAccessList = await storageService.getManagerAccess();
+      const myAccess = managerAccessList.find(access => access.managerId === targetDriver.id);
+      const teamMembers = myAccess?.childDriverIds?.length
+          ? availableDrivers.filter(d => myAccess.childDriverIds.includes(d.id))
+          : [];
+
+      setMyTeam(teamMembers);
+
+      if (!teamMembers.length) {
+          setTeamBalances({});
+          setTeamCashModes({});
+          return [];
+      }
+
+      const balances: Record<string, number> = {};
+      teamMembers.forEach(member => {
+          const stats = storageService.calculateDriverStats(member.name, allDaily, allWeekly, slabsForStats, allExpenses);
+          balances[member.id] = stats.finalTotal;
+      });
+      setTeamBalances(balances);
+
+      const cashModes: Record<string, CashMode> = {};
+      await Promise.all(teamMembers.map(async member => {
+          const mode = await storageService.getDriverCashMode(member.id);
+          cashModes[member.id] = mode;
+      }));
+      setTeamCashModes(cashModes);
+
+      return teamMembers;
+  }, []);
+
   const initializePortal = async () => {
       setInitError(null);
       try {
-          const [allDrivers, slabs] = await Promise.all([
+          const [allDrivers, allDaily, allWeekly, slabs] = await Promise.all([
               storageService.getDrivers(),
+              storageService.getDailyEntries(),
+              storageService.getWeeklyWallets(),
               storageService.getDriverRentalSlabs()
           ]);
           const visibleDrivers = allDrivers.filter(d => !d.isHidden);
@@ -383,52 +431,24 @@ const DriverPortalPage: React.FC = () => {
               return;
           }
 
-          let allDaily: DailyEntry[] = [];
-          let allWeekly: WeeklyWallet[] = [];
-          let allExpenses: DriverExpense[] = [];
-
           let teamMembers: Driver[] = [];
           if (targetDriver.isManager) {
-              const myAccess = await storageService.getManagerAccessByManagerId(targetDriver.id);
-              if (myAccess && myAccess.childDriverIds.length > 0) {
-                  teamMembers = visibleDrivers.filter(d => myAccess.childDriverIds.includes(d.id));
-                  setMyTeam(teamMembers);
-              }
+              const managerAccessList = await storageService.getManagerAccess();
+              const myAccess = managerAccessList.find(access => access.managerId === targetDriver.id);
+              teamMembers = myAccess?.childDriverIds?.length
+                  ? visibleDrivers.filter(d => myAccess.childDriverIds.includes(d.id))
+                  : [];
           }
 
           const driversToLoad = [targetDriver.name, ...teamMembers.map(member => member.name)].filter(Boolean);
           const uniqueDrivers = Array.from(new Set(driversToLoad));
 
-          const [bootstrapPayload, expensesPayload] = await Promise.all([
-              storageService.getDailyEntriesBootstrap({
-                  drivers: uniqueDrivers,
-                  includeMeta: false,
-              }),
-              storageService.getDriverExpenses({ drivers: uniqueDrivers })
-          ]);
-          allDaily = bootstrapPayload.entries;
-          allWeekly = bootstrapPayload.weeklyWallets;
-          allExpenses = expensesPayload;
+          const allExpenses = await storageService.getDriverExpenses({ drivers: uniqueDrivers });
 
           setGlobalDaily(allDaily);
           setGlobalWeekly(allWeekly);
           setRawExpenses(allExpenses.filter(e => e.driver === targetDriver.name).sort((a, b) => new Date(b.expenseDate).getTime() - new Date(a.expenseDate).getTime()));
-
-          if (teamMembers.length > 0) {
-              const balances: Record<string, number> = {};
-              teamMembers.forEach(member => {
-                  const stats = storageService.calculateDriverStats(member.name, allDaily, allWeekly, sortedSlabs, allExpenses);
-                  balances[member.id] = stats.finalTotal;
-              });
-              setTeamBalances(balances);
-
-              const cashModes: Record<string, CashMode> = {};
-              await Promise.all(teamMembers.map(async member => {
-                  const mode = await storageService.getDriverCashMode(member.id);
-                  cashModes[member.id] = mode;
-              }));
-              setTeamCashModes(cashModes);
-          }
+          await loadManagerTeamState(targetDriver, visibleDrivers, allDaily, allWeekly, allExpenses, sortedSlabs);
 
           setPrimaryDriver(targetDriver);
           switchToDriverView(targetDriver, allDaily, allWeekly, allExpenses);
@@ -607,17 +627,16 @@ const DriverPortalPage: React.FC = () => {
       const target = driversList.find(d => d.id === driverId);
       if (target) {
           try {
-              const bootstrapPayload = await storageService.getDailyEntriesBootstrap({
-                  drivers: getScopedDriverNames(target.name),
-                  fresh: 1,
-                  includeMeta: false,
-              });
-              const dailyEntries = bootstrapPayload.entries;
-              const weeklyWallets = bootstrapPayload.weeklyWallets;
+              const [dailyEntries, weeklyWallets] = await Promise.all([
+                  storageService.getDailyEntries(),
+                  storageService.getWeeklyWallets()
+              ]);
+              const scopedDrivers = getScopedDriverNames(target.name);
+              const expenses = await storageService.getDriverExpenses({ drivers: scopedDrivers, fresh: 1 });
 
               setGlobalDaily(dailyEntries);
               setGlobalWeekly(weeklyWallets);
-              const expenses = await storageService.getDriverExpenses({ drivers: getScopedDriverNames(target.name), fresh: 1 });
+              await loadManagerTeamState(target, driversList, dailyEntries, weeklyWallets, expenses, rentalSlabs);
               switchToDriverView(target, dailyEntries, weeklyWallets, expenses);
           } catch (err) {
               console.error('Failed to switch admin driver view', err);
@@ -677,7 +696,7 @@ const DriverPortalPage: React.FC = () => {
       }
   };
 
-  // Continuously sync cash mode across admin/manager/driver views (fallback when live stream disconnects)
+  // Continuously sync cash mode across admin/manager/driver views
   useEffect(() => {
       if (!viewingAsDriver) return;
 
@@ -685,7 +704,7 @@ const DriverPortalPage: React.FC = () => {
       const driverId = viewingAsDriver.id;
 
       const sync = async () => {
-          if (!isMounted || liveUpdatesConnected) return;
+          if (!isMounted) return;
           await refreshCashMode(driverId);
       };
 
@@ -696,13 +715,14 @@ const DriverPortalPage: React.FC = () => {
           isMounted = false;
           clearInterval(interval);
       };
-  }, [liveUpdatesConnected, refreshCashMode, viewingAsDriver?.id]);
+  }, [refreshCashMode, viewingAsDriver?.id]);
   
   const viewTeamMember = async (member: Driver) => {
       try {
-        const bootstrapPayload = await storageService.getDailyEntriesBootstrap({ driver: member.name, includeMeta: false });
-        const allDaily = bootstrapPayload.entries;
-        const allWeekly = bootstrapPayload.weeklyWallets;
+        const [allDaily, allWeekly] = await Promise.all([
+            storageService.getDailyEntries(),
+            storageService.getWeeklyWallets()
+        ]);
         const scopedDrivers = getScopedDriverNames(member.name);
         const expenses = await storageService.getDriverExpenses({ drivers: scopedDrivers, fresh: 1 });
         switchToDriverView(member, allDaily, allWeekly, expenses);
@@ -2066,10 +2086,74 @@ const DriverPortalPage: React.FC = () => {
            {activeTab === 'home' && (
               <div className="space-y-6 animate-fade-in">
                   
+                  {/* 1. Latest Bill Alert (If available) */}
+                  {latestBill && (
+                      <div className="bg-white p-5 rounded-[24px] border-2 border-dashed border-indigo-100 shadow-sm relative overflow-hidden group hover:border-indigo-200 transition-all">
+                          <div className="flex justify-between items-center mb-3">
+                              <div>
+                                  <p className="text-xs font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-1.5">
+                                      <Clock size={12}/> Latest Bill Generated
+                                  </p>
+                                  <p className="text-[10px] text-slate-400 font-medium mt-0.5">{latestBill.weekRange}</p>
+                              </div>
+                              <button onClick={() => { setSelectedBill(latestBill); }} className="bg-indigo-50 text-indigo-600 p-2 rounded-full hover:bg-indigo-100 transition-colors">
+                                  <ChevronRight size={16} />
+                              </button>
+                          </div>
+                          <div className="flex justify-between items-end bg-slate-50 p-3 rounded-xl">
+                              <div>
+                                  <p className="text-[10px] text-slate-400 font-bold uppercase">Week Payout</p>
+                                  <p className={`text-xl font-bold ${latestBill.payout < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                      {formatCurrency(latestBill.payout)}
+                                  </p>
+                              </div>
+                              <button onClick={() => downloadBill(latestBill)} className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded-lg flex items-center gap-1 hover:bg-slate-50 transition-colors">
+                                  <Download size={12}/> PDF
+                              </button>
+                          </div>
+                      </div>
+                  )}
+
+                  {/* 2. Recent Daily Activity */}
+                  <div>
+                      <div className="flex justify-between items-end mb-3 px-2">
+                          <h3 className="font-bold text-slate-800 text-sm">Recent Activity</h3>
+                          <button onClick={() => setActiveTab('daily')} className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700">View All</button>
+                      </div>
+                      <div className="space-y-3">
+                          {recentLogs.map(entry => {
+                              const entryExpense = expensesByDate[entry.date] || 0;
+
+                              return (
+                              <div key={entry.id} className="bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center">
+                                   <div className="flex items-center gap-3">
+                                       <div className="bg-slate-50 p-2.5 rounded-xl text-slate-400">
+                                           <Calendar size={16} />
+                                       </div>
+                                       <div>
+                                           <p className="text-sm font-bold text-slate-800">{formatDate(entry.date)}</p>
+                                           <p className="text-[10px] text-slate-400 font-medium">{entry.day}</p>
+                                       </div>
+                                   </div>
+                                   <div className="text-right">
+                                       <p className="text-sm font-bold text-emerald-600">+{formatCurrency(entry.collection)}</p>
+                                       {entry.hasDaily && (
+                                           <p className="text-[10px] text-slate-400">Rent: {formatCurrency(entry.rent)}</p>
+                                       )}
+                                       <p className={`text-[10px] font-semibold ${entryExpense > 0 ? 'text-rose-500' : 'text-slate-400'}`}>
+                                           Expense: {formatCurrency(entryExpense)}
+                                       </p>
+                                   </div>
+                              </div>
+                              );
+                          })}
+                          {recentLogs.length === 0 && <p className="text-center text-xs text-slate-400 py-4 bg-white rounded-2xl border border-slate-100 border-dashed">No recent activity found</p>}
+                      </div>
+                  </div>
+
                   {/* Manager Section (If Applicable) */}
                   {viewingAsDriver.isManager && myTeam.length > 0 && (
                       <div className="bg-[#4C4E94] rounded-[32px] p-6 shadow-2xl shadow-indigo-900/30 overflow-hidden relative">
-                           {/* Background Decor */}
                            <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
                            
                            <div className="relative z-10">
@@ -2151,71 +2235,6 @@ const DriverPortalPage: React.FC = () => {
                            </div>
                       </div>
                   )}
-
-                  {/* 1. Latest Bill Alert (If available) */}
-                  {latestBill && (
-                      <div className="bg-white p-5 rounded-[24px] border-2 border-dashed border-indigo-100 shadow-sm relative overflow-hidden group hover:border-indigo-200 transition-all">
-                          <div className="flex justify-between items-center mb-3">
-                              <div>
-                                  <p className="text-xs font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-1.5">
-                                      <Clock size={12}/> Latest Bill Generated
-                                  </p>
-                                  <p className="text-[10px] text-slate-400 font-medium mt-0.5">{latestBill.weekRange}</p>
-                              </div>
-                              <button onClick={() => { setSelectedBill(latestBill); }} className="bg-indigo-50 text-indigo-600 p-2 rounded-full hover:bg-indigo-100 transition-colors">
-                                  <ChevronRight size={16} />
-                              </button>
-                          </div>
-                          <div className="flex justify-between items-end bg-slate-50 p-3 rounded-xl">
-                              <div>
-                                  <p className="text-[10px] text-slate-400 font-bold uppercase">Week Payout</p>
-                                  <p className={`text-xl font-bold ${latestBill.payout < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                                      {formatCurrency(latestBill.payout)}
-                                  </p>
-                              </div>
-                              <button onClick={() => downloadBill(latestBill)} className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded-lg flex items-center gap-1 hover:bg-slate-50 transition-colors">
-                                  <Download size={12}/> PDF
-                              </button>
-                          </div>
-                      </div>
-                  )}
-
-                  {/* 2. Recent Daily Activity */}
-                  <div>
-                      <div className="flex justify-between items-end mb-3 px-2">
-                          <h3 className="font-bold text-slate-800 text-sm">Recent Activity</h3>
-                          <button onClick={() => setActiveTab('daily')} className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700">View All</button>
-                      </div>
-                      <div className="space-y-3">
-                          {recentLogs.map(entry => {
-                              const entryExpense = expensesByDate[entry.date] || 0;
-
-                              return (
-                              <div key={entry.id} className="bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center">
-                                   <div className="flex items-center gap-3">
-                                       <div className="bg-slate-50 p-2.5 rounded-xl text-slate-400">
-                                           <Calendar size={16} />
-                                       </div>
-                                       <div>
-                                           <p className="text-sm font-bold text-slate-800">{formatDate(entry.date)}</p>
-                                           <p className="text-[10px] text-slate-400 font-medium">{entry.day}</p>
-                                       </div>
-                                   </div>
-                                   <div className="text-right">
-                                       <p className="text-sm font-bold text-emerald-600">+{formatCurrency(entry.collection)}</p>
-                                       {entry.hasDaily && (
-                                           <p className="text-[10px] text-slate-400">Rent: {formatCurrency(entry.rent)}</p>
-                                       )}
-                                       <p className={`text-[10px] font-semibold ${entryExpense > 0 ? 'text-rose-500' : 'text-slate-400'}`}>
-                                           Expense: {formatCurrency(entryExpense)}
-                                       </p>
-                                   </div>
-                              </div>
-                              );
-                          })}
-                          {recentLogs.length === 0 && <p className="text-center text-xs text-slate-400 py-4 bg-white rounded-2xl border border-slate-100 border-dashed">No recent activity found</p>}
-                      </div>
-                  </div>
 
                   {/* 3. Wallet Overview Card */}
                   <div className="bg-white p-6 rounded-[28px] border-4 border-slate-50/50 shadow-sm relative">
