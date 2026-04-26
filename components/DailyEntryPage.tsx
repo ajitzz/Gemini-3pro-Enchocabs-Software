@@ -1,38 +1,29 @@
 
-import React, { useEffect, useState, useRef, useMemo, useCallback, useDeferredValue } from 'react';
-import { DailyEntry, Driver, DriverExpense, DriverSummary, LeaveRecord, RentalSlab, WeeklyWallet } from '../types';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
+import { DailyEntry, Driver, LeaveRecord, WeeklyWallet } from '../types';
 import { storageService } from '../services/storageService';
-import { useLiveUpdates } from '../lib/useLiveUpdates';
-import { isDriverUnavailableOnDate } from '../lib/leaveUtils';
-import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check, AlertOctagon, FileDown, AlertCircle, ChevronLeft, ChevronRight, Car, QrCode, EyeOff } from 'lucide-react';
+import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check, AlertOctagon, FileDown } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
-const InputField = ({ label, name, type = "text", value, onChange, onKeyDown, placeholder, required = false, className = "", readOnly = false, inputMode }: any) => (
+const InputField = ({ label, name, type = "text", value, onChange, onKeyDown, placeholder, required = false, className = "", readOnly = false }: any) => (
   <div className="flex flex-col gap-1.5">
      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">{label}</label>
      <input 
        required={required}
        name={name}
        type={type}
-       inputMode={inputMode || (type === 'number' ? 'decimal' : undefined)}
        value={value ?? ''}
        onChange={onChange}
        onKeyDown={onKeyDown}
        placeholder={placeholder}
        readOnly={readOnly}
        step="0.01"
-       className={`w-full px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 text-base placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none ${className}`}
+       className={`w-full px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none ${className}`}
      />
   </div>
 );
 
 type DisplayDailyEntry = DailyEntry & { adjustmentApplied?: number };
-type QuickEntryPanelId = 'missingDailyEntries' | 'missingWeeklyWallets';
-type QuickEntryPanelPreference = {
-  collapsed: boolean;
-  hidden: boolean;
-};
-type QuickEntryPanelPreferences = Record<QuickEntryPanelId, QuickEntryPanelPreference>;
 
 // --- GLOBAL DRIVER FILTER COMPONENT ---
 interface DriverFilterProps {
@@ -81,7 +72,7 @@ const GlobalDriverFilter: React.FC<DriverFilterProps> = ({ drivers, selected, on
                   placeholder="Type to search..."
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  className="w-full px-2 py-1.5 text-base bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-2 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
                 />
              </div>
              <div className="max-h-60 overflow-y-auto p-1">
@@ -130,7 +121,8 @@ const ColumnFilter: React.FC<ColumnFilterProps> = ({ columnKey, data, activeFilt
   const uniqueValues = useMemo(() => {
     const values = new Set<string>();
     data.forEach(item => {
-      const val = String((item as any)[columnKey] ?? '');
+      // @ts-ignore
+      const val = String(item[columnKey] ?? '');
       if (val) values.add(val);
     });
     // Sort logic
@@ -211,7 +203,7 @@ const ColumnFilter: React.FC<ColumnFilterProps> = ({ columnKey, data, activeFilt
                 placeholder={`Search ${label}...`} 
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-base focus:ring-2 focus:ring-indigo-500 outline-none"
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
               />
            </div>
            
@@ -275,73 +267,17 @@ const ColumnFilter: React.FC<ColumnFilterProps> = ({ columnKey, data, activeFilt
 
 const DailyEntryPage: React.FC = () => {
   const RECENT_DAYS = 60;
-  const FALLBACK_LIVE_REFRESH_MS = 60000;
-  const getTodayISODate = () => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-  const normalizeDateValue = (raw?: string | null) => {
-    if (!raw) return '';
-    const direct = String(raw).trim();
-    if (/^\d{4}-\d{2}-\d{2}$/.test(direct)) return direct;
-    const parsed = new Date(direct);
-    if (Number.isNaN(parsed.getTime())) return '';
-    const year = parsed.getFullYear();
-    const month = String(parsed.getMonth() + 1).padStart(2, '0');
-    const day = String(parsed.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-  const sanitizeEntryDate = (entry: DailyEntry): DailyEntry => ({
-    ...entry,
-    date: normalizeDateValue(entry.date) || getTodayISODate(),
-  });
-
   const [entries, setEntries] = useState<DailyEntry[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [leaves, setLeaves] = useState<LeaveRecord[]>([]); // Added Leaves state
   const [weeklyWallets, setWeeklyWallets] = useState<WeeklyWallet[]>([]);
-  const [driverRentalSlabs, setDriverRentalSlabs] = useState<RentalSlab[]>([]);
-  const [driverExpenses, setDriverExpenses] = useState<DriverExpense[]>([]);
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   
   // UI State for optional fields
   const [showOptionalFields, setShowOptionalFields] = useState(false);
-  const [customDueLabels, setCustomDueLabels] = useState<string[]>(() => {
-    try {
-      const raw = localStorage.getItem('daily_entry_due_labels_v1');
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed.filter((item) => typeof item === 'string') : [];
-    } catch (error) {
-      console.warn('Failed to load due labels', error);
-      return [];
-    }
-  });
-  const [isAddingDueLabel, setIsAddingDueLabel] = useState(false);
-  const [newDueLabelDraft, setNewDueLabelDraft] = useState('');
   const [showFullHistory, setShowFullHistory] = useState(false);
-  const [quickEntryPanelPreferences, setQuickEntryPanelPreferences] = useState<QuickEntryPanelPreferences>(() => {
-    const defaultPreferences: QuickEntryPanelPreferences = {
-      missingDailyEntries: { collapsed: false, hidden: false },
-      missingWeeklyWallets: { collapsed: false, hidden: false },
-    };
-    try {
-      const persisted = localStorage.getItem('daily_entry_quick_entry_panels_v1');
-      if (!persisted) return defaultPreferences;
-      return {
-        ...defaultPreferences,
-        ...JSON.parse(persisted),
-      };
-    } catch (e) {
-      console.warn('Failed to load quick entry panel preferences', e);
-      return defaultPreferences;
-    }
-  });
 
   // Global Filters
   const [filterDateStart, setFilterDateStart] = useState('');
@@ -356,18 +292,10 @@ const DailyEntryPage: React.FC = () => {
 
   // Duplicate Warning State
   const [duplicateWarning, setDuplicateWarning] = useState<{ active: boolean, existingId: string, payload: DailyEntry } | null>(null);
-  const [outlierWarning, setOutlierWarning] = useState<{ message: string, payload: DailyEntry } | null>(null);
-  const closeAfterSaveRef = useRef(true);
-  const [manualDefaultOverrides, setManualDefaultOverrides] = useState({
-    vehicle: false,
-    shift: false,
-    qrCode: false,
-    rent: false,
-  });
 
   // Form State
   const initialFormState: Partial<DailyEntry> = {
-    date: getTodayISODate(),
+    date: new Date().toISOString().split('T')[0],
     vehicle: '',
     driver: '',
     shift: 'Day',
@@ -375,82 +303,12 @@ const DailyEntryPage: React.FC = () => {
     collection: undefined,
     fuel: 0,
     due: 0,
-    dueLabel: '',
-    payout: 0,
+    payout: 0, // New field
     payoutDate: '',
     qrCode: '',
     notes: ''
   };
   const [formData, setFormData] = useState<Partial<DailyEntry>>(initialFormState);
-  const [offlineQueue, setOfflineQueue] = useState<DailyEntry[]>(() => {
-    try {
-      const queue = localStorage.getItem('daily_entry_offline_queue');
-      return queue ? JSON.parse(queue) : [];
-    } catch (e) {
-      return [];
-    }
-  });
-  const [isSyncing, setIsSyncing] = useState(false);
-  const liveRefreshTimerRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    // Form must fully reset on every browser/project reload.
-    localStorage.removeItem('daily_entry_draft');
-  }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('daily_entry_offline_queue', JSON.stringify(offlineQueue));
-    } catch (e) {
-      console.warn('Failed to save offline queue', e);
-    }
-  }, [offlineQueue]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('daily_entry_quick_entry_panels_v1', JSON.stringify(quickEntryPanelPreferences));
-    } catch (e) {
-      console.warn('Failed to save quick entry panel preferences', e);
-    }
-  }, [quickEntryPanelPreferences]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('daily_entry_due_labels_v1', JSON.stringify(customDueLabels));
-    } catch (error) {
-      console.warn('Failed to save due labels', error);
-    }
-  }, [customDueLabels]);
-
-  const syncOfflineQueue = useCallback(async () => {
-    if (offlineQueue.length === 0 || isSyncing || !navigator.onLine) return;
-    setIsSyncing(true);
-    const remainingQueue = [...offlineQueue];
-    let syncedCount = 0;
-
-    for (const entry of offlineQueue) {
-      try {
-        const savedEntry = await storageService.saveDailyEntry(entry);
-        upsertEntry({ ...entry, ...savedEntry });
-        remainingQueue.shift(); // Remove successful entry
-        syncedCount++;
-      } catch (error) {
-        console.error('Failed to sync entry', entry, error);
-        break; // Stop syncing on first failure to preserve order
-      }
-    }
-
-    setOfflineQueue(remainingQueue);
-    setIsSyncing(false);
-    if (syncedCount > 0) {
-      alert(`Successfully synced ${syncedCount} offline entries.`);
-    }
-  }, [offlineQueue, isSyncing]);
-
-  useEffect(() => {
-    window.addEventListener('online', syncOfflineQueue);
-    return () => window.removeEventListener('online', syncOfflineQueue);
-  }, [syncOfflineQueue]);
 
   const getISODateDaysAgo = (days: number) => {
     const date = new Date();
@@ -460,182 +318,26 @@ const DailyEntryPage: React.FC = () => {
 
   const recentFromDate = showFullHistory ? '' : getISODateDaysAgo(RECENT_DAYS);
 
-  const sortEntriesByDateDesc = useCallback((records: DailyEntry[]) =>
-    [...records].sort((a, b) => b.date.localeCompare(a.date)), []);
-  const sortSlabsByMinTrips = useCallback((records: RentalSlab[]) =>
-    [...records].sort((a, b) => a.minTrips - b.minTrips), []);
-
-  const areEntriesEquivalent = useCallback((a: DailyEntry[], b: DailyEntry[]) => {
-    if (a.length !== b.length) return false;
-
-    for (let i = 0; i < a.length; i += 1) {
-      const left = a[i];
-      const right = b[i];
-
-      if (
-        left.id !== right.id ||
-        left.date !== right.date ||
-        left.day !== right.day ||
-        left.vehicle !== right.vehicle ||
-        left.driver !== right.driver ||
-        left.shift !== right.shift ||
-        left.collection !== right.collection ||
-        left.rent !== right.rent ||
-        left.fuel !== right.fuel ||
-        left.due !== right.due ||
-        (left.dueLabel || '') !== (right.dueLabel || '') ||
-        left.payout !== right.payout ||
-        (left.payoutDate || '') !== (right.payoutDate || '') ||
-        (left.qrCode || '') !== (right.qrCode || '') ||
-        (left.notes || '') !== (right.notes || '')
-      ) {
-        return false;
-      }
-    }
-
-    return true;
-  }, []);
-
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    const dailyParams = showFullHistory ? undefined : { from: recentFromDate };
-
-    try {
-      const [bootstrap, slabs, expenses] = await Promise.all([
-        storageService.getDailyEntriesBootstrap(dailyParams),
-        storageService.getDriverRentalSlabs(),
-        storageService.getDriverExpenses(),
-      ]);
-
-      setEntries(sortEntriesByDateDesc(bootstrap.entries.map(sanitizeEntryDate)));
-      setDrivers(bootstrap.drivers.filter(driver => !driver.terminationDate));
-      setLeaves(bootstrap.leaves);
-      setWeeklyWallets(bootstrap.weeklyWallets);
-      setDriverRentalSlabs(sortSlabsByMinTrips(slabs));
-      setDriverExpenses(expenses);
-      setLoading(false);
-    } catch (error) {
-      console.warn('Daily bootstrap failed, falling back to parallel requests:', error);
-
-      try {
-        const entriesPromise = storageService.getDailyEntries(dailyParams);
-        const asyncMetaPromise = Promise.all([
-          storageService.getDrivers(),
-          storageService.getLeaves(),
-          storageService.getWeeklyWallets(),
-          storageService.getDriverRentalSlabs(),
-          storageService.getDriverExpenses(),
-        ]);
-
-        const e = await entriesPromise;
-        setEntries(sortEntriesByDateDesc(e.map(sanitizeEntryDate)));
-        setLoading(false);
-
-        asyncMetaPromise
-          .then(([d, l, w, slabs, expenses]) => {
-            setDrivers(d.filter(driver => !driver.terminationDate));
-            setLeaves(l);
-            setWeeklyWallets(w);
-            setDriverRentalSlabs(sortSlabsByMinTrips(slabs));
-            setDriverExpenses(expenses);
-          })
-          .catch((metaError) => {
-            console.error('Failed to load secondary daily entry metadata:', metaError);
-          });
-      } catch (fallbackError) {
-        console.error('Failed to load daily entries:', fallbackError);
-        setLoading(false);
-      }
-    }
-  }, [showFullHistory, recentFromDate, sortEntriesByDateDesc, sortSlabsByMinTrips]);
-
-  const refreshEntriesOnly = useCallback(async () => {
-    const dailyParams = showFullHistory ? undefined : { from: recentFromDate };
-    const entries = sortEntriesByDateDesc((await storageService.getDailyEntries(dailyParams, { skipMemoryCache: true })).map(sanitizeEntryDate));
-    setEntries(prev => {
-      if (areEntriesEquivalent(prev, entries)) return prev;
-      return entries;
-    });
-  }, [showFullHistory, recentFromDate, sortEntriesByDateDesc, areEntriesEquivalent]);
-
-  const refreshLiveData = useCallback(async (mode: 'entries-only' | 'full' = 'entries-only') => {
-    if (document.visibilityState !== 'visible') return;
-
-    try {
-      if (mode === 'entries-only') {
-        await refreshEntriesOnly();
-        return;
-      }
-
-      const dailyParams = showFullHistory ? undefined : { from: recentFromDate };
-      const [bootstrap, slabs, expenses] = await Promise.all([
-        storageService.getDailyEntriesBootstrap(dailyParams, { skipMemoryCache: true }),
-        storageService.getDriverRentalSlabs(),
-        storageService.getDriverExpenses(undefined, { skipMemoryCache: true }),
-      ]);
-      const nextEntries = sortEntriesByDateDesc(bootstrap.entries.map(sanitizeEntryDate));
-      setEntries(prev => {
-        if (areEntriesEquivalent(prev, nextEntries)) return prev;
-        return nextEntries;
-      });
-      setDrivers(bootstrap.drivers.filter(driver => !driver.terminationDate));
-      setLeaves(bootstrap.leaves);
-      setWeeklyWallets(bootstrap.weeklyWallets);
-      setDriverRentalSlabs(sortSlabsByMinTrips(slabs));
-      setDriverExpenses(expenses);
-    } catch (error) {
-      console.warn('Live refresh skipped due to transient failure:', error);
-    }
-  }, [refreshEntriesOnly, showFullHistory, recentFromDate, sortEntriesByDateDesc, sortSlabsByMinTrips, areEntriesEquivalent]);
-
   useEffect(() => {
     loadData();
-  }, [loadData]);
+  }, [showFullHistory]);
 
-  const { connected: liveUpdatesConnected } = useLiveUpdates((event) => {
-    const type = event?.type;
-    if (!type || !['daily_entries_changed', 'weekly_wallets_changed', 'driver_expenses_changed', 'drivers_changed', 'leaves_changed'].includes(type)) {
-      return;
-    }
+  const loadData = async () => {
+    setLoading(true);
+    const dailyParams = showFullHistory ? undefined : { from: recentFromDate };
+    const [e, d, l, w] = await Promise.all([
+        storageService.getDailyEntries(dailyParams),
+        storageService.getDrivers(),
+        storageService.getLeaves(), // Fetch leaves
+        storageService.getWeeklyWallets()
+    ]);
 
-    if (liveRefreshTimerRef.current !== null) {
-      window.clearTimeout(liveRefreshTimerRef.current);
-    }
-
-    liveRefreshTimerRef.current = window.setTimeout(() => {
-      const refreshMode = type === 'daily_entries_changed' ? 'entries-only' : 'full';
-      refreshLiveData(refreshMode);
-      liveRefreshTimerRef.current = null;
-    }, 250);
-  });
-
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      if (!liveUpdatesConnected) {
-        refreshLiveData('entries-only');
-      }
-    }, FALLBACK_LIVE_REFRESH_MS);
-
-    const onFocus = () => refreshLiveData('entries-only');
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') {
-        refreshLiveData('entries-only');
-      }
-    };
-
-    window.addEventListener('focus', onFocus);
-    document.addEventListener('visibilitychange', onVisible);
-
-    return () => {
-      window.clearInterval(interval);
-      if (liveRefreshTimerRef.current !== null) {
-        window.clearTimeout(liveRefreshTimerRef.current);
-        liveRefreshTimerRef.current = null;
-      }
-      window.removeEventListener('focus', onFocus);
-      document.removeEventListener('visibilitychange', onVisible);
-    };
-  }, [liveUpdatesConnected, refreshLiveData]);
+    setEntries(e.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+    setDrivers(d.filter(driver => !driver.terminationDate));
+    setLeaves(l);
+    setWeeklyWallets(w);
+    setLoading(false);
+  };
 
   const upsertEntry = (entry: DailyEntry) => {
     setEntries(prev => {
@@ -643,7 +345,7 @@ const DailyEntryPage: React.FC = () => {
       if (!showFullHistory && recentFromDate && entry.date < recentFromDate) {
         return next;
       }
-      return sortEntriesByDateDesc([entry, ...next]);
+      return [entry, ...next].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     });
   };
 
@@ -692,162 +394,24 @@ const DailyEntryPage: React.FC = () => {
       return Array.from(uniqueNames).sort();
   }, [entriesWithAdjustments]);
 
-  const dueLabelOptions = useMemo(() =>
-    [...customDueLabels].sort((a, b) => a.localeCompare(b)),
-  [customDueLabels]);
-
-  const addDueLabel = () => {
-    const trimmed = newDueLabelDraft.trim();
-    if (!trimmed) return;
-    if (!customDueLabels.some((label) => label.toLowerCase() === trimmed.toLowerCase())) {
-      setCustomDueLabels((prev) => [...prev, trimmed]);
-    }
-    setFormData((prev) => ({ ...prev, dueLabel: trimmed }));
-    setNewDueLabelDraft('');
-    setIsAddingDueLabel(false);
-  };
-
-  const removeSelectedDueLabel = () => {
-    const selected = (formData.dueLabel || '').trim();
-    if (!selected) return;
-    setCustomDueLabels((prev) => prev.filter((label) => label.toLowerCase() !== selected.toLowerCase()));
-    setFormData((prev) => ({ ...prev, dueLabel: '' }));
-  };
-
-  const getDriverAssignedDefaults = useCallback((driverName?: string) => {
-    const selectedDriver = drivers.find(d => d.name === driverName);
-    return {
-      vehicle: selectedDriver?.vehicle || '',
-      qrCode: selectedDriver?.qrCode || '',
-      shift: selectedDriver?.currentShift || 'Day',
-      rent: selectedDriver?.defaultRent,
-    };
-  }, [drivers]);
-
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     
     if (name === 'driver') {
-        const assignedDefaults = getDriverAssignedDefaults(value);
-        setManualDefaultOverrides({
-          vehicle: false,
-          shift: false,
-          qrCode: false,
-          rent: false,
-        });
+        const selectedDriver = drivers.find(d => d.name === value);
         setFormData(prev => ({
             ...prev,
             driver: value,
-            vehicle: assignedDefaults.vehicle,
-            qrCode: assignedDefaults.qrCode,
-            shift: assignedDefaults.shift,
-            rent: assignedDefaults.rent // Let undefined flow if no default set
+            vehicle: selectedDriver?.vehicle || prev.vehicle,
+            qrCode: selectedDriver?.qrCode || prev.qrCode,
+            shift: selectedDriver?.currentShift || prev.shift || 'Day',
+            rent: selectedDriver?.defaultRent // Let undefined flow if no default set
         }));
     } else {
-        const nextValue = type === 'number' ? (value === '' ? undefined : parseFloat(value)) : value;
-
-        if (name === 'vehicle' || name === 'shift' || name === 'qrCode' || name === 'rent') {
-          const assignedDefaults = getDriverAssignedDefaults(formData.driver);
-          const normalizedValue = name === 'rent'
-            ? (nextValue === undefined ? undefined : Number(nextValue))
-            : String(nextValue ?? '');
-          const rawDefaultValue = name === 'vehicle'
-            ? assignedDefaults.vehicle
-            : name === 'shift'
-              ? assignedDefaults.shift
-              : name === 'qrCode'
-                ? assignedDefaults.qrCode
-                : assignedDefaults.rent;
-          const normalizedDefault = name === 'rent'
-            ? (rawDefaultValue === undefined ? undefined : Number(rawDefaultValue))
-            : String(rawDefaultValue ?? '');
-          const hasManualOverride = normalizedValue !== normalizedDefault;
-
-          setManualDefaultOverrides(prev => ({ ...prev, [name]: hasManualOverride }));
-        }
         setFormData(prev => ({
             ...prev,
-            [name]: nextValue
+            [name]: type === 'number' ? (value === '' ? undefined : parseFloat(value)) : value
         }));
-    }
-  };
-
-  useEffect(() => {
-    if (!formData.driver || editingId) return;
-
-    const selectedDriver = drivers.find(d => d.name === formData.driver);
-    if (!selectedDriver) return;
-
-    setFormData(prev => {
-      if (prev.driver !== selectedDriver.name) return prev;
-
-      const nextVehicle = manualDefaultOverrides.vehicle ? prev.vehicle : (selectedDriver.vehicle || '');
-      const nextQrCode = manualDefaultOverrides.qrCode ? prev.qrCode : (selectedDriver.qrCode || '');
-      const nextShift = manualDefaultOverrides.shift ? prev.shift : (selectedDriver.currentShift || 'Day');
-      const nextRent = manualDefaultOverrides.rent ? prev.rent : selectedDriver.defaultRent;
-
-      if (
-        prev.vehicle === nextVehicle &&
-        prev.qrCode === nextQrCode &&
-        prev.shift === nextShift &&
-        prev.rent === nextRent
-      ) {
-        return prev;
-      }
-
-      return {
-        ...prev,
-        vehicle: nextVehicle,
-        qrCode: nextQrCode,
-        shift: nextShift,
-        rent: nextRent,
-      };
-    });
-  }, [drivers, formData.driver, editingId, manualDefaultOverrides]);
-
-  const checkOutliers = (newEntry: DailyEntry) => {
-    const driverEntries = entries.filter(e => e.driver === newEntry.driver);
-    if (driverEntries.length < 3) return null;
-
-    const avgCollection = driverEntries.reduce((sum, e) => sum + e.collection, 0) / driverEntries.length;
-    if (newEntry.collection > avgCollection * 2.5) {
-      return `Collection (₹${newEntry.collection}) is much higher than ${newEntry.driver}'s average (₹${Math.round(avgCollection)}).`;
-    }
-    if (newEntry.collection < avgCollection * 0.3 && newEntry.collection > 0) {
-      return `Collection (₹${newEntry.collection}) is much lower than ${newEntry.driver}'s average (₹${Math.round(avgCollection)}).`;
-    }
-    return null;
-  };
-
-  const handleOutlierConfirm = async () => {
-    if (!outlierWarning) return;
-    const { payload } = outlierWarning;
-    setOutlierWarning(null);
-    await saveEntry(payload);
-  };
-
-  const saveEntry = async (newEntry: DailyEntry) => {
-    if (!navigator.onLine) {
-      setOfflineQueue(prev => [...prev, newEntry]);
-      upsertEntry({ ...newEntry, id: `offline-${newEntry.id}` }); // Optimistic UI update
-      resetFormAfterSave(newEntry.date, newEntry.driver);
-      if (closeAfterSaveRef.current) {
-        setIsFormOpen(false);
-      }
-      alert('You are offline. Entry saved locally and will sync when online.');
-      return;
-    }
-
-    try {
-      const savedEntry = await storageService.saveDailyEntry(newEntry);
-      upsertEntry({ ...newEntry, ...savedEntry });
-      resetFormAfterSave(newEntry.date, newEntry.driver);
-      if (closeAfterSaveRef.current) {
-        setIsFormOpen(false);
-      }
-    } catch (error: any) {
-      console.error('Save daily entry failed:', error);
-      alert(error?.message || 'Failed to save daily entry. Ensure the driver has only one entry per day.');
     }
   };
 
@@ -855,11 +419,7 @@ const DailyEntryPage: React.FC = () => {
     if (e.type === 'submit' || (e as React.KeyboardEvent).key === 'Enter') {
         e.preventDefault();
         
-        const normalizedDate = normalizeDateValue(formData.date);
-        if (!normalizedDate || !formData.driver) {
-          alert('Date and Driver are mandatory fields.');
-          return;
-        }
+        if (!formData.date || !formData.driver) return;
 
         // Explicit Validation for Mandatory Numbers
         if (formData.collection === undefined || formData.rent === undefined) {
@@ -873,12 +433,20 @@ const DailyEntryPage: React.FC = () => {
             return;
         }
 
-        const dateObj = new Date(normalizedDate);
+        // Check for duplicate entry on same day
+        const duplicateEntry = entries.find(entry => 
+          entry.date === formData.date && 
+          entry.driver === formData.driver && 
+          entry.id !== editingId
+        );
+
+        const dateObj = new Date(formData.date);
         const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'long' });
 
+        // Use existing ID if editing, otherwise generate new one (but will be overridden if duplicate exists)
         const newEntry: DailyEntry = {
-          id: editingId || crypto.randomUUID(),
-          date: normalizedDate,
+          id: formData.id || crypto.randomUUID(),
+          date: formData.date,
           day: dayName,
           vehicle: formData.vehicle || 'Unknown',
           driver: formData.driver || 'Unknown',
@@ -887,19 +455,11 @@ const DailyEntryPage: React.FC = () => {
           collection: Number(formData.collection),
           fuel: Number(formData.fuel || 0),
           due: Number(formData.due || 0),
-          dueLabel: (formData.dueLabel || '').trim() || undefined,
           payout: Number(formData.payout || 0),
           payoutDate: formData.payoutDate || undefined,
           qrCode: formData.qrCode,
           notes: formData.notes
         };
-
-        // 1. Duplicate Check
-        const duplicateEntry = entries.find(entry => 
-          entry.date === normalizedDate && 
-          entry.driver === formData.driver && 
-          entry.id !== editingId
-        );
 
         if (duplicateEntry) {
           setDuplicateWarning({
@@ -910,80 +470,70 @@ const DailyEntryPage: React.FC = () => {
           return;
         }
 
-        // 2. Outlier Check
-        const outlierMsg = checkOutliers(newEntry);
-        if (outlierMsg) {
-          setOutlierWarning({ message: outlierMsg, payload: newEntry });
-          return;
-        }
+        try {
+          const savedEntry = await storageService.saveDailyEntry(newEntry);
 
-        await saveEntry(newEntry);
+          if (editingId) {
+            resetForm();
+          } else {
+            resetFormAfterSave(formData.date);
+          }
+          upsertEntry({ ...newEntry, ...savedEntry });
+        } catch (error: any) {
+          console.error('Save daily entry failed:', error);
+          alert(error?.message || 'Failed to save daily entry. Ensure the driver has only one entry per day.');
+        }
     }
   };
 
   const handleOverrideConfirm = async () => {
     if (!duplicateWarning) return;
 
+    // If we are overriding, we are essentially updating the *existing* duplicate entry
+    // with the values from our form.
     const entryToSave = {
         ...duplicateWarning.payload,
         id: duplicateWarning.existingId // Force ID to match existing
     };
 
+    // Edge case: If we were "Editing" a different entry (Entry A) and changed its date/driver
+    // to clash with Entry B, and chose to Override, we are essentially merging A into B.
+    // So we should delete A to avoid duplicates, and update B.
     if (editingId && editingId !== duplicateWarning.existingId) {
        await storageService.deleteDailyEntry(editingId);
        setEntries(prev => prev.filter(entry => entry.id !== editingId));
     }
 
-    setDuplicateWarning(null);
-
-    // Check for outliers after duplicate check
-    const outlierMsg = checkOutliers(entryToSave);
-    if (outlierMsg) {
-      setOutlierWarning({ message: outlierMsg, payload: entryToSave });
+    try {
+      const savedEntry = await storageService.saveDailyEntry(entryToSave);
+      upsertEntry({ ...entryToSave, ...savedEntry });
+    } catch (error: any) {
+      console.error('Duplicate override failed:', error);
+      alert(error?.message || 'Unable to override the existing entry.');
       return;
     }
-
-    await saveEntry(entryToSave);
+    setDuplicateWarning(null);
+    
+    if (editingId) {
+        resetForm();
+    } else {
+        resetFormAfterSave(entryToSave.date);
+    }
   };
 
-  const resetFormAfterSave = (preserveDate: string, preserveDriver?: string) => {
-    const assignedDefaults = getDriverAssignedDefaults(preserveDriver);
-    setManualDefaultOverrides({
-      vehicle: false,
-      shift: false,
-      qrCode: false,
-      rent: false,
-    });
-    const newState = {
+  const resetFormAfterSave = (preserveDate: string) => {
+    setFormData({
       ...initialFormState,
-      date: normalizeDateValue(preserveDate) || getTodayISODate(),
-      driver: preserveDriver || '',
-      vehicle: assignedDefaults.vehicle,
-      qrCode: assignedDefaults.qrCode,
-      shift: assignedDefaults.shift,
-      rent: assignedDefaults.rent,
-    };
-    setFormData(newState);
-    localStorage.removeItem('daily_entry_draft');
+      date: preserveDate,
+    });
     setEditingId(null);
     setShowOptionalFields(false);
   };
 
   const handleEdit = (entry: DailyEntry) => {
-    setManualDefaultOverrides({
-      vehicle: true,
-      shift: true,
-      qrCode: true,
-      rent: true,
-    });
-    setFormData({
-      ...initialFormState,
-      ...entry,
-      date: normalizeDateValue(entry.date) || getTodayISODate(),
-      payoutDate: normalizeDateValue(entry.payoutDate) || '',
-    });
+    setFormData(entry);
     setEditingId(entry.id);
-    if ((entry.fuel && entry.fuel !== 0) || (entry.due && entry.due !== 0) || (entry.dueLabel && entry.dueLabel.trim().length > 0) || (entry.payout && entry.payout !== 0) || entry.payoutDate) {
+    if ((entry.fuel && entry.fuel !== 0) || (entry.due && entry.due !== 0) || (entry.payout && entry.payout !== 0) || entry.payoutDate) {
         setShowOptionalFields(true);
     } else {
         setShowOptionalFields(false);
@@ -993,14 +543,7 @@ const DailyEntryPage: React.FC = () => {
   };
 
   const resetForm = () => {
-    setManualDefaultOverrides({
-      vehicle: false,
-      shift: false,
-      qrCode: false,
-      rent: false,
-    });
     setFormData(initialFormState);
-    localStorage.removeItem('daily_entry_draft');
     setEditingId(null);
     setShowOptionalFields(false);
     setIsFormOpen(false); 
@@ -1049,8 +592,19 @@ const DailyEntryPage: React.FC = () => {
   // Helper to check if driver is on leave for the selected form date
   const isDriverOnLeave = (driverId: string) => {
     if (!formData.date) return false;
-    const selectedDate = formData.date;
-    return leaves.some((leave) => leave.driverId === driverId && isDriverUnavailableOnDate(leave, selectedDate));
+    const dateStr = formData.date;
+
+    return leaves.some(leave => {
+        if (leave.driverId !== driverId) return false;
+        
+        const start = leave.startDate;
+        
+        if (leave.actualReturnDate) {
+            return dateStr >= start && dateStr <= leave.actualReturnDate;
+        } else {
+            return dateStr >= start && dateStr <= leave.endDate;
+        }
+    });
   };
 
   const existingDriversForDate = useMemo(() => {
@@ -1155,10 +709,8 @@ const DailyEntryPage: React.FC = () => {
   };
 
   // Filter Logic: Global Dates AND Column Specific Filters
-  const deferredEntriesWithAdjustments = useDeferredValue(entriesWithAdjustments);
-
   const filteredEntries = useMemo(() => {
-    return deferredEntriesWithAdjustments.filter(entry => {
+    return entriesWithAdjustments.filter(entry => {
         // 1. Global Date Range Filter
         const matchStart = filterDateStart === '' || entry.date >= filterDateStart;
         const matchEnd = filterDateEnd === '' || entry.date <= filterDateEnd;
@@ -1172,7 +724,7 @@ const DailyEntryPage: React.FC = () => {
             const selectedValues = val as string[];
             if (selectedValues.length === 0) continue; // No filter active for this column
 
-            // @ts-expect-error - Dynamic key access
+            // @ts-ignore
             const entryVal = String(entry[key] ?? '');
 
             // If entry value is NOT in selected list, exclude it
@@ -1183,7 +735,7 @@ const DailyEntryPage: React.FC = () => {
 
         return true;
     });
-  }, [deferredEntriesWithAdjustments, filterDateStart, filterDateEnd, filterDriver, columnFilters]);
+  }, [entriesWithAdjustments, filterDateStart, filterDateEnd, filterDriver, columnFilters]);
 
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -1282,23 +834,6 @@ const DailyEntryPage: React.FC = () => {
       };
   }, [displayedEntries]);
 
-  const formatCurrencyInt = useCallback((amount: number) => {
-    const absValue = Math.abs(Number(amount || 0));
-    const formatted = `₹${absValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
-    return amount < 0 ? `-${formatted}` : formatted;
-  }, []);
-
-  const selectedDriverStats = useMemo<DriverSummary | null>(() => {
-    if (!filterDriver) return null;
-    return storageService.calculateDriverStats(
-      filterDriver,
-      entriesWithAdjustments,
-      weeklyWallets,
-      driverRentalSlabs,
-      driverExpenses
-    );
-  }, [filterDriver, entriesWithAdjustments, weeklyWallets, driverRentalSlabs, driverExpenses]);
-
   const goToPreviousPage = () => {
       setCurrentPageIndex(prev => Math.max(0, prev - 1));
   };
@@ -1317,58 +852,23 @@ const DailyEntryPage: React.FC = () => {
       setColumnFilters({});
   };
 
-  const updateQuickEntryPanelPreference = (panelId: QuickEntryPanelId, updater: (current: QuickEntryPanelPreference) => QuickEntryPanelPreference) => {
-    setQuickEntryPanelPreferences(prev => ({
-      ...prev,
-      [panelId]: updater(prev[panelId]),
-    }));
-  };
-
-  const toggleQuickEntryPanelCollapse = (panelId: QuickEntryPanelId) => {
-    updateQuickEntryPanelPreference(panelId, current => ({ ...current, collapsed: !current.collapsed }));
-  };
-
-  const toggleQuickEntryPanelHidden = (panelId: QuickEntryPanelId) => {
-    updateQuickEntryPanelPreference(panelId, current => ({ ...current, hidden: !current.hidden }));
-  };
-
-  const hiddenQuickEntryPanels = (Object.keys(quickEntryPanelPreferences) as QuickEntryPanelId[]).filter(
-    (panelId) => quickEntryPanelPreferences[panelId]?.hidden
-  );
-
   return (
     <div className="max-w-[1920px] mx-auto space-y-8 pb-20">
-      {/* Header / Actions */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Daily Entries</h2>
           <p className="text-slate-500 mt-1">Record daily collections and expenses.</p>
         </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          {offlineQueue.length > 0 && (
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-xs font-bold">
-              <AlertTriangle size={14} />
-              {offlineQueue.length} Pending Sync
-              <button onClick={syncOfflineQueue} disabled={isSyncing || !navigator.onLine} className="ml-2 underline hover:text-amber-900 disabled:opacity-50">
-                {isSyncing ? 'Syncing...' : 'Sync Now'}
-              </button>
-            </div>
-          )}
+        <div className="flex items-center gap-3">
           <button
             onClick={handleExportDailyEntries}
             className="bg-white text-indigo-600 border border-indigo-100 px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all hover:border-indigo-200 hover:shadow-md"
           >
             <FileDown size={18} />
-            <span className="hidden md:inline">Export CSV</span>
+            <span>Export CSV</span>
           </button>
           <button
-            onClick={() => {
-              if (isFormOpen) {
-                resetForm();
-                return;
-              }
-              setIsFormOpen(true);
-            }}
+            onClick={() => setIsFormOpen(!isFormOpen)}
             className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
           >
             {isFormOpen ? <X size={20} /> : <Plus size={20} />}
@@ -1378,303 +878,157 @@ const DailyEntryPage: React.FC = () => {
       </div>
 
       {/* Entry Form */}
-      <div className={`${isFormOpen ? 'block' : 'hidden'} bg-white p-4 md:p-8 rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100 animate-fade-in mb-8`}>
-        <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-100">
+      <div className={`${isFormOpen ? 'block' : 'hidden'} bg-white p-8 rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100 animate-fade-in`}>
+        <div className="flex justify-between items-center mb-8 pb-4 border-b border-slate-100">
            <div>
              <h3 className="text-xl font-bold text-slate-800">
-               {editingId ? 'Edit Daily Record' : 'Quick Entry'}
+               {editingId ? 'Edit Daily Record' : 'Add New Daily Record'}
              </h3>
-             <p className="text-sm text-slate-400 mt-1 hidden md:block">Fill in the details below. Most fields auto-fill based on driver selection.</p>
+             <p className="text-sm text-slate-400 mt-1">Fill in the details below. Most fields auto-fill based on driver selection.</p>
            </div>
            {editingId && (
              <span className="text-xs px-3 py-1 bg-amber-50 text-amber-700 border border-amber-100 rounded-full font-bold uppercase tracking-wider">Editing Mode</span>
            )}
         </div>
         
-        <form onSubmit={(e) => { closeAfterSaveRef.current = false; handleSubmit(e); }} className="flex flex-col gap-5">
-           {/* Row 1: Date & Driver */}
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <InputField label="Date" name="date" type="date" value={formData.date} onChange={handleInputChange} required />
-              
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">Driver Name</label>
-                <div className="relative">
-                  <select required name="driver" value={formData.driver} onChange={handleInputChange} className="w-full px-4 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 text-base focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none appearance-none cursor-pointer">
-                      <option value="">-- Select Driver --</option>
-                      {availableDrivers.map(d => {
-                          const onLeave = isDriverOnLeave(d.id);
-                          return (
-                            <option key={d.id} value={d.name}>
-                                {d.name} {onLeave ? '(On Leave)' : ''}
-                            </option>
-                          );
-                      })}
-                  </select>
-                  <ChevronDown className="absolute right-4 top-3.5 text-slate-400 pointer-events-none" size={16} />
-                </div>
-              </div>
-           </div>
-
-           {/* Missing Entries Info */}
-           <div className="bg-indigo-50/60 border border-indigo-100 rounded-2xl p-4 space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider">Missing Data Assistant</h4>
-              {hiddenQuickEntryPanels.length > 0 && (
-                <details className="relative">
-                  <summary className="list-none text-[11px] font-semibold text-indigo-700 bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 flex items-center gap-1 cursor-pointer">
-                    Hidden ({hiddenQuickEntryPanels.length})
-                    <ChevronDown size={14} />
-                  </summary>
-                  <div className="absolute right-0 top-full mt-1 z-20 w-56 bg-white border border-indigo-100 rounded-xl shadow-lg p-2">
-                    {hiddenQuickEntryPanels.map(panelId => (
-                      <button
-                        type="button"
-                        key={panelId}
-                        onClick={() => toggleQuickEntryPanelHidden(panelId)}
-                        className="w-full text-left px-3 py-2 rounded-lg text-xs text-slate-700 hover:bg-indigo-50 flex items-center justify-between"
-                      >
-                        <span>{panelId === 'missingDailyEntries' ? 'Missing Daily Entries' : 'Missing Weekly Wallets'}</span>
-                        <span className="text-indigo-600 font-semibold">Unhide</span>
-                      </button>
-                    ))}
-                  </div>
-                </details>
-              )}
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <InputField label="Date" name="date" type="date" value={formData.date} onChange={handleInputChange} required />
+          
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">Driver Name</label>
+            <div className="relative">
+              <select required name="driver" value={formData.driver} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none appearance-none cursor-pointer">
+                  <option value="">-- Select Driver --</option>
+                  {availableDrivers.map(d => {
+                      const onLeave = isDriverOnLeave(d.id);
+                      return (
+                        <option key={d.id} value={d.name}>
+                            {d.name} {onLeave ? '(On Leave)' : ''}
+                        </option>
+                      );
+                  })}
+              </select>
+              <ChevronDown className="absolute right-4 top-3 text-slate-400 pointer-events-none" size={16} />
             </div>
-
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-              {!quickEntryPanelPreferences.missingDailyEntries.hidden && (
-                <div className="flex-1 bg-white/70 border border-indigo-100 rounded-xl p-3">
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <button
-                      type="button"
-                      onClick={() => toggleQuickEntryPanelCollapse('missingDailyEntries')}
-                      className="flex items-center gap-1.5 text-left"
-                    >
-                      <h5 className="text-xs font-bold text-indigo-700 uppercase tracking-wider">Missing Daily Entries</h5>
-                      {quickEntryPanelPreferences.missingDailyEntries.collapsed ? <ChevronDown size={14} className="text-indigo-700" /> : <ChevronUp size={14} className="text-indigo-700" />}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => toggleQuickEntryPanelHidden('missingDailyEntries')}
-                      className="text-[11px] text-slate-500 hover:text-indigo-700 flex items-center gap-1"
-                    >
-                      <EyeOff size={12} />
-                      Hide
-                    </button>
-                  </div>
-                  {!quickEntryPanelPreferences.missingDailyEntries.collapsed && (
-                    <>
-                      <p className="text-[11px] text-slate-500 mb-2">
-                        {formData.date ? `Date: ${formatDate(formData.date)}` : 'Select a date to see missing daily entries.'}
-                      </p>
-                      {formData.date && missingDailyDriversForDate.length > 0 ? (
-                        <ul className="flex flex-wrap gap-2">
-                          {missingDailyDriversForDate.map(driver => (
-                            <li key={driver.id} className="px-3 py-1 bg-white border border-indigo-100 rounded-full text-xs font-semibold text-slate-700">
-                              {driver.name}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="text-xs text-slate-400">
-                          {formData.date ? 'No missing daily entries for this date.' : 'No date selected.'}
-                        </p>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-
-              {!quickEntryPanelPreferences.missingWeeklyWallets.hidden && (
-                <div className="flex-1 bg-white/70 border border-indigo-100 rounded-xl p-3">
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <button
-                      type="button"
-                      onClick={() => toggleQuickEntryPanelCollapse('missingWeeklyWallets')}
-                      className="flex items-center gap-1.5 text-left"
-                    >
-                      <h5 className="text-xs font-bold text-indigo-700 uppercase tracking-wider">Missing Weekly Wallets</h5>
-                      {quickEntryPanelPreferences.missingWeeklyWallets.collapsed ? <ChevronDown size={14} className="text-indigo-700" /> : <ChevronUp size={14} className="text-indigo-700" />}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => toggleQuickEntryPanelHidden('missingWeeklyWallets')}
-                      className="text-[11px] text-slate-500 hover:text-indigo-700 flex items-center gap-1"
-                    >
-                      <EyeOff size={12} />
-                      Hide
-                    </button>
-                  </div>
-                  {!quickEntryPanelPreferences.missingWeeklyWallets.collapsed && (
-                    <>
-                      <p className="text-[11px] text-slate-500 mb-2">
-                        {formData.date ? `Week: ${formatDate(getWeekRangeForDate(formData.date).start)} – ${formatDate(getWeekRangeForDate(formData.date).end)}` : 'Select a date to see missing weekly wallets.'}
-                      </p>
-                      {formData.date && missingWeeklyWalletsForWeek.length > 0 ? (
-                        <ul className="flex flex-col gap-2">
-                          {missingWeeklyWalletsForWeek.map(item => (
-                            <li key={`${item.driver}-${item.weekStart}`} className="flex flex-wrap items-center justify-between gap-2 bg-white border border-indigo-100 rounded-xl px-3 py-2 text-xs text-slate-700">
-                              <span className="font-semibold">{item.driver}</span>
-                              <span className="text-[11px] text-slate-500">
-                                {formatDate(item.weekStart)} – {formatDate(item.weekEnd)}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="text-xs text-slate-400">
-                          {formData.date ? 'No missing weekly wallets for this week.' : 'No date selected.'}
-                        </p>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
+          </div>
+          
+          <InputField label="Vehicle" name="vehicle" value={formData.vehicle} onChange={handleInputChange} className="bg-slate-100 text-slate-500" />
+          
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">Shift</label>
+            <div className="relative">
+              <select name="shift" value={formData.shift} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none appearance-none cursor-pointer">
+                <option value="Day">Day</option>
+                <option value="Night">Night</option>
+              </select>
+              <ChevronDown className="absolute right-4 top-3 text-slate-400 pointer-events-none" size={16} />
             </div>
-
           </div>
 
-           {/* Row 2: Shift & Vehicle */}
-           <div className="grid grid-cols-2 gap-5">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">Shift</label>
-                <div className="relative">
-                  <select name="shift" value={formData.shift} onChange={handleInputChange} className="w-full px-4 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 text-base focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none appearance-none cursor-pointer">
-                    <option value="Day">Day</option>
-                    <option value="Night">Night</option>
-                  </select>
-                  <ChevronDown className="absolute right-4 top-3.5 text-slate-400 pointer-events-none" size={16} />
-                </div>
-              </div>
-              <InputField label="Vehicle" name="vehicle" value={formData.vehicle} onChange={handleInputChange} className="bg-slate-100 text-slate-500" />
-           </div>
-           
-           <div className="h-px bg-slate-100 my-1"></div>
-
-           {/* Primary Financials */}
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <InputField label="Collection (₹)" name="collection" type="number" inputMode="decimal" value={formData.collection} onChange={handleInputChange} onKeyDown={(e: any) => { if (e.key === 'Enter') { closeAfterSaveRef.current = false; handleSubmit(e); } }} required className="font-bold text-emerald-700 text-xl py-4" placeholder="Enter Amount" />
-              
-              <div className="relative">
-                 <InputField label="Rent (₹)" name="rent" type="number" inputMode="decimal" value={formData.rent} onChange={handleInputChange} required className="py-4 text-lg" placeholder="Enter Rent" />
-                 <p className="absolute -bottom-5 left-1 text-[10px] text-slate-400 font-medium">Auto-filled if default set</p>
-              </div>
-           </div>
-           
-           <InputField label="QR Code" name="qrCode" value={formData.qrCode} onChange={handleInputChange} className="bg-slate-100 text-slate-500 mt-2" />
-
-           {/* Optional Toggle */}
-           <div className="flex justify-start pt-2">
-              <button 
-                type="button" 
-                onClick={() => setShowOptionalFields(!showOptionalFields)}
-                className="text-sm font-medium text-indigo-600 flex items-center gap-1.5 hover:text-indigo-800 transition-colors focus:outline-none bg-indigo-50 px-4 py-2.5 rounded-xl w-full md:w-auto justify-center"
-              >
-                {showOptionalFields ? <ChevronUp size={18}/> : <ChevronDown size={18} />}
-                <span>{showOptionalFields ? 'Hide' : 'Add'} Fuel, Due & Payout</span>
-              </button>
-           </div>
-
-           {/* Optional Fields */}
-           {showOptionalFields && (
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 bg-slate-50 p-5 rounded-2xl border border-slate-100 animate-fade-in">
-               <InputField label="Fuel Given (₹)" name="fuel" type="number" inputMode="decimal" value={formData.fuel === 0 ? '' : formData.fuel} onChange={handleInputChange} className="border-amber-200 focus:ring-amber-500 text-amber-700" placeholder="0" />
-               <div className="relative space-y-2">
-                  <InputField label="Due (+/-)" name="due" type="number" inputMode="decimal" value={formData.due === 0 ? '' : formData.due} onChange={handleInputChange} placeholder="0" />
-                  <div className="flex items-center gap-2 pl-1">
-                    <select
-                      name="dueLabel"
-                      value={formData.dueLabel || ''}
-                      onChange={handleInputChange}
-                      className="flex-1 px-2.5 py-1.5 bg-white/70 border-0 ring-1 ring-slate-200 rounded-lg text-[11px] text-slate-600 focus:ring-2 focus:ring-indigo-300 outline-none"
-                    >
-                      <option value="">Due (default)</option>
-                      {dueLabelOptions.map((label) => (
-                        <option key={label} value={label}>{label}</option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => setIsAddingDueLabel((prev) => !prev)}
-                      className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
-                      title="Add due label"
-                    >
-                      <Plus size={13} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={removeSelectedDueLabel}
-                      disabled={!formData.dueLabel}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                      title="Delete selected label"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                  {isAddingDueLabel && (
-                    <div className="flex items-center gap-2 pl-1">
-                      <input
-                        value={newDueLabelDraft}
-                        onChange={(event) => setNewDueLabelDraft(event.target.value)}
-                        placeholder="New label"
-                        className="flex-1 px-2.5 py-1.5 bg-white border-0 ring-1 ring-slate-200 rounded-lg text-[11px] text-slate-700 focus:ring-2 focus:ring-indigo-300 outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={addDueLabel}
-                        className="px-2 py-1 text-[10px] font-semibold text-indigo-600 bg-indigo-50 rounded-md hover:bg-indigo-100 transition-colors"
-                      >
-                        Add
-                      </button>
-                    </div>
-                  )}
-                  <p className="text-[10px] text-slate-400 mt-1 ml-1">+ Driver Owes / - You Owe</p>
-               </div>
-               <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">Due Label</label>
-                  <input
-                    name="dueLabel"
-                    list="daily-due-label-options"
-                    value={formData.dueLabel || ''}
-                    onChange={handleInputChange}
-                    placeholder="Due (default), Traffic, Credit..."
-                    className="w-full px-4 py-2.5 bg-white/70 border-0 ring-1 ring-slate-200 rounded-xl text-slate-700 text-sm placeholder-slate-400 focus:ring-2 focus:ring-indigo-400 transition-all outline-none"
-                  />
-                  <datalist id="daily-due-label-options">
-                    {dueLabelOptions.map((label) => (
-                      <option key={label} value={label} />
+          <div className="lg:col-span-4 bg-indigo-50/60 border border-indigo-100 rounded-2xl p-4">
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div className="flex-1">
+                <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-2">Missing Daily Entries</h4>
+                <p className="text-[11px] text-slate-500 mb-2">
+                  {formData.date ? `Date: ${formatDate(formData.date)}` : 'Select a date to see missing daily entries.'}
+                </p>
+                {formData.date && missingDailyDriversForDate.length > 0 ? (
+                  <ul className="flex flex-wrap gap-2">
+                    {missingDailyDriversForDate.map(driver => (
+                      <li key={driver.id} className="px-3 py-1 bg-white border border-indigo-100 rounded-full text-xs font-semibold text-slate-700">
+                        {driver.name}
+                      </li>
                     ))}
-                  </datalist>
-                  <p className="text-[10px] text-slate-400 ml-1">Leave blank to use default “Due”.</p>
-               </div>
-               <InputField label="Payout (Paid to Driver)" name="payout" type="number" inputMode="decimal" value={formData.payout === 0 ? '' : formData.payout} onChange={handleInputChange} className="border-emerald-200 focus:ring-emerald-500 text-emerald-700" placeholder="0" />
-               <div className="relative">
-                  <InputField label="Payout Date" name="payoutDate" type="date" value={formData.payoutDate} onChange={handleInputChange} required={!!(formData.payout && formData.payout !== 0)} />
-                  <p className="text-[10px] text-emerald-600 mt-1 ml-1 font-semibold">Required when payout entered</p>
-               </div>
-             </div>
-           )}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-slate-400">
+                    {formData.date ? 'No missing daily entries for this date.' : 'No date selected.'}
+                  </p>
+                )}
+              </div>
+              <div className="flex-1">
+                <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-2">Missing Weekly Wallets</h4>
+                <p className="text-[11px] text-slate-500 mb-2">
+                  {formData.date ? `Week: ${formatDate(getWeekRangeForDate(formData.date).start)} – ${formatDate(getWeekRangeForDate(formData.date).end)}` : 'Select a date to see missing weekly wallets.'}
+                </p>
+                {formData.date && missingWeeklyWalletsForWeek.length > 0 ? (
+                  <ul className="flex flex-col gap-2">
+                    {missingWeeklyWalletsForWeek.map(item => (
+                      <li key={`${item.driver}-${item.weekStart}`} className="flex flex-wrap items-center justify-between gap-2 bg-white border border-indigo-100 rounded-xl px-3 py-2 text-xs text-slate-700">
+                        <span className="font-semibold">{item.driver}</span>
+                        <span className="text-[11px] text-slate-500">
+                          {formatDate(item.weekStart)} – {formatDate(item.weekEnd)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-slate-400">
+                    {formData.date ? 'No missing weekly wallets for this week.' : 'No date selected.'}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+          
+          <div className="lg:col-span-4 h-px bg-slate-100 my-2"></div>
 
-           <div className="mt-2">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1 mb-1.5 block">Notes</label>
-              <textarea name="notes" placeholder="Optional notes for this entry..." value={formData.notes || ''} onChange={handleInputChange} className="w-full px-4 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-base text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none resize-none h-24" />
-           </div>
+          {/* Primary Financials */}
+          <InputField label="Collection (₹)" name="collection" type="number" value={formData.collection} onChange={handleInputChange} onKeyDown={handleSubmit} required className="font-bold text-emerald-700 text-lg" placeholder="Enter Amount" />
+          
+          <div className="relative">
+             <InputField label="Rent (₹)" name="rent" type="number" value={formData.rent} onChange={handleInputChange} required placeholder="Enter Rent" />
+             <p className="absolute -bottom-5 left-1 text-[10px] text-slate-400 font-medium">Auto-filled if default set</p>
+          </div>
+          
+          <div className="lg:col-span-2">
+             <InputField label="QR Code" name="qrCode" value={formData.qrCode} onChange={handleInputChange} className="bg-slate-100 text-slate-500" />
+          </div>
 
-           {/* Sticky Action Bar for Mobile */}
-           <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-slate-200 shadow-[0_-10px_20px_rgba(0,0,0,0.05)] md:relative md:bg-transparent md:border-t-0 md:shadow-none md:p-0 md:mt-4 z-40 pb-safe">
-             <div className="flex flex-col md:flex-row justify-end gap-3 max-w-[1920px] mx-auto">
-               <button type="button" onClick={resetForm} className="px-5 py-3.5 md:py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-xl transition-colors w-full md:w-auto text-center order-2 md:order-1">Cancel</button>
-               {!editingId && (
-                 <button type="button" onClick={(e) => { closeAfterSaveRef.current = true; handleSubmit(e); }} className="px-5 py-3.5 md:py-2.5 bg-indigo-100 text-indigo-700 font-bold rounded-xl hover:bg-indigo-200 transition-all active:scale-95 w-full md:w-auto text-center order-1 md:order-2">
-                   Save & Close
-                 </button>
-               )}
-               <button type="submit" className="px-8 py-3.5 md:py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all active:scale-95 w-full md:w-auto text-center order-1 md:order-3">
-                 {editingId ? 'Update Record' : 'Save Record'}
-               </button>
-             </div>
-           </div>
+          {/* Optional Toggle */}
+          <div className="lg:col-span-4 flex justify-start pt-4">
+             <button 
+               type="button" 
+               onClick={() => setShowOptionalFields(!showOptionalFields)}
+               className="text-sm font-medium text-indigo-600 flex items-center gap-1.5 hover:text-indigo-800 transition-colors focus:outline-none bg-indigo-50 px-3 py-1.5 rounded-lg"
+             >
+               {showOptionalFields ? <ChevronUp size={16}/> : <ChevronDown size={16} />}
+               <span>{showOptionalFields ? 'Hide' : 'Add'} Fuel, Due & Payout</span>
+             </button>
+          </div>
+
+          {/* Optional Fields (Fuel / Due / Payout) */}
+          {showOptionalFields && (
+            <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 bg-slate-50 p-6 rounded-2xl border border-slate-100 animate-fade-in">
+              <InputField label="Fuel Given (₹)" name="fuel" type="number" value={formData.fuel === 0 ? '' : formData.fuel} onChange={handleInputChange} className="border-amber-200 focus:ring-amber-500 text-amber-700" placeholder="0" />
+              <div className="lg:col-span-1">
+                 <InputField label="Due (+/-)" name="due" type="number" value={formData.due === 0 ? '' : formData.due} onChange={handleInputChange} placeholder="0" />
+                 <p className="text-[10px] text-slate-400 mt-1 ml-1">+ Driver Owes / - You Owe</p>
+              </div>
+              <div className="lg:col-span-1">
+                 <InputField label="Payout (Paid to Driver)" name="payout" type="number" value={formData.payout === 0 ? '' : formData.payout} onChange={handleInputChange} className="border-emerald-200 focus:ring-emerald-500 text-emerald-700" placeholder="0" />
+              </div>
+              <div className="lg:col-span-1">
+                 <InputField label="Payout Date" name="payoutDate" type="date" value={formData.payoutDate} onChange={handleInputChange} required={!!(formData.payout && formData.payout !== 0)} />
+                 <p className="text-[10px] text-emerald-600 mt-1 ml-1 font-semibold">Required when payout entered</p>
+              </div>
+              <div className="lg:col-span-1 flex items-center">
+                 <p className="text-xs text-slate-400 leading-relaxed">Use these fields for specific adjustments or payments made directly.</p>
+              </div>
+            </div>
+          )}
+
+          <div className="lg:col-span-4 mt-2">
+             <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1 mb-1.5 block">Notes</label>
+             <textarea name="notes" placeholder="Optional notes for this entry..." value={formData.notes || ''} onChange={handleInputChange} className="w-full px-4 py-3 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none resize-none h-24" />
+          </div>
+
+          <div className="lg:col-span-4 flex justify-end gap-3 mt-6 pt-6 border-t border-slate-100">
+            <button type="button" onClick={resetForm} className="px-5 py-2.5 text-slate-600 font-medium hover:bg-slate-100 rounded-xl transition-colors">Cancel</button>
+            <button type="submit" className="px-8 py-2.5 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all active:scale-95">
+              {editingId ? 'Update Record' : 'Save Record'}
+            </button>
+          </div>
         </form>
       </div>
 
@@ -1708,212 +1062,89 @@ const DailyEntryPage: React.FC = () => {
                       </div>
                   </div>
               </div>
-            </div>
-        )}
-
-        {/* OUTLIER WARNING MODAL */}
-      {outlierWarning && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden ring-4 ring-indigo-50">
-                  <div className="bg-indigo-50 p-6 border-b border-indigo-100 flex items-center gap-3">
-                      <div className="bg-white p-2 rounded-full text-indigo-500 shadow-sm"><AlertCircle size={28} /></div>
-                      <div>
-                          <h3 className="font-bold text-indigo-900 text-lg">Unusual Entry</h3>
-                      </div>
-                  </div>
-                  <div className="p-6">
-                      <p className="text-slate-600 font-medium leading-relaxed mb-4">
-                          {outlierWarning.message}
-                      </p>
-                      <div className="flex gap-3">
-                          <button 
-                            onClick={() => setOutlierWarning(null)}
-                            className="flex-1 py-3 border border-slate-200 text-slate-600 rounded-xl font-bold hover:bg-slate-50 transition-colors"
-                          >
-                              Edit Data
-                          </button>
-                          <button 
-                            onClick={handleOutlierConfirm}
-                            className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all active:scale-95"
-                          >
-                              Confirm
-                          </button>
-                      </div>
-                  </div>
-              </div>
           </div>
       )}
 
       {/* Global Filter Bar */}
-      <div className="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 text-slate-500">
-            <Filter size={18} />
-            <span className="text-sm font-semibold uppercase tracking-wide">Data View</span>
-          </div>
+      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row gap-5 items-center justify-between">
+        <div className="flex items-center gap-3 text-slate-500">
+          <Filter size={18} />
+          <span className="text-sm font-semibold uppercase tracking-wide">Data View</span>
           {isAnyFilterActive && (
              <button onClick={clearAllFilters} className="text-xs font-bold text-rose-500 bg-rose-50 px-2 py-1 rounded-lg hover:bg-rose-100 transition-colors">
-                Reset Filters
+                Reset All Filters
              </button>
           )}
         </div>
-        
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:items-center gap-4">
-             <div className="w-full lg:w-64">
-                <GlobalDriverFilter drivers={enteredDrivers} selected={filterDriver} onChange={setFilterDriver} />
-             </div>
+        <div className="flex items-center gap-4 flex-wrap">
+             <GlobalDriverFilter drivers={enteredDrivers} selected={filterDriver} onChange={setFilterDriver} />
              
-             <div className="flex flex-col gap-1.5 flex-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase ml-1">Date Range</span>
-                <div className="flex items-center gap-2">
-                  <input 
-                    type="date" 
-                    value={filterDateStart} 
-                    onChange={e => setFilterDateStart(e.target.value)} 
-                    className="flex-1 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl px-3 py-2 text-sm text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                  <span className="text-slate-300">-</span>
-                  <input 
-                    type="date" 
-                    value={filterDateEnd} 
-                    onChange={e => setFilterDateEnd(e.target.value)} 
-                    className="flex-1 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl px-3 py-2 text-sm text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
+             <div className="h-8 w-px bg-slate-200 hidden md:block"></div>
+
+             <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-400 uppercase mr-2">Global Date Range</span>
+                <input 
+                  type="date" 
+                  value={filterDateStart} 
+                  onChange={e => setFilterDateStart(e.target.value)} 
+                  className="bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <span className="text-slate-300">-</span>
+                <input 
+                  type="date" 
+                  value={filterDateEnd} 
+                  onChange={e => setFilterDateEnd(e.target.value)} 
+                  className="bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500"
+                />
              </div>
 
-             <div className="flex flex-col gap-1.5">
-                <span className="text-[10px] font-bold text-slate-400 uppercase ml-1">History</span>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setShowFullHistory(prev => !prev)}
-                    className="text-xs font-bold text-indigo-600 bg-indigo-50 px-4 py-2 rounded-xl hover:bg-indigo-100 transition-colors whitespace-nowrap h-[38px]"
-                  >
-                    {showFullHistory ? `Last ${RECENT_DAYS}d` : 'Full History'}
-                  </button>
-                  {!showFullHistory && recentFromDate && (
-                    <span className="text-[10px] text-slate-400 whitespace-nowrap">Since {formatDate(recentFromDate)}</span>
-                  )}
-                </div>
+             <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-400 uppercase">History</span>
+                <button
+                  onClick={() => setShowFullHistory(prev => !prev)}
+                  className="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-2 rounded-lg hover:bg-indigo-100 transition-colors"
+                >
+                  {showFullHistory ? `Show last ${RECENT_DAYS} days` : 'Load full history'}
+                </button>
+                {!showFullHistory && recentFromDate && (
+                  <span className="text-[11px] text-slate-400">Since {formatDate(recentFromDate)}</span>
+                )}
              </div>
         </div>
       </div>
 
-      {/* Mobile Summary Cards */}
-      <div className="grid grid-cols-2 md:hidden gap-3">
-        <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
-          <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Total Collection</p>
-          <p className="text-lg font-bold text-indigo-600">₹{totals.collection.toLocaleString()}</p>
-        </div>
-        <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
-          <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Total Rent</p>
-          <p className="text-lg font-bold text-slate-800">₹{totals.rent.toLocaleString()}</p>
-        </div>
-      </div>
-
-      {/* Table / Card View */}
+      {/* Table */}
       <div className="bg-white rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100 overflow-hidden">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 px-6 py-4 border-b border-slate-100 bg-slate-50/60">
-            <div className="flex flex-col lg:flex-row lg:items-start lg:gap-8">
-              <div>
+            <div>
                 <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Records Window</p>
                 <p className="text-sm font-bold text-slate-800">{currentPageLabel}</p>
                 {currentPageRange && <p className="text-xs text-slate-400">{currentPageRange}</p>}
-              </div>
-              {selectedDriverStats && (
-                <div className="mt-2 lg:mt-0 rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-2 space-y-1.5">
-                  <p className="text-[10px] uppercase font-bold tracking-wider text-indigo-500">{filterDriver} • Driver Overview</p>
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                    <p className="text-xs font-semibold text-slate-700">
-                      Net Payout: <span className={selectedDriverStats.netPayout >= 0 ? 'text-emerald-600' : 'text-rose-600'}>{formatCurrencyInt(selectedDriverStats.netPayout)}</span>
-                    </p>
-                    <p className="text-xs font-semibold text-slate-700">
-                      Net Balance: <span className={selectedDriverStats.finalTotal >= 0 ? 'text-emerald-600' : 'text-rose-600'}>{formatCurrencyInt(selectedDriverStats.finalTotal)}</span>
-                    </p>
-                  </div>
-                  <p className="text-[11px] text-slate-500">
-                    Calc: Collection ({formatCurrencyInt(selectedDriverStats.totalCollection)}) - Rent ({formatCurrencyInt(selectedDriverStats.totalRent)}) - Fuel ({formatCurrencyInt(selectedDriverStats.totalFuel)}) + Due ({formatCurrencyInt(selectedDriverStats.totalDue)}) + Wallet ({formatCurrencyInt(selectedDriverStats.totalWalletWeek)}) - Payout ({formatCurrencyInt(selectedDriverStats.totalPayout)}) - Expenses ({formatCurrencyInt(selectedDriverStats.totalExpenses)}).
-                  </p>
-                </div>
-              )}
+                {currentPageMeta?.hasSpillover && (
+                    <p className="text-[11px] text-amber-600 font-semibold">Includes next month dates to complete the week.</p>
+                )}
             </div>
-            <div className="flex items-center justify-between md:justify-end gap-3">
+            <div className="flex items-center gap-2">
                 <button
                   onClick={goToPreviousPage}
                   disabled={currentPageIndex === 0 || paginatedPages.length === 0}
-                  className="p-2 rounded-xl border border-slate-200 text-slate-600 disabled:opacity-30 hover:bg-white transition-all active:scale-90"
+                  className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold disabled:opacity-50 hover:border-indigo-200 hover:text-indigo-600 transition-colors"
                 >
-                    <ChevronLeft size={20} />
+                    Prev
                 </button>
-                <span className="text-xs text-slate-500 font-bold bg-white px-3 py-1.5 rounded-lg border border-slate-100">
-                    {paginatedPages.length === 0 ? 0 : currentPageIndex + 1} / {paginatedPages.length}
+                <span className="text-xs text-slate-500 font-semibold">
+                    Page {paginatedPages.length === 0 ? 0 : currentPageIndex + 1} of {paginatedPages.length}
                 </span>
                 <button
                   onClick={goToNextPage}
                   disabled={paginatedPages.length === 0 || currentPageIndex >= paginatedPages.length - 1}
-                  className="p-2 rounded-xl border border-slate-200 text-slate-600 disabled:opacity-30 hover:bg-white transition-all active:scale-90"
+                  className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold disabled:opacity-50 hover:border-indigo-200 hover:text-indigo-600 transition-colors"
                 >
-                    <ChevronRight size={20} />
+                    Next
                 </button>
             </div>
         </div>
-
-        {/* Mobile Card View */}
-        <div className="md:hidden divide-y divide-slate-100">
-          {displayedEntries.length === 0 ? (
-            <div className="p-12 text-center text-slate-400">
-              <div className="bg-slate-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Filter size={24} className="opacity-20" />
-              </div>
-              <p className="font-medium">No entries found</p>
-            </div>
-          ) : (
-            displayedEntries.map((entry: any) => (
-              <div key={entry.id} className="p-4 bg-white active:bg-slate-50 transition-colors">
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <p className="text-sm font-bold text-slate-900">{entry.driver}</p>
-                    <p className="text-[11px] text-slate-500 font-medium">{formatDate(entry.date)} • {entry.shift}</p>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button onClick={() => handleEdit(entry)} className="p-2 text-indigo-600 bg-indigo-50 rounded-lg active:scale-90 transition-transform">
-                      <Edit2 size={16} />
-                    </button>
-                    <button onClick={() => handleDelete(entry.id)} className="p-2 text-rose-600 bg-rose-50 rounded-lg active:scale-90 transition-transform">
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-3 gap-2 mb-3">
-                  <div className="bg-slate-50 p-2 rounded-lg">
-                    <p className="text-[9px] font-bold text-slate-400 uppercase mb-0.5">Collection</p>
-                    <p className="text-xs font-bold text-slate-800">₹{entry.collection}</p>
-                  </div>
-                  <div className="bg-slate-50 p-2 rounded-lg">
-                    <p className="text-[9px] font-bold text-slate-400 uppercase mb-0.5">Rent</p>
-                    <p className="text-xs font-bold text-slate-800">₹{entry.rent}</p>
-                  </div>
-                  <div className="bg-slate-50 p-2 rounded-lg">
-                    <p className="text-[9px] font-bold text-slate-400 uppercase mb-0.5">Fuel</p>
-                    <p className="text-xs font-bold text-amber-600">₹{entry.fuel || 0}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium">
-                  <div className="flex items-center gap-3">
-                    <span className="flex items-center gap-1"><Car size={10} /> {entry.vehicle}</span>
-                    {entry.qrCode && <span className="flex items-center gap-1"><QrCode size={10} /> {entry.qrCode}</span>}
-                  </div>
-                  {entry.notes && <span className="italic truncate max-w-[100px]">{entry.notes}</span>}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* Desktop Table View */}
-        <div className="hidden md:block overflow-x-auto min-h-[400px]">
+        <div className="overflow-x-auto min-h-[400px]">
           <table className="w-full text-sm text-left">
             <thead className="text-xs text-slate-500 uppercase bg-slate-50/50 border-b border-slate-100">
               <tr>

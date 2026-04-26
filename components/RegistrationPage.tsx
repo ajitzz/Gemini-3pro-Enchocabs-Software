@@ -1,21 +1,20 @@
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Driver, LeaveRecord, ManagerAccess } from '../types';
 import { storageService } from '../services/storageService';
-import { UserPlus, Edit2, Clock, FileText, X, AlertTriangle, ShieldCheck, Users, CheckSquare, Square, AlertOctagon, Utensils, Loader2, Trash2, Archive, RefreshCcw, FileDown, Mail, Eye, EyeOff } from 'lucide-react';
+import { UserPlus, Edit2, Clock, FileText, X, AlertTriangle, ShieldCheck, Users, CheckSquare, Square, AlertOctagon, Utensils, Loader2, Trash2, Archive, RefreshCcw, FileDown, Mail } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
-const InputField = ({ label, value, onChange, placeholder, type = "text", required = false, className = "", inputMode }: any) => (
+const InputField = ({ label, value, onChange, placeholder, type = "text", required = false, className = "" }: any) => (
   <div className="flex flex-col gap-1.5">
      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">{label}</label>
      <input 
        required={required}
        type={type}
-       inputMode={inputMode || (type === 'number' ? 'decimal' : undefined)}
        value={value}
        onChange={onChange}
        placeholder={placeholder}
-       className={`w-full px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 text-base placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none ${className}`}
+       className={`w-full px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none ${className}`}
      />
   </div>
 );
@@ -25,11 +24,9 @@ const RegistrationPage: React.FC = () => {
   const [saving, setSaving] = useState(false); // New saving state
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [leaves, setLeaves] = useState<LeaveRecord[]>([]);
-  const [dailyEntryLastByDriver, setDailyEntryLastByDriver] = useState<Record<string, { date: string; vehicle?: string; qrCode?: string; shift?: string }>>({});
   
   // UI State
   const [showTerminated, setShowTerminated] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
 
   // Form States
   const [driverForm, setDriverForm] = useState<Partial<Driver>>({
@@ -61,29 +58,12 @@ const RegistrationPage: React.FC = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [d, l, entries] = await Promise.all([
+      const [d, l] = await Promise.all([
         storageService.getDrivers(),
         storageService.getLeaves(),
-        storageService.getDailyEntries({ limit: 5000 }),
       ]);
       setDrivers(d);
       setLeaves(l);
-
-      const latestMap = entries.reduce((acc, entry) => {
-        const key = entry.driver.trim().toLowerCase();
-        if (!key) return acc;
-        const existing = acc[key];
-        if (!existing || entry.date > existing.date) {
-          acc[key] = {
-            date: entry.date,
-            vehicle: entry.vehicle,
-            qrCode: entry.qrCode,
-            shift: entry.shift
-          };
-        }
-        return acc;
-      }, {} as Record<string, { date: string; vehicle?: string; qrCode?: string; shift?: string }>);
-      setDailyEntryLastByDriver(latestMap);
     } catch (err) {
       console.error("Failed to load drivers", err);
       // Optional: Add global error toast here
@@ -139,7 +119,7 @@ const RegistrationPage: React.FC = () => {
     
     const name = driverForm.name?.trim();
     const mobile = driverForm.mobile?.trim();
-    const email = (driverForm.email || '').trim().toLowerCase();
+    const email = driverForm.email?.trim() || '';
     const currentId = driverForm.id || editingDriverId;
 
     if (!name) return;
@@ -168,35 +148,12 @@ const RegistrationPage: React.FC = () => {
         }
     }
 
-    // 3. EMAIL VALIDATION FOR PORTAL ACCESS CONTROL
-    if (!email) {
-      setWarningMessage('EMAIL REQUIRED\n\nPlease enter a Gmail address for this driver.\n\nOnly registered emails can access the portal.');
-      return;
-    }
-
-    const isValidGmail = /^[a-zA-Z0-9._%+-]+@gmail\.com$/i.test(email);
-    if (!isValidGmail) {
-      setWarningMessage('INVALID EMAIL\n\nPlease provide a valid Gmail address (example@gmail.com).\n\nOnly registered Gmail accounts are allowed.');
-      return;
-    }
-
-    const duplicateEmail = drivers.find(
-      d => (d.email || '').trim().toLowerCase() === email && d.id !== currentId
-    );
-
-    if (duplicateEmail) {
-      setWarningMessage(`DUPLICATE EMAIL DETECTED\n\nEmail "${email}" is already registered to "${duplicateEmail.name}".\n\nEach driver must have a unique Gmail.`);
-      return;
-    }
-
     const isTerminating = !!driverForm.terminationDate;
     let newDriver: Driver;
 
     if (driverForm.id) {
        // --- UPDATE EXISTING DRIVER ---
        const existingDriver = drivers.find(d => d.id === driverForm.id);
-       const lastEntry = dailyEntryLastByDriver[name.toLowerCase()];
-       const isRejoining = !!existingDriver?.terminationDate && !isTerminating;
        
        newDriver = {
           ...existingDriver!,
@@ -205,17 +162,9 @@ const RegistrationPage: React.FC = () => {
           mobile: mobile || '', // Ensure trimmed
           email: email,
           // If terminating, clear operational assignments to free them up
-          vehicle: isTerminating
-            ? ''
-            : (driverForm.vehicle || existingDriver!.vehicle || (isRejoining ? lastEntry?.vehicle || '' : '')),
-          qrCode: isTerminating
-            ? ''
-            : (driverForm.qrCode || existingDriver!.qrCode || (isRejoining ? lastEntry?.qrCode || '' : '')),
-          currentShift: isTerminating
-            ? existingDriver!.currentShift
-            : ((driverForm.currentShift as Driver['currentShift']) || existingDriver!.currentShift || ((isRejoining && lastEntry?.shift === 'Night') ? 'Night' : 'Day')),
-          status: isTerminating ? 'Terminated' : 'Active',
-          isHidden: isTerminating ? true : (driverForm.isHidden ?? existingDriver?.isHidden ?? false)
+          vehicle: isTerminating ? '' : existingDriver!.vehicle,
+          qrCode: isTerminating ? '' : existingDriver!.qrCode,
+          status: isTerminating ? 'Terminated' : 'Active'
        };
     } else {
        // --- CREATE NEW DRIVER ---
@@ -235,8 +184,7 @@ const RegistrationPage: React.FC = () => {
          currentShift: 'Day', // Default
          notes: driverForm.notes,
          isManager: driverForm.isManager || false,
-         foodOption: driverForm.foodOption || false,
-         isHidden: !!driverForm.terminationDate
+         foodOption: driverForm.foodOption || false
        };
     }
 
@@ -274,40 +222,10 @@ const RegistrationPage: React.FC = () => {
   };
 
   const openEditDriver = (d: Driver) => {
-    const lastEntry = dailyEntryLastByDriver[d.name.trim().toLowerCase()];
-    const shouldHydrateOps = !!d.terminationDate;
-    setDriverForm({
-      ...d,
-      email: (d.email || '').trim().toLowerCase(),
-      vehicle: shouldHydrateOps ? (d.vehicle || lastEntry?.vehicle || '') : d.vehicle,
-      qrCode: shouldHydrateOps ? (d.qrCode || lastEntry?.qrCode || '') : d.qrCode,
-      currentShift: shouldHydrateOps ? ((d.currentShift || (lastEntry?.shift === 'Night' ? 'Night' : 'Day')) as Driver['currentShift']) : d.currentShift
-    });
+    setDriverForm(d);
     setEditingDriverId(d.id);
     setIsDriverFormOpen(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const updateDriverVisibility = async (driver: Driver, isHidden: boolean) => {
-    try {
-      setSaving(true);
-      await storageService.saveDriver({
-        ...driver,
-        isHidden,
-        status: driver.terminationDate ? 'Terminated' : 'Active'
-      });
-      await loadData();
-    } catch (err: any) {
-      alert(`Failed to update archive visibility: ${err.message}`);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const getLastDailyEntryForFormDriver = () => {
-    const formName = driverForm.name?.trim().toLowerCase();
-    if (!formName) return undefined;
-    return dailyEntryLastByDriver[formName];
   };
 
   // --- Manager Team Management ---
@@ -351,30 +269,8 @@ const RegistrationPage: React.FC = () => {
       }
   };
 
-  const registrationStats = useMemo(() => {
-    const activeDrivers = drivers.filter(d => !d.terminationDate).length;
-    const terminatedDrivers = drivers.length - activeDrivers;
-    const managers = drivers.filter(d => d.isManager && !d.terminationDate).length;
-    const portalReady = drivers.filter(d => /^[a-zA-Z0-9._%+-]+@gmail\.com$/i.test(d.email || '')).length;
-    return { activeDrivers, terminatedDrivers, managers, portalReady };
-  }, [drivers]);
-
-  // Filter Drivers based on Toggle + Search
-  const displayedDrivers = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    return drivers.filter(d => {
-      const matchesStatus = showTerminated ? !!d.terminationDate : !d.terminationDate;
-      if (!matchesStatus) return false;
-      if (!query) return true;
-
-      const haystack = [d.name, d.mobile, d.email, d.vehicle, d.status]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-
-      return haystack.includes(query);
-    });
-  }, [drivers, searchQuery, showTerminated]);
+  // Filter Drivers based on Toggle
+  const displayedDrivers = drivers.filter(d => showTerminated ? !!d.terminationDate : !d.terminationDate);
 
   const downloadCSV = (headers: string[], rows: (string | number | null | undefined)[][], filename: string) => {
     const csvRows = [headers.join(',')];
@@ -427,7 +323,7 @@ const RegistrationPage: React.FC = () => {
       <div className="flex flex-col md:flex-row justify-between items-end gap-4">
         <div>
            <h2 className="text-3xl font-bold text-slate-900 tracking-tight">HR Registration</h2>
-           <p className="text-slate-500 mt-1">Onboard drivers, secure Gmail access, and manage deposits.</p>
+           <p className="text-slate-500 mt-1">Onboard drivers and manage deposits.</p>
         </div>
         <div className="flex gap-3">
             <button
@@ -458,25 +354,6 @@ const RegistrationPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="bg-white rounded-xl border border-slate-100 p-4">
-          <p className="text-xs uppercase tracking-wider text-slate-400 font-bold">Active Drivers</p>
-          <p className="text-2xl font-extrabold text-slate-800 mt-1">{registrationStats.activeDrivers}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-slate-100 p-4">
-          <p className="text-xs uppercase tracking-wider text-slate-400 font-bold">Portal Ready Gmail</p>
-          <p className="text-2xl font-extrabold text-indigo-700 mt-1">{registrationStats.portalReady}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-slate-100 p-4">
-          <p className="text-xs uppercase tracking-wider text-slate-400 font-bold">Managers</p>
-          <p className="text-2xl font-extrabold text-slate-800 mt-1">{registrationStats.managers}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-slate-100 p-4">
-          <p className="text-xs uppercase tracking-wider text-slate-400 font-bold">Terminated</p>
-          <p className="text-2xl font-extrabold text-rose-700 mt-1">{registrationStats.terminatedDrivers}</p>
-        </div>
-      </div>
-
       {/* Driver Form */}
       {isDriverFormOpen && (
         <div className="bg-white p-8 rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100 animate-fade-in">
@@ -495,8 +372,7 @@ const RegistrationPage: React.FC = () => {
           <form onSubmit={handleSaveDriver} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <InputField label="Full Name" value={driverForm.name || ''} onChange={(e: any) => setDriverForm({...driverForm, name: e.target.value})} placeholder="e.g. John Doe" required />
               <InputField label="Mobile Number" value={driverForm.mobile || ''} onChange={(e: any) => setDriverForm({...driverForm, mobile: e.target.value})} placeholder="e.g. +1 234 567 890" required={true} />
-              <InputField label="Gmail" value={driverForm.email || ''} onChange={(e: any) => setDriverForm({...driverForm, email: e.target.value})} placeholder="e.g. driver@gmail.com" type="email" required />
-              <p className="text-xs text-slate-500 -mt-1">Only registered Gmail accounts can sign in to the driver/admin portal.</p>
+              <InputField label="Gmail (Optional)" value={driverForm.email || ''} onChange={(e: any) => setDriverForm({...driverForm, email: e.target.value})} placeholder="e.g. driver@gmail.com" type="email" />
               
               <div className="lg:col-span-3 h-px bg-slate-100 my-2"></div>
               
@@ -508,7 +384,7 @@ const RegistrationPage: React.FC = () => {
                 <textarea 
                     value={driverForm.notes || ''} 
                     onChange={e => setDriverForm({...driverForm, notes: e.target.value})} 
-                    className="w-full px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-base text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none resize-none h-24" 
+                    className="w-full px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none resize-none h-24" 
                     placeholder="General notes about the employee..."
                 />
               </div>
@@ -590,47 +466,9 @@ const RegistrationPage: React.FC = () => {
                   type="date" 
                   value={driverForm.terminationDate || ''} 
                   onChange={e => setDriverForm({...driverForm, terminationDate: e.target.value || undefined})} 
-                  className="w-full px-4 py-2.5 bg-white border border-rose-200 rounded-xl text-rose-700 text-base focus:ring-2 focus:ring-rose-500 outline-none" 
+                  className="w-full px-4 py-2.5 bg-white border border-rose-200 rounded-xl text-rose-700 focus:ring-2 focus:ring-rose-500 outline-none" 
                 />
-                {getLastDailyEntryForFormDriver()?.date ? (
-                  <p className="text-[11px] text-rose-500 mt-2 font-medium">
-                    Last daily entry: <span className="font-bold">{getLastDailyEntryForFormDriver()!.date.split('-').reverse().join('-')}</span>. Use this as termination date to close access after that day.
-                  </p>
-                ) : (
-                  <p className="text-[10px] text-rose-400 mt-2 font-medium">No daily entry found for this driver yet.</p>
-                )}
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {getLastDailyEntryForFormDriver()?.date && (
-                    <button
-                      type="button"
-                      onClick={() => setDriverForm({ ...driverForm, terminationDate: getLastDailyEntryForFormDriver()!.date })}
-                      className="px-2.5 py-1 text-[11px] rounded-lg bg-white border border-rose-200 text-rose-600 font-semibold hover:bg-rose-100"
-                    >
-                      Use Last Entry Date
-                    </button>
-                  )}
-                  {driverForm.terminationDate && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const lastEntry = getLastDailyEntryForFormDriver();
-                        setDriverForm({
-                          ...driverForm,
-                          terminationDate: undefined,
-                          status: 'Active',
-                          isHidden: false,
-                          vehicle: driverForm.vehicle || lastEntry?.vehicle || '',
-                          qrCode: driverForm.qrCode || lastEntry?.qrCode || '',
-                          currentShift: (driverForm.currentShift || (lastEntry?.shift === 'Night' ? 'Night' : 'Day')) as Driver['currentShift']
-                        });
-                      }}
-                      className="px-2.5 py-1 text-[11px] rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 font-semibold hover:bg-emerald-100"
-                    >
-                      Cancel Termination (Rejoin)
-                    </button>
-                  )}
-                </div>
-                <p className="text-[10px] text-rose-400 mt-2 font-medium">Setting termination will close portal access and release assigned assets. Rejoin can restore last known assignments.</p>
+                <p className="text-[10px] text-rose-400 mt-2 font-medium">Setting this will automatically release assigned assets.</p>
               </div>
 
               <div className="lg:col-span-2 flex justify-end items-end pb-2">
@@ -731,14 +569,6 @@ const RegistrationPage: React.FC = () => {
                {displayedDrivers.length} Records
            </div>
         </div>
-        <div className="p-4 border-b border-slate-100 bg-slate-50/70">
-          <input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by name, mobile, Gmail, vehicle..."
-            className="w-full md:w-96 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-base focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className={`text-xs uppercase border-b ${showTerminated ? 'bg-rose-50/50 text-rose-800 border-rose-100' : 'bg-slate-50/50 text-slate-500 border-slate-100'}`}>
@@ -770,7 +600,6 @@ const RegistrationPage: React.FC = () => {
                            )}
                         </div>
                         {isTerminated && <span className="ml-0 px-2 py-0.5 bg-rose-100 text-rose-600 text-[10px] uppercase tracking-wide rounded-full font-bold">Terminated</span>}
-                        {isTerminated && d.isHidden && <span className="ml-2 px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] uppercase tracking-wide rounded-full font-bold">Hidden</span>}
                       </td>
                       <td className="px-6 py-4 text-slate-600">
                           <div className="flex flex-col gap-1">
@@ -806,16 +635,6 @@ const RegistrationPage: React.FC = () => {
                               >
                                 <Edit2 size={16} />
                               </button>
-                              {showTerminated && (
-                                <button
-                                  onClick={() => updateDriverVisibility(d, !d.isHidden)}
-                                  disabled={saving}
-                                  className={`p-2 rounded-lg transition-colors disabled:opacity-60 ${d.isHidden ? 'text-amber-600 hover:text-emerald-600 hover:bg-emerald-50' : 'text-emerald-600 hover:text-amber-600 hover:bg-amber-50'}`}
-                                  title={d.isHidden ? 'Unhide this driver history in records and portal' : 'Hide this driver history in records and portal'}
-                                >
-                                  {d.isHidden ? <Eye size={16} /> : <EyeOff size={16} />}
-                                </button>
-                              )}
                               <button 
                                 onClick={() => handleDeleteDriver(d.id)} 
                                 className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 p-2 rounded-lg transition-colors"

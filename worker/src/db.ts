@@ -7,7 +7,6 @@ export interface Env {
   ALLOWED_ORIGINS?: string;
   SUPER_ADMIN_EMAIL?: string;
   GOOGLE_CLIENT_ID?: string;
-  GOOGLE_CLIENT_IDS?: string;
 }
 
 const defaultOptions = { ssl: { rejectUnauthorized: false } };

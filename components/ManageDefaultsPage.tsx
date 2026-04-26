@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Driver, AssetMaster, DriverShiftRecord, LeaveRecord } from '../types';
 import { storageService } from '../services/storageService';
-import { Settings, Plus, Trash2, Car, QrCode, Save, History, Calendar, ChevronDown, Pencil } from 'lucide-react';
+import { Settings, Plus, Trash2, Car, QrCode, Save, History, Calendar, ChevronDown } from 'lucide-react';
 
 const ManageDefaultsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
@@ -14,14 +14,12 @@ const ManageDefaultsPage: React.FC = () => {
 
   // Asset Form State
   const [newAssetValue, setNewAssetValue] = useState('');
-  const [newVehicleSectionValue, setNewVehicleSectionValue] = useState('');
 
   // Editing State for Drivers
   const [editState, setEditState] = useState<Record<string, Partial<Driver>>>({});
   
   // Shift History Modal
   const [showShiftHistory, setShowShiftHistory] = useState<string | null>(null);
-  const [vehicleFuelEditState, setVehicleFuelEditState] = useState<Record<string, { driverId: string; amount: string }>>({});
 
   useEffect(() => {
     loadData();
@@ -36,95 +34,28 @@ const ManageDefaultsPage: React.FC = () => {
       storageService.getLeaves()
     ]);
     setDrivers(d);
-    const dedupedAssets = sanitizeAssets(a);
-    setAssets(dedupedAssets);
+    setAssets(a);
     setShiftRecords(s);
     setLeaves(l);
     setLoading(false);
-
-    // Self-heal any legacy duplicates at source.
-    if (JSON.stringify(dedupedAssets) !== JSON.stringify(a)) {
-      await storageService.saveAssets(dedupedAssets);
-    }
   };
 
   const getActiveDrivers = () => drivers.filter(d => !d.terminationDate);
-  const normalizeAssetValue = (value: string) => value.trim().toLowerCase();
-  const sanitizeAssets = (incoming: AssetMaster): AssetMaster => {
-    const uniqueVehicles = Array.from(new Set((incoming.vehicles || []).map(v => v.trim()).filter(Boolean).map(v => `${normalizeAssetValue(v)}::${v}`)))
-      .map(entry => entry.split('::')[1]);
-
-    const uniqueQrCodes = Array.from(new Set((incoming.qrCodes || []).map(q => q.trim()).filter(Boolean).map(q => `${normalizeAssetValue(q)}::${q}`)))
-      .map(entry => entry.split('::')[1]);
-
-    const seenVehicles = new Set<string>();
-    const seenDrivers = new Set<string>();
-    const uniqueFuelRecords = (incoming.vehicleFirstFuelRecords || []).filter(record => {
-      const vehicleKey = normalizeAssetValue(record.vehicle || '');
-      const driverKey = normalizeAssetValue(record.driverId || record.driverName || '');
-      if (!vehicleKey || !driverKey) return false;
-      if (seenVehicles.has(vehicleKey) || seenDrivers.has(driverKey)) return false;
-      if (!uniqueVehicles.some(v => normalizeAssetValue(v) === vehicleKey)) return false;
-      seenVehicles.add(vehicleKey);
-      seenDrivers.add(driverKey);
-      return true;
-    });
-
-    return {
-      vehicles: uniqueVehicles,
-      qrCodes: uniqueQrCodes,
-      vehicleFirstFuelRecords: uniqueFuelRecords
-    };
-  };
-  const getQrAssignedDriverName = (qrCode: string) => {
-    const assignedDriver = getActiveDrivers().find(d => d.qrCode === qrCode);
-    return assignedDriver?.name ?? '';
-  };
-
-  const getVehicleSlotDriver = (vehicle: string, shift: 'Day' | 'Night') =>
-    getActiveDrivers().find(d => d.vehicle === vehicle && d.currentShift === shift);
-
-  const getVehicleOccupants = (vehicle: string) =>
-    getActiveDrivers().filter(d => d.vehicle === vehicle);
-  const getVehicleFuelRecord = (vehicle: string) =>
-    (assets.vehicleFirstFuelRecords || []).find(record => record.vehicle === vehicle);
-  const getAvailableFuelDrivers = (vehicle: string) => {
-    const currentRecord = getVehicleFuelRecord(vehicle);
-    const usedDriverIds = new Set(
-      (assets.vehicleFirstFuelRecords || [])
-        .filter(record => record.vehicle !== vehicle)
-        .map(record => record.driverId)
-    );
-    return getActiveDrivers().filter(driver => !usedDriverIds.has(driver.id) || driver.id === currentRecord?.driverId);
-  };
-
-  const getAvailableDriversForSlot = (vehicle: string, shift: 'Day' | 'Night') => {
-    const activeDrivers = getActiveDrivers();
-    const existingForSlot = getVehicleSlotDriver(vehicle, shift);
-    return activeDrivers
-      .filter(d => !d.vehicle || d.id === existingForSlot?.id)
-      .sort((a, b) => a.name.localeCompare(b.name));
-  };
 
   // --- ASSET MANAGEMENT ---
   const handleAddAsset = async (type: 'vehicles' | 'qrcodes') => {
-    const normalizedNewValue = normalizeAssetValue(newAssetValue);
-    if (!normalizedNewValue) return;
-    const cleanedValue = newAssetValue.trim();
+    if (!newAssetValue.trim()) return;
     const newAssets = { ...assets };
     if (type === 'vehicles') {
-      const vehicleExists = newAssets.vehicles.some(vehicle => normalizeAssetValue(vehicle) === normalizedNewValue);
-      if (vehicleExists) return alert('Vehicle already exists');
-      newAssets.vehicles.push(cleanedValue);
+      if (newAssets.vehicles.includes(newAssetValue)) return alert('Vehicle already exists');
+      newAssets.vehicles.push(newAssetValue);
     } else {
-      const qrExists = newAssets.qrCodes.some(qrCode => normalizeAssetValue(qrCode) === normalizedNewValue);
-      if (qrExists) return alert('QR Code already exists');
-      newAssets.qrCodes.push(cleanedValue);
+      if (newAssets.qrCodes.includes(newAssetValue)) return alert('QR Code already exists');
+      newAssets.qrCodes.push(newAssetValue);
     }
-    const sanitized = sanitizeAssets(newAssets);
-    await storageService.saveAssets(sanitized);
+    await storageService.saveAssets(newAssets);
     setNewAssetValue('');
-    setAssets(sanitized); // Optimistic update
+    setAssets(newAssets); // Optimistic update
   };
 
   const handleDeleteAsset = async (type: 'vehicles' | 'qrcodes', val: string) => {
@@ -132,146 +63,11 @@ const ManageDefaultsPage: React.FC = () => {
     const newAssets = { ...assets };
     if (type === 'vehicles') {
       newAssets.vehicles = newAssets.vehicles.filter(v => v !== val);
-      newAssets.vehicleFirstFuelRecords = (newAssets.vehicleFirstFuelRecords || []).filter(record => record.vehicle !== val);
     } else {
       newAssets.qrCodes = newAssets.qrCodes.filter(q => q !== val);
     }
-    const sanitized = sanitizeAssets(newAssets);
-    await storageService.saveAssets(sanitized);
-    setAssets(sanitized);
-  };
-
-  const handleAddVehicleFromSection = async () => {
-    if (!newVehicleSectionValue.trim()) return;
-    const vehicleToAdd = newVehicleSectionValue.trim();
-    if (assets.vehicles.some(vehicle => normalizeAssetValue(vehicle) === normalizeAssetValue(vehicleToAdd))) {
-      alert('Vehicle already exists');
-      return;
-    }
-
-    const newAssets = {
-      ...assets,
-      vehicles: [...assets.vehicles, vehicleToAdd]
-    };
-    const sanitized = sanitizeAssets(newAssets);
-    await storageService.saveAssets(sanitized);
-    setAssets(sanitized);
-    setNewVehicleSectionValue('');
-  };
-
-  const startVehicleFuelEdit = (vehicle: string) => {
-    const currentRecord = getVehicleFuelRecord(vehicle);
-    setVehicleFuelEditState(prev => ({
-      ...prev,
-      [vehicle]: {
-        driverId: currentRecord?.driverId || '',
-        amount: currentRecord ? String(currentRecord.amount) : ''
-      }
-    }));
-  };
-
-  const cancelVehicleFuelEdit = (vehicle: string) => {
-    setVehicleFuelEditState(prev => {
-      const next = { ...prev };
-      delete next[vehicle];
-      return next;
-    });
-  };
-
-  const saveVehicleFuelRecord = async (vehicle: string) => {
-    const editData = vehicleFuelEditState[vehicle];
-    if (!editData) return;
-
-    if (!editData.driverId) {
-      alert('Please select a driver.');
-      return;
-    }
-
-    const amount = Number(editData.amount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      alert('Please enter a valid fuel amount.');
-      return;
-    }
-
-    const selectedDriver = getActiveDrivers().find(driver => driver.id === editData.driverId);
-    if (!selectedDriver) {
-      alert('Selected driver is invalid.');
-      return;
-    }
-
-    const duplicateDriverRecord = (assets.vehicleFirstFuelRecords || []).find(
-      record => record.driverId === editData.driverId && record.vehicle !== vehicle
-    );
-    if (duplicateDriverRecord) {
-      alert(`Driver already used in ${duplicateDriverRecord.vehicle}. Duplicate drivers are not allowed.`);
-      return;
-    }
-
-    const nextRecords = [
-      ...(assets.vehicleFirstFuelRecords || []).filter(record => record.vehicle !== vehicle),
-      {
-        vehicle,
-        driverId: selectedDriver.id,
-        driverName: selectedDriver.name,
-        amount
-      }
-    ];
-
-    const nextAssets: AssetMaster = {
-      ...assets,
-      vehicleFirstFuelRecords: nextRecords
-    };
-    const sanitized = sanitizeAssets(nextAssets);
-    await storageService.saveAssets(sanitized);
-    setAssets(sanitized);
-    cancelVehicleFuelEdit(vehicle);
-  };
-
-  const handleRemoveVehicleDriver = async (vehicle: string, shift: 'Day' | 'Night') => {
-    const assignedDriver = getVehicleSlotDriver(vehicle, shift);
-    if (!assignedDriver) return;
-
-    await storageService.saveDriver({
-      ...assignedDriver,
-      vehicle: ''
-    });
-    await loadData();
-  };
-
-  const handleAssignVehicleDriver = async (
-    vehicle: string,
-    shift: 'Day' | 'Night',
-    driverId: string
-  ) => {
-    if (!driverId) return;
-
-    const selectedDriver = getActiveDrivers().find(d => d.id === driverId);
-    if (!selectedDriver) return;
-
-    const existingForSlot = getVehicleSlotDriver(vehicle, shift);
-    if (existingForSlot && existingForSlot.id !== driverId) {
-      alert(`Please remove the current ${shift === 'Day' ? 'Morning' : 'Night'} driver first.`);
-      return;
-    }
-
-    const vehicleOccupants = getVehicleOccupants(vehicle);
-    const isAlreadyInVehicle = selectedDriver.vehicle === vehicle;
-    if (!isAlreadyInVehicle && vehicleOccupants.length >= 2) {
-      alert(`Vehicle ${vehicle} is full (Max 2 drivers).`);
-      return;
-    }
-
-    if (selectedDriver.vehicle && selectedDriver.vehicle !== vehicle) {
-      alert(`${selectedDriver.name} is already assigned to vehicle ${selectedDriver.vehicle}. Remove first, then reassign.`);
-      return;
-    }
-
-    await storageService.saveDriver({
-      ...selectedDriver,
-      vehicle,
-      currentShift: shift
-    });
-    await loadData();
+    await storageService.saveAssets(newAssets);
+    setAssets(newAssets);
   };
 
   // --- DRIVER ASSIGNMENTS ---
@@ -304,11 +100,7 @@ const ManageDefaultsPage: React.FC = () => {
 
     // Validate QR Uniqueness
     if (changes.qrCode && changes.qrCode !== originalDriver.qrCode) {
-        const qrTaken = getActiveDrivers().some(
-          d =>
-            normalizeAssetValue(d.qrCode || '') === normalizeAssetValue(changes.qrCode || '') &&
-            d.id !== driverId
-        );
+        const qrTaken = getActiveDrivers().some(d => d.qrCode === changes.qrCode && d.id !== driverId);
         if (qrTaken) {
             alert(`QR Code ${changes.qrCode} is already assigned to another driver.`);
             return;
@@ -412,190 +204,7 @@ const ManageDefaultsPage: React.FC = () => {
 
        {/* --- ASSETS TAB --- */}
        {activeTab === 'assets' && (
-          <div className="space-y-8 animate-fade-in">
-             {/* Vehicle Driver Assignment Section */}
-             <div className="bg-white p-8 rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100">
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-                   <div>
-                      <h3 className="font-bold text-slate-800 flex items-center gap-3 text-lg">
-                        <Car size={22} className="text-indigo-600" />
-                        Vehicle Driver Assignment (Morning / Night)
-                      </h3>
-                      <p className="text-sm text-slate-500 mt-1">Each vehicle can have max 2 drivers: Morning (Day) and Night.</p>
-                   </div>
-                   <div className="flex gap-3 w-full md:w-auto">
-                      <input
-                        placeholder="Add Vehicle No."
-                        value={newVehicleSectionValue}
-                        onChange={e => setNewVehicleSectionValue(e.target.value)}
-                        className="flex-1 md:w-56 px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-base focus:ring-2 focus:ring-indigo-500 outline-none"
-                      />
-                      <button onClick={handleAddVehicleFromSection} className="bg-slate-900 text-white p-2.5 rounded-xl hover:bg-black transition-colors shadow-lg shadow-slate-900/20">
-                        <Plus size={20} />
-                      </button>
-                   </div>
-                </div>
-
-                <div className="space-y-4">
-                   {assets.vehicles.map(vehicle => {
-                      const morningDriver = getVehicleSlotDriver(vehicle, 'Day');
-                      const nightDriver = getVehicleSlotDriver(vehicle, 'Night');
-                      const availableMorningDrivers = getAvailableDriversForSlot(vehicle, 'Day');
-                      const availableNightDrivers = getAvailableDriversForSlot(vehicle, 'Night');
-
-                     return (
-                        <div key={vehicle} className="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
-                          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-                            <div>
-                              <h4 className="font-bold text-slate-800">{vehicle}</h4>
-                              {vehicleFuelEditState[vehicle] ? (
-                                <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                                  <select
-                                    value={vehicleFuelEditState[vehicle].driverId}
-                                    onChange={(e) => setVehicleFuelEditState(prev => ({
-                                      ...prev,
-                                      [vehicle]: { ...prev[vehicle], driverId: e.target.value }
-                                    }))}
-                                    className="px-2 py-1 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-slate-300"
-                                  >
-                                    <option value="">Driver</option>
-                                    {getAvailableFuelDrivers(vehicle).map(driver => (
-                                      <option key={driver.id} value={driver.id}>{driver.name}</option>
-                                    ))}
-                                  </select>
-                                  <input
-                                    type="number"
-                                    value={vehicleFuelEditState[vehicle].amount}
-                                    onChange={(e) => setVehicleFuelEditState(prev => ({
-                                      ...prev,
-                                      [vehicle]: { ...prev[vehicle], amount: e.target.value }
-                                    }))}
-                                    placeholder="Amount"
-                                    className="w-24 px-2 py-1 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-slate-300"
-                                  />
-                                  <button
-                                    onClick={() => saveVehicleFuelRecord(vehicle)}
-                                    className="text-[11px] px-2 py-1 border border-slate-300 text-slate-700 rounded-md hover:bg-white"
-                                  >
-                                    Save
-                                  </button>
-                                  <button
-                                    onClick={() => cancelVehicleFuelEdit(vehicle)}
-                                    className="text-[11px] px-2 py-1 border border-slate-200 text-slate-500 rounded-md hover:bg-white"
-                                  >
-                                    Cancel
-                                  </button>
-                                </div>
-                              ) : (
-                                <div className="mt-1 flex items-center gap-2">
-                                  <span className="text-[11px] text-slate-500">
-                                    {getVehicleFuelRecord(vehicle)
-                                      ? `${getVehicleFuelRecord(vehicle)?.driverName} - ₹${getVehicleFuelRecord(vehicle)?.amount}`
-                                      : 'First fuel: not set'}
-                                  </span>
-                                  <button
-                                    onClick={() => startVehicleFuelEdit(vehicle)}
-                                    className="p-1 text-slate-400 hover:text-slate-600"
-                                    title="Edit first fuel details"
-                                  >
-                                    <Pencil size={12} />
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-semibold text-slate-500 bg-white border border-slate-200 rounded-md px-2 py-1">
-                                {getVehicleOccupants(vehicle).length}/2 Assigned
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="bg-white border border-amber-100 rounded-xl p-4">
-                              <div className="text-xs font-bold uppercase tracking-wide text-amber-700 mb-2">Morning</div>
-                              {morningDriver ? (
-                                <div className="space-y-3">
-                                  <div className="flex items-center justify-between gap-3">
-                                  <div>
-                                    <p className="font-semibold text-slate-800">{morningDriver.name}</p>
-                                    <p className="text-[11px] text-slate-400">QR: {morningDriver.qrCode || 'Not assigned'}</p>
-                                    <p className="text-xs text-slate-500">{morningDriver.mobile}</p>
-                                  </div>
-                                  <button
-                                    onClick={() => handleRemoveVehicleDriver(vehicle, 'Day')}
-                                    className="text-xs font-semibold text-rose-600 border border-rose-200 bg-rose-50 px-3 py-1.5 rounded-lg hover:bg-rose-100 transition-colors"
-                                  >
-                                    Remove
-                                  </button>
-                                </div>
-                                </div>
-                              ) : (
-                                <div className="space-y-3">
-                                  <div className="relative">
-                                    <select
-                                      value=""
-                                      onChange={e => handleAssignVehicleDriver(vehicle, 'Day', e.target.value)}
-                                      className="w-full pl-3 pr-8 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
-                                    >
-                                      <option value="">Assign Morning Driver</option>
-                                      {availableMorningDrivers.map(driver => (
-                                        <option key={driver.id} value={driver.id}>
-                                          {driver.name}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    <ChevronDown size={14} className="absolute right-3 top-3 text-slate-400 pointer-events-none" />
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="bg-white border border-slate-200 rounded-xl p-4">
-                              <div className="text-xs font-bold uppercase tracking-wide text-slate-700 mb-2">Night</div>
-                              {nightDriver ? (
-                                <div className="space-y-3">
-                                  <div className="flex items-center justify-between gap-3">
-                                  <div>
-                                    <p className="font-semibold text-slate-800">{nightDriver.name}</p>
-                                    <p className="text-[11px] text-slate-400">QR: {nightDriver.qrCode || 'Not assigned'}</p>
-                                    <p className="text-xs text-slate-500">{nightDriver.mobile}</p>
-                                  </div>
-                                  <button
-                                    onClick={() => handleRemoveVehicleDriver(vehicle, 'Night')}
-                                    className="text-xs font-semibold text-rose-600 border border-rose-200 bg-rose-50 px-3 py-1.5 rounded-lg hover:bg-rose-100 transition-colors"
-                                  >
-                                    Remove
-                                  </button>
-                                </div>
-                                </div>
-                              ) : (
-                                <div className="space-y-3">
-                                  <div className="relative">
-                                    <select
-                                      value=""
-                                      onChange={e => handleAssignVehicleDriver(vehicle, 'Night', e.target.value)}
-                                      className="w-full pl-3 pr-8 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
-                                    >
-                                      <option value="">Assign Night Driver</option>
-                                      {availableNightDrivers.map(driver => (
-                                        <option key={driver.id} value={driver.id}>
-                                          {driver.name}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    <ChevronDown size={14} className="absolute right-3 top-3 text-slate-400 pointer-events-none" />
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                   })}
-                </div>
-             </div>
-
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-fade-in">
              {/* Vehicles */}
              <div className="bg-white p-8 rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100 flex flex-col h-[500px]">
                 <div className="flex items-center justify-between mb-6">
@@ -607,7 +216,7 @@ const ManageDefaultsPage: React.FC = () => {
                       placeholder="Add Vehicle No." 
                       value={newAssetValue} 
                       onChange={e => setNewAssetValue(e.target.value)} 
-                      className="flex-1 px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-base focus:ring-2 focus:ring-indigo-500 outline-none"
+                      className="flex-1 px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                    />
                    <button onClick={() => handleAddAsset('vehicles')} className="bg-slate-900 text-white p-2.5 rounded-xl hover:bg-black transition-colors shadow-lg shadow-slate-900/20"><Plus size={20}/></button>
                 </div>
@@ -632,31 +241,19 @@ const ManageDefaultsPage: React.FC = () => {
                       placeholder="Add QR ID" 
                       value={newAssetValue} 
                       onChange={e => setNewAssetValue(e.target.value)} 
-                      className="flex-1 px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-base focus:ring-2 focus:ring-indigo-500 outline-none"
+                      className="flex-1 px-4 py-2.5 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                    />
                    <button onClick={() => handleAddAsset('qrcodes')} className="bg-slate-900 text-white p-2.5 rounded-xl hover:bg-black transition-colors shadow-lg shadow-slate-900/20"><Plus size={20}/></button>
                 </div>
                 <div className="overflow-y-auto space-y-2 pr-2 flex-1 scrollbar-thin">
-                   {assets.qrCodes.map(q => {
-                      const assignedDriverName = getQrAssignedDriverName(q);
-                      return (
-                         <div key={q} className="flex justify-between items-center p-3.5 bg-slate-50 rounded-xl border border-slate-100 group hover:border-slate-200 transition-colors">
-                            <span className="font-semibold text-slate-700">{q}</span>
-                            <div className="flex items-center gap-3">
-                               {assignedDriverName && (
-                                  <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-1 rounded-md">
-                                     Driver: {assignedDriverName}
-                                  </span>
-                               )}
-                               <button onClick={() => handleDeleteAsset('qrcodes', q)} className="text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
-                            </div>
-                         </div>
-                      );
-                   })}
+                   {assets.qrCodes.map(q => (
+                      <div key={q} className="flex justify-between items-center p-3.5 bg-slate-50 rounded-xl border border-slate-100 group hover:border-slate-200 transition-colors">
+                         <span className="font-semibold text-slate-700">{q}</span>
+                         <button onClick={() => handleDeleteAsset('qrcodes', q)} className="text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
+                      </div>
+                   ))}
                 </div>
              </div>
-             </div>
-
           </div>
        )}
 
@@ -696,7 +293,7 @@ const ManageDefaultsPage: React.FC = () => {
                                      <select 
                                         value={displayVehicle} 
                                         onChange={e => handleEditChange(d.id, 'vehicle', e.target.value)}
-                                        className="w-full pl-3 pr-8 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-base font-medium focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
+                                        className="w-full pl-3 pr-8 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
                                      >
                                         <option value="">-- None --</option>
                                         {assets.vehicles.map(v => (
@@ -711,7 +308,7 @@ const ManageDefaultsPage: React.FC = () => {
                                      <select 
                                         value={displayQr} 
                                         onChange={e => handleEditChange(d.id, 'qrCode', e.target.value)}
-                                        className="w-full pl-3 pr-8 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-base font-medium focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
+                                        className="w-full pl-3 pr-8 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
                                      >
                                         <option value="">-- None --</option>
                                         {assets.qrCodes.map(q => (
@@ -726,7 +323,7 @@ const ManageDefaultsPage: React.FC = () => {
                                      <select 
                                         value={displayShift} 
                                         onChange={e => handleEditChange(d.id, 'currentShift', e.target.value)}
-                                        className="w-full pl-3 pr-8 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-base font-medium focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
+                                        className="w-full pl-3 pr-8 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
                                      >
                                         <option value="Day">Day</option>
                                         <option value="Night">Night</option>
@@ -740,11 +337,10 @@ const ManageDefaultsPage: React.FC = () => {
                                <td className="px-6 py-4">
                                   <input 
                                      type="number" 
-                                     inputMode="decimal"
                                      value={displayRent || ''} 
                                      placeholder="0"
                                      onChange={e => handleEditChange(d.id, 'defaultRent', parseFloat(e.target.value))}
-                                     className="w-24 px-3 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-base font-medium text-right focus:ring-2 focus:ring-indigo-500 outline-none"
+                                     className="w-24 px-3 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-lg text-sm font-medium text-right focus:ring-2 focus:ring-indigo-500 outline-none"
                                   />
                                </td>
                                <td className="px-6 py-4 text-right">

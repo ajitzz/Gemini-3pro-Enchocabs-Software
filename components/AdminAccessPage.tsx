@@ -76,7 +76,7 @@ const AdminAccessPage: React.FC = () => {
                                 placeholder="colleague@gmail.com"
                                 value={newEmail}
                                 onChange={e => setNewEmail(e.target.value)}
-                                className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-base focus:ring-2 focus:ring-indigo-500 outline-none"
+                                className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
                             />
                             <Mail size={18} className="absolute left-3.5 top-3.5 text-slate-400"/>
                         </div>

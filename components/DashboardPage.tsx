@@ -1,56 +1,16 @@
 
-import React, { useEffect, useState, lazy, Suspense } from 'react';
+import React, { useEffect, useState } from 'react';
 import { storageService } from '../services/storageService';
 import { DriverSummary, GlobalSummary } from '../types';
-import { Users, Banknote, Fuel, TrendingDown, AlertCircle, ArrowUpRight, ArrowDownRight, Wallet, ExternalLink, X, ArrowRight } from 'lucide-react';
+import { Users, Banknote, Fuel, TrendingDown, TrendingUp, AlertCircle, ArrowUpRight, ArrowDownRight, Wallet } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Cell } from 'recharts';
 import NetCalculationPopup from './NetCalculationPopup';
-import { useNavigate } from 'react-router-dom';
-
-const NetPayoutChartCard = lazy(() => import('./dashboard/NetPayoutChartCard'));
-const HIDDEN_DRIVERS_STORAGE_KEY = 'driver_app_hidden_drivers_v1';
-const DEFAULT_VISIBLE_DRIVERS = 8;
-
-const buildGlobalSummary = (driverSummaries: DriverSummary[]): GlobalSummary => ({
-  totalCollection: driverSummaries.reduce((sum, d) => sum + d.totalCollection, 0),
-  totalRent: driverSummaries.reduce((sum, d) => sum + d.totalRent, 0),
-  totalFuel: driverSummaries.reduce((sum, d) => sum + d.totalFuel, 0),
-  totalDue: driverSummaries.reduce((sum, d) => sum + d.totalDue, 0),
-  totalPayout: driverSummaries.reduce((sum, d) => sum + d.totalPayout, 0),
-  totalExpenses: driverSummaries.reduce((sum, d) => sum + d.totalExpenses, 0),
-  totalWalletWeek: driverSummaries.reduce((sum, d) => sum + d.totalWalletWeek, 0),
-  pendingFromDrivers: driverSummaries
-    .filter((d) => d.finalTotal < 0)
-    .reduce((sum, d) => sum + Math.abs(d.finalTotal), 0),
-  payableToDrivers: driverSummaries
-    .filter((d) => d.finalTotal > 0)
-    .reduce((sum, d) => sum + d.finalTotal, 0),
-});
-
-const loadHiddenDrivers = (): string[] => {
-  try {
-    const savedHiddenDrivers = localStorage.getItem(HIDDEN_DRIVERS_STORAGE_KEY);
-    if (!savedHiddenDrivers) return [];
-
-    const parsedHiddenDrivers = JSON.parse(savedHiddenDrivers);
-    if (!Array.isArray(parsedHiddenDrivers)) return [];
-
-    return parsedHiddenDrivers
-      .map((name) => (typeof name === 'string' ? name.trim() : ''))
-      .filter(Boolean);
-  } catch (error) {
-    console.warn('Failed to load hidden drivers', error);
-    return [];
-  }
-};
 
 const DashboardPage: React.FC = () => {
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [summaries, setSummaries] = useState<DriverSummary[]>([]);
   const [global, setGlobal] = useState<GlobalSummary | null>(null);
   const [filterDriver, setFilterDriver] = useState('');
-  const [showAllDrivers, setShowAllDrivers] = useState(false);
-  const [hiddenDrivers, setHiddenDrivers] = useState<string[]>(() => loadHiddenDrivers());
   const [calcPopup, setCalcPopup] = useState<{
     metric: 'netPayout' | 'netBalance';
     netValue: number;
@@ -61,7 +21,6 @@ const DashboardPage: React.FC = () => {
       due: number;
       wallet: number;
       payout: number;
-      expenses: number;
     };
     title?: string;
     sourceNote?: string;
@@ -69,25 +28,14 @@ const DashboardPage: React.FC = () => {
 
   const loadData = async () => {
     setLoading(true);
-
     try {
-      const { summaries: driverSummaries } = await storageService.getDriverBalanceSummaries();
-      const computedGlobal = buildGlobalSummary(driverSummaries || []);
-
-      setSummaries(driverSummaries || []);
-      setGlobal(computedGlobal);
+      const summary = await storageService.getSummary();
+      setSummaries(summary.driverSummaries || []);
+      setGlobal(summary.global || null);
     } finally {
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(HIDDEN_DRIVERS_STORAGE_KEY, JSON.stringify(hiddenDrivers));
-    } catch (error) {
-      console.warn('Failed to save hidden drivers', error);
-    }
-  }, [hiddenDrivers]);
 
   useEffect(() => {
     loadData();
@@ -104,7 +52,6 @@ const DashboardPage: React.FC = () => {
         due: driver.totalDue,
         wallet: driver.totalWalletWeek,
         payout: driver.totalPayout,
-        expenses: driver.totalExpenses,
       },
       title: `${metric === 'netPayout' ? 'Net Payout' : 'Net Balance'} • ${driver.driver}`,
       sourceNote:
@@ -114,53 +61,39 @@ const DashboardPage: React.FC = () => {
     });
   };
 
-  const filteredSummaries = summaries
-    .filter((s) => !hiddenDrivers.includes(s.driver))
-    .filter(s =>
-      filterDriver === '' || s.driver.toLowerCase().includes(filterDriver.toLowerCase())
-    );
+  const filteredSummaries = summaries.filter(s =>
+    filterDriver === '' || s.driver.toLowerCase().includes(filterDriver.toLowerCase())
+  );
 
-  const sortedSummaries = [...filteredSummaries].sort((a, b) => a.finalTotal - b.finalTotal);
-
-  const visibleSummaries = showAllDrivers
-    ? sortedSummaries
-    : sortedSummaries.slice(0, DEFAULT_VISIBLE_DRIVERS);
-
-  const hiddenDriverList = [...hiddenDrivers].sort((a, b) => a.localeCompare(b));
-
-  const balanceTotals = visibleSummaries.reduce(
+  const balanceTotals = filteredSummaries.reduce(
     (acc, driver) => ({
       collection: acc.collection + driver.totalCollection,
       rent: acc.rent + driver.totalRent,
       fuel: acc.fuel + driver.totalFuel,
-      due: acc.due + driver.totalDue,
       wallet: acc.wallet + driver.totalWalletWeek,
-      payout: acc.payout + driver.totalPayout,
-      expenses: acc.expenses + driver.totalExpenses,
       netPayout: acc.netPayout + driver.netPayout,
       finalTotal: acc.finalTotal + driver.finalTotal,
     }),
-    { collection: 0, rent: 0, fuel: 0, due: 0, wallet: 0, payout: 0, expenses: 0, netPayout: 0, finalTotal: 0 }
+    { collection: 0, rent: 0, fuel: 0, wallet: 0, netPayout: 0, finalTotal: 0 }
   );
 
   const StatCard = ({ title, value, colorClass, icon: Icon, subtext, trend }: any) => (
-    <div className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-slate-100 transition-all hover:shadow-md group relative overflow-hidden">
-      <div className={`absolute top-0 right-0 w-24 h-24 -mr-8 -mt-8 rounded-full opacity-[0.03] transition-transform group-hover:scale-110 duration-500 ${colorClass.bg}`}></div>
-      <div className="flex justify-between items-start mb-4 relative z-10">
-        <div className={`p-3 rounded-xl ${colorClass.bg} ${colorClass.text} transition-transform group-hover:scale-110 duration-300`}>
-          <Icon size={20} md={24} />
+    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 transition-all hover:shadow-md group">
+      <div className="flex justify-between items-start mb-4">
+        <div className={`p-3.5 rounded-2xl ${colorClass.bg} ${colorClass.text} transition-transform group-hover:scale-110 duration-300`}>
+          <Icon size={24} />
         </div>
         {trend && (
-           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border ${trend === 'up' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
-             {trend === 'up' ? <ArrowUpRight size={10} strokeWidth={3}/> : <ArrowDownRight size={10} strokeWidth={3}/>}
-             <span className="uppercase tracking-wider">{trend === 'up' ? 'Payable' : 'Pending'}</span>
+           <span className={`text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 border ${trend === 'up' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
+             {trend === 'up' ? <ArrowUpRight size={12} strokeWidth={3}/> : <ArrowDownRight size={12} strokeWidth={3}/>}
+             <span className="uppercase tracking-wider text-[10px]">{trend === 'up' ? 'Payable' : 'Pending'}</span>
            </span>
         )}
       </div>
-      <div className="relative z-10">
-        <p className="text-[10px] font-bold text-slate-400 mb-1 tracking-wider uppercase">{title}</p>
-        <h3 className="text-2xl md:text-3xl font-bold text-slate-800 tracking-tight">{value}</h3>
-        {subtext && <p className="text-[10px] text-slate-400 mt-2 font-medium flex items-center gap-1.5"><span className={`w-1.5 h-1.5 rounded-full ${colorClass.text} opacity-40`}></span> {subtext}</p>}
+      <div>
+        <p className="text-sm font-semibold text-slate-400 mb-1 tracking-wide uppercase text-[11px]">{title}</p>
+        <h3 className="text-3xl font-bold text-slate-800 tracking-tight">{value}</h3>
+        {subtext && <p className="text-xs text-slate-400 mt-2 font-medium flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span> {subtext}</p>}
       </div>
     </div>
   );
@@ -179,7 +112,7 @@ const DashboardPage: React.FC = () => {
   );
 
   return (
-    <div className="space-y-8 w-full max-w-none animate-fade-in">
+    <div className="space-y-8 max-w-7xl mx-auto animate-fade-in">
       {calcPopup && (
         <NetCalculationPopup
           metric={calcPopup.metric}
@@ -202,7 +135,7 @@ const DashboardPage: React.FC = () => {
       </div>
 
       {/* Global Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard 
           title="Total Collection" 
           value={formatCurrency(global?.totalCollection || 0)} 
@@ -216,13 +149,6 @@ const DashboardPage: React.FC = () => {
           colorClass={{ bg: 'bg-amber-50', text: 'text-amber-600' }}
           icon={Fuel} 
           subtext="Expenses Out"
-        />
-        <StatCard
-          title="Total Driver Expenses"
-          value={formatCurrency(global?.totalExpenses || 0)}
-          colorClass={{ bg: 'bg-rose-50', text: 'text-rose-600' }}
-          icon={AlertCircle}
-          subtext="Split Deductions"
         />
         <StatCard 
           title="Pending from Drivers" 
@@ -240,167 +166,28 @@ const DashboardPage: React.FC = () => {
         />
       </div>
 
-      {/* Driver Table */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-[640px]">
+      {/* Main Content Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        {/* Driver Table */}
+        <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-[600px]">
           <div className="p-6 border-b border-slate-100 flex justify-between items-center flex-wrap gap-4 bg-white/50 backdrop-blur-sm sticky top-0 z-10">
             <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
               <Users size={20} className="text-indigo-500"/> Driver Balances
             </h3>
-            <div className="flex items-center gap-2 flex-wrap justify-end">
-              <button
-                type="button"
-                onClick={() => navigate('/app/driver-balances')}
-                className="px-3 py-2 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-semibold border border-indigo-100 hover:bg-indigo-100 transition-colors inline-flex items-center gap-1.5"
-              >
-                View full analysis
-                <ExternalLink size={14} />
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowAllDrivers((prev) => !prev)}
-                className="px-3 py-2 bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold border border-slate-200 hover:bg-slate-100 transition-colors"
-              >
-                {showAllDrivers ? 'Show fewer drivers' : `Show all (${sortedSummaries.length}) drivers`}
-              </button>
-              <div className="relative group">
-                <input 
-                  type="text" 
-                  placeholder="Filter drivers..." 
-                  value={filterDriver}
-                  onChange={(e) => {
-                    setFilterDriver(e.target.value);
-                    setShowAllDrivers(false);
-                  }}
-                  className="pl-10 pr-4 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all w-64"
-                />
-                <Users size={16} className="absolute left-3.5 top-2.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-              </div>
-              {hiddenDriverList.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setHiddenDrivers([])}
-                  className="px-3 py-2 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-semibold border border-indigo-100 hover:bg-indigo-100 transition-colors"
-                >
-                  Unhide all ({hiddenDriverList.length})
-                </button>
-              )}
+            <div className="relative group">
+              <input 
+                type="text" 
+                placeholder="Filter drivers..." 
+                value={filterDriver}
+                onChange={(e) => setFilterDriver(e.target.value)}
+                className="pl-10 pr-4 py-2 bg-slate-50 border-0 ring-1 ring-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all w-64"
+              />
+              <Users size={16} className="absolute left-3.5 top-2.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
             </div>
-          </div>
-          {hiddenDriverList.length > 0 && (
-            <div className="px-6 py-3 border-b border-slate-100 bg-slate-50/70">
-              <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-2">Hidden Drivers</p>
-              <div className="flex flex-wrap gap-2">
-                {hiddenDriverList.map((driverName) => (
-                  <button
-                    key={driverName}
-                    type="button"
-                    onClick={() => setHiddenDrivers((prev) => prev.filter((name) => name !== driverName))}
-                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-600 hover:border-indigo-200 hover:text-indigo-700 transition-colors"
-                  >
-                    {driverName}
-                    <span className="text-[10px] uppercase tracking-wider text-indigo-500">Unhide</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          <div className="px-6 py-2 border-b border-slate-100 bg-slate-50/40 text-[11px] text-slate-500 font-medium">
-            Net Balance = Collection - Rent - Fuel + Due + Wallet Week - Payout - Expenses · Net Payout = min(Net Balance, latest wallet cutoff balance).
           </div>
           
-          {/* Mobile Card View */}
-          <div className="md:hidden flex-1 overflow-y-auto bg-slate-50/50 p-4 space-y-4">
-            {visibleSummaries.length === 0 ? (
-              <div className="py-12 text-center text-slate-400">
-                <div className="bg-white w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
-                  <Users size={24} className="opacity-20" />
-                </div>
-                <p className="font-medium">No drivers found</p>
-                {filterDriver && (
-                  <button onClick={() => setFilterDriver('')} className="mt-2 text-indigo-600 text-sm font-bold">Clear Filter</button>
-                )}
-              </div>
-            ) : (
-              visibleSummaries.map((driver) => (
-                <div key={driver.driver} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 active:scale-[0.98] transition-all">
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <h4 className="font-bold text-slate-900 text-lg leading-tight">{driver.driver}</h4>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Driver Profile</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setHiddenDrivers((prev) => [...new Set([...prev, driver.driver])])}
-                      className="p-2 rounded-xl bg-slate-50 text-slate-400 hover:text-slate-600 active:bg-slate-100 transition-colors"
-                    >
-                      <X size={18} />
-                    </button>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-3 mb-5">
-                    <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-100/50">
-                      <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold mb-1">Collection</p>
-                      <p className="font-bold text-slate-800 text-sm">{formatCurrency(driver.totalCollection)}</p>
-                    </div>
-                    <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-100/50">
-                      <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold mb-1">Rent</p>
-                      <p className="font-bold text-slate-800 text-sm">{formatCurrency(driver.totalRent)}</p>
-                    </div>
-                    <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-100/50">
-                      <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold mb-1">Fuel</p>
-                      <p className="font-bold text-amber-600 text-sm">{formatCurrency(driver.totalFuel)}</p>
-                    </div>
-                    <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-100/50">
-                      <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold mb-1">Wallet Week</p>
-                      <p className="font-bold text-indigo-600 text-sm">{formatCurrency(driver.totalWalletWeek)}</p>
-                    </div>
-                  </div>
-  
-                  <div className="grid grid-cols-2 gap-3 pt-4 border-t border-slate-50">
-                    <div 
-                      className={`p-3 rounded-2xl cursor-pointer transition-all active:scale-95 border ${
-                        driver.netPayout < 0 ? 'bg-rose-50 border-rose-100' : 'bg-emerald-50 border-emerald-100'
-                      }`}
-                      onClick={() => openCalcPopup(driver, 'netPayout')}
-                    >
-                      <p className={`text-[9px] uppercase tracking-wider font-bold mb-1 ${
-                        driver.netPayout < 0 ? 'text-rose-400' : 'text-emerald-400'
-                      }`}>Net Payout</p>
-                      <div className="flex items-center justify-between">
-                        <span className={`text-sm font-black ${
-                          driver.netPayout < 0 ? 'text-rose-700' : 'text-emerald-700'
-                        }`}>
-                          {formatCurrency(driver.netPayout)}
-                        </span>
-                        <ArrowRight size={14} className={driver.netPayout < 0 ? 'text-rose-300' : 'text-emerald-300'} />
-                      </div>
-                    </div>
-                    <div 
-                      className={`p-3 rounded-2xl cursor-pointer transition-all active:scale-95 border ${
-                        driver.finalTotal < 0 ? 'bg-rose-50 border-rose-100' : 'bg-indigo-50 border-indigo-100'
-                      }`}
-                      onClick={() => openCalcPopup(driver, 'netBalance')}
-                    >
-                      <p className={`text-[9px] uppercase tracking-wider font-bold mb-1 ${
-                        driver.finalTotal < 0 ? 'text-rose-400' : 'text-indigo-400'
-                      }`}>Net Balance</p>
-                      <div className="flex items-center justify-between">
-                        <span className={`text-sm font-black ${
-                          driver.finalTotal < 0 ? 'text-rose-700' : 'text-indigo-700'
-                        }`}>
-                          {formatCurrency(driver.finalTotal)}
-                        </span>
-                        <ArrowRight size={14} className={driver.finalTotal < 0 ? 'text-rose-300' : 'text-indigo-300'} />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          {/* Desktop Table View */}
-          <div className="hidden md:block overflow-x-auto flex-1 scrollbar-thin">
+          <div className="overflow-x-auto flex-1 scrollbar-thin">
             <table className="w-full text-sm text-left">
               <thead className="text-xs text-slate-500 uppercase bg-slate-50/80 sticky top-0 backdrop-blur-sm z-10 border-b border-slate-200">
                 <tr>
@@ -408,26 +195,19 @@ const DashboardPage: React.FC = () => {
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Collection</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Rent</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Fuel</th>
-                  <th className="px-6 py-4 font-semibold text-right tracking-wider">Dues</th>
-                  <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet Week</th>
-                  <th className="px-6 py-4 font-semibold text-right tracking-wider">Payout</th>
-                  <th className="px-6 py-4 font-semibold text-right tracking-wider">Expenses</th>
+                  <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Payout</th>
                   <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Balance</th>
-                  <th className="px-6 py-4 font-semibold text-right tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {visibleSummaries.map((driver) => (
+                {filteredSummaries.map((driver) => (
                   <tr key={driver.driver} className="hover:bg-slate-50 transition-colors group">
                     <td className="px-6 py-4 font-bold text-slate-700 group-hover:text-indigo-600 transition-colors">{driver.driver}</td>
                     <td className="px-6 py-4 text-right text-slate-600 font-medium">{formatCurrency(driver.totalCollection)}</td>
                     <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalRent)}</td>
                     <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalFuel)}</td>
-                    <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalDue)}</td>
                     <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalWalletWeek)}</td>
-                    <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalPayout)}</td>
-                    <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalExpenses)}</td>
                     <td className="px-6 py-4 text-right">
                       <div
                         className="flex flex-col items-end gap-1 cursor-pointer"
@@ -461,20 +241,11 @@ const DashboardPage: React.FC = () => {
                         {formatCurrency(driver.finalTotal)}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      <button
-                        type="button"
-                        onClick={() => setHiddenDrivers((prev) => [...new Set([...prev, driver.driver])])}
-                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
-                      >
-                        Hide
-                      </button>
-                    </td>
                   </tr>
                 ))}
-                {visibleSummaries.length === 0 && (
+                {filteredSummaries.length === 0 && (
                   <tr>
-                    <td colSpan={11} className="px-6 py-20 text-center text-slate-400">
+                    <td colSpan={7} className="px-6 py-20 text-center text-slate-400">
                       <div className="flex flex-col items-center gap-2">
                         <Users size={32} className="opacity-20" />
                         <p>No drivers found matching "{filterDriver}"</p>
@@ -489,56 +260,91 @@ const DashboardPage: React.FC = () => {
                   <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.collection)}</td>
                   <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.rent)}</td>
                   <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.fuel)}</td>
-                  <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.due)}</td>
                   <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.wallet)}</td>
-                  <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.payout)}</td>
-                  <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.expenses)}</td>
                   <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.netPayout)}</td>
                   <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.finalTotal)}</td>
-                  <td className="px-6 py-3 text-right">-</td>
                 </tr>
               </tfoot>
             </table>
           </div>
         </div>
 
-      {/* Charts & Helpers */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <div>
-          <Suspense fallback={<div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 h-[430px] animate-pulse" />}>
-            <NetPayoutChartCard filteredSummaries={filteredSummaries} formatCurrency={formatCurrency} />
-          </Suspense>
-        </div>
-
-        <div className="bg-slate-900 p-6 rounded-2xl text-white shadow-xl shadow-slate-900/10 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-8 opacity-10">
-             <Banknote size={100} />
+        {/* Charts & Helpers */}
+        <div className="space-y-6">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+             <h3 className="font-bold text-lg text-slate-800 mb-6 flex items-center gap-2">
+               <TrendingUp size={20} className="text-indigo-500" />
+               Net Payouts
+             </h3>
+             <div className="h-80 w-full min-w-0">
+               {/* Added min-w-0 and w-full to prevent flexbox overflow issues causing width(-1) errors in Recharts */}
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={filteredSummaries} layout="vertical" margin={{ left: 0, right: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
+                    <XAxis type="number" hide />
+                    <YAxis 
+                      dataKey="driver" 
+                      type="category" 
+                      width={80} 
+                      tick={{fontSize: 11, fill: '#64748b', fontWeight: 600}} 
+                      interval={0} 
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip 
+                      formatter={(value: number) => formatCurrency(value)}
+                      cursor={{fill: '#f8fafc'}}
+                      contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', background: 'rgba(255,255,255,0.95)'}}
+                    />
+                    <ReferenceLine x={0} stroke="#cbd5e1" strokeWidth={2} />
+                    <Bar dataKey="netPayout" radius={[4, 4, 4, 4]} barSize={12}>
+                      {filteredSummaries.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.netPayout < 0 ? '#f43f5e' : '#10b981'} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+             </div>
+             <div className="flex justify-center gap-6 mt-6 pt-4 border-t border-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wide">
+               <div className="flex items-center gap-2">
+                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm shadow-emerald-200"></span> Payable
+               </div>
+               <div className="flex items-center gap-2">
+                 <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-sm shadow-rose-200"></span> Pending
+               </div>
+             </div>
           </div>
-          <div className="relative z-10">
-            <div className="flex items-start space-x-4">
-              <div className="bg-indigo-600 p-2.5 rounded-xl shadow-lg shadow-indigo-600/30">
-                <AlertCircle className="text-white" size={20} strokeWidth={2.5} />
-              </div>
-              <div>
-                <h4 className="font-bold text-white text-sm mb-1 uppercase tracking-wider">Net Calculation</h4>
-                <p className="text-slate-300 text-xs leading-relaxed font-mono mt-2 bg-slate-800 p-2 rounded-lg border border-slate-700">
-                  Total = Collection - Rent - Fuel + Due + WalletWeek - Payouts - Expenses
-                </p>
-                <div className="mt-4 space-y-2">
-                   <div className="flex items-center justify-between text-xs bg-slate-800/50 p-2 rounded-lg border border-slate-700/50">
-                      <span className="text-slate-400">Negative Value</span>
-                      <span className="font-bold text-rose-400">Driver Owes You</span>
-                   </div>
-                   <div className="flex items-center justify-between text-xs bg-slate-800/50 p-2 rounded-lg border border-slate-700/50">
-                      <span className="text-slate-400">Positive Value</span>
-                      <span className="font-bold text-emerald-400">You Owe Driver</span>
-                   </div>
+
+          <div className="bg-slate-900 p-6 rounded-2xl text-white shadow-xl shadow-slate-900/10 relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-8 opacity-10">
+               <Banknote size={100} />
+            </div>
+            <div className="relative z-10">
+              <div className="flex items-start space-x-4">
+                <div className="bg-indigo-600 p-2.5 rounded-xl shadow-lg shadow-indigo-600/30">
+                  <AlertCircle className="text-white" size={20} strokeWidth={2.5} />
+                </div>
+                <div>
+                  <h4 className="font-bold text-white text-sm mb-1 uppercase tracking-wider">Net Calculation</h4>
+                  <p className="text-slate-300 text-xs leading-relaxed font-mono mt-2 bg-slate-800 p-2 rounded-lg border border-slate-700">
+                    Total = Collection - Rent - Fuel + Due + WalletWeek
+                  </p>
+                  <div className="mt-4 space-y-2">
+                     <div className="flex items-center justify-between text-xs bg-slate-800/50 p-2 rounded-lg border border-slate-700/50">
+                        <span className="text-slate-400">Negative Value</span>
+                        <span className="font-bold text-rose-400">Driver Owes You</span>
+                     </div>
+                     <div className="flex items-center justify-between text-xs bg-slate-800/50 p-2 rounded-lg border border-slate-700/50">
+                        <span className="text-slate-400">Positive Value</span>
+                        <span className="font-bold text-emerald-400">You Owe Driver</span>
+                     </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
+      </div>
     </div>
   );
 };
