@@ -94,6 +94,8 @@ const DriverPortalPage: React.FC = () => {
 
   const activeTabMeta = tabOptions.find(tab => tab.key === activeTab) || tabOptions[0];
   const ActiveTabIcon = activeTabMeta.icon;
+  const isDriverScopedUser = user?.role === 'driver' || user?.role === 'manager';
+  const hasManagerScope = user?.role === 'manager';
 
   const isDateFilterActive = useMemo(() => {
       if (fromDate && toDate) {
@@ -369,7 +371,7 @@ const DriverPortalPage: React.FC = () => {
 
           let targetDriver: Driver | undefined;
 
-          if (user?.role === 'driver' && user.driverId) {
+          if (isDriverScopedUser && user.driverId) {
               targetDriver = visibleDrivers.find(d => d.id === user.driverId);
           } else if ((user?.role === 'admin' || user?.role === 'super_admin')) {
               targetDriver = visibleDrivers.find(d => d.email === user.email);
@@ -387,14 +389,8 @@ const DriverPortalPage: React.FC = () => {
           let allWeekly: WeeklyWallet[] = [];
           let allExpenses: DriverExpense[] = [];
 
-          let teamMembers: Driver[] = [];
-          if (targetDriver.isManager) {
-              const myAccess = await storageService.getManagerAccessByManagerId(targetDriver.id);
-              if (myAccess && myAccess.childDriverIds.length > 0) {
-                  teamMembers = visibleDrivers.filter(d => myAccess.childDriverIds.includes(d.id));
-                  setMyTeam(teamMembers);
-              }
-          }
+          const teamMembers = await resolveManagerTeamMembers(targetDriver, allDrivers);
+          setMyTeam(teamMembers);
 
           const driversToLoad = [targetDriver.name, ...teamMembers.map(member => member.name)].filter(Boolean);
           const uniqueDrivers = Array.from(new Set(driversToLoad));
@@ -449,26 +445,41 @@ const DriverPortalPage: React.FC = () => {
       return Array.from(new Set(scopedDrivers));
   }, [myTeam, primaryDriver?.name]);
 
+  const resolveManagerTeamMembers = useCallback(async (managerDriver: Driver, sourceDrivers: Driver[]) => {
+      const driversById = new Map(sourceDrivers.map(driver => [driver.id, driver] as const));
+      const driversByName = new Map(sourceDrivers.map(driver => [driver.name.trim().toLowerCase(), driver] as const));
+
+      const resolveChildDrivers = (childKeys: string[] = []) => childKeys
+          .map(childKey => driversById.get(childKey) || driversByName.get((childKey || '').trim().toLowerCase()))
+          .filter((driver): driver is Driver => Boolean(driver));
+
+      const directAccess = await storageService.getManagerAccessByManagerId(managerDriver.id);
+      const directTeam = resolveChildDrivers(directAccess?.childDriverIds || []);
+      if (directTeam.length > 0) return directTeam;
+
+      const allAccess = await storageService.getManagerAccess();
+      const managerId = managerDriver.id.trim().toLowerCase();
+      const managerName = managerDriver.name.trim().toLowerCase();
+      const fallback = allAccess.find(access => {
+          const key = (access.managerId || '').trim().toLowerCase();
+          return key === managerId || key === managerName;
+      });
+
+      return resolveChildDrivers(fallback?.childDriverIds || []);
+  }, []);
+
   const refreshPortalData = useCallback(async (options?: { includeDrivers?: boolean }) => {
       if (!user || !viewingAsDriver) return;
       try {
           const shouldLoadDrivers = options?.includeDrivers ?? false;
-          const scopedDriverNames = getScopedDriverNames(viewingAsDriver.name);
-
-          const [drivers, bootstrapPayload, expensesPayload] = await Promise.all([
-              shouldLoadDrivers ? storageService.getDrivers() : Promise.resolve(null),
-              storageService.getDailyEntriesBootstrap({ drivers: scopedDriverNames, fresh: 1, includeMeta: false }),
-              storageService.getDriverExpenses({ drivers: scopedDriverNames, fresh: 1 })
-          ]);
-          const dailyEntries = bootstrapPayload.entries;
-          const weeklyWallets = bootstrapPayload.weeklyWallets;
-          const expenses = expensesPayload;
+          const drivers = shouldLoadDrivers ? await storageService.getDrivers() : null;
 
           if (drivers) {
               const visibleDrivers = drivers.filter(d => !d.isHidden);
               setDriversList(visibleDrivers.sort((a, b) => a.name.localeCompare(b.name)));
           }
 
+          let refreshedTeam = myTeam;
           const updatedDriver = drivers?.find(d => d.id === viewingAsDriver.id);
           if (updatedDriver) {
               setViewingAsDriver(updatedDriver);
@@ -477,8 +488,25 @@ const DriverPortalPage: React.FC = () => {
               }
           }
 
-          const allDaily = dailyEntries;
-          const allWeekly = weeklyWallets;
+          const teamSourceDriver = updatedDriver || viewingAsDriver;
+          if (drivers) {
+              refreshedTeam = await resolveManagerTeamMembers(teamSourceDriver, drivers);
+              setMyTeam(refreshedTeam);
+          }
+
+          const scopedDriverNames = Array.from(new Set([
+              teamSourceDriver.name,
+              primaryDriver?.name,
+              ...refreshedTeam.map(member => member.name)
+          ].filter(Boolean) as string[]));
+          const [bootstrapPayload, expensesPayload] = await Promise.all([
+              storageService.getDailyEntriesBootstrap({ drivers: scopedDriverNames, fresh: 1, includeMeta: false }),
+              storageService.getDriverExpenses({ drivers: scopedDriverNames, fresh: 1 })
+          ]);
+
+          const allDaily = bootstrapPayload.entries;
+          const allWeekly = bootstrapPayload.weeklyWallets;
+          const expenses = expensesPayload;
 
           setGlobalDaily(allDaily);
           setGlobalWeekly(allWeekly);
@@ -488,18 +516,20 @@ const DriverPortalPage: React.FC = () => {
           setRawWeekly(allWeekly.filter(w => w.driver === activeName).sort((a,b) => new Date(b.weekStartDate).getTime() - new Date(a.weekStartDate).getTime()));
           setRawExpenses(expenses.filter(e => e.driver === activeName).sort((a, b) => new Date(b.expenseDate).getTime() - new Date(a.expenseDate).getTime()));
 
-          if (myTeam.length > 0) {
+          if (refreshedTeam.length > 0) {
               const balances: Record<string, number> = {};
-              myTeam.forEach(member => {
+              refreshedTeam.forEach(member => {
                   const stats = storageService.calculateDriverStats(member.name, allDaily, allWeekly, rentalSlabs, expenses);
                   balances[member.id] = stats.finalTotal;
               });
               setTeamBalances(balances);
+          } else {
+              setTeamBalances({});
           }
       } catch (err) {
           console.error('Failed to refresh portal data', err);
       }
-  }, [getScopedDriverNames, myTeam, primaryDriver, rentalSlabs, user, viewingAsDriver]);
+  }, [myTeam, primaryDriver, rentalSlabs, resolveManagerTeamMembers, user, viewingAsDriver]);
 
   const { connected: liveUpdatesConnected } = useLiveUpdates((event) => {
       const type = event?.type;
@@ -631,7 +661,7 @@ const DriverPortalPage: React.FC = () => {
   };
 
   const exitView = async () => {
-      if (user?.role === 'driver') {
+      if (isDriverScopedUser) {
           if (user.driverId && viewingAsDriver && primaryDriver && viewingAsDriver.id !== user.driverId) {
               const scopedDrivers = getScopedDriverNames(primaryDriver.name);
               const expenses = await storageService.getDriverExpenses({ drivers: scopedDrivers, fresh: 1 });
@@ -926,7 +956,7 @@ const DriverPortalPage: React.FC = () => {
   const netBalance = driverStats?.finalTotal ?? 0;
   const dailyTabNetPayout = dailyNetSummary?.netPayout ?? balanceSummary.netPayout;
   const dailyTabNetBalance = dailyNetSummary?.netBalance ?? netBalance;
-  const hasFoodAccess = user?.role === 'driver' && Boolean(viewingAsDriver?.foodOption);
+  const hasFoodAccess = isDriverScopedUser && Boolean(viewingAsDriver?.foodOption);
 
   const vehiclePartnerDriver = useMemo(() => {
       if (!viewingAsDriver?.vehicle) return null;
@@ -1682,7 +1712,7 @@ const DriverPortalPage: React.FC = () => {
           )}
           
           <div className="flex gap-3">
-              {user?.role !== 'driver' && (
+              {!isDriverScopedUser && (
                  <button 
                     onClick={returnToDashboard}
                     className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-50 transition-colors flex items-center gap-2 shadow-sm"
@@ -1690,7 +1720,7 @@ const DriverPortalPage: React.FC = () => {
                     <LogOut size={16} /> Exit to Admin
                  </button>
               )}
-              {user?.role === 'driver' && (
+              {isDriverScopedUser && (
                  <button 
                     onClick={logout}
                     className="px-5 py-2.5 bg-rose-50 text-rose-600 rounded-xl text-sm font-bold hover:bg-rose-100 transition-colors flex items-center gap-2"
@@ -1724,7 +1754,7 @@ const DriverPortalPage: React.FC = () => {
                    <div>
                        <h1 className="font-bold text-lg leading-none">Staff Room</h1>
                        <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mt-1">
-                           {user?.role === 'driver' ? 'My Dashboard' : 'View Mode'}
+                           {isDriverScopedUser ? 'My Dashboard' : 'View Mode'}
                        </p>
                    </div>
                </div>
@@ -1744,12 +1774,12 @@ const DriverPortalPage: React.FC = () => {
                            </span>
                        )}
                    </button>
-                   {user?.role !== 'driver' && (
+                   {!isDriverScopedUser && (
                        <button onClick={returnToDashboard} className="p-2 bg-slate-800 rounded-lg hover:bg-slate-700 text-slate-300" title="Exit View Mode">
                            <LogOut size={20} />
                        </button>
                    )}
-                   {user?.role === 'driver' && (
+                   {isDriverScopedUser && (
                        <button onClick={exitView} className="p-2 bg-slate-800 rounded-lg hover:bg-slate-700 text-rose-400" title="Sign Out">
                            <LogOut size={20} />
                        </button>
@@ -2067,7 +2097,7 @@ const DriverPortalPage: React.FC = () => {
               <div className="space-y-6 animate-fade-in">
                   
                   {/* Manager Section (If Applicable) */}
-                  {viewingAsDriver.isManager && myTeam.length > 0 && (
+                  {(viewingAsDriver.isManager || hasManagerScope || myTeam.length > 0) && myTeam.length > 0 && (
                       <div className="bg-[#4C4E94] rounded-[32px] p-6 shadow-2xl shadow-indigo-900/30 overflow-hidden relative">
                            {/* Background Decor */}
                            <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
@@ -2124,25 +2154,26 @@ const DriverPortalPage: React.FC = () => {
                                                   <button
                                                       onClick={(e) => { e.stopPropagation(); toggleTeamMemberCashMode(member.id); }}
                                                       disabled={!!teamCashModeUpdating[member.id]}
-                                                      className={`hidden md:flex relative items-center gap-3 px-3 py-2 rounded-full border border-white/15 shadow-lg backdrop-blur-sm text-white transition-all duration-200 ${
+                                                      className={`flex relative items-center gap-2 md:gap-3 px-2.5 md:px-3 py-2 rounded-full border border-white/15 shadow-lg backdrop-blur-sm text-white transition-all duration-200 ${
                                                           memberCashMode === 'blocked'
                                                               ? 'bg-gradient-to-r from-rose-500/90 via-amber-400/90 to-orange-400/90 hover:from-rose-500 hover:to-orange-500'
                                                               : 'bg-gradient-to-r from-emerald-500/90 via-teal-400/90 to-cyan-400/90 hover:from-emerald-500 hover:to-cyan-500'
                                                       } ${teamCashModeUpdating[member.id] ? 'opacity-60 cursor-wait' : 'hover:-translate-y-0.5 hover:shadow-xl'}`}
-                                                      title="Toggle cash mode for this driver"
+                                                      title="Cash Block toggle for this driver"
                                                   >
                                                       <span className={`h-6 w-11 rounded-full bg-white/20 flex items-center p-1 transition-all duration-200 ${memberCashMode === 'blocked' ? 'justify-end' : 'justify-start'}`}>
                                                           <span className="h-4 w-4 rounded-full bg-white shadow-md shadow-black/20" />
                                                       </span>
-                                                      <div className="flex flex-col leading-tight text-left">
+                                                      <div className="hidden md:flex flex-col leading-tight text-left">
                                                           <span className="text-[9px] uppercase tracking-[0.14em] font-semibold text-white/80">Cash Mode</span>
                                                           <span className="text-[11px] font-extrabold">{memberCashMode === 'blocked' ? 'Blocked' : 'Trips On'}</span>
                                                       </div>
+                                                      <span className="md:hidden text-[10px] font-extrabold">{memberCashMode === 'blocked' ? 'Unblock' : 'Cash Block'}</span>
                                                       <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/15 backdrop-blur text-white shadow-inner">
                                                           {memberCashMode === 'blocked' ? <Lock size={14} /> : <DollarSign size={14} />}
                                                       </span>
                                                   </button>
-                                                  <ChevronRight className="text-white/70 md:hidden" size={18} />
+                                                  <ChevronRight className="text-white/70 hidden md:block" size={18} />
                                               </div>
                                           </div>
                                       );
