@@ -2063,10 +2063,74 @@ const DriverPortalPage: React.FC = () => {
            {activeTab === 'home' && (
               <div className="space-y-6 animate-fade-in">
                   
+                  {/* 1. Latest Bill Alert (If available) */}
+                  {latestBill && (
+                      <div className="bg-white p-5 rounded-[24px] border-2 border-dashed border-indigo-100 shadow-sm relative overflow-hidden group hover:border-indigo-200 transition-all">
+                          <div className="flex justify-between items-center mb-3">
+                              <div>
+                                  <p className="text-xs font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-1.5">
+                                      <Clock size={12}/> Latest Bill Generated
+                                  </p>
+                                  <p className="text-[10px] text-slate-400 font-medium mt-0.5">{latestBill.weekRange}</p>
+                              </div>
+                              <button onClick={() => { setSelectedBill(latestBill); }} className="bg-indigo-50 text-indigo-600 p-2 rounded-full hover:bg-indigo-100 transition-colors">
+                                  <ChevronRight size={16} />
+                              </button>
+                          </div>
+                          <div className="flex justify-between items-end bg-slate-50 p-3 rounded-xl">
+                              <div>
+                                  <p className="text-[10px] text-slate-400 font-bold uppercase">Week Payout</p>
+                                  <p className={`text-xl font-bold ${latestBill.payout < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                      {formatCurrency(latestBill.payout)}
+                                  </p>
+                              </div>
+                              <button onClick={() => downloadBill(latestBill)} className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded-lg flex items-center gap-1 hover:bg-slate-50 transition-colors">
+                                  <Download size={12}/> PDF
+                              </button>
+                          </div>
+                      </div>
+                  )}
+
+                  {/* 2. Recent Daily Activity */}
+                  <div>
+                      <div className="flex justify-between items-end mb-3 px-2">
+                          <h3 className="font-bold text-slate-800 text-sm">Recent Activity</h3>
+                          <button onClick={() => setActiveTab('daily')} className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700">View All</button>
+                      </div>
+                      <div className="space-y-3">
+                          {recentLogs.map(entry => {
+                              const entryExpense = expensesByDate[entry.date] || 0;
+
+                              return (
+                              <div key={entry.id} className="bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center">
+                                   <div className="flex items-center gap-3">
+                                       <div className="bg-slate-50 p-2.5 rounded-xl text-slate-400">
+                                           <Calendar size={16} />
+                                       </div>
+                                       <div>
+                                           <p className="text-sm font-bold text-slate-800">{formatDate(entry.date)}</p>
+                                           <p className="text-[10px] text-slate-400 font-medium">{entry.day}</p>
+                                       </div>
+                                   </div>
+                                   <div className="text-right">
+                                       <p className="text-sm font-bold text-emerald-600">+{formatCurrency(entry.collection)}</p>
+                                       {entry.hasDaily && (
+                                           <p className="text-[10px] text-slate-400">Rent: {formatCurrency(entry.rent)}</p>
+                                       )}
+                                       <p className={`text-[10px] font-semibold ${entryExpense > 0 ? 'text-rose-500' : 'text-slate-400'}`}>
+                                           Expense: {formatCurrency(entryExpense)}
+                                       </p>
+                                   </div>
+                              </div>
+                              );
+                          })}
+                          {recentLogs.length === 0 && <p className="text-center text-xs text-slate-400 py-4 bg-white rounded-2xl border border-slate-100 border-dashed">No recent activity found</p>}
+                      </div>
+                  </div>
+
                   {/* Manager Section (If Applicable) */}
                   {viewingAsDriver.isManager && myTeam.length > 0 && (
                       <div className="bg-[#4C4E94] rounded-[32px] p-6 shadow-2xl shadow-indigo-900/30 overflow-hidden relative">
-                           {/* Background Decor */}
                            <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
                            
                            <div className="relative z-10">
@@ -2148,71 +2212,6 @@ const DriverPortalPage: React.FC = () => {
                            </div>
                       </div>
                   )}
-
-                  {/* 1. Latest Bill Alert (If available) */}
-                  {latestBill && (
-                      <div className="bg-white p-5 rounded-[24px] border-2 border-dashed border-indigo-100 shadow-sm relative overflow-hidden group hover:border-indigo-200 transition-all">
-                          <div className="flex justify-between items-center mb-3">
-                              <div>
-                                  <p className="text-xs font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-1.5">
-                                      <Clock size={12}/> Latest Bill Generated
-                                  </p>
-                                  <p className="text-[10px] text-slate-400 font-medium mt-0.5">{latestBill.weekRange}</p>
-                              </div>
-                              <button onClick={() => { setSelectedBill(latestBill); }} className="bg-indigo-50 text-indigo-600 p-2 rounded-full hover:bg-indigo-100 transition-colors">
-                                  <ChevronRight size={16} />
-                              </button>
-                          </div>
-                          <div className="flex justify-between items-end bg-slate-50 p-3 rounded-xl">
-                              <div>
-                                  <p className="text-[10px] text-slate-400 font-bold uppercase">Week Payout</p>
-                                  <p className={`text-xl font-bold ${latestBill.payout < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                                      {formatCurrency(latestBill.payout)}
-                                  </p>
-                              </div>
-                              <button onClick={() => downloadBill(latestBill)} className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded-lg flex items-center gap-1 hover:bg-slate-50 transition-colors">
-                                  <Download size={12}/> PDF
-                              </button>
-                          </div>
-                      </div>
-                  )}
-
-                  {/* 2. Recent Daily Activity */}
-                  <div>
-                      <div className="flex justify-between items-end mb-3 px-2">
-                          <h3 className="font-bold text-slate-800 text-sm">Recent Activity</h3>
-                          <button onClick={() => setActiveTab('daily')} className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700">View All</button>
-                      </div>
-                      <div className="space-y-3">
-                          {recentLogs.map(entry => {
-                              const entryExpense = expensesByDate[entry.date] || 0;
-
-                              return (
-                              <div key={entry.id} className="bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center">
-                                   <div className="flex items-center gap-3">
-                                       <div className="bg-slate-50 p-2.5 rounded-xl text-slate-400">
-                                           <Calendar size={16} />
-                                       </div>
-                                       <div>
-                                           <p className="text-sm font-bold text-slate-800">{formatDate(entry.date)}</p>
-                                           <p className="text-[10px] text-slate-400 font-medium">{entry.day}</p>
-                                       </div>
-                                   </div>
-                                   <div className="text-right">
-                                       <p className="text-sm font-bold text-emerald-600">+{formatCurrency(entry.collection)}</p>
-                                       {entry.hasDaily && (
-                                           <p className="text-[10px] text-slate-400">Rent: {formatCurrency(entry.rent)}</p>
-                                       )}
-                                       <p className={`text-[10px] font-semibold ${entryExpense > 0 ? 'text-rose-500' : 'text-slate-400'}`}>
-                                           Expense: {formatCurrency(entryExpense)}
-                                       </p>
-                                   </div>
-                              </div>
-                              );
-                          })}
-                          {recentLogs.length === 0 && <p className="text-center text-xs text-slate-400 py-4 bg-white rounded-2xl border border-slate-100 border-dashed">No recent activity found</p>}
-                      </div>
-                  </div>
 
                   {/* 3. Wallet Overview Card */}
                   <div className="bg-white p-6 rounded-[28px] border-4 border-slate-50/50 shadow-sm relative">
