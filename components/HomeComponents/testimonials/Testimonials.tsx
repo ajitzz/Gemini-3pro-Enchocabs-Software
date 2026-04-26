@@ -67,7 +67,7 @@ export default function TestimonialCarousel({
     []
   );
 
-   
+  // eslint-disable-next-line no-undef
   const centerAt = React.useCallback((idx: number, behavior: ScrollBehavior = "smooth") => {
     const root = rootRef.current;
     if (!root) return;

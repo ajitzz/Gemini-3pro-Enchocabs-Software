@@ -2,8 +2,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { AdminAccess, AuthUser, UserRole } from '../types';
 import { storageService } from '../services/storageService';
-import { getApiBase } from '../lib/apiBase';
-import { getGoogleClientId } from '../lib/googleAuth';
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -19,10 +17,27 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // --- CONFIGURATION ---
 const ADMIN_CACHE_KEY = 'driver_app_admin_cache_v1';
 const ADMIN_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-const VALIDATION_GRACE_MS = 10 * 60 * 1000; // 10 minutes after login/validation
+const VALIDATION_GRACE_MS = 2 * 60 * 1000; // 2 minutes after login/validation
 const WARMUP_TIMEOUT_MS = 4000;
 
-const CLIENT_ID_FROM_ENV = getGoogleClientId();
+const getApiBase = () => {
+    // Check for Vite dev mode or specific local hostnames
+    const isLocal = ((import.meta as any).env && (import.meta as any).env.DEV) || 
+                    (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'));
+    
+    if (isLocal) return '/api';
+    
+    const env = (import.meta as any).env || {};
+    if (env.VITE_API_URL) {
+        return env.VITE_API_URL.replace(/\/$/, '');
+    }
+    // Fallback to the production backend if VITE_API_URL is not set
+    return 'https://enchocabs-software-orginal-gemini3pro-1.onrender.com/api';
+};
+
+// Access ENV directly here to avoid scope issues in nested functions
+const env = (import.meta as any).env || {};
+const CLIENT_ID_FROM_ENV = env.VITE_GOOGLE_CLIENT_ID || "";
 
 const authApi = {
     login: async (token: string) => {
@@ -47,31 +62,15 @@ const authApi = {
 
 const warmupBackend = async () => {
   const API_BASE = getApiBase();
-  const normalizedBase = API_BASE.replace(/\/$/, '');
-  const warmupEndpoints = normalizedBase.endsWith('/api')
-    ? [`${normalizedBase}/health`, `${normalizedBase.replace(/\/api$/, '')}/health`]
-    : [`${normalizedBase}/health`, `${normalizedBase}/api/health`];
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), WARMUP_TIMEOUT_MS);
 
   try {
-    let warmedUp = false;
-    for (const endpoint of warmupEndpoints) {
-      const response = await fetch(endpoint, {
-        method: 'GET',
-        cache: 'no-store',
-        signal: controller.signal
-      });
-
-      if (response.ok) {
-        warmedUp = true;
-        break;
-      }
-    }
-
-    if (!warmedUp) {
-      console.warn('Backend warmup failed: no healthy endpoint responded 200', warmupEndpoints);
-    }
+    await fetch(`${API_BASE}/health`, {
+      method: 'GET',
+      cache: 'no-store',
+      signal: controller.signal
+    });
   } catch (error) {
     console.warn('Backend warmup skipped:', error);
   } finally {
@@ -178,8 +177,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (user.role === 'super_admin') return true;
 
     const now = Date.now();
-    const shouldUseGraceWindow = user.role !== 'admin';
-    if (shouldUseGraceWindow && now - lastValidationRef.current < VALIDATION_GRACE_MS) {
+    if (now - lastValidationRef.current < VALIDATION_GRACE_MS) {
       return true;
     }
 
@@ -187,8 +185,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (user.role === 'admin') {
         const isAuthorized = (admins: AdminAccess[] | null) =>
           !!admins && admins.some(a => normalizeEmail(a.email) === normalizeEmail(user.email));
-        // Strict security check for Driver Tracker admins:
-        // always re-validate against live admin_access, no stale-cache fallback.
+
+        const freshCachedAdmins = getFreshCachedAdmins();
+        const fallbackAdmins = adminCache?.admins || null;
+
+        if (isAuthorized(freshCachedAdmins)) {
+          lastValidationRef.current = now;
+          return true;
+        }
+
+        if (!freshCachedAdmins && isAuthorized(fallbackAdmins)) {
+          // Use stale cache to keep the UI responsive, refresh in the background
+          fetchAndCacheAdmins().catch(error => console.error('Background admin refresh failed:', error));
+          lastValidationRef.current = now;
+          return true;
+        }
+
         const admins = await fetchAndCacheAdmins();
         const authorized = isAuthorized(admins);
         lastValidationRef.current = Date.now();
@@ -202,11 +214,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return true;
     } catch (error) {
       console.error('Failed to validate session:', error);
-      // Fail closed so revoked or unauthorized admins cannot continue.
+
+      const hasCachedAccess = adminCache?.admins?.some(a => normalizeEmail(a.email) === normalizeEmail(user.email));
+      if (hasCachedAccess) {
+        lastValidationRef.current = Date.now();
+        return true;
+      }
+
+      // Fail closed so revoked admins cannot continue if the check fails on Vercel
       logout();
       return false;
     }
-  }, [fetchAndCacheAdmins, logout, user]);
+  }, [adminCache, fetchAndCacheAdmins, getFreshCachedAdmins, logout, user]);
 
   useEffect(() => {
     if (!user || user.role === 'super_admin') return;
@@ -221,7 +240,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     validate();
-    const interval = setInterval(validate, 60000);
+    const interval = setInterval(validate, 15000);
 
     return () => {
       isMounted = false;

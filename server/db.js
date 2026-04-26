@@ -2,31 +2,7 @@
 const { Pool } = require('pg');
 
 // Vercel Postgres uses 'POSTGRES_URL', generic hosts use 'DATABASE_URL'
-const rawConnectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
-
-const normalizeConnectionString = (value) => {
-  if (!value) return value;
-  try {
-    const parsed = new URL(value);
-    const sslMode = (parsed.searchParams.get('sslmode') || '').toLowerCase();
-    const needsCompat =
-      (sslMode === 'prefer' || sslMode === 'require' || sslMode === 'verify-ca')
-      && !parsed.searchParams.has('useLibpqCompat');
-
-    if (needsCompat) {
-      parsed.searchParams.set('useLibpqCompat', 'true');
-      return parsed.toString();
-    }
-    return value;
-  } catch (_error) {
-    return value;
-  }
-};
-
-const connectionString = normalizeConnectionString(rawConnectionString);
-if (rawConnectionString && connectionString !== rawConnectionString) {
-  console.log('Normalized PostgreSQL connection string for libpq SSL compatibility.');
-}
+const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
 
 if (process.env.NODE_ENV === 'production' && !connectionString) {
   console.error("CRITICAL ERROR: No database connection string found. Please connect Vercel Postgres in the Storage tab.");
