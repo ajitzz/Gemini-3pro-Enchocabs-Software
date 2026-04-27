@@ -387,30 +387,88 @@ const WeeklyWalletPage: React.FC = () => {
     const timestamp = new Date().toISOString().split('T')[0];
     downloadCSV(headers, rows, `weekly-wallet-${driverLabel}-${timestamp}`);
   };
+
+  const activeDrivers = useMemo(() => {
+    const driverSet = new Set(filteredWallets.map(wallet => wallet.driver));
+    return driverSet.size;
+  }, [filteredWallets]);
+
+  const averagePerTrip = weekTotals.trips > 0 ? weekTotals.earnings / weekTotals.trips : 0;
   
   return (
     <div className="max-w-7xl mx-auto space-y-8 animate-fade-in">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div>
-          <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Weekly Wallet</h2>
-          <p className="text-slate-500 mt-1">Calculate weekly driver payouts and deductions.</p>
-        </div>
-        <div className="flex items-center gap-3">
+      <div className="relative overflow-hidden rounded-3xl border border-slate-200/60 bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-900 px-8 py-10 text-white shadow-[0_20px_60px_-30px_rgba(15,23,42,0.75)]">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(99,102,241,0.35),transparent_55%)]" />
+        <div className="absolute -right-16 -top-16 h-56 w-56 rounded-full bg-indigo-500/20 blur-3xl" />
+        <div className="absolute -bottom-20 left-10 h-56 w-56 rounded-full bg-emerald-400/20 blur-3xl" />
+        <div className="relative z-10 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.3em] text-indigo-200/80 font-semibold">Driver Earnings Overview</p>
+            <h2 className="text-3xl md:text-4xl font-semibold tracking-tight mt-3">
+              Weekly Wallet Earnings
+            </h2>
+            <p className="text-slate-200/80 mt-3 max-w-2xl">
+              A premium view of weekly driver earnings, deductions, and payouts for every wallet period.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={handleExportWeeklyWallets}
-            className="bg-white text-indigo-600 border border-indigo-100 px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all hover:border-indigo-200 hover:shadow-md"
+            className="bg-white/10 text-white border border-white/20 px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all hover:bg-white/20 hover:border-white/40"
           >
             <FileDown size={18} />
             <span>Export CSV</span>
           </button>
           <button
             onClick={() => setIsFormOpen(!isFormOpen)}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
+            className="bg-white text-slate-900 px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all shadow-lg shadow-indigo-500/30 active:scale-95"
           >
             {isFormOpen ? <X size={20} /> : <Plus size={20} />}
             <span>{isFormOpen ? 'Close Form' : 'Add Weekly Data'}</span>
           </button>
+          </div>
         </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          {
+            label: 'Total Earnings',
+            value: `₹${weekTotals.earnings.toFixed(2)}`,
+            helper: 'Gross weekly collections',
+            tone: 'from-emerald-500/20 to-emerald-500/0 text-emerald-700'
+          },
+          {
+            label: 'Wallet After Charges',
+            value: `₹${weekTotals.walletAfterCharges.toFixed(2)}`,
+            helper: 'Net payable amount',
+            tone: 'from-indigo-500/20 to-indigo-500/0 text-indigo-700'
+          },
+          {
+            label: 'Total Deductions',
+            value: `₹${weekTotals.deductions.toFixed(2)}`,
+            helper: 'Diff, cash, and charges',
+            tone: 'from-rose-500/20 to-rose-500/0 text-rose-700'
+          },
+          {
+            label: 'Active Drivers',
+            value: `${activeDrivers}`,
+            helper: `Avg / trip ₹${averagePerTrip.toFixed(2)}`,
+            tone: 'from-slate-500/20 to-slate-500/0 text-slate-700'
+          }
+        ].map(card => (
+          <div
+            key={card.label}
+            className="relative overflow-hidden rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_10px_30px_-20px_rgba(15,23,42,0.4)]"
+          >
+            <div className={`absolute inset-0 bg-gradient-to-br ${card.tone}`} />
+            <div className="relative flex flex-col gap-2">
+              <span className="text-xs uppercase tracking-[0.2em] text-slate-400 font-semibold">{card.label}</span>
+              <span className="text-2xl font-semibold text-slate-900">{card.value}</span>
+              <span className="text-xs text-slate-500">{card.helper}</span>
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Modern Split Form */}
