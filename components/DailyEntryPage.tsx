@@ -1290,14 +1290,44 @@ const DailyEntryPage: React.FC = () => {
 
   const selectedDriverStats = useMemo<DriverSummary | null>(() => {
     if (!filterDriver) return null;
+
+    const scopedDaily = filteredEntries
+      .filter((entry: DailyEntry) => entry.driver === filterDriver)
+      .map((entry: DailyEntry) => ({
+        ...entry,
+        due: Number(entry.due ?? 0)
+      }));
+
+    const scopedWallets = weeklyWallets.filter(wallet => {
+      if (wallet.driver !== filterDriver) return false;
+      if (filterDateStart && wallet.weekEndDate < filterDateStart) return false;
+      if (filterDateEnd && wallet.weekStartDate > filterDateEnd) return false;
+      return true;
+    });
+
+    const scopedExpenses = driverExpenses.filter(expense => {
+      if (expense.driver !== filterDriver) return false;
+      if (filterDateStart && expense.expenseDate < filterDateStart) return false;
+      if (filterDateEnd && expense.expenseDate > filterDateEnd) return false;
+      return true;
+    });
+
     return storageService.calculateDriverStats(
       filterDriver,
-      entriesWithAdjustments,
-      weeklyWallets,
+      scopedDaily,
+      scopedWallets,
       driverRentalSlabs,
-      driverExpenses
+      scopedExpenses
     );
-  }, [filterDriver, entriesWithAdjustments, weeklyWallets, driverRentalSlabs, driverExpenses]);
+  }, [
+    filterDriver,
+    filteredEntries,
+    weeklyWallets,
+    driverRentalSlabs,
+    driverExpenses,
+    filterDateStart,
+    filterDateEnd,
+  ]);
 
   const goToPreviousPage = () => {
       setCurrentPageIndex(prev => Math.max(0, prev - 1));
