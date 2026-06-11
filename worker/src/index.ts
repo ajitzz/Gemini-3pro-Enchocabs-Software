@@ -2,7 +2,6 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { Client } from 'pg';
-import type { ExecutionContext, ScheduledEvent } from '@cloudflare/workers-types';
 import { Env, query, withTransaction } from './db';
 
 const GOOGLE_JWKS = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
