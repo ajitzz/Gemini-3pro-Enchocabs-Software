@@ -2083,6 +2083,9 @@ app.post('/api/drivers', async (req, res) => {
     await client.query('COMMIT');
     await invalidateSummaryCache();
     await invalidateKeys(DRIVERS_CACHE_KEY);
+    await invalidateDailyEntriesCache();
+    await invalidateWeeklyWalletsCache();
+    await invalidateDriverExpensesCache();
     emitLiveUpdate('drivers_changed');
     res.json(result.rows[0]);
   } catch (err) {
@@ -2106,6 +2109,9 @@ app.delete('/api/drivers/:id', async (req, res) => {
     const result = await db.query('DELETE FROM drivers WHERE id = $1', [req.params.id]);
     await invalidateSummaryCache();
     await invalidateKeys(DRIVERS_CACHE_KEY);
+    await invalidateDailyEntriesCache();
+    await invalidateWeeklyWalletsCache();
+    await invalidateDriverExpensesCache();
     emitLiveUpdate('drivers_changed');
     res.json({ success: true });
   } catch (err) {
