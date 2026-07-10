@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Calendar, CheckCircle2, Coins, PlusCircle, ReceiptText, Trash2, Users } from 'lucide-react';
 import { storageService } from '../services/storageService';
+import { useLiveUpdates } from '../lib/useLiveUpdates';
 import { Driver, DriverExpense, DriverExpenseGroupInput, LeaveRecord } from '../types';
 
 const CATEGORY_OPTIONS = [
@@ -108,6 +109,9 @@ const DriverExpensesPage: React.FC = () => {
       setLoading(false);
     }
   };
+
+
+  useLiveUpdates((event) => { if (['driver_expenses_changed', 'drivers_changed', 'leaves_changed'].includes(event?.type || '')) loadData(); });
 
   useEffect(() => {
     loadData();

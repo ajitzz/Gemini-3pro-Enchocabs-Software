@@ -34,7 +34,7 @@ if (process.env.NODE_ENV === 'production' && !connectionString) {
 
 const pool = new Pool({
   connectionString: connectionString || 'postgresql://postgres:password@localhost:5432/encho_cabs',
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  ssl: { rejectUnauthorized: false }
 });
 
 pool.on('error', (err, client) => {

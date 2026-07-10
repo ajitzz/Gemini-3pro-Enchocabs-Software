@@ -1,6 +1,7 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { storageService } from '../services/storageService';
+import { useLiveUpdates } from '../lib/useLiveUpdates';
 import { DriverSummary, RentalSlab, WeeklyWallet, DailyEntry, Driver, DriverBillingRecord } from '../types';
 import { Users, ChevronDown, FileText, Briefcase, Download, Edit2, Save, X, Calendar, ChevronLeft, ChevronRight, Check, Copy, RotateCcw, Search, Clock, ChevronUp, Lock, AlertTriangle, MessageCircle } from 'lucide-react';
 import NetCalculationPopup from './NetCalculationPopup';
@@ -50,6 +51,9 @@ const DriverBillingsPage: React.FC = () => {
   
   // UI Feedback
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+
+  useLiveUpdates((event) => { if (['driver_billings_changed', 'drivers_changed', 'daily_entries_changed', 'weekly_wallets_changed'].includes(event?.type || '')) loadData(); });
 
   useEffect(() => {
     loadData();

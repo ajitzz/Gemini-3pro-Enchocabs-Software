@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { WeeklyWallet, Driver, DailyEntry } from '../types';
 import { storageService } from '../services/storageService';
+import { useLiveUpdates } from '../lib/useLiveUpdates';
 import { Plus, Trash2, Search, Edit2, X, ChevronDown, Wallet, TrendingUp, TrendingDown, Calendar, ArrowRight, AlertOctagon, FileDown, ChevronLeft, ChevronRight } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
@@ -89,6 +90,8 @@ const WeeklyWalletPage: React.FC = () => {
   // Separate state for the date picker display
   const [selectedDate, setSelectedDate] = useState(''); // Explicitly empty
 
+  useLiveUpdates((event) => { if (['weekly_wallets_changed', 'drivers_changed', 'daily_entries_changed'].includes(event?.type || '')) loadData(); });
+
   useEffect(() => {
     loadData();
     // Removed default date setting
@@ -138,6 +141,7 @@ const WeeklyWalletPage: React.FC = () => {
       .sort((a, b) => a.localeCompare(b))
       .map(driver => ({ driver, weekStart: start, weekEnd: end }));
   }, [dailyEntries, wallets, selectedDate]);
+
 
   useEffect(() => {
     if (weekOptions.length === 0) {

@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { Driver, LeaveRecord } from '../types';
 import { storageService } from '../services/storageService';
+import { useLiveUpdates } from '../lib/useLiveUpdates';
 import { isDriverUnavailableOnDate } from '../lib/leaveUtils';
 import { Coffee, Trash2, Calendar, ChevronDown, CheckCircle, Clock } from 'lucide-react';
 
@@ -21,6 +22,9 @@ const LeavePage: React.FC = () => {
   // Edit State for Return Date
   const [editingReturnId, setEditingReturnId] = useState<string | null>(null);
   const [returnDateInput, setReturnDateInput] = useState('');
+
+
+  useLiveUpdates((event) => { if (['leaves_changed', 'drivers_changed'].includes(event?.type || '')) loadData(); });
 
   useEffect(() => {
     loadData();
