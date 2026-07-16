@@ -1,10 +1,10 @@
 
 import React, { useEffect, useState, useRef, useMemo, useCallback, useDeferredValue } from 'react';
-import { DailyEntry, Driver, DriverExpense, DriverSummary, LeaveRecord, RentalSlab, WeeklyWallet } from '../types';
+import { DailyEntry, Driver, LeaveRecord, WeeklyWallet } from '../types';
 import { storageService } from '../services/storageService';
 import { useLiveUpdates } from '../lib/useLiveUpdates';
 import { isDriverUnavailableOnDate } from '../lib/leaveUtils';
-import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check, AlertOctagon, FileDown, AlertCircle, ChevronLeft, ChevronRight, Car, QrCode, EyeOff } from 'lucide-react';
+import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check, AlertOctagon, FileDown, AlertCircle, ChevronLeft, ChevronRight, Car, QrCode } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
 const InputField = ({ label, name, type = "text", value, onChange, onKeyDown, placeholder, required = false, className = "", readOnly = false, inputMode }: any) => (
@@ -27,12 +27,6 @@ const InputField = ({ label, name, type = "text", value, onChange, onKeyDown, pl
 );
 
 type DisplayDailyEntry = DailyEntry & { adjustmentApplied?: number };
-type QuickEntryPanelId = 'missingDailyEntries' | 'missingWeeklyWallets';
-type QuickEntryPanelPreference = {
-  collapsed: boolean;
-  hidden: boolean;
-};
-type QuickEntryPanelPreferences = Record<QuickEntryPanelId, QuickEntryPanelPreference>;
 
 // --- GLOBAL DRIVER FILTER COMPONENT ---
 interface DriverFilterProps {
@@ -303,45 +297,13 @@ const DailyEntryPage: React.FC = () => {
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [leaves, setLeaves] = useState<LeaveRecord[]>([]); // Added Leaves state
   const [weeklyWallets, setWeeklyWallets] = useState<WeeklyWallet[]>([]);
-  const [driverRentalSlabs, setDriverRentalSlabs] = useState<RentalSlab[]>([]);
-  const [driverExpenses, setDriverExpenses] = useState<DriverExpense[]>([]);
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   
   // UI State for optional fields
   const [showOptionalFields, setShowOptionalFields] = useState(false);
-  const [customDueLabels, setCustomDueLabels] = useState<string[]>(() => {
-    try {
-      const raw = localStorage.getItem('daily_entry_due_labels_v1');
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed.filter((item) => typeof item === 'string') : [];
-    } catch (error) {
-      console.warn('Failed to load due labels', error);
-      return [];
-    }
-  });
-  const [isAddingDueLabel, setIsAddingDueLabel] = useState(false);
-  const [newDueLabelDraft, setNewDueLabelDraft] = useState('');
   const [showFullHistory, setShowFullHistory] = useState(false);
-  const [quickEntryPanelPreferences, setQuickEntryPanelPreferences] = useState<QuickEntryPanelPreferences>(() => {
-    const defaultPreferences: QuickEntryPanelPreferences = {
-      missingDailyEntries: { collapsed: false, hidden: false },
-      missingWeeklyWallets: { collapsed: false, hidden: false },
-    };
-    try {
-      const persisted = localStorage.getItem('daily_entry_quick_entry_panels_v1');
-      if (!persisted) return defaultPreferences;
-      return {
-        ...defaultPreferences,
-        ...JSON.parse(persisted),
-      };
-    } catch (e) {
-      console.warn('Failed to load quick entry panel preferences', e);
-      return defaultPreferences;
-    }
-  });
 
   // Global Filters
   const [filterDateStart, setFilterDateStart] = useState('');
@@ -358,12 +320,6 @@ const DailyEntryPage: React.FC = () => {
   const [duplicateWarning, setDuplicateWarning] = useState<{ active: boolean, existingId: string, payload: DailyEntry } | null>(null);
   const [outlierWarning, setOutlierWarning] = useState<{ message: string, payload: DailyEntry } | null>(null);
   const closeAfterSaveRef = useRef(true);
-  const [manualDefaultOverrides, setManualDefaultOverrides] = useState({
-    vehicle: false,
-    shift: false,
-    qrCode: false,
-    rent: false,
-  });
 
   // Form State
   const initialFormState: Partial<DailyEntry> = {
@@ -375,13 +331,22 @@ const DailyEntryPage: React.FC = () => {
     collection: undefined,
     fuel: 0,
     due: 0,
-    dueLabel: '',
     payout: 0,
     payoutDate: '',
     qrCode: '',
     notes: ''
   };
-  const [formData, setFormData] = useState<Partial<DailyEntry>>(initialFormState);
+  const [formData, setFormData] = useState<Partial<DailyEntry>>(() => {
+    try {
+      const draft = localStorage.getItem('daily_entry_draft');
+      if (draft) {
+        return JSON.parse(draft);
+      }
+    } catch (e) {
+      console.warn('Failed to load draft', e);
+    }
+    return initialFormState;
+  });
   const [offlineQueue, setOfflineQueue] = useState<DailyEntry[]>(() => {
     try {
       const queue = localStorage.getItem('daily_entry_offline_queue');
@@ -394,9 +359,12 @@ const DailyEntryPage: React.FC = () => {
   const liveRefreshTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    // Form must fully reset on every browser/project reload.
-    localStorage.removeItem('daily_entry_draft');
-  }, []);
+    try {
+      localStorage.setItem('daily_entry_draft', JSON.stringify(formData));
+    } catch (e) {
+      console.warn('Failed to save draft', e);
+    }
+  }, [formData]);
 
   useEffect(() => {
     try {
@@ -405,22 +373,6 @@ const DailyEntryPage: React.FC = () => {
       console.warn('Failed to save offline queue', e);
     }
   }, [offlineQueue]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('daily_entry_quick_entry_panels_v1', JSON.stringify(quickEntryPanelPreferences));
-    } catch (e) {
-      console.warn('Failed to save quick entry panel preferences', e);
-    }
-  }, [quickEntryPanelPreferences]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('daily_entry_due_labels_v1', JSON.stringify(customDueLabels));
-    } catch (error) {
-      console.warn('Failed to save due labels', error);
-    }
-  }, [customDueLabels]);
 
   const syncOfflineQueue = useCallback(async () => {
     if (offlineQueue.length === 0 || isSyncing || !navigator.onLine) return;
@@ -462,8 +414,6 @@ const DailyEntryPage: React.FC = () => {
 
   const sortEntriesByDateDesc = useCallback((records: DailyEntry[]) =>
     [...records].sort((a, b) => b.date.localeCompare(a.date)), []);
-  const sortSlabsByMinTrips = useCallback((records: RentalSlab[]) =>
-    [...records].sort((a, b) => a.minTrips - b.minTrips), []);
 
   const areEntriesEquivalent = useCallback((a: DailyEntry[], b: DailyEntry[]) => {
     if (a.length !== b.length) return false;
@@ -483,7 +433,6 @@ const DailyEntryPage: React.FC = () => {
         left.rent !== right.rent ||
         left.fuel !== right.fuel ||
         left.due !== right.due ||
-        (left.dueLabel || '') !== (right.dueLabel || '') ||
         left.payout !== right.payout ||
         (left.payoutDate || '') !== (right.payoutDate || '') ||
         (left.qrCode || '') !== (right.qrCode || '') ||
@@ -501,18 +450,12 @@ const DailyEntryPage: React.FC = () => {
     const dailyParams = showFullHistory ? undefined : { from: recentFromDate };
 
     try {
-      const [bootstrap, slabs, expenses] = await Promise.all([
-        storageService.getDailyEntriesBootstrap(dailyParams),
-        storageService.getDriverRentalSlabs(),
-        storageService.getDriverExpenses(),
-      ]);
+      const bootstrap = await storageService.getDailyEntriesBootstrap(dailyParams);
 
       setEntries(sortEntriesByDateDesc(bootstrap.entries.map(sanitizeEntryDate)));
       setDrivers(bootstrap.drivers.filter(driver => !driver.terminationDate));
       setLeaves(bootstrap.leaves);
       setWeeklyWallets(bootstrap.weeklyWallets);
-      setDriverRentalSlabs(sortSlabsByMinTrips(slabs));
-      setDriverExpenses(expenses);
       setLoading(false);
     } catch (error) {
       console.warn('Daily bootstrap failed, falling back to parallel requests:', error);
@@ -522,9 +465,7 @@ const DailyEntryPage: React.FC = () => {
         const asyncMetaPromise = Promise.all([
           storageService.getDrivers(),
           storageService.getLeaves(),
-          storageService.getWeeklyWallets(),
-          storageService.getDriverRentalSlabs(),
-          storageService.getDriverExpenses(),
+          storageService.getWeeklyWallets()
         ]);
 
         const e = await entriesPromise;
@@ -532,12 +473,10 @@ const DailyEntryPage: React.FC = () => {
         setLoading(false);
 
         asyncMetaPromise
-          .then(([d, l, w, slabs, expenses]) => {
+          .then(([d, l, w]) => {
             setDrivers(d.filter(driver => !driver.terminationDate));
             setLeaves(l);
             setWeeklyWallets(w);
-            setDriverRentalSlabs(sortSlabsByMinTrips(slabs));
-            setDriverExpenses(expenses);
           })
           .catch((metaError) => {
             console.error('Failed to load secondary daily entry metadata:', metaError);
@@ -547,7 +486,7 @@ const DailyEntryPage: React.FC = () => {
         setLoading(false);
       }
     }
-  }, [showFullHistory, recentFromDate, sortEntriesByDateDesc, sortSlabsByMinTrips]);
+  }, [showFullHistory, recentFromDate, sortEntriesByDateDesc]);
 
   const refreshEntriesOnly = useCallback(async () => {
     const dailyParams = showFullHistory ? undefined : { from: recentFromDate };
@@ -568,11 +507,7 @@ const DailyEntryPage: React.FC = () => {
       }
 
       const dailyParams = showFullHistory ? undefined : { from: recentFromDate };
-      const [bootstrap, slabs, expenses] = await Promise.all([
-        storageService.getDailyEntriesBootstrap(dailyParams, { skipMemoryCache: true }),
-        storageService.getDriverRentalSlabs(),
-        storageService.getDriverExpenses(undefined, { skipMemoryCache: true }),
-      ]);
+      const bootstrap = await storageService.getDailyEntriesBootstrap(dailyParams, { skipMemoryCache: true });
       const nextEntries = sortEntriesByDateDesc(bootstrap.entries.map(sanitizeEntryDate));
       setEntries(prev => {
         if (areEntriesEquivalent(prev, nextEntries)) return prev;
@@ -581,12 +516,10 @@ const DailyEntryPage: React.FC = () => {
       setDrivers(bootstrap.drivers.filter(driver => !driver.terminationDate));
       setLeaves(bootstrap.leaves);
       setWeeklyWallets(bootstrap.weeklyWallets);
-      setDriverRentalSlabs(sortSlabsByMinTrips(slabs));
-      setDriverExpenses(expenses);
     } catch (error) {
       console.warn('Live refresh skipped due to transient failure:', error);
     }
-  }, [refreshEntriesOnly, showFullHistory, recentFromDate, sortEntriesByDateDesc, sortSlabsByMinTrips, areEntriesEquivalent]);
+  }, [refreshEntriesOnly, showFullHistory, recentFromDate, sortEntriesByDateDesc, areEntriesEquivalent]);
 
   useEffect(() => {
     loadData();
@@ -594,7 +527,7 @@ const DailyEntryPage: React.FC = () => {
 
   const { connected: liveUpdatesConnected } = useLiveUpdates((event) => {
     const type = event?.type;
-    if (!type || !['daily_entries_changed', 'weekly_wallets_changed', 'driver_expenses_changed', 'drivers_changed', 'leaves_changed'].includes(type)) {
+    if (!type || !['daily_entries_changed', 'weekly_wallets_changed', 'drivers_changed', 'leaves_changed'].includes(type)) {
       return;
     }
 
@@ -692,118 +625,26 @@ const DailyEntryPage: React.FC = () => {
       return Array.from(uniqueNames).sort();
   }, [entriesWithAdjustments]);
 
-  const dueLabelOptions = useMemo(() =>
-    [...customDueLabels].sort((a, b) => a.localeCompare(b)),
-  [customDueLabels]);
-
-  const addDueLabel = () => {
-    const trimmed = newDueLabelDraft.trim();
-    if (!trimmed) return;
-    if (!customDueLabels.some((label) => label.toLowerCase() === trimmed.toLowerCase())) {
-      setCustomDueLabels((prev) => [...prev, trimmed]);
-    }
-    setFormData((prev) => ({ ...prev, dueLabel: trimmed }));
-    setNewDueLabelDraft('');
-    setIsAddingDueLabel(false);
-  };
-
-  const removeSelectedDueLabel = () => {
-    const selected = (formData.dueLabel || '').trim();
-    if (!selected) return;
-    setCustomDueLabels((prev) => prev.filter((label) => label.toLowerCase() !== selected.toLowerCase()));
-    setFormData((prev) => ({ ...prev, dueLabel: '' }));
-  };
-
-  const getDriverAssignedDefaults = useCallback((driverName?: string) => {
-    const selectedDriver = drivers.find(d => d.name === driverName);
-    return {
-      vehicle: selectedDriver?.vehicle || '',
-      qrCode: selectedDriver?.qrCode || '',
-      shift: selectedDriver?.currentShift || 'Day',
-      rent: selectedDriver?.defaultRent,
-    };
-  }, [drivers]);
-
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     
     if (name === 'driver') {
-        const assignedDefaults = getDriverAssignedDefaults(value);
-        setManualDefaultOverrides({
-          vehicle: false,
-          shift: false,
-          qrCode: false,
-          rent: false,
-        });
+        const selectedDriver = drivers.find(d => d.name === value);
         setFormData(prev => ({
             ...prev,
             driver: value,
-            vehicle: assignedDefaults.vehicle,
-            qrCode: assignedDefaults.qrCode,
-            shift: assignedDefaults.shift,
-            rent: assignedDefaults.rent // Let undefined flow if no default set
+            vehicle: selectedDriver?.vehicle || prev.vehicle,
+            qrCode: selectedDriver?.qrCode || prev.qrCode,
+            shift: selectedDriver?.currentShift || prev.shift || 'Day',
+            rent: selectedDriver?.defaultRent // Let undefined flow if no default set
         }));
     } else {
-        const nextValue = type === 'number' ? (value === '' ? undefined : parseFloat(value)) : value;
-
-        if (name === 'vehicle' || name === 'shift' || name === 'qrCode' || name === 'rent') {
-          const assignedDefaults = getDriverAssignedDefaults(formData.driver);
-          const normalizedValue = name === 'rent'
-            ? (nextValue === undefined ? undefined : Number(nextValue))
-            : String(nextValue ?? '');
-          const rawDefaultValue = name === 'vehicle'
-            ? assignedDefaults.vehicle
-            : name === 'shift'
-              ? assignedDefaults.shift
-              : name === 'qrCode'
-                ? assignedDefaults.qrCode
-                : assignedDefaults.rent;
-          const normalizedDefault = name === 'rent'
-            ? (rawDefaultValue === undefined ? undefined : Number(rawDefaultValue))
-            : String(rawDefaultValue ?? '');
-          const hasManualOverride = normalizedValue !== normalizedDefault;
-
-          setManualDefaultOverrides(prev => ({ ...prev, [name]: hasManualOverride }));
-        }
         setFormData(prev => ({
             ...prev,
-            [name]: nextValue
+            [name]: type === 'number' ? (value === '' ? undefined : parseFloat(value)) : value
         }));
     }
   };
-
-  useEffect(() => {
-    if (!formData.driver || editingId) return;
-
-    const selectedDriver = drivers.find(d => d.name === formData.driver);
-    if (!selectedDriver) return;
-
-    setFormData(prev => {
-      if (prev.driver !== selectedDriver.name) return prev;
-
-      const nextVehicle = manualDefaultOverrides.vehicle ? prev.vehicle : (selectedDriver.vehicle || '');
-      const nextQrCode = manualDefaultOverrides.qrCode ? prev.qrCode : (selectedDriver.qrCode || '');
-      const nextShift = manualDefaultOverrides.shift ? prev.shift : (selectedDriver.currentShift || 'Day');
-      const nextRent = manualDefaultOverrides.rent ? prev.rent : selectedDriver.defaultRent;
-
-      if (
-        prev.vehicle === nextVehicle &&
-        prev.qrCode === nextQrCode &&
-        prev.shift === nextShift &&
-        prev.rent === nextRent
-      ) {
-        return prev;
-      }
-
-      return {
-        ...prev,
-        vehicle: nextVehicle,
-        qrCode: nextQrCode,
-        shift: nextShift,
-        rent: nextRent,
-      };
-    });
-  }, [drivers, formData.driver, editingId, manualDefaultOverrides]);
 
   const checkOutliers = (newEntry: DailyEntry) => {
     const driverEntries = entries.filter(e => e.driver === newEntry.driver);
@@ -830,9 +671,13 @@ const DailyEntryPage: React.FC = () => {
     if (!navigator.onLine) {
       setOfflineQueue(prev => [...prev, newEntry]);
       upsertEntry({ ...newEntry, id: `offline-${newEntry.id}` }); // Optimistic UI update
-      resetFormAfterSave(newEntry.date, newEntry.driver);
-      if (closeAfterSaveRef.current) {
-        setIsFormOpen(false);
+      if (editingId) {
+        resetForm();
+      } else {
+        resetFormAfterSave(newEntry.date);
+        if (closeAfterSaveRef.current) {
+          setIsFormOpen(false);
+        }
       }
       alert('You are offline. Entry saved locally and will sync when online.');
       return;
@@ -841,9 +686,13 @@ const DailyEntryPage: React.FC = () => {
     try {
       const savedEntry = await storageService.saveDailyEntry(newEntry);
       upsertEntry({ ...newEntry, ...savedEntry });
-      resetFormAfterSave(newEntry.date, newEntry.driver);
-      if (closeAfterSaveRef.current) {
-        setIsFormOpen(false);
+      if (editingId) {
+        resetForm();
+      } else {
+        resetFormAfterSave(newEntry.date);
+        if (closeAfterSaveRef.current) {
+          setIsFormOpen(false);
+        }
       }
     } catch (error: any) {
       console.error('Save daily entry failed:', error);
@@ -887,7 +736,6 @@ const DailyEntryPage: React.FC = () => {
           collection: Number(formData.collection),
           fuel: Number(formData.fuel || 0),
           due: Number(formData.due || 0),
-          dueLabel: (formData.dueLabel || '').trim() || undefined,
           payout: Number(formData.payout || 0),
           payoutDate: formData.payoutDate || undefined,
           qrCode: formData.qrCode,
@@ -946,22 +794,10 @@ const DailyEntryPage: React.FC = () => {
     await saveEntry(entryToSave);
   };
 
-  const resetFormAfterSave = (preserveDate: string, preserveDriver?: string) => {
-    const assignedDefaults = getDriverAssignedDefaults(preserveDriver);
-    setManualDefaultOverrides({
-      vehicle: false,
-      shift: false,
-      qrCode: false,
-      rent: false,
-    });
+  const resetFormAfterSave = (preserveDate: string) => {
     const newState = {
       ...initialFormState,
       date: normalizeDateValue(preserveDate) || getTodayISODate(),
-      driver: preserveDriver || '',
-      vehicle: assignedDefaults.vehicle,
-      qrCode: assignedDefaults.qrCode,
-      shift: assignedDefaults.shift,
-      rent: assignedDefaults.rent,
     };
     setFormData(newState);
     localStorage.removeItem('daily_entry_draft');
@@ -970,12 +806,6 @@ const DailyEntryPage: React.FC = () => {
   };
 
   const handleEdit = (entry: DailyEntry) => {
-    setManualDefaultOverrides({
-      vehicle: true,
-      shift: true,
-      qrCode: true,
-      rent: true,
-    });
     setFormData({
       ...initialFormState,
       ...entry,
@@ -983,7 +813,7 @@ const DailyEntryPage: React.FC = () => {
       payoutDate: normalizeDateValue(entry.payoutDate) || '',
     });
     setEditingId(entry.id);
-    if ((entry.fuel && entry.fuel !== 0) || (entry.due && entry.due !== 0) || (entry.dueLabel && entry.dueLabel.trim().length > 0) || (entry.payout && entry.payout !== 0) || entry.payoutDate) {
+    if ((entry.fuel && entry.fuel !== 0) || (entry.due && entry.due !== 0) || (entry.payout && entry.payout !== 0) || entry.payoutDate) {
         setShowOptionalFields(true);
     } else {
         setShowOptionalFields(false);
@@ -993,12 +823,6 @@ const DailyEntryPage: React.FC = () => {
   };
 
   const resetForm = () => {
-    setManualDefaultOverrides({
-      vehicle: false,
-      shift: false,
-      qrCode: false,
-      rent: false,
-    });
     setFormData(initialFormState);
     localStorage.removeItem('daily_entry_draft');
     setEditingId(null);
@@ -1282,34 +1106,6 @@ const DailyEntryPage: React.FC = () => {
       };
   }, [displayedEntries]);
 
-  const formatCurrencyInt = useCallback((amount: number) => {
-    const absValue = Math.abs(Number(amount || 0));
-    const formatted = `₹${absValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
-    return amount < 0 ? `-${formatted}` : formatted;
-  }, []);
-
-  const selectedDriverStats = useMemo<DriverSummary | null>(() => {
-    if (!filterDriver) return null;
-
-    const scopedDaily = entries
-      .filter((entry: DailyEntry) => entry.driver === filterDriver)
-      .map((entry: DailyEntry) => ({
-        ...entry,
-        due: Number(entry.due ?? 0)
-      }));
-
-    const scopedWallets = weeklyWallets.filter(wallet => wallet.driver === filterDriver);
-    const scopedExpenses = driverExpenses.filter(expense => expense.driver === filterDriver);
-
-    return storageService.calculateDriverStats(
-      filterDriver,
-      scopedDaily,
-      scopedWallets,
-      driverRentalSlabs,
-      scopedExpenses
-    );
-  }, [filterDriver, entries, weeklyWallets, driverRentalSlabs, driverExpenses]);
-
   const goToPreviousPage = () => {
       setCurrentPageIndex(prev => Math.max(0, prev - 1));
   };
@@ -1327,25 +1123,6 @@ const DailyEntryPage: React.FC = () => {
       setFilterDriver('');
       setColumnFilters({});
   };
-
-  const updateQuickEntryPanelPreference = (panelId: QuickEntryPanelId, updater: (current: QuickEntryPanelPreference) => QuickEntryPanelPreference) => {
-    setQuickEntryPanelPreferences(prev => ({
-      ...prev,
-      [panelId]: updater(prev[panelId]),
-    }));
-  };
-
-  const toggleQuickEntryPanelCollapse = (panelId: QuickEntryPanelId) => {
-    updateQuickEntryPanelPreference(panelId, current => ({ ...current, collapsed: !current.collapsed }));
-  };
-
-  const toggleQuickEntryPanelHidden = (panelId: QuickEntryPanelId) => {
-    updateQuickEntryPanelPreference(panelId, current => ({ ...current, hidden: !current.hidden }));
-  };
-
-  const hiddenQuickEntryPanels = (Object.keys(quickEntryPanelPreferences) as QuickEntryPanelId[]).filter(
-    (panelId) => quickEntryPanelPreferences[panelId]?.hidden
-  );
 
   return (
     <div className="max-w-[1920px] mx-auto space-y-8 pb-20">
@@ -1373,13 +1150,7 @@ const DailyEntryPage: React.FC = () => {
             <span className="hidden md:inline">Export CSV</span>
           </button>
           <button
-            onClick={() => {
-              if (isFormOpen) {
-                resetForm();
-                return;
-              }
-              setIsFormOpen(true);
-            }}
+            onClick={() => setIsFormOpen(!isFormOpen)}
             className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
           >
             {isFormOpen ? <X size={20} /> : <Plus size={20} />}
@@ -1402,7 +1173,7 @@ const DailyEntryPage: React.FC = () => {
            )}
         </div>
         
-        <form onSubmit={(e) => { closeAfterSaveRef.current = false; handleSubmit(e); }} className="flex flex-col gap-5">
+        <form onSubmit={(e) => { closeAfterSaveRef.current = true; handleSubmit(e); }} className="flex flex-col gap-5">
            {/* Row 1: Date & Driver */}
            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <InputField label="Date" name="date" type="date" value={formData.date} onChange={handleInputChange} required />
@@ -1427,123 +1198,50 @@ const DailyEntryPage: React.FC = () => {
            </div>
 
            {/* Missing Entries Info */}
-           <div className="bg-indigo-50/60 border border-indigo-100 rounded-2xl p-4 space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider">Missing Data Assistant</h4>
-              {hiddenQuickEntryPanels.length > 0 && (
-                <details className="relative">
-                  <summary className="list-none text-[11px] font-semibold text-indigo-700 bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 flex items-center gap-1 cursor-pointer">
-                    Hidden ({hiddenQuickEntryPanels.length})
-                    <ChevronDown size={14} />
-                  </summary>
-                  <div className="absolute right-0 top-full mt-1 z-20 w-56 bg-white border border-indigo-100 rounded-xl shadow-lg p-2">
-                    {hiddenQuickEntryPanels.map(panelId => (
-                      <button
-                        type="button"
-                        key={panelId}
-                        onClick={() => toggleQuickEntryPanelHidden(panelId)}
-                        className="w-full text-left px-3 py-2 rounded-lg text-xs text-slate-700 hover:bg-indigo-50 flex items-center justify-between"
-                      >
-                        <span>{panelId === 'missingDailyEntries' ? 'Missing Daily Entries' : 'Missing Weekly Wallets'}</span>
-                        <span className="text-indigo-600 font-semibold">Unhide</span>
-                      </button>
+           <div className="bg-indigo-50/60 border border-indigo-100 rounded-2xl p-4">
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div className="flex-1">
+                <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-2">Missing Daily Entries</h4>
+                <p className="text-[11px] text-slate-500 mb-2">
+                  {formData.date ? `Date: ${formatDate(formData.date)}` : 'Select a date to see missing daily entries.'}
+                </p>
+                {formData.date && missingDailyDriversForDate.length > 0 ? (
+                  <ul className="flex flex-wrap gap-2">
+                    {missingDailyDriversForDate.map(driver => (
+                      <li key={driver.id} className="px-3 py-1 bg-white border border-indigo-100 rounded-full text-xs font-semibold text-slate-700">
+                        {driver.name}
+                      </li>
                     ))}
-                  </div>
-                </details>
-              )}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-slate-400">
+                    {formData.date ? 'No missing daily entries for this date.' : 'No date selected.'}
+                  </p>
+                )}
+              </div>
+              <div className="flex-1">
+                <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-2">Missing Weekly Wallets</h4>
+                <p className="text-[11px] text-slate-500 mb-2">
+                  {formData.date ? `Week: ${formatDate(getWeekRangeForDate(formData.date).start)} – ${formatDate(getWeekRangeForDate(formData.date).end)}` : 'Select a date to see missing weekly wallets.'}
+                </p>
+                {formData.date && missingWeeklyWalletsForWeek.length > 0 ? (
+                  <ul className="flex flex-col gap-2">
+                    {missingWeeklyWalletsForWeek.map(item => (
+                      <li key={`${item.driver}-${item.weekStart}`} className="flex flex-wrap items-center justify-between gap-2 bg-white border border-indigo-100 rounded-xl px-3 py-2 text-xs text-slate-700">
+                        <span className="font-semibold">{item.driver}</span>
+                        <span className="text-[11px] text-slate-500">
+                          {formatDate(item.weekStart)} – {formatDate(item.weekEnd)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-slate-400">
+                    {formData.date ? 'No missing weekly wallets for this week.' : 'No date selected.'}
+                  </p>
+                )}
+              </div>
             </div>
-
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-              {!quickEntryPanelPreferences.missingDailyEntries.hidden && (
-                <div className="flex-1 bg-white/70 border border-indigo-100 rounded-xl p-3">
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <button
-                      type="button"
-                      onClick={() => toggleQuickEntryPanelCollapse('missingDailyEntries')}
-                      className="flex items-center gap-1.5 text-left"
-                    >
-                      <h5 className="text-xs font-bold text-indigo-700 uppercase tracking-wider">Missing Daily Entries</h5>
-                      {quickEntryPanelPreferences.missingDailyEntries.collapsed ? <ChevronDown size={14} className="text-indigo-700" /> : <ChevronUp size={14} className="text-indigo-700" />}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => toggleQuickEntryPanelHidden('missingDailyEntries')}
-                      className="text-[11px] text-slate-500 hover:text-indigo-700 flex items-center gap-1"
-                    >
-                      <EyeOff size={12} />
-                      Hide
-                    </button>
-                  </div>
-                  {!quickEntryPanelPreferences.missingDailyEntries.collapsed && (
-                    <>
-                      <p className="text-[11px] text-slate-500 mb-2">
-                        {formData.date ? `Date: ${formatDate(formData.date)}` : 'Select a date to see missing daily entries.'}
-                      </p>
-                      {formData.date && missingDailyDriversForDate.length > 0 ? (
-                        <ul className="flex flex-wrap gap-2">
-                          {missingDailyDriversForDate.map(driver => (
-                            <li key={driver.id} className="px-3 py-1 bg-white border border-indigo-100 rounded-full text-xs font-semibold text-slate-700">
-                              {driver.name}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="text-xs text-slate-400">
-                          {formData.date ? 'No missing daily entries for this date.' : 'No date selected.'}
-                        </p>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-
-              {!quickEntryPanelPreferences.missingWeeklyWallets.hidden && (
-                <div className="flex-1 bg-white/70 border border-indigo-100 rounded-xl p-3">
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <button
-                      type="button"
-                      onClick={() => toggleQuickEntryPanelCollapse('missingWeeklyWallets')}
-                      className="flex items-center gap-1.5 text-left"
-                    >
-                      <h5 className="text-xs font-bold text-indigo-700 uppercase tracking-wider">Missing Weekly Wallets</h5>
-                      {quickEntryPanelPreferences.missingWeeklyWallets.collapsed ? <ChevronDown size={14} className="text-indigo-700" /> : <ChevronUp size={14} className="text-indigo-700" />}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => toggleQuickEntryPanelHidden('missingWeeklyWallets')}
-                      className="text-[11px] text-slate-500 hover:text-indigo-700 flex items-center gap-1"
-                    >
-                      <EyeOff size={12} />
-                      Hide
-                    </button>
-                  </div>
-                  {!quickEntryPanelPreferences.missingWeeklyWallets.collapsed && (
-                    <>
-                      <p className="text-[11px] text-slate-500 mb-2">
-                        {formData.date ? `Week: ${formatDate(getWeekRangeForDate(formData.date).start)} – ${formatDate(getWeekRangeForDate(formData.date).end)}` : 'Select a date to see missing weekly wallets.'}
-                      </p>
-                      {formData.date && missingWeeklyWalletsForWeek.length > 0 ? (
-                        <ul className="flex flex-col gap-2">
-                          {missingWeeklyWalletsForWeek.map(item => (
-                            <li key={`${item.driver}-${item.weekStart}`} className="flex flex-wrap items-center justify-between gap-2 bg-white border border-indigo-100 rounded-xl px-3 py-2 text-xs text-slate-700">
-                              <span className="font-semibold">{item.driver}</span>
-                              <span className="text-[11px] text-slate-500">
-                                {formatDate(item.weekStart)} – {formatDate(item.weekEnd)}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="text-xs text-slate-400">
-                          {formData.date ? 'No missing weekly wallets for this week.' : 'No date selected.'}
-                        </p>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-
           </div>
 
            {/* Row 2: Shift & Vehicle */}
@@ -1565,7 +1263,7 @@ const DailyEntryPage: React.FC = () => {
 
            {/* Primary Financials */}
            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <InputField label="Collection (₹)" name="collection" type="number" inputMode="decimal" value={formData.collection} onChange={handleInputChange} onKeyDown={(e: any) => { if (e.key === 'Enter') { closeAfterSaveRef.current = false; handleSubmit(e); } }} required className="font-bold text-emerald-700 text-xl py-4" placeholder="Enter Amount" />
+              <InputField label="Collection (₹)" name="collection" type="number" inputMode="decimal" value={formData.collection} onChange={handleInputChange} onKeyDown={(e: any) => { if (e.key === 'Enter') { closeAfterSaveRef.current = true; handleSubmit(e); } }} required className="font-bold text-emerald-700 text-xl py-4" placeholder="Enter Amount" />
               
               <div className="relative">
                  <InputField label="Rent (₹)" name="rent" type="number" inputMode="decimal" value={formData.rent} onChange={handleInputChange} required className="py-4 text-lg" placeholder="Enter Rent" />
@@ -1591,73 +1289,9 @@ const DailyEntryPage: React.FC = () => {
            {showOptionalFields && (
              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 bg-slate-50 p-5 rounded-2xl border border-slate-100 animate-fade-in">
                <InputField label="Fuel Given (₹)" name="fuel" type="number" inputMode="decimal" value={formData.fuel === 0 ? '' : formData.fuel} onChange={handleInputChange} className="border-amber-200 focus:ring-amber-500 text-amber-700" placeholder="0" />
-               <div className="relative space-y-2">
+               <div className="relative">
                   <InputField label="Due (+/-)" name="due" type="number" inputMode="decimal" value={formData.due === 0 ? '' : formData.due} onChange={handleInputChange} placeholder="0" />
-                  <div className="flex items-center gap-2 pl-1">
-                    <select
-                      name="dueLabel"
-                      value={formData.dueLabel || ''}
-                      onChange={handleInputChange}
-                      className="flex-1 px-2.5 py-1.5 bg-white/70 border-0 ring-1 ring-slate-200 rounded-lg text-[11px] text-slate-600 focus:ring-2 focus:ring-indigo-300 outline-none"
-                    >
-                      <option value="">Due (default)</option>
-                      {dueLabelOptions.map((label) => (
-                        <option key={label} value={label}>{label}</option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => setIsAddingDueLabel((prev) => !prev)}
-                      className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
-                      title="Add due label"
-                    >
-                      <Plus size={13} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={removeSelectedDueLabel}
-                      disabled={!formData.dueLabel}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                      title="Delete selected label"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                  {isAddingDueLabel && (
-                    <div className="flex items-center gap-2 pl-1">
-                      <input
-                        value={newDueLabelDraft}
-                        onChange={(event) => setNewDueLabelDraft(event.target.value)}
-                        placeholder="New label"
-                        className="flex-1 px-2.5 py-1.5 bg-white border-0 ring-1 ring-slate-200 rounded-lg text-[11px] text-slate-700 focus:ring-2 focus:ring-indigo-300 outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={addDueLabel}
-                        className="px-2 py-1 text-[10px] font-semibold text-indigo-600 bg-indigo-50 rounded-md hover:bg-indigo-100 transition-colors"
-                      >
-                        Add
-                      </button>
-                    </div>
-                  )}
                   <p className="text-[10px] text-slate-400 mt-1 ml-1">+ Driver Owes / - You Owe</p>
-               </div>
-               <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">Due Label</label>
-                  <input
-                    name="dueLabel"
-                    list="daily-due-label-options"
-                    value={formData.dueLabel || ''}
-                    onChange={handleInputChange}
-                    placeholder="Due (default), Traffic, Credit..."
-                    className="w-full px-4 py-2.5 bg-white/70 border-0 ring-1 ring-slate-200 rounded-xl text-slate-700 text-sm placeholder-slate-400 focus:ring-2 focus:ring-indigo-400 transition-all outline-none"
-                  />
-                  <datalist id="daily-due-label-options">
-                    {dueLabelOptions.map((label) => (
-                      <option key={label} value={label} />
-                    ))}
-                  </datalist>
-                  <p className="text-[10px] text-slate-400 ml-1">Leave blank to use default “Due”.</p>
                </div>
                <InputField label="Payout (Paid to Driver)" name="payout" type="number" inputMode="decimal" value={formData.payout === 0 ? '' : formData.payout} onChange={handleInputChange} className="border-emerald-200 focus:ring-emerald-500 text-emerald-700" placeholder="0" />
                <div className="relative">
@@ -1677,8 +1311,8 @@ const DailyEntryPage: React.FC = () => {
              <div className="flex flex-col md:flex-row justify-end gap-3 max-w-[1920px] mx-auto">
                <button type="button" onClick={resetForm} className="px-5 py-3.5 md:py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-xl transition-colors w-full md:w-auto text-center order-2 md:order-1">Cancel</button>
                {!editingId && (
-                 <button type="button" onClick={(e) => { closeAfterSaveRef.current = true; handleSubmit(e); }} className="px-5 py-3.5 md:py-2.5 bg-indigo-100 text-indigo-700 font-bold rounded-xl hover:bg-indigo-200 transition-all active:scale-95 w-full md:w-auto text-center order-1 md:order-2">
-                   Save & Close
+                 <button type="button" onClick={(e) => { closeAfterSaveRef.current = false; handleSubmit(e); }} className="px-5 py-3.5 md:py-2.5 bg-indigo-100 text-indigo-700 font-bold rounded-xl hover:bg-indigo-200 transition-all active:scale-95 w-full md:w-auto text-center order-1 md:order-2">
+                   Save & Add Next
                  </button>
                )}
                <button type="submit" className="px-8 py-3.5 md:py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all active:scale-95 w-full md:w-auto text-center order-1 md:order-3">
@@ -1825,28 +1459,10 @@ const DailyEntryPage: React.FC = () => {
       {/* Table / Card View */}
       <div className="bg-white rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] border border-slate-100 overflow-hidden">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 px-6 py-4 border-b border-slate-100 bg-slate-50/60">
-            <div className="flex flex-col lg:flex-row lg:items-start lg:gap-8">
-              <div>
+            <div>
                 <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Records Window</p>
                 <p className="text-sm font-bold text-slate-800">{currentPageLabel}</p>
                 {currentPageRange && <p className="text-xs text-slate-400">{currentPageRange}</p>}
-              </div>
-              {selectedDriverStats && (
-                <div className="mt-2 lg:mt-0 rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-2 space-y-1.5">
-                  <p className="text-[10px] uppercase font-bold tracking-wider text-indigo-500">{filterDriver} • Driver Overview</p>
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                    <p className="text-xs font-semibold text-slate-700">
-                      Net Payout: <span className={selectedDriverStats.netPayout >= 0 ? 'text-emerald-600' : 'text-rose-600'}>{formatCurrencyInt(selectedDriverStats.netPayout)}</span>
-                    </p>
-                    <p className="text-xs font-semibold text-slate-700">
-                      Net Balance: <span className={selectedDriverStats.finalTotal >= 0 ? 'text-emerald-600' : 'text-rose-600'}>{formatCurrencyInt(selectedDriverStats.finalTotal)}</span>
-                    </p>
-                  </div>
-                  <p className="text-[11px] text-slate-500">
-                    Calc: Collection ({formatCurrencyInt(selectedDriverStats.totalCollection)}) - Rent ({formatCurrencyInt(selectedDriverStats.totalRent)}) - Fuel ({formatCurrencyInt(selectedDriverStats.totalFuel)}) + Due ({formatCurrencyInt(selectedDriverStats.totalDue)}) + Wallet ({formatCurrencyInt(selectedDriverStats.totalWalletWeek)}) - Payout ({formatCurrencyInt(selectedDriverStats.totalPayout)}) - Expenses ({formatCurrencyInt(selectedDriverStats.totalExpenses)}).
-                  </p>
-                </div>
-              )}
             </div>
             <div className="flex items-center justify-between md:justify-end gap-3">
                 <button

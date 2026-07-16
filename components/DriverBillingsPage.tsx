@@ -1,9 +1,8 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { storageService } from '../services/storageService';
-import { useLiveUpdates } from '../lib/useLiveUpdates';
 import { DriverSummary, RentalSlab, WeeklyWallet, DailyEntry, Driver, DriverBillingRecord } from '../types';
-import { Users, ChevronDown, FileText, Briefcase, Download, Edit2, Save, X, Calendar, ChevronLeft, ChevronRight, Check, Copy, RotateCcw, Search, Clock, ChevronUp, Lock, AlertTriangle, MessageCircle } from 'lucide-react';
+import { Users, ChevronDown, FileText, Briefcase, Download, Edit2, Save, X, Calendar, ChevronLeft, ChevronRight, Check, Copy, RotateCcw, Search, Clock, ChevronUp, Lock, AlertTriangle } from 'lucide-react';
 import NetCalculationPopup from './NetCalculationPopup';
 
 const DriverBillingsPage: React.FC = () => {
@@ -25,7 +24,6 @@ const DriverBillingsPage: React.FC = () => {
           due: number;
           wallet: number;
           payout: number;
-          expenses: number;
       };
       title?: string;
       sourceNote?: string;
@@ -51,9 +49,6 @@ const DriverBillingsPage: React.FC = () => {
   
   // UI Feedback
   const [copiedId, setCopiedId] = useState<string | null>(null);
-
-
-  useLiveUpdates((event) => { if (['driver_billings_changed', 'drivers_changed', 'daily_entries_changed', 'weekly_wallets_changed'].includes(event?.type || '')) loadData(); });
 
   useEffect(() => {
     loadData();
@@ -108,8 +103,7 @@ const DriverBillingsPage: React.FC = () => {
               fuel: driver.totalFuel,
               due: driver.totalDue,
               wallet: driver.totalWalletWeek,
-              payout: driver.totalPayout,
-              expenses: driver.totalExpenses
+              payout: driver.totalPayout
           },
           title: `${metric === 'netPayout' ? 'Net Payout' : 'Net Balance'} • ${driver.driver}`,
           sourceNote:
@@ -178,11 +172,10 @@ const DriverBillingsPage: React.FC = () => {
       rent: acc.rent + driver.totalRent,
       fuel: acc.fuel + driver.totalFuel,
       wallet: acc.wallet + driver.totalWalletWeek,
-      expenses: acc.expenses + driver.totalExpenses,
       netPayout: acc.netPayout + driver.netPayout,
       finalTotal: acc.finalTotal + driver.finalTotal,
     }),
-    { collection: 0, rent: 0, fuel: 0, wallet: 0, expenses: 0, netPayout: 0, finalTotal: 0 }
+    { collection: 0, rent: 0, fuel: 0, wallet: 0, netPayout: 0, finalTotal: 0 }
   );
 
   const normalize = (s: string) => s ? s.toLowerCase().replace(/[^a-z0-9]/g, '').trim() : '';
@@ -259,7 +252,8 @@ const DriverBillingsPage: React.FC = () => {
             rentPerDay: derivedRentPerDay,
             rentTotal: derivedRentTotal,
             daysWorked: derivedDaysWorked,
-            appliedAdjustment: derivedAdjustments
+            appliedAdjustment: derivedAdjustments,
+            expenses: bill.expenses || 0
         };
     });
 
@@ -311,6 +305,7 @@ const DriverBillingsPage: React.FC = () => {
                   wallet: 0,
                   walletOverdue: 0,
                   payout: 0,
+                  expenses: 0,
                   weekRange: 'All Time',
                   isAggregate: true,
                   isProvisional: false,
@@ -333,6 +328,7 @@ const DriverBillingsPage: React.FC = () => {
               entry.wallet += (bill.wallet || 0);
               entry.walletOverdue += ovr;
               entry.payout += (bill.payout || 0);
+              entry.expenses += (bill.expenses || 0);
           });
 
           return Array.from(aggMap.values()).map(e => ({
@@ -381,6 +377,7 @@ const DriverBillingsPage: React.FC = () => {
           acc.wallet += deriveWalletWeek(bill);
           acc.walletOverdue += bill.walletOverdue || 0;
           acc.payout += bill.payout || 0;
+          acc.expenses += bill.expenses || 0;
           return acc;
       }, {
           daysWorked: 0,
@@ -392,7 +389,8 @@ const DriverBillingsPage: React.FC = () => {
           fuel: 0,
           wallet: 0,
           walletOverdue: 0,
-          payout: 0
+          payout: 0,
+          expenses: 0
       });
 
       return {
@@ -405,7 +403,8 @@ const DriverBillingsPage: React.FC = () => {
           fuel: Math.round(totals.fuel),
           wallet: Math.round(totals.wallet),
           walletOverdue: Math.round(totals.walletOverdue),
-          payout: Math.round(totals.payout)
+          payout: Math.round(totals.payout),
+          expenses: Math.round(totals.expenses)
       };
   }, [displayedBills]);
 
@@ -486,6 +485,7 @@ const DriverBillingsPage: React.FC = () => {
           wallet: bill.wallet,
           walletOverdue: bill.walletOverdue, // Uses normalized field
           adjustments: Math.max(0, bill.adjustments ?? 0),
+          expenses: bill.expenses || 0,
           payout: bill.payout,
           status: 'Finalized',
           generatedAt: new Date().toISOString()
@@ -557,6 +557,7 @@ const DriverBillingsPage: React.FC = () => {
                <div class="label">Rental Collection</div><div class="value positive">+ ${formatCurrency(bill.collection)}</div>
                <div class="label">Daily Dues</div><div class="value">${formatCurrency(bill.due)}</div>
                <div class="label">Wallet Overdue (Dues)</div><div class="value">${formatCurrency(bill.walletOverdue)}</div>
+               ${bill.expenses > 0 ? `<div class="label">Expenses</div><div class="value negative">- ${formatCurrency(bill.expenses)}</div>` : ''}
             </div>
             <div class="total-section"><div class="total-row"><div>NET PAYOUT</div><div>${formatCurrency(bill.payout)}</div></div></div>
             ${dailyRows ? `<div class="section-title">DAILY ACTIVITY LOG</div><table><thead><tr><th>DATE</th><th>DRIVER</th><th style="text-align:right">RENT</th><th style="text-align:right">COLLECTION</th><th style="text-align:right">FUEL</th><th style="text-align:right">DUES</th><th style="text-align:right">ADJUSTMENTS</th></tr></thead><tbody>${dailyRows}</tbody></table>` : ''}
@@ -576,51 +577,9 @@ const DriverBillingsPage: React.FC = () => {
       a.click();
   };
 
-  const getPublicBillLink = (bill: any) => {
-      const payload = encodeURIComponent(JSON.stringify({
-          id: bill.id,
-          driver: bill.driver,
-          driverName: bill.driver,
-          qrCode: bill.qrCode,
-          weekRange: bill.weekRange,
-          weekStartDate: bill.startDate || bill.weekStartDate,
-          weekEndDate: bill.endDate || bill.weekEndDate,
-          trips: bill.trips,
-          rentPerDay: bill.rentPerDay,
-          daysWorked: bill.daysWorked,
-          rentTotal: bill.rentTotal,
-          collection: bill.collection,
-          fuel: bill.fuel,
-          due: bill.due ?? bill.overdue ?? 0,
-          wallet: bill.wallet,
-          walletOverdue: bill.walletOverdue ?? bill.overdue ?? 0,
-          expenses: bill.expenses || 0,
-          payout: bill.payout,
-          status: bill.isSaved ? 'finalized' : (bill.isProvisional ? 'provisional' : 'generated'),
-          labeledDueRows: bill.labeledDueRows || [],
-          dailyDetails: bill.dailyDetails || [],
-          weeklyDetails: bill.weeklyDetails || null
-      }));
-      return `${window.location.origin}/bill/${bill.id}?payload=${payload}`;
-  };
-
-  const copyBillLink = async (bill: any) => {
-      const shareLink = getPublicBillLink(bill);
-      try {
-          await navigator.clipboard.writeText(shareLink);
-      } catch (error) {
-          console.warn('Clipboard copy failed:', error);
-      }
+  const copyBillLink = (bill: any) => {
       setCopiedId(bill.id);
       setTimeout(() => setCopiedId(null), 2000);
-  };
-
-  const shareBillOnWhatsApp = (bill: any) => {
-      const shareLink = getPublicBillLink(bill);
-      const text = encodeURIComponent(
-          `Hi ${bill.driver}, your bill is ready.\nDownload options are available on this link (Image/PDF): ${shareLink}`
-      );
-      window.open(`https://wa.me/?text=${text}`, '_blank', 'noopener,noreferrer');
   };
 
   const toggleExpandBill = (id: string) => {
@@ -698,16 +657,15 @@ const DriverBillingsPage: React.FC = () => {
                         <th className="px-6 py-4 font-semibold text-right tracking-wider">Rent</th>
                         <th className="px-6 py-4 font-semibold text-right tracking-wider">Fuel</th>
                         <th className="px-6 py-4 font-semibold text-right tracking-wider">Wallet</th>
-                        <th className="px-6 py-4 font-semibold text-right tracking-wider">Expenses</th>
                         <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Payout</th>
                         <th className="px-6 py-4 font-semibold text-right tracking-wider">Net Balance</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {loading ? (
-                         <tr><td colSpan={8} className="p-8 text-center text-slate-400">Loading balances...</td></tr>
+                         <tr><td colSpan={7} className="p-8 text-center text-slate-400">Loading balances...</td></tr>
                       ) : filteredSummaries.length === 0 ? (
-                         <tr><td colSpan={8} className="p-8 text-center text-slate-400">No drivers found.</td></tr>
+                         <tr><td colSpan={7} className="p-8 text-center text-slate-400">No drivers found.</td></tr>
                       ) : (
                         filteredSummaries.map((driver) => (
                           <tr key={driver.driver} className="hover:bg-slate-50 transition-colors group">
@@ -716,7 +674,6 @@ const DriverBillingsPage: React.FC = () => {
                             <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalRent)}</td>
                             <td className="px-6 py-4 text-right text-slate-400">{formatCurrency(driver.totalFuel)}</td>
                             <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalWalletWeek)}</td>
-                            <td className="px-6 py-4 text-right text-slate-500 font-medium">{formatCurrency(driver.totalExpenses)}</td>
                             <td className="px-6 py-4 text-right">
                               <div
                                 className="flex flex-col items-end gap-1 cursor-pointer"
@@ -761,7 +718,6 @@ const DriverBillingsPage: React.FC = () => {
                         <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.rent)}</td>
                         <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.fuel)}</td>
                         <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.wallet)}</td>
-                        <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.expenses)}</td>
                         <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.netPayout)}</td>
                         <td className="px-6 py-3 text-right">{formatCurrency(balanceTotals.finalTotal)}</td>
                       </tr>
@@ -781,6 +737,7 @@ const DriverBillingsPage: React.FC = () => {
                           <td className="px-6 py-3 text-right text-rose-500">-{formatIntegerCurrency(billingTotals.fuel)}</td>
                           <td className="px-6 py-3 text-right text-indigo-600">+{formatIntegerCurrency(billingTotals.wallet)}</td>
                           <td className="px-6 py-3 text-right">{formatIntegerCurrency(billingTotals.walletOverdue)}</td>
+                          <td className="px-6 py-3 text-right text-rose-500">-{formatIntegerCurrency(billingTotals.expenses)}</td>
                           <td className="px-6 py-3 text-right">{formatIntegerCurrency(billingTotals.payout)}</td>
                           <td className="px-6 py-3 text-center bg-white sticky right-0 shadow-[-4px_0_10px_-2px_rgba(0,0,0,0.02)]">—</td>
                         </tr>
@@ -898,6 +855,7 @@ const DriverBillingsPage: React.FC = () => {
                              <th className="px-6 py-4 text-right">FUEL</th>
                              <th className="px-6 py-4 text-right">WALLET</th>
                              <th className="px-6 py-4 text-right">WALLET OVERDUE</th>
+                             <th className="px-6 py-4 text-right">EXPENSES</th>
                              <th className="px-6 py-4 text-right">PAYOUT</th>
                              <th className="px-6 py-4 text-center bg-slate-50 sticky right-0 z-10 shadow-[-4px_0_10px_-2px_rgba(0,0,0,0.05)]">ACTIONS</th>
                           </tr>
@@ -954,6 +912,7 @@ const DriverBillingsPage: React.FC = () => {
                                        {bill.isProvisional ? <span className="text-slate-300">-</span> : `+${formatCurrency(bill.wallet)}`}
                                    </td>
                                    <td className="px-6 py-4 text-right text-slate-500">{formatCurrency(bill.walletOverdue)}</td>
+                                   <td className="px-6 py-4 text-right text-rose-500">-{formatCurrency(bill.expenses)}</td>
                                    <td className="px-6 py-4 text-right">
                                       <span className={`px-3 py-1 rounded-lg font-bold border ${bill.payout < 0 ? 'bg-rose-50 text-rose-700 border-rose-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>
                                          {formatCurrency(bill.payout)}
@@ -986,13 +945,6 @@ const DriverBillingsPage: React.FC = () => {
                                                 <button onClick={() => downloadBill(bill)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Download Bill">
                                                     <Download size={16} />
                                                 </button>
-                                                <button
-                                                    onClick={() => shareBillOnWhatsApp(bill)}
-                                                    className="p-2 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                                                    title="Share Bill on WhatsApp"
-                                                >
-                                                    <MessageCircle size={16} />
-                                                </button>
                                             </>
                                          )}
                                         {bill.isAggregate && (
@@ -1003,7 +955,7 @@ const DriverBillingsPage: React.FC = () => {
                                 </tr>
                                 {expandedBillIds.has(bill.id) && (
                                   <tr key={`${bill.id}-expanded`}>
-                                      <td colSpan={14} className="px-6 py-4 bg-slate-50/50 shadow-inner">
+                                      <td colSpan={15} className="px-6 py-4 bg-slate-50/50 shadow-inner">
                                           <div className="text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Daily Breakdown for {bill.driver}</div>
                                           <table className="w-full text-xs bg-white rounded-lg border border-slate-200 overflow-hidden">
                                               <thead className="bg-slate-100 text-slate-500 font-semibold">

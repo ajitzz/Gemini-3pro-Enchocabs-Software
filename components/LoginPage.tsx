@@ -17,7 +17,7 @@ const LoginPage: React.FC = () => {
   // Effect to handle redirection AFTER user state is updated
   useEffect(() => {
     if (user) {
-      if (user.role === 'driver' || user.role === 'manager') {
+      if (user.role === 'driver') {
         navigate('/portal');
       } else {
         navigate('/app');

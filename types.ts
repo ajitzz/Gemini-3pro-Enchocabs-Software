@@ -11,7 +11,6 @@ export interface DailyEntry {
   collection: number;
   fuel: number;
   due: number; // positive = driver owes me, negative = I owe driver
-  dueLabel?: string;
   payout: number; // New field: Amount paid out to driver
   payoutDate?: string; // Date when payout was issued (required when payout is entered)
   notes?: string;
@@ -54,6 +53,7 @@ export interface DriverBillingRecord {
   walletOverdue: number; // From DailyEntry.due
   adjustments: number;
   payout: number;
+  expenses: number; // New: Expenses deducted
   status: 'Pending' | 'Paid' | 'Finalized';
   generatedAt: string;
 }
@@ -120,39 +120,12 @@ export interface DriverSummary {
   totalFuel: number;
   totalDue: number;
   totalPayout: number;
-  totalExpenses: number;
   totalWalletWeek: number;
+  totalExpenses: number; // New: Total expenses for this driver
   finalTotal: number; // Represents overall net balance from start to end
   netPayout: number; // Represents the lowest payout amount (overall vs latest wallet window)
   netPayoutSource: 'overall' | 'latest-wallet';
   netPayoutRange?: string;
-}
-
-export interface DriverExpense {
-  id: string;
-  groupId: string;
-  expenseDate: string;
-  category: string;
-  customType?: string;
-  driver: string;
-  amount: number;
-  notes?: string;
-  splitMode: 'all' | 'selected';
-  distributionMode?: 'split' | 'common';
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface DriverExpenseGroupInput {
-  id?: string;
-  expenseDate: string;
-  category: string;
-  customType?: string;
-  amount: number;
-  notes?: string;
-  splitMode: 'all' | 'selected';
-  distributionMode?: 'split' | 'common';
-  selectedDrivers?: string[];
 }
 
 export interface GlobalSummary {
@@ -161,7 +134,6 @@ export interface GlobalSummary {
   totalFuel: number;
   totalDue: number;
   totalPayout: number;
-  totalExpenses: number;
   totalWalletWeek: number;
   pendingFromDrivers: number;
   payableToDrivers: number;
@@ -260,7 +232,7 @@ export interface LeadSheet {
   leads: LeadRecord[];
 }
 
-export type UserRole = 'super_admin' | 'admin' | 'manager' | 'driver';
+export type UserRole = 'super_admin' | 'admin' | 'driver';
 
 export type CashMode = 'blocked' | 'trips';
 
@@ -281,4 +253,19 @@ export interface DriverWidgetSummary {
   netPayoutSource: 'overall' | 'latest-wallet';
   netPayoutRange?: string | null;
   updatedAt: string;
+}
+
+export interface ExpenseSplit {
+  driverId: string;
+  amount: number;
+}
+
+export interface Expense {
+  id: string;
+  date: string; // ISO YYYY-MM-DD
+  category: 'Food' | 'Travel' | 'Ticket' | 'Other';
+  description: string;
+  totalAmount: number;
+  splits: ExpenseSplit[];
+  createdAt: string;
 }

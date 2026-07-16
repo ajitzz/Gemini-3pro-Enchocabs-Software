@@ -10,13 +10,6 @@ const GOOGLE_ISSUERS = ['accounts.google.com', 'https://accounts.google.com'];
 
 const app = new Hono<{ Bindings: Env }>();
 
-
-const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const toUuidOrNull = (value: unknown): string | null => {
-  const raw = String(value || '').trim();
-  return UUID_V4_REGEX.test(raw) ? raw : null;
-};
-
 app.use('*', (c, next) => {
   const allowlist = (c.env.ALLOWED_ORIGINS || '').split(',').map((o) => o.trim()).filter(Boolean);
   return cors({
@@ -160,13 +153,13 @@ app.post('/api/daily-entries/bulk', async (c) => {
         keyToId.set(key, incomingId);
 
         const q = `
-          INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, due_label, payout, notes)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+          INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, payout, notes)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
           ON CONFLICT (id) DO UPDATE SET
             date=$2, day=$3, vehicle=$4, driver=$5, shift=$6, qr_code=$7,
-            rent=$8, collection=$9, fuel=$10, due=$11, due_label=$12, payout=$13, notes=$14;
+            rent=$8, collection=$9, fuel=$10, due=$11, payout=$12, notes=$13;
         `;
-        await client.query(q, [e.id, isoDate, e.day, e.vehicle, canonicalDriver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.dueLabel || null, e.payout, e.notes]);
+        await client.query(q, [e.id, isoDate, e.day, e.vehicle, canonicalDriver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, e.notes]);
       }
 
       const keyList = Array.from(keyToId.keys());
@@ -278,7 +271,7 @@ app.get('/api/daily-entries', async (c) => {
 
     const result = await query(
       c.env,
-      `SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, due_label as "dueLabel", payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes
+      `SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes
        FROM daily_entries
        ${whereClause}
        ORDER BY date DESC
@@ -326,7 +319,7 @@ app.get('/api/daily-entries/bootstrap', async (c) => {
     const [dailyRes, driversRes, leavesRes, walletsRes] = await Promise.all([
       query(
         c.env,
-        `SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, due_label as "dueLabel", payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes
+        `SELECT id, to_char(date, 'YYYY-MM-DD') as date, day, vehicle, driver, shift, qr_code as "qrCode", rent, collection, fuel, due, payout, to_char(payout_date, 'YYYY-MM-DD') as "payoutDate", notes
          FROM daily_entries
          ${whereClause}
          ORDER BY date DESC`,
@@ -376,19 +369,18 @@ app.post('/api/daily-entries', async (c) => {
   const isoDate = toISODate(e.date);
   if (!isoDate) return c.json({ error: 'Invalid date format' }, 400);
   const normalizedDriver = normalizeDriver(e.driver);
-  const entryId = toUuidOrNull(e.id);
-  const duplicateCheck = await query(c.env, `SELECT id FROM daily_entries WHERE date = $1 AND LOWER(driver) = $2 AND ($3::uuid IS NULL OR id <> $3::uuid)`, [isoDate, normalizedDriver, entryId]);
+  const duplicateCheck = await query(c.env, `SELECT id FROM daily_entries WHERE date = $1 AND LOWER(driver) = $2 AND ($3::uuid IS NULL OR id <> $3)`, [isoDate, normalizedDriver, e.id || null]);
   if (duplicateCheck.rowCount && duplicateCheck.rowCount > 0) {
     return c.json({ error: 'Driver already has an entry for this date. Please edit or delete the existing record.' }, 409);
   }
   const q = `
-    INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, due_label, payout, notes)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+    INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, payout, notes)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
     ON CONFLICT (id) DO UPDATE SET
-      date=$2, day=$3, vehicle=$4, driver=$5, shift=$6, qr_code=$7, rent=$8, collection=$9, fuel=$10, due=$11, due_label=$12, payout=$13, notes=$14
+      date=$2, day=$3, vehicle=$4, driver=$5, shift=$6, qr_code=$7, rent=$8, collection=$9, fuel=$10, due=$11, payout=$12, notes=$13
     RETURNING *;
   `;
-  const result = await query(c.env, q, [entryId || crypto.randomUUID(), isoDate, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.dueLabel || null, e.payout, e.notes]);
+  const result = await query(c.env, q, [e.id, isoDate, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, e.notes]);
   return c.json(result.rows[0]);
 });
 

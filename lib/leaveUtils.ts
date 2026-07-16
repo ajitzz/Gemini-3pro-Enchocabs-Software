@@ -9,10 +9,9 @@ const asISODateOnly = (value: string | undefined | null): string | null => {
 /**
  * Business rule:
  * - Leave starts on startDate (inclusive).
- * - If actualReturnDate exists, that day is still considered leave.
- *   Driver becomes available from the next day.
- * - If actualReturnDate is missing, leave continues until actual return is entered
- *   (planned endDate is informational only).
+ * - If actualReturnDate exists, the driver is available from that date itself,
+ *   so leave is treated as [startDate, actualReturnDate).
+ * - If actualReturnDate is missing, planned leave is [startDate, endDate] (inclusive).
  */
 export const isDriverUnavailableOnDate = (leave: LeaveRecord, targetDate: string): boolean => {
   const target = asISODateOnly(targetDate);
@@ -24,8 +23,8 @@ export const isDriverUnavailableOnDate = (leave: LeaveRecord, targetDate: string
 
   const actualReturn = asISODateOnly(leave.actualReturnDate);
   if (actualReturn) {
-    return target >= start && target <= actualReturn;
+    return target >= start && target < actualReturn;
   }
 
-  return target >= start;
+  return target >= start && target <= end;
 };

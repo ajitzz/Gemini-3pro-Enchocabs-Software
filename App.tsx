@@ -1,6 +1,6 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, Navigate, Outlet } from 'react-router-dom';
-import { LayoutDashboard, Calendar, Wallet, Menu, X, Users, Coffee, Upload, Settings, Briefcase, FileText, Calculator, UserCircle, LogOut, Shield, ClipboardList, ReceiptText } from 'lucide-react';
+import { LayoutDashboard, Calendar, Wallet, Menu, X, Users, Coffee, Upload, Settings, Briefcase, FileText, Calculator, UserCircle, LogOut, Shield, ClipboardList } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
 
@@ -21,8 +21,7 @@ const DriverLeadsPage = lazy(() => import('./components/DriverLeadsPage'));
 const ImportPage = lazy(() => import('./components/ImportPage'));
 const AdminAccessPage = lazy(() => import('./components/AdminAccessPage'));
 const DriverBalanceInsightsPage = lazy(() => import('./components/DriverBalanceInsightsPage'));
-const DriverExpensesPage = lazy(() => import('./components/DriverExpensesPage'));
-const BillSharePage = lazy(() => import('./components/BillSharePage'));
+const ExpensesPage = lazy(() => import('./components/ExpensesPage'));
 
 
 const routePrefetchers: Record<string, () => Promise<unknown>> = {
@@ -41,10 +40,9 @@ const routePrefetchers: Record<string, () => Promise<unknown>> = {
   '/app/revenue': () => import('./components/RevenuePage'),
   '/app/driver-leads': () => import('./components/DriverLeadsPage'),
   '/app/import': () => import('./components/ImportPage'),
-  '/app/expenses': () => import('./components/DriverExpensesPage'),
   '/app/admin-access': () => import('./components/AdminAccessPage'),
   '/app/driver-balances': () => import('./components/DriverBalanceInsightsPage'),
-  '/bill/:billId': () => import('./components/BillSharePage'),
+  '/app/expenses': () => import('./components/ExpensesPage'),
 };
 
 const prefetchedRoutes = new Set<string>();
@@ -104,8 +102,8 @@ const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode
   }
 
   if (!allowedRoles.includes(user.role)) {
-     // Strictly keep non-admin roles in Driver Portal.
-     if (user.role === 'driver' || user.role === 'manager') return <Navigate to="/portal" replace />;
+     // Redirect logic based on role mismatch
+     if (user.role === 'driver') return <Navigate to="/portal" replace />;
      return <Navigate to="/app" replace />;
   }
 
@@ -190,8 +188,8 @@ const Layout: React.FC = () => {
               <NavItem to="/app/leaves" icon={Coffee} label="Leaves" />
               <NavItem to="/app/settlement" icon={Briefcase} label="Company Settlement" />
               <NavItem to="/app/billings" icon={FileText} label="Driver Billings" />
+              <NavItem to="/app/expenses" icon={Wallet} label="Expenses" />
               <NavItem to="/app/revenue" icon={Calculator} label="Revenue Calculation" />
-              <NavItem to="/app/expenses" icon={ReceiptText} label="Driver Expenses" />
               <NavItem to="/app/driver-leads" icon={ClipboardList} label="Driver Leads" />
               <NavItem to="/app/import" icon={Upload} label="Import Data" />
             </nav>
@@ -289,9 +287,6 @@ const App: React.FC = () => {
           <Routes>
               <Route path="/" element={<LazyPage><HomePage /></LazyPage>} />
               <Route path="/drivers-earnings" element={<LazyPage><DriversEarningsPublicPage /></LazyPage>} />
-              <Route path="/bill/:billId" element={<LazyPage><BillSharePage /></LazyPage>} />
-              <Route path="/bill/share/:shareToken" element={<LazyPage><BillSharePage /></LazyPage>} />
-              <Route path="/b/:shareToken" element={<LazyPage><BillSharePage /></LazyPage>} />
               <Route path="/staff" element={<LazyPage><LoginPage /></LazyPage>} />
               <Route path="/login" element={<Navigate to="/staff" replace />} />
 
@@ -319,8 +314,8 @@ const App: React.FC = () => {
                 <Route path="leaves" element={<LazyPage><LeavePage /></LazyPage>} />
                 <Route path="settlement" element={<LazyPage><CompanySettlementPage /></LazyPage>} />
                 <Route path="billings" element={<LazyPage><DriverBillingsPage /></LazyPage>} />
+                <Route path="expenses" element={<LazyPage><ExpensesPage /></LazyPage>} />
                 <Route path="revenue" element={<LazyPage><RevenuePage /></LazyPage>} />
-                <Route path="expenses" element={<LazyPage><DriverExpensesPage /></LazyPage>} />
                 <Route path="driver-leads" element={<LazyPage><DriverLeadsPage /></LazyPage>} />
                 <Route path="import" element={<LazyPage><ImportPage /></LazyPage>} />
                 <Route path="admin-access" element={<LazyPage><AdminAccessPage /></LazyPage>} />
