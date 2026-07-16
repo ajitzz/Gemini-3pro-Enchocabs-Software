@@ -50,6 +50,7 @@ const RegistrationPage: React.FC = () => {
   // Manager Assignment State
   const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
   const [managerTeam, setManagerTeam] = useState<string[]>([]); // List of Child Driver IDs
+  const [isSavingTeam, setIsSavingTeam] = useState(false);
   
   // Warning Modal State
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
@@ -342,12 +343,15 @@ const RegistrationPage: React.FC = () => {
           childDriverIds: managerTeam
       };
       
+      setIsSavingTeam(true);
       try {
         await storageService.saveManagerAccess(accessRecord);
         setIsTeamModalOpen(false);
         alert("Team assignments saved successfully.");
       } catch (err: any) {
         alert("Failed to save assignments: " + err.message);
+      } finally {
+        setIsSavingTeam(false);
       }
   };
 
@@ -712,7 +716,13 @@ const RegistrationPage: React.FC = () => {
                   </div>
                   <div className="p-5 border-t border-slate-100 flex justify-end gap-3 rounded-b-2xl">
                       <button onClick={() => setIsTeamModalOpen(false)} className="px-5 py-2 text-slate-600 font-bold text-sm">Cancel</button>
-                      <button onClick={saveTeamMapping} className="px-6 py-2 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 shadow-lg">Save Assignments</button>
+                      <button 
+                        onClick={saveTeamMapping} 
+                        disabled={isSavingTeam}
+                        className="px-6 py-2 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[160px]"
+                      >
+                        {isSavingTeam ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</> : 'Save Assignments'}
+                      </button>
                   </div>
               </div>
           </div>
