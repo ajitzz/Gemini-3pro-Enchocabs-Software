@@ -14,7 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import NetCalculationPopup from './NetCalculationPopup';
 import { registerDriverPushNotifications } from '../lib/pushNotifications';
 
-type PortalDailyEntry = DailyEntry & { adjustmentApplied?: number; adjustedDue?: number };
+type PortalDailyEntry = DailyEntry & { adjustmentApplied?: number; adjustedDue?: number; expenses?: number };
 
 const DriverPortalPage: React.FC = () => {
   const { user, logout } = useAuth();
@@ -772,7 +772,9 @@ const DriverPortalPage: React.FC = () => {
            payout,
            dailyDetails: relevantDaily,
            weeklyDetails: wallet,
-           isAdjusted: !!slab || (wallet.rentOverride !== undefined && wallet.rentOverride !== null)
+           isAdjusted: !!slab || (wallet.rentOverride !== undefined && wallet.rentOverride !== null),
+           isAggregate: false,
+           expenses: 0
        };
     });
   }, [dailyWithAdjustments, rawWeekly, rentalSlabs, viewingAsDriver]);

@@ -1,5 +1,5 @@
 
-import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping, ManagerAccess, AdminAccess, DriverBillingRecord, CashMode, DriverWidgetSummary } from '../types';
+import { DailyEntry, WeeklyWallet, DriverSummary, GlobalSummary, Driver, LeaveRecord, AssetMaster, DriverShiftRecord, RentalSlab, CompanyWeeklySummary, HeaderMapping, ManagerAccess, AdminAccess, DriverBillingRecord, CashMode, DriverWidgetSummary, Expense } from '../types';
 import { getApiBase } from '../lib/apiBase';
 
 type DailyEntryBootstrapResponse = {
@@ -359,6 +359,7 @@ const calculateDriverStats = (
         totalDue,
         totalPayout,
         totalWalletWeek,
+        totalExpenses: 0,
         finalTotal,
         netPayout,
         netPayoutSource,

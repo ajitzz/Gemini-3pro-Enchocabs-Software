@@ -60,7 +60,7 @@ export default function ExpensesPage() {
       return;
     }
 
-    let targetDriverIds = splitType === 'all' ? drivers.map(d => d.id) : selectedDriverIds;
+    const targetDriverIds = splitType === 'all' ? drivers.map(d => d.id) : selectedDriverIds;
     
     if (targetDriverIds.length === 0) {
       alert('Please select at least one driver to split the expense with.');
