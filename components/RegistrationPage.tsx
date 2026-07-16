@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Driver, LeaveRecord, ManagerAccess } from '../types';
 import { storageService } from '../services/storageService';
 import { useLiveUpdates } from '../lib/useLiveUpdates';
-import { UserPlus, Edit2, Clock, FileText, X, AlertTriangle, ShieldCheck, Users, CheckSquare, Square, AlertOctagon, Utensils, Loader2, Trash2, Archive, RefreshCcw, FileDown, Mail, Eye, EyeOff } from 'lucide-react';
+import { Search, UserPlus, Edit2, Clock, FileText, X, AlertTriangle, ShieldCheck, Users, CheckSquare, Square, AlertOctagon, Utensils, Loader2, Trash2, Archive, RefreshCcw, FileDown, Mail, Eye, EyeOff } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
 const InputField = ({ label, value, onChange, placeholder, type = "text", required = false, className = "", inputMode }: any) => (
@@ -50,7 +50,8 @@ const RegistrationPage: React.FC = () => {
 
   // Manager Assignment State
   const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
-  const [managerTeam, setManagerTeam] = useState<string[]>([]); // List of Child Driver IDs
+  const [managerTeam, setManagerTeam] = useState<string[]>([]);
+  const [teamSearchQuery, setTeamSearchQuery] = useState('');
   
   // Warning Modal State
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
@@ -322,6 +323,7 @@ const RegistrationPage: React.FC = () => {
         const allAccess = await storageService.getManagerAccess();
         const currentAccess = allAccess.find(a => a.managerId === editingDriverId);
         setManagerTeam(currentAccess ? currentAccess.childDriverIds : []);
+        setTeamSearchQuery('');
         setIsTeamModalOpen(true);
       } catch (err: any) {
         alert("Failed to load team data: " + err.message);
@@ -689,8 +691,20 @@ const RegistrationPage: React.FC = () => {
                   <div className="p-4 bg-indigo-50 border-b border-indigo-100 text-xs text-indigo-700">
                       Select drivers that <strong>{driverForm.name}</strong> will be allowed to view in their portal.
                   </div>
+                  <div className="p-3 border-b border-slate-100">
+                      <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                          <input
+                              type="text"
+                              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                              placeholder="Search driver by name..."
+                              value={teamSearchQuery}
+                              onChange={(e) => setTeamSearchQuery(e.target.value)}
+                          />
+                      </div>
+                  </div>
                   <div className="flex-1 overflow-y-auto p-2">
-                      {drivers.filter(d => d.id !== editingDriverId && !d.terminationDate).map(d => {
+                      {drivers.filter(d => d.id !== editingDriverId && !d.terminationDate && d.name.toLowerCase().includes(teamSearchQuery.toLowerCase())).map(d => {
                           const isSelected = managerTeam.includes(d.id);
                           return (
                               <div 

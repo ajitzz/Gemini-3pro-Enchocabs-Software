@@ -1,3 +1,4 @@
+require("dotenv").config();
 
 const express = require('express');
 const cors = require('cors');
@@ -1639,7 +1640,7 @@ app.get('/api/drivers/:driverId/widget-summary', async (req, res) => {
       db.query(
         `SELECT id, to_char(date, 'YYYY-MM-DD') as date, driver, rent, collection, fuel, due, payout
          FROM daily_entries
-         WHERE lower(driver) = lower((SELECT name FROM drivers WHERE id = $1 LIMIT 1))`,
+         WHERE lower(driver) = lower((SELECT name, status FROM drivers WHERE id = $1 LIMIT 1))`,
         [driverId]
       ),
       db.query(
@@ -1647,7 +1648,7 @@ app.get('/api/drivers/:driverId/widget-summary', async (req, res) => {
                 trips, earnings, rent_override as "rentOverride", days_worked_override as "daysWorkedOverride",
                 refund, diff, cash, charges, adjustments
          FROM weekly_wallets
-         WHERE lower(driver) = lower((SELECT name FROM drivers WHERE id = $1 LIMIT 1))`,
+         WHERE lower(driver) = lower((SELECT name, status FROM drivers WHERE id = $1 LIMIT 1))`,
         [driverId]
       ),
       db.query(
@@ -1658,7 +1659,7 @@ app.get('/api/drivers/:driverId/widget-summary', async (req, res) => {
       db.query(
         `SELECT driver, to_char(expense_date, 'YYYY-MM-DD') as "expenseDate", amount
          FROM driver_expenses
-         WHERE lower(driver) = lower((SELECT name FROM drivers WHERE id = $1 LIMIT 1))`,
+         WHERE lower(driver) = lower((SELECT name, status FROM drivers WHERE id = $1 LIMIT 1))`,
         [driverId]
       )
     ]);
@@ -2058,8 +2059,10 @@ app.post('/api/drivers', async (req, res) => {
         }
     }
 
-    const currentDriverRes = await client.query('SELECT name FROM drivers WHERE id = $1', [idToUse]);
+    let oldStatus = "Active";
+    const currentDriverRes = await client.query('SELECT name, status FROM drivers WHERE id = $1', [idToUse]);
     if (currentDriverRes.rows.length > 0) {
+        oldStatus = currentDriverRes.rows[0].status;
         const oldName = currentDriverRes.rows[0].name;
         if (oldName !== nameToSave) {
             await client.query('UPDATE daily_entries SET driver = $1 WHERE driver = $2', [nameToSave, oldName]);
@@ -2075,6 +2078,11 @@ app.post('/api/drivers', async (req, res) => {
         name=$2, mobile=$3, email=$4, join_date=$5, termination_date=$6, is_hidden=$7, deposit=$8, qr_code=$9, vehicle=$10, status=$11, current_shift=$12, default_rent=$13, notes=$14, is_manager=$15, food_option=$16
       RETURNING *;
     `;
+    if (d.status === "Terminated") {
+        await client.query("UPDATE leaves SET actual_return_date = $1 WHERE driver_id = $2 AND actual_return_date IS NULL", [d.terminationDate || new Date().toISOString().split('T')[0], idToUse]);
+    } else if (oldStatus === "Terminated" && d.status === "Active") {
+        await client.query("UPDATE leaves SET actual_return_date = $1 WHERE driver_id = $2 AND actual_return_date IS NULL", [new Date().toISOString().split('T')[0], idToUse]);
+    }
     const result = await client.query(q, [
       idToUse, nameToSave, mobileToSave, d.email, d.joinDate, d.terminationDate || null,
       isHiddenToSave, d.deposit, qrToSave, d.vehicle, d.status, d.currentShift, d.defaultRent, d.notes, d.isManager, d.foodOption ?? false
@@ -2087,6 +2095,7 @@ app.post('/api/drivers', async (req, res) => {
     await invalidateWeeklyWalletsCache();
     await invalidateDriverExpensesCache();
     emitLiveUpdate('drivers_changed');
+    emitLiveUpdate('leaves_changed');
     res.json(result.rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -2113,6 +2122,7 @@ app.delete('/api/drivers/:id', async (req, res) => {
     await invalidateWeeklyWalletsCache();
     await invalidateDriverExpensesCache();
     emitLiveUpdate('drivers_changed');
+    emitLiveUpdate('leaves_changed');
     res.json({ success: true });
   } catch (err) {
     console.error("Delete Error:", err);
@@ -3484,7 +3494,7 @@ app.get('/api/manager-access/:managerId', async (req, res) => {
 });
 
 app.post('/api/manager-access', async (req, res) => {
-  const { managerId, childDriverIds } = req.body;
+  const { managerId, childDriverIds = [] } = req.body;
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
@@ -3567,22 +3577,34 @@ const startRecurringBillingSync = () => {
 const runBackgroundInitialization = async () => {
   try {
     await initDb();
+    await db.query("UPDATE leaves SET actual_return_date = CURRENT_DATE WHERE actual_return_date IS NULL AND driver_id IN (SELECT id FROM drivers WHERE status = 'Active')");
+    await invalidateKeys("daily-entries:bootstrap");
+    await invalidateKeys("drivers:all");
     await syncDriverBillings();
     startRecurringBillingSync();
     console.log('Background initialization completed successfully.');
   } catch (err) {
-    console.error('Initialization failed:', err);
+    console.error('Initialization failed. Please verify your Neon database password in the DATABASE_URL.');
     setTimeout(() => {
       runBackgroundInitialization().catch((retryErr) => {
-        console.error('Initialization retry failed:', retryErr);
+        console.error('Initialization retry failed (check your database credentials). ');
       });
     }, 60 * 1000);
   }
 };
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+// Vite middleware
+if (process.env.NODE_ENV !== "production") {
+  require("vite").createServer({ server: { middlewareMode: true }, appType: "spa" })
+    .then(vite => {
+      app.use(vite.middlewares);
+      app.listen(PORT, "0.0.0.0", () => console.log(`Server running on port ${PORT}`));
+    });
+} else {
+  app.use(express.static("dist"));
+  app.get("*", (req, res) => res.sendFile(require("path").join(__dirname, "..", "dist", "index.html")));
+  app.listen(PORT, "0.0.0.0", () => console.log(`Server running on port ${PORT}`));
+}
 
 startKeepAlive();
 runBackgroundInitialization().catch((err) => {
