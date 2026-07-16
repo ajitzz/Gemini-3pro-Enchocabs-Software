@@ -62,8 +62,11 @@ const defaultAllowedOrigins = [
   'https://enchocabs.com',
   'https://www.enchocabs.com',
   'https://gemini-3pro-enchocabs-software.onrender.com',
+  'https://encho-enterprises-whats-app-leads-h.vercel.app',
   'http://localhost:5173',
   'http://127.0.0.1:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
 ];
 
 const allowedOrigins = new Set([
@@ -1359,8 +1362,9 @@ const syncDriverBillingForWeek = async ({ driverName, weekStart }) => {
   if (!driverName || !weekStart) return;
 
   const billing = await fetchDriverBillingForWeek({ driverName, weekStart });
-  const client = await db.pool.connect();
+  let client;
   try {
+    client = await db.pool.connect();
     await client.query('BEGIN');
 
     if (!billing) {
@@ -1415,17 +1419,18 @@ const syncDriverBillingForWeek = async ({ driverName, weekStart }) => {
     await client.query('COMMIT');
     await invalidateBillingsCache();
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (client) await client.query('ROLLBACK');
     throw err;
   } finally {
-    client.release();
+    if (client) client.release();
   }
 };
 
 const syncDriverBillings = async () => {
   const billings = await calculateDriverBillings();
-  const client = await db.pool.connect();
+  let client;
   try {
+    client = await db.pool.connect();
     await client.query('BEGIN');
     const existing = await client.query("SELECT id, driver_name, to_char(week_start_date, 'YYYY-MM-DD') as week_start_date FROM driver_billings");
     const keyToId = new Map();
@@ -1484,10 +1489,10 @@ const syncDriverBillings = async () => {
     await client.query('COMMIT');
     await invalidateBillingsCache();
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (client) await client.query('ROLLBACK');
     throw err;
   } finally {
-    client.release();
+    if (client) client.release();
   }
 };
 // --- AUTHENTICATION ---
@@ -1812,9 +1817,9 @@ app.get('/api/drivers', async (req, res) => {
 app.post('/api/drivers', async (req, res) => {
   const d = req.body;
   const idToUse = (d.id && d.id.trim().length > 0) ? d.id : uuidv4();
-  const client = await db.pool.connect();
-
+  let client;
   try {
+    client = await db.pool.connect();
     await client.query('BEGIN');
     const nameToSave = d.name.trim();
     const shouldAutoHide = !!d.terminationDate && d.isHidden === undefined;
@@ -1837,7 +1842,7 @@ app.post('/api/drivers', async (req, res) => {
     const nameCheck = await client.query('SELECT * FROM drivers WHERE lower(name) = lower($1) AND id != $2', [nameToSave, idToUse]);
     if (nameCheck.rows.length > 0) {
         const existing = nameCheck.rows[0];
-        await client.query('ROLLBACK');
+        if (client) await client.query('ROLLBACK');
         return res.status(409).json({ error: `Driver name "${nameToSave}" already exists (Status: ${existing.status || 'Active'}).` });
     }
 
@@ -1845,7 +1850,7 @@ app.post('/api/drivers', async (req, res) => {
         const mobileCheck = await client.query('SELECT * FROM drivers WHERE mobile = $1 AND id != $2', [mobileToSave, idToUse]);
         if (mobileCheck.rows.length > 0) {
             const existing = mobileCheck.rows[0];
-            await client.query('ROLLBACK');
+            if (client) await client.query('ROLLBACK');
             return res.status(409).json({ error: `Mobile number "${mobileToSave}" is already assigned to driver "${existing.name}".` });
         }
     }
@@ -1854,7 +1859,7 @@ app.post('/api/drivers', async (req, res) => {
         const qrCheck = await client.query('SELECT * FROM drivers WHERE qr_code = $1 AND id != $2', [qrToSave, idToUse]);
         if (qrCheck.rows.length > 0) {
             const existing = qrCheck.rows[0];
-            await client.query('ROLLBACK');
+            if (client) await client.query('ROLLBACK');
             return res.status(409).json({ error: `QR Code "${qrToSave}" is already assigned to driver "${existing.name}".` });
         }
     }
@@ -1887,7 +1892,7 @@ app.post('/api/drivers', async (req, res) => {
     emitLiveUpdate('drivers_changed');
     res.json(result.rows[0]);
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (client) await client.query('ROLLBACK');
     if (err.code === '23505') {
         let msg = "Duplicate entry detected in database.";
         if (err.detail && err.detail.includes('mobile')) msg = "This mobile number is already in use.";
@@ -1898,7 +1903,7 @@ app.post('/api/drivers', async (req, res) => {
     console.error("Driver Save Error:", err);
     res.status(500).json({ error: err.message }); 
   } finally {
-    client.release();
+    if (client) client.release();
   }
 });
 
@@ -2367,8 +2372,9 @@ app.post('/api/daily-entries', async (req, res) => {
 
 app.post('/api/daily-entries/bulk', async (req, res) => {
   const entries = req.body;
-  const client = await db.pool.connect();
+  let client;
   try {
+    client = await db.pool.connect();
     await client.query('BEGIN');
     const keyToId = new Map();
     const existingEntryMap = new Map();
@@ -2405,7 +2411,7 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
       const incomingId = e.id || null;
       const existingIdForKey = keyToId.get(key);
       if (existingIdForKey && existingIdForKey !== incomingId) {
-        await client.query('ROLLBACK');
+        if (client) await client.query('ROLLBACK');
         return res.status(409).json({ error: `Duplicate entry detected in upload for ${canonicalDriver} on ${isoDate}.` });
       }
 
@@ -2435,7 +2441,7 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
         return (keyToId.get(key) || null) !== row.id;
       });
       if (blocking) {
-        await client.query('ROLLBACK');
+        if (client) await client.query('ROLLBACK');
         return res.status(409).json({ error: `Driver ${blocking.driver_key} already has an entry on ${blocking.date}. Please remove or edit the existing record before importing.` });
       }
     }
@@ -2474,7 +2480,7 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
     emitLiveUpdate('daily_entries_changed');
     res.json({ success: true });
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (client) await client.query('ROLLBACK');
     if (err.message && err.message.includes('is on leave')) {
       return res.status(409).json({ error: err.message });
     }
@@ -2483,7 +2489,7 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
     }
     res.status(500).json({ error: err.message });
   } finally {
-    client.release();
+    if (client) client.release();
   }
 });
 
@@ -2746,8 +2752,9 @@ app.get('/api/assets', async (req, res) => {
 
 app.post('/api/assets', async (req, res) => {
   const { vehicles = [], qrCodes = [], vehicleFirstFuelRecords = [] } = req.body;
-  const client = await db.pool.connect();
+  let client;
   try {
+    client = await db.pool.connect();
     const normalize = (value) => String(value || '').trim().toLowerCase();
 
     const uniqueVehicles = [];
@@ -2793,10 +2800,10 @@ app.post('/api/assets', async (req, res) => {
     await invalidateKeys(ASSETS_CACHE_KEY);
     res.json({ success: true });
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (client) await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
   } finally {
-    client.release();
+    if (client) client.release();
   }
 });
 
@@ -2832,6 +2839,140 @@ app.post('/api/bot-config', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// --- WHATSAPP WEBHOOK ---
+const { GoogleGenAI } = require('@google/genai');
+let geminiAi = null;
+try {
+  if (process.env.GEMINI_API_KEY) {
+    geminiAi = new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY,
+      httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+    });
+  }
+} catch (e) {
+  console.warn("Failed to initialize GoogleGenAI", e);
+}
+
+app.get('/api/webhook', (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+  
+  const verifyToken = process.env.META_VERIFY_TOKEN || 'encho_webhook_verify';
+  
+  if (mode && token) {
+    if (mode === 'subscribe' && token === verifyToken) {
+      console.log('WEBHOOK_VERIFIED');
+      res.status(200).send(challenge);
+    } else {
+      res.sendStatus(403);
+    }
+  } else {
+    res.sendStatus(400);
+  }
+});
+
+app.post('/api/webhook', async (req, res) => {
+  try {
+    const body = req.body;
+    if (body.object === 'whatsapp_business_account') {
+      res.status(200).send('EVENT_RECEIVED');
+      
+      const entry = body.entry?.[0];
+      const changes = entry?.changes?.[0];
+      const value = changes?.value;
+      const messages = value?.messages;
+      
+      if (messages && messages.length > 0) {
+        const msg = messages[0];
+        const from = msg.from;
+        const text = msg.text?.body;
+        
+        if (text) {
+          processWhatsAppMessage(from, text).catch(e => console.error("Error in processWhatsAppMessage:", e));
+        }
+      }
+    } else {
+      res.sendStatus(404);
+    }
+  } catch (err) {
+    console.error('Webhook error:', err);
+    if (!res.headersSent) {
+      res.sendStatus(500);
+    }
+  }
+});
+
+async function processWhatsAppMessage(from, userText) {
+  if (!geminiAi) {
+     console.error("Gemini AI not configured.");
+     return;
+  }
+  
+  try {
+    let botConfig = await getCacheJSON(BOT_CONFIG_CACHE_KEY);
+    if (!botConfig) {
+      botConfig = getBotConfigFallback();
+    }
+    
+    let sysInstruction = "You are a helpful and professional customer service assistant for Encho Enterprises. Provide concise, clear, and accurate information. CRITICAL: Never output placeholders like 'Replace this sample message'. Never send empty messages.";
+    if (botConfig && botConfig.prompt) {
+      sysInstruction = botConfig.prompt + "\n\nCRITICAL: Never output placeholders like 'Replace this sample message' and never send empty messages. Only send valid, intentional messages.";
+    }
+
+    const response = await geminiAi.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: userText,
+      config: {
+        systemInstruction: sysInstruction,
+      }
+    });
+    
+    const replyText = response.text ? response.text.trim() : null;
+
+    if (!replyText || replyText.includes('Replace this sample message')) {
+      console.error('Gemini generated an invalid response or empty response:', replyText);
+      await sendWhatsAppMessage(from, "Thank you for reaching out to Encho Enterprises. How can we help you today?");
+      return;
+    }
+
+    await sendWhatsAppMessage(from, replyText);
+    
+  } catch (err) {
+    console.error('Error processing WhatsApp message:', err);
+  }
+}
+
+async function sendWhatsAppMessage(to, text) {
+  const token = process.env.META_API_TOKEN;
+  const phoneId = process.env.PHONE_NUMBER_ID;
+  
+  if (!token || !phoneId) {
+     console.error("Missing META_API_TOKEN or PHONE_NUMBER_ID in env.");
+     return;
+  }
+
+  const payload = {
+    messaging_product: "whatsapp",
+    to: to,
+    text: { body: text }
+  };
+
+  const res = await fetch(`https://graph.facebook.com/v19.0/${phoneId}/messages`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!res.ok) {
+    const errBody = await res.text();
+    console.error('Failed to send WhatsApp message:', res.status, errBody);
+  }
+}
 
 // --- SYSTEM FLAGS ---
 app.get('/api/system-flags/:key', async (req, res) => {
@@ -2896,8 +3037,9 @@ app.get('/api/rental-slabs/:type', async (req, res) => {
 app.post('/api/rental-slabs/:type', async (req, res) => {
   const type = req.params.type;
   const slabs = req.body;
-  const client = await db.pool.connect();
+  let client;
   try {
+    client = await db.pool.connect();
     await client.query('BEGIN');
     await client.query('DELETE FROM rental_slabs WHERE slab_type = $1', [type]);
     for (const s of slabs) {
@@ -2911,10 +3053,10 @@ app.post('/api/rental-slabs/:type', async (req, res) => {
     await invalidateKeys(rentalSlabCacheKey(type));
     res.json({ success: true });
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (client) await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
   } finally {
-    client.release();
+    if (client) client.release();
   }
 });
 
@@ -2968,8 +3110,9 @@ app.get('/api/company-summaries', async (req, res) => {
 
 app.post('/api/company-summaries', async (req, res) => {
   const s = req.body;
-  const client = await db.pool.connect();
+  let client;
   try {
+    client = await db.pool.connect();
     await client.query('BEGIN');
     await client.query('DELETE FROM company_summaries WHERE id = $1', [s.id]);
     await client.query(
@@ -2992,10 +3135,10 @@ app.post('/api/company-summaries', async (req, res) => {
     await client.query('COMMIT');
     res.json(s);
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (client) await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
   } finally {
-    client.release();
+    if (client) client.release();
   }
 });
 
@@ -3104,8 +3247,9 @@ app.get('/api/header-mappings', async (req, res) => {
 
 app.post('/api/header-mappings', async (req, res) => {
   const mappings = req.body;
-  const client = await db.pool.connect();
+  let client;
   try {
+    client = await db.pool.connect();
     await client.query('BEGIN');
     await client.query('DELETE FROM header_mappings');
     for (const m of mappings) {
@@ -3114,10 +3258,10 @@ app.post('/api/header-mappings', async (req, res) => {
     await client.query('COMMIT');
     res.json({ success: true });
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (client) await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
   } finally {
-    client.release();
+    if (client) client.release();
   }
 });
 
@@ -3169,8 +3313,9 @@ app.get('/api/manager-access/:managerId', async (req, res) => {
 
 app.post('/api/manager-access', async (req, res) => {
   const { managerId, childDriverIds } = req.body;
-  const client = await db.pool.connect();
+  let client;
   try {
+    client = await db.pool.connect();
     await client.query('BEGIN');
     await client.query('DELETE FROM manager_access WHERE manager_id = $1', [managerId]);
     for (const childId of childDriverIds) {
@@ -3179,10 +3324,10 @@ app.post('/api/manager-access', async (req, res) => {
     await client.query('COMMIT');
     res.json({ success: true });
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (client) await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
   } finally {
-    client.release();
+    if (client) client.release();
   }
 });
 
