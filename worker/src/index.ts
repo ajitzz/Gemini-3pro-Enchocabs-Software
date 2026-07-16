@@ -532,6 +532,50 @@ app.get('/api/weekly-wallets', async (c) => {
   }
 });
 
+app.get('/api/manager-access', async (c) => {
+  try {
+    const result = await query(c.env, 'SELECT manager_id, child_driver_id FROM manager_access');
+    const map: Record<string, string[]> = {};
+    result.rows.forEach((row: any) => {
+      if (!map[row.manager_id]) map[row.manager_id] = [];
+      map[row.manager_id].push(row.child_driver_id);
+    });
+    const accessList = Object.keys(map).map((k) => ({ managerId: k, childDriverIds: map[k] }));
+    return c.json(accessList);
+  } catch (err: any) {
+    return c.json({ error: err.message }, 500);
+  }
+});
+
+app.get('/api/manager-access/:managerId', async (c) => {
+  try {
+    const managerId = c.req.param('managerId');
+    const result = await query(c.env, 'SELECT child_driver_id FROM manager_access WHERE manager_id = $1', [managerId]);
+    const childDriverIds = result.rows.map((row: any) => row.child_driver_id);
+    return c.json({ managerId, childDriverIds });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 500);
+  }
+});
+
+app.post('/api/manager-access', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { managerId, childDriverIds } = body;
+    if (!managerId) return c.json({ error: 'Missing managerId' }, 400);
+
+    await withTransaction(c.env, async (client: Client) => {
+      await client.query('DELETE FROM manager_access WHERE manager_id = $1', [managerId]);
+      for (const childId of (childDriverIds || [])) {
+        await client.query('INSERT INTO manager_access (manager_id, child_driver_id) VALUES ($1, $2)', [managerId, childId]);
+      }
+    });
+    return c.json({ success: true });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 500);
+  }
+});
+
 const placeholderPaths = [
   '/api/driver-billings',
   '/api/assets',
@@ -540,8 +584,7 @@ const placeholderPaths = [
   '/api/company-summaries',
   '/api/shifts',
   '/api/header-mappings',
-  '/api/admin-access',
-  '/api/manager-access',
+  '/api/admin-access'
 ];
 
 placeholderPaths.forEach((path) => {
