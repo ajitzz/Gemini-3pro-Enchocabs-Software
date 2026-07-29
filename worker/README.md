@@ -26,26 +26,6 @@ This folder contains the Worker-based backend that replaces the Render Express s
 - `SUPER_ADMIN_EMAIL`
 - `GOOGLE_CLIENT_ID`
 
-### Moving variables from Vercel
-Your Vercel project values (e.g., `GOOGLE_CLIENT_ID`, `SUPER_ADMIN_EMAIL`, and any other secrets used by the backend) should be
-copied into Cloudflare so the Worker can read them:
-
-1. **Export from Vercel**: In the Vercel dashboard, open **Settings → Environment Variables** for your backend and copy the
-   current values.
-2. **Create Cloudflare secrets**: For sensitive values (tokens, client secrets), run inside `worker/`:
-   ```bash
-   npx wrangler secret put GOOGLE_CLIENT_ID
-   npx wrangler secret put SUPER_ADMIN_EMAIL
-   # repeat for any additional secret values you previously kept in Vercel
-   ```
-   Alternatively, add them in the Cloudflare dashboard under **Workers → your Worker → Settings → Variables**.
-3. **Set non-secret text variables**: For public strings like CORS allowlist, either set them in the dashboard or add to
-   `wrangler.toml` under `[vars]` (e.g., `ALLOWED_ORIGINS = "https://your-vercel-app.vercel.app"`).
-4. **Hyperdrive binding**: Confirm the `[[hyperdrive]]` block in `wrangler.toml` points to your Render Postgres external URL,
-   or recreate the binding in the dashboard. No Vercel change is needed for the database itself.
-5. **Vercel frontend**: No environment changes are required on Vercel unless your frontend calls the Worker at a new origin;
-   update `ALLOWED_ORIGINS` accordingly and point the frontend API base URL to the Worker deployment.
-
 ## CORS
 CORS is handled via Hono middleware; allowlist comes from `ALLOWED_ORIGINS`. Empty allowlist defaults to `*`.
 
