@@ -4,7 +4,7 @@ import { DailyEntry, Driver, LeaveRecord, WeeklyWallet } from '../types';
 import { storageService } from '../services/storageService';
 import { useLiveUpdates } from '../lib/useLiveUpdates';
 import { isDriverUnavailableOnDate } from '../lib/leaveUtils';
-import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check, AlertOctagon, FileDown, AlertCircle, ChevronLeft, ChevronRight, Car, QrCode } from 'lucide-react';
+import { Plus, Trash2, Calendar as CalIcon, Filter, Search, Edit2, X, AlertTriangle, FileText, ChevronDown, ChevronUp, Check, AlertOctagon, FileDown, AlertCircle, RefreshCcw, ChevronLeft, ChevronRight, Car, QrCode } from 'lucide-react';
 
 // MOVED OUTSIDE: Prevents re-rendering focus loss
 const InputField = ({ label, name, type = "text", value, onChange, onKeyDown, placeholder, required = false, className = "", readOnly = false, inputMode }: any) => (
@@ -298,6 +298,7 @@ const DailyEntryPage: React.FC = () => {
   const [leaves, setLeaves] = useState<LeaveRecord[]>([]); // Added Leaves state
   const [weeklyWallets, setWeeklyWallets] = useState<WeeklyWallet[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   
@@ -356,6 +357,7 @@ const DailyEntryPage: React.FC = () => {
     }
   });
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const liveRefreshTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -447,6 +449,7 @@ const DailyEntryPage: React.FC = () => {
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     const dailyParams = showFullHistory ? undefined : { from: recentFromDate };
 
     try {
@@ -668,6 +671,8 @@ const DailyEntryPage: React.FC = () => {
   };
 
   const saveEntry = async (newEntry: DailyEntry) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     if (!navigator.onLine) {
       setOfflineQueue(prev => [...prev, newEntry]);
       upsertEntry({ ...newEntry, id: `offline-${newEntry.id}` }); // Optimistic UI update
@@ -680,6 +685,7 @@ const DailyEntryPage: React.FC = () => {
         }
       }
       alert('You are offline. Entry saved locally and will sync when online.');
+      setIsSubmitting(false);
       return;
     }
 
@@ -697,6 +703,8 @@ const DailyEntryPage: React.FC = () => {
     } catch (error: any) {
       console.error('Save daily entry failed:', error);
       alert(error?.message || 'Failed to save daily entry. Ensure the driver has only one entry per day.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 

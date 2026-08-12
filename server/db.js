@@ -34,16 +34,24 @@ if (process.env.NODE_ENV === 'production' && !connectionString) {
 
 const pool = new Pool({
   connectionString: connectionString || 'postgresql://postgres:password@127.0.0.1:5432/encho_cabs',
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
+  maxUses: 7500,
+  keepAlive: true,
+  allowExitOnIdle: false
 });
 
 pool.on('error', (err, client) => {
   console.error('Unexpected error on idle client', err);
-  process.exit(-1);
 });
 
 pool.connect()
-  .then(() => console.log('Successfully connected to PostgreSQL database'))
+  .then((client) => {
+    console.log('Successfully connected to PostgreSQL database');
+    client.release();
+  })
   .catch(err => {
     console.error('Failed to connect to PostgreSQL.', err.message);
   });

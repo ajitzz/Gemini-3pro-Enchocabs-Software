@@ -1289,35 +1289,44 @@ const driverRentalSlabs = rentalSlabs.length > 0 ? rentalSlabs : defaultDriverRe
   return billings;
 };
 
-const fetchDriverBillingForWeek = async ({ driverName, weekStart }) => {
+const stringHash = (str) => {
+  let hash = 0;
+  if (!str) return hash;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return hash;
+};
+
+const fetchDriverBillingForWeek = async ({ driverName, weekStart, client = db }) => {
   if (!driverName || !weekStart) return null;
 
   const weekEnd = getSundayISO(weekStart);
   if (!weekEnd) return null;
 
-  const [slabRes, walletRes, dailyRes, driverRes, expenseRes] = await Promise.all([
-    db.query("SELECT min_trips as \"minTrips\", max_trips as \"maxTrips\", rent_amount as \"rentAmount\" FROM rental_slabs WHERE slab_type = 'driver' ORDER BY min_trips"),
-    db.query(
+  const slabRes = await client.query("SELECT min_trips as \"minTrips\", max_trips as \"maxTrips\", rent_amount as \"rentAmount\" FROM rental_slabs WHERE slab_type = 'driver' ORDER BY min_trips");
+  const walletRes = await client.query(
       `SELECT id, driver, to_char(week_start_date, 'YYYY-MM-DD') as week_start_date, to_char(week_end_date, 'YYYY-MM-DD') as week_end_date, earnings, refund, diff, cash, charges, trips, wallet_week, rent_override, days_worked_override, adjustments, notes
        FROM weekly_wallets
        WHERE lower(driver) = lower($1)
          AND week_start_date <= $2::date
          AND (week_end_date IS NULL OR week_end_date >= $2::date)`,
       [driverName, weekStart]
-    ),
-    db.query(
+    );
+  const dailyRes = await client.query(
       `SELECT id, to_char(date, 'YYYY-MM-DD') as date, driver, shift, qr_code, collection, fuel, due
        FROM daily_entries
        WHERE lower(driver) = lower($1)
          AND date BETWEEN $2::date AND $3::date`,
       [driverName, weekStart, weekEnd]
-    ),
-    db.query("SELECT id, name, qr_code FROM drivers WHERE lower(name) = lower($1) AND COALESCE(is_hidden, FALSE) = FALSE LIMIT 1", [driverName]),
-    db.query(
+    );
+  const driverRes = await client.query("SELECT id, name, qr_code FROM drivers WHERE lower(name) = lower($1) AND COALESCE(is_hidden, FALSE) = FALSE LIMIT 1", [driverName]);
+  const expenseRes = await client.query(
       `SELECT splits FROM expenses WHERE date BETWEEN $1::date AND $2::date`,
       [weekStart, weekEnd]
-    )
-  ]);
+    );
 
   const rentalSlabs = slabRes.rows.map((r) => ({
     minTrips: Number(r.minTrips),
@@ -1358,21 +1367,31 @@ const fetchDriverBillingForWeek = async ({ driverName, weekStart }) => {
   });
 };
 
-const syncDriverBillingForWeek = async ({ driverName, weekStart }) => {
+const syncDriverBillingForWeek = async ({ driverName, weekStart, client: externalClient }) => {
   if (!driverName || !weekStart) return;
 
-  const billing = await fetchDriverBillingForWeek({ driverName, weekStart });
-  let client;
+  const isOwnClient = !externalClient;
+  let client = externalClient;
   try {
-    client = await db.pool.connect();
-    await client.query('BEGIN');
+    if (isOwnClient) {
+      client = await db.pool.connect();
+      await client.query('BEGIN');
+    }
+
+    // Acquire an exclusive advisory transaction lock for this driver+week
+    // This serializes concurrent syncs for the same driver week, preventing race conditions
+    const lock1 = stringHash(driverName.toLowerCase());
+    const lock2 = stringHash(weekStart);
+    await client.query('SELECT pg_advisory_xact_lock($1, $2)', [lock1, lock2]);
+
+    const billing = await fetchDriverBillingForWeek({ driverName, weekStart, client });
 
     if (!billing) {
       await client.query(
         'DELETE FROM driver_billings WHERE lower(driver_name) = lower($1) AND week_start_date = $2::date',
         [driverName, weekStart]
       );
-      await client.query('COMMIT');
+      if (isOwnClient) await client.query('COMMIT');
       await invalidateBillingsCache();
       return;
     }
@@ -1381,6 +1400,7 @@ const syncDriverBillingForWeek = async ({ driverName, weekStart }) => {
       'SELECT id FROM driver_billings WHERE lower(driver_name) = lower($1) AND week_start_date = $2::date LIMIT 1',
       [billing.driver_name, billing.week_start_date]
     );
+
     const idToUse = existing.rows[0]?.id || uuidv4();
 
     await client.query(
@@ -1416,13 +1436,13 @@ const syncDriverBillingForWeek = async ({ driverName, weekStart }) => {
       [billing.rent_per_day, billing.driver_name, billing.week_start_date, billing.week_end_date]
     );
 
-    await client.query('COMMIT');
+    if (isOwnClient) await client.query('COMMIT');
     await invalidateBillingsCache();
   } catch (err) {
-    if (client) await client.query('ROLLBACK');
+    if (isOwnClient && client) await client.query('ROLLBACK');
     throw err;
   } finally {
-    if (client) client.release();
+    if (isOwnClient && client) client.release();
   }
 };
 
@@ -2308,29 +2328,43 @@ app.delete('/api/expenses/:id', async (req, res) => {
 
 app.post('/api/daily-entries', async (req, res) => {
   const e = req.body;
+  let client;
   try {
+    client = await db.pool.connect();
+    await client.query('BEGIN');
+    const lock1 = typeof e.driver === 'string' ? (function(str) { let hash = 0; for (let i = 0; i < str.length; i++) { hash = (hash << 5) - hash + str.charCodeAt(i); hash |= 0; } return hash; })(e.driver.toLowerCase()) : 0;
+    const lock2 = typeof e.date === 'string' ? (function(str) { let hash = 0; for (let i = 0; i < str.length; i++) { hash = (hash << 5) - hash + str.charCodeAt(i); hash |= 0; } return hash; })(e.date) : 0;
+    await client.query('SELECT pg_advisory_xact_lock($1, $2)', [lock1, lock2]);
     const isoDate = toISODate(e.date);
-    if (!isoDate) return res.status(400).json({ error: 'Invalid date format' });
-
+    if (!isoDate) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Invalid date format' });
+    }
     const payoutDateISO = e.payoutDate ? toISODate(e.payoutDate) : null;
-    if (e.payoutDate && !payoutDateISO) return res.status(400).json({ error: 'Invalid payout date format' });
+    if (e.payoutDate && !payoutDateISO) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Invalid payout date format' });
+    }
 
     const entryId = toUuidOrNull(e.id);
 
     const existingEntry = entryId
-      ? await db.query(`SELECT driver, to_char(date, 'YYYY-MM-DD') as date FROM daily_entries WHERE id = $1::uuid`, [entryId])
+      ? await client.query(`SELECT driver, to_char(date, 'YYYY-MM-DD') as date FROM daily_entries WHERE id = $1::uuid`, [entryId])
       : { rows: [] };
     const previousEntry = existingEntry.rows[0];
 
     const normalizedDriver = normalizeDriver(e.driver);
-    const duplicateCheck = await db.query(
-      `SELECT id FROM daily_entries WHERE date = $1 AND LOWER(driver) = $2 AND ($3::uuid IS NULL OR id <> $3::uuid)`
+    const duplicateCheck = await client.query(
+      `SELECT id FROM daily_entries WHERE date = $1 AND LOWER(driver) = $2 AND ($3::uuid IS NULL OR ($3::uuid IS NULL OR id <> $3::uuid))`
       , [isoDate, normalizedDriver, entryId]
     );
+
     if (duplicateCheck.rowCount > 0) {
+      await client.query('ROLLBACK');
       return res.status(409).json({ error: 'Driver already has an entry for this date. Please edit or delete the existing record.' });
     }
-    await assertDriverEntryAllowedOnDate({ client: db, driverName: e.driver, isoDate });
+
+    await assertDriverEntryAllowedOnDate({ client, driverName: e.driver, isoDate });
 
     const q = `
       INSERT INTO daily_entries (id, date, day, vehicle, driver, shift, qr_code, rent, collection, fuel, due, payout, payout_date, notes)
@@ -2339,11 +2373,11 @@ app.post('/api/daily-entries', async (req, res) => {
         date=$2, day=$3, vehicle=$4, driver=$5, shift=$6, qr_code=$7, rent=$8, collection=$9, fuel=$10, due=$11, payout=$12, payout_date=$13, notes=$14
       RETURNING *;
     `;
-    const result = await db.query(q, [entryId || uuidv4(), isoDate, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, payoutDateISO, e.notes]);
+    const result = await client.query(q, [entryId || uuidv4(), isoDate, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, payoutDateISO, e.notes]);
 
     const newWeekStart = getMondayISO(isoDate);
     if (newWeekStart) {
-      await syncDriverBillingForWeek({ driverName: e.driver, weekStart: newWeekStart });
+      await syncDriverBillingForWeek({ driverName: e.driver, weekStart: newWeekStart, client });
     }
 
     if (previousEntry?.driver && previousEntry?.date) {
@@ -2351,15 +2385,17 @@ app.post('/api/daily-entries', async (req, res) => {
       const prevDriverKey = normalizeDriver(previousEntry.driver);
       const newDriverKey = normalizeDriver(e.driver);
       if (prevWeekStart && (prevWeekStart !== newWeekStart || prevDriverKey !== newDriverKey)) {
-        await syncDriverBillingForWeek({ driverName: previousEntry.driver, weekStart: prevWeekStart });
+        await syncDriverBillingForWeek({ driverName: previousEntry.driver, weekStart: prevWeekStart, client });
       }
     }
 
+    await client.query('COMMIT');
     await invalidateAggregateCaches();
     await invalidateDailyEntriesCache();
     emitLiveUpdate('daily_entries_changed');
     res.json(result.rows[0]);
   } catch (err) {
+    if (client) await client.query('ROLLBACK');
     if (err.message && err.message.includes('is on leave')) {
       return res.status(409).json({ error: err.message });
     }
@@ -2367,9 +2403,10 @@ app.post('/api/daily-entries', async (req, res) => {
       return res.status(409).json({ error: 'Driver already has an entry for this date. Please edit or delete the existing record.' });
     }
     res.status(500).json({ error: err.message });
+  } finally {
+    if (client) client.release();
   }
 });
-
 app.post('/api/daily-entries/bulk', async (req, res) => {
   const entries = req.body;
   let client;
@@ -2595,21 +2632,32 @@ app.get('/api/weekly-wallets', async (req, res) => {
 
 app.post('/api/weekly-wallets', async (req, res) => {
   const w = req.body;
+  let client;
   try {
+    client = await db.pool.connect();
+    await client.query('BEGIN');
     const startISO = toISODate(w.weekStartDate);
+    const lock1w = typeof w.driver === 'string' ? (function(str) { let hash = 0; for (let i = 0; i < str.length; i++) { hash = (hash << 5) - hash + str.charCodeAt(i); hash |= 0; } return hash; })(w.driver.toLowerCase()) : 0;
+    const lock2w = typeof startISO === 'string' ? (function(str) { let hash = 0; for (let i = 0; i < str.length; i++) { hash = (hash << 5) - hash + str.charCodeAt(i); hash |= 0; } return hash; })(startISO) : 0;
+    await client.query('SELECT pg_advisory_xact_lock($1, $2)', [lock1w, lock2w]);
     const endISO = toISODate(w.weekEndDate || (startISO ? getSundayISO(startISO) : ''));
-    if (!startISO) return res.status(400).json({ error: 'Invalid week start date' });
+    if (!startISO) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Invalid week start date' });
+    }
 
-    const duplicateCheck = await db.query(
-      `SELECT id FROM weekly_wallets WHERE driver = $1 AND week_start_date = $2 AND id <> $3 LIMIT 1`,
-      [w.driver, startISO, w.id || '']
+    const walletId = toUuidOrNull(w.id);
+    const duplicateCheck = await client.query(
+      `SELECT id FROM weekly_wallets WHERE driver = $1 AND week_start_date = $2 AND ($3::uuid IS NULL OR id <> $3::uuid) LIMIT 1`,
+      [w.driver, startISO, walletId]
     );
     if (duplicateCheck.rows.length > 0) {
+      await client.query('ROLLBACK');
       return res.status(409).json({ error: 'Weekly wallet already exists for this driver and week.' });
     }
 
-    const existingWallet = w.id
-      ? await db.query(`SELECT driver, to_char(week_start_date, 'YYYY-MM-DD') as week_start_date FROM weekly_wallets WHERE id = $1`, [w.id])
+    const existingWallet = walletId
+      ? await client.query(`SELECT driver, to_char(week_start_date, 'YYYY-MM-DD') as week_start_date FROM weekly_wallets WHERE id = $1::uuid`, [walletId])
       : { rows: [] };
     const previousWallet = existingWallet.rows[0];
 
@@ -2620,11 +2668,11 @@ app.post('/api/weekly-wallets', async (req, res) => {
         driver=$2, week_start_date=$3, week_end_date=$4, earnings=$5, refund=$6, diff=$7, cash=$8, charges=$9, trips=$10, wallet_week=$11, days_worked_override=$12, rent_override=$13, adjustments=$14, notes=$15
       RETURNING *;
     `;
-    const result = await db.query(q, [w.id, w.driver, startISO, endISO || null, w.earnings, w.refund, w.diff, w.cash, w.charges, w.trips, w.walletWeek, w.daysWorkedOverride ?? null, w.rentOverride ?? null, w.adjustments || 0, w.notes]);
+    const result = await client.query(q, [walletId || uuidv4(), w.driver, startISO, endISO || null, w.earnings, w.refund, w.diff, w.cash, w.charges, w.trips, w.walletWeek, w.daysWorkedOverride ?? null, w.rentOverride ?? null, w.adjustments || 0, w.notes]);
 
     const newWeekStart = getMondayISO(startISO);
     if (newWeekStart) {
-      await syncDriverBillingForWeek({ driverName: w.driver, weekStart: newWeekStart });
+      await syncDriverBillingForWeek({ driverName: w.driver, weekStart: newWeekStart, client });
     }
 
     if (previousWallet?.driver && previousWallet?.week_start_date) {
@@ -2632,15 +2680,17 @@ app.post('/api/weekly-wallets', async (req, res) => {
       const prevDriverKey = normalizeDriver(previousWallet.driver);
       const newDriverKey = normalizeDriver(w.driver);
       if (prevWeekStart && (prevWeekStart !== newWeekStart || prevDriverKey !== newDriverKey)) {
-        await syncDriverBillingForWeek({ driverName: previousWallet.driver, weekStart: prevWeekStart });
+        await syncDriverBillingForWeek({ driverName: previousWallet.driver, weekStart: prevWeekStart, client });
       }
     }
 
+    await client.query('COMMIT');
     await invalidateAggregateCaches();
     await invalidateWeeklyWalletsCache();
 
     const savedWallet = result.rows[0] || {};
     const walletBalance = Number(savedWallet.wallet_week || w.walletWeek || 0);
+
     emitLiveUpdate('weekly_wallets_changed', {
       change: previousWallet ? 'updated' : 'added',
       driver: savedWallet.driver || w.driver,
@@ -2665,9 +2715,13 @@ app.post('/api/weekly-wallets', async (req, res) => {
     });
 
     res.json(savedWallet);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    if (client) await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (client) client.release();
+  }
 });
-
 app.delete('/api/weekly-wallets/:id', async (req, res) => {
   try {
     const existing = await db.query(`SELECT driver, to_char(week_start_date, 'YYYY-MM-DD') as week_start_date FROM weekly_wallets WHERE id = $1`, [req.params.id]);
@@ -2929,11 +2983,18 @@ async function processWhatsAppMessage(from, userText) {
       }
     });
     
-    const replyText = response.text ? response.text.trim() : null;
+    let replyText = response.text ? response.text.trim() : null;
 
-    if (!replyText || replyText.includes('Replace this sample message')) {
-      console.error('Gemini generated an invalid response or empty response:', replyText);
-      await sendWhatsAppMessage(from, "Thank you for reaching out to Encho Enterprises. How can we help you today?");
+    if (!replyText || replyText.length === 0) {
+      console.error("Gemini generated an empty response.");
+      return;
+    }
+
+    const invalidPhrases = ["replace this sample message", "[insert", "[your", "placeholder"];
+    const hasInvalid = invalidPhrases.some(phrase => replyText.toLowerCase().includes(phrase));
+
+    if (hasInvalid) {
+      console.error("Gemini generated an invalid placeholder response:", replyText);
       return;
     }
 

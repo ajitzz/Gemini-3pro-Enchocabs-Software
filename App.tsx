@@ -280,9 +280,47 @@ const Layout: React.FC = () => {
   );
 };
 
+
+const GlobalErrorToast = () => {
+  const [error, setError] = useState<{message: string, endpoint: string, id: number} | null>(null);
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      setError({ message: e.detail.message, endpoint: e.detail.endpoint, id: Date.now() });
+    };
+    window.addEventListener('global-app-error', handler);
+    return () => window.removeEventListener('global-app-error', handler);
+  }, []);
+
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(null), 8000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
+
+  if (!error) return null;
+
+  return (
+    <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-[9999] w-[90%] max-w-md">
+      <div className="bg-rose-600 text-white p-4 rounded-2xl shadow-2xl flex items-start gap-3">
+        <Shield className="shrink-0 text-rose-200 mt-0.5" size={20} />
+        <div>
+          <h4 className="font-bold text-sm mb-1">Connection Issue</h4>
+          <p className="text-xs text-rose-100">{error.message}</p>
+          <button onClick={() => setError(null)} className="absolute top-4 right-4 text-rose-200 hover:text-white">
+            <X size={16} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const App: React.FC = () => {
   return (
     <AuthProvider>
+        <GlobalErrorToast />
         <BrowserRouter>
           <Routes>
               <Route path="/" element={<LazyPage><HomePage /></LazyPage>} />

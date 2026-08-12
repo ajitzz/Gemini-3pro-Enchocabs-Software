@@ -29,6 +29,21 @@ const inflightRequests = new Map<string, Promise<any>>();
 const getCacheKey = (endpoint: string) => endpoint;
 const isFresh = (entry: { timestamp: number }) => Date.now() - entry.timestamp < CACHE_TTL_MS;
 
+const handleNetworkError = (error: any, endpoint: string) => {
+  let msg = error.message;
+  if (error.name === 'TypeError' && msg === 'Load failed') {
+    msg = 'Network request blocked. If you are using an Ad Blocker (like AdGuard), please whitelist this site or disable it.';
+  } else if (msg === 'Failed to fetch') {
+    msg = 'Network connection failed. Please check your internet connection or Ad Blocker settings.';
+  }
+  
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('global-app-error', { detail: { message: msg, endpoint } }));
+  }
+  return msg;
+};
+
+
 const getCachePrefixes = (endpoint: string) => {
   const base = endpoint.split('?')[0];
   const segments = base.split('/').filter(Boolean);
@@ -112,8 +127,9 @@ const api = {
         responseCache.set(key, { timestamp: Date.now(), payload });
         return payload;
       } catch (error: any) {
+        const msg = handleNetworkError(error, endpoint);
         console.error(`API GET Error (${endpoint}):`, error);
-        throw new Error(error.message);
+        throw new Error(msg);
       } finally {
         inflightRequests.delete(key);
       }
@@ -139,8 +155,9 @@ const api = {
       invalidateCache(endpoint);
       return payload;
     } catch (error: any) {
+      const msg = handleNetworkError(error, endpoint);
       console.error(`API POST Error (${endpoint}):`, error);
-      throw new Error(error.message);
+      throw new Error(msg);
     }
   },
   delete: async (endpoint: string) => {
@@ -151,8 +168,9 @@ const api = {
       invalidateCache(endpoint);
       return payload;
     } catch (error: any) {
+      const msg = handleNetworkError(error, endpoint);
       console.error(`API DELETE Error (${endpoint}):`, error);
-      throw new Error(error.message);
+      throw new Error(msg);
     }
   }
 };
