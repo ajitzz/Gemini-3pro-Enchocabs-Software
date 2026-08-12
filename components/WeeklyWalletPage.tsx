@@ -27,6 +27,7 @@ const InputField = ({ label, name, type = "text", value, onChange, placeholder, 
 const WeeklyWalletPage: React.FC = () => {
   const RECENT_WEEKS = 12;
   const [wallets, setWallets] = useState<WeeklyWallet[]>([]);
+  const [entryProcessingStates, setEntryProcessingStates] = useState<Record<string, 'saving' | 'saved' | 'calculating' | 'updated' | 'error'>>({});
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [dailyEntries, setDailyEntries] = useState<DailyEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -240,7 +241,9 @@ const WeeklyWalletPage: React.FC = () => {
     }
 
     try {
+      setEntryProcessingStates(prev => ({ ...prev, [newWallet.id || 'new']: 'saving' }));
       const savedWallet = await storageService.saveWeeklyWallet(newWallet);
+      setEntryProcessingStates(prev => ({ ...prev, [savedWallet.id]: 'calculating' }));
       setDuplicateWarning(null);
       resetForm();
       upsertWallet({ ...newWallet, ...savedWallet });

@@ -67,6 +67,7 @@ CREATE INDEX IF NOT EXISTS weekly_wallets_start_date_idx ON weekly_wallets (week
 CREATE INDEX IF NOT EXISTS weekly_wallets_end_date_idx ON weekly_wallets (week_end_date);
 CREATE INDEX IF NOT EXISTS weekly_wallets_date_range_idx ON weekly_wallets (week_start_date, week_end_date);
 CREATE INDEX IF NOT EXISTS weekly_wallets_driver_idx ON weekly_wallets (LOWER(driver));
+CREATE UNIQUE INDEX IF NOT EXISTS weekly_wallets_unique_driver_week ON weekly_wallets (LOWER(driver), week_start_date);
 
 -- 5. Driver Billings Table (Finalized/Saved Bills)
 CREATE TABLE IF NOT EXISTS driver_billings (

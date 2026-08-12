@@ -12,7 +12,7 @@ const client = qstashToken
 
 const isQStashConfigured = () => !!client && !!refreshUrl;
 
-const enqueueBillingRefresh = async () => {
+const enqueueBillingRefresh = async (driverName, weekStart) => {
   if (!isQStashConfigured()) {
     return { queued: false, reason: 'QStash not configured' };
   }
@@ -24,9 +24,9 @@ const enqueueBillingRefresh = async () => {
 
   await client.publishJSON({
     url: refreshUrl,
-    body: { source: 'api', requestedAt: new Date().toISOString() },
+    body: { source: 'api', requestedAt: new Date().toISOString(), driverName, weekStart },
     headers,
-    deduplicationId: refreshDeduplicationId,
+    deduplicationId: driverName ? `refresh-${driverName.replace(/[^a-zA-Z0-9-]/g, '')}-${weekStart}` : refreshDeduplicationId,
   });
 
   return { queued: true };

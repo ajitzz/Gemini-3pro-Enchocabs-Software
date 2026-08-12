@@ -1756,9 +1756,18 @@ app.post('/api/driver-billings/refresh', async (req, res) => {
   if (expectedToken && expectedToken !== providedToken) {
     return res.status(401).json({ error: 'Unauthorized refresh request' });
   }
-
   try {
-    await syncDriverBillings();
+    const { driverName, weekStart } = req.body || {};
+    if (driverName && weekStart) {
+      await syncDriverBillingForWeek({ driverName, weekStart });
+      await invalidateAggregateCaches();
+      await invalidateDailyEntriesCache();
+      await invalidateWeeklyWalletsCache();
+      emitLiveUpdate('daily_entries_changed');
+      emitLiveUpdate('weekly_wallets_changed');
+    } else {
+      await syncDriverBillings();
+    }
     res.json({ refreshed: true });
   } catch (err) {
     console.error('Driver billings refresh failed:', err.message || err);
@@ -2326,6 +2335,31 @@ app.delete('/api/expenses/:id', async (req, res) => {
   }
 });
 
+
+const deferDriverBillingSync = (driverName, weekStart) => {
+  if (isQStashConfigured()) {
+    enqueueBillingRefresh(driverName, weekStart).catch(err => {
+      console.error('Failed to enqueue targeted billing refresh:', err);
+      runInMemorySync(driverName, weekStart);
+    });
+  } else {
+    runInMemorySync(driverName, weekStart);
+  }
+};
+
+const runInMemorySync = async (driverName, weekStart) => {
+  try {
+    await syncDriverBillingForWeek({ driverName, weekStart });
+    await invalidateAggregateCaches();
+    await invalidateDailyEntriesCache();
+    await invalidateWeeklyWalletsCache();
+    emitLiveUpdate('daily_entries_changed');
+    emitLiveUpdate('weekly_wallets_changed');
+  } catch (err) {
+    console.error(`Background sync failed for ${driverName} ${weekStart}:`, err);
+  }
+};
+
 app.post('/api/daily-entries', async (req, res) => {
   const e = req.body;
   let client;
@@ -2375,24 +2409,17 @@ app.post('/api/daily-entries', async (req, res) => {
     `;
     const result = await client.query(q, [entryId || uuidv4(), isoDate, e.day, e.vehicle, e.driver, e.shift, e.qrCode, e.rent, e.collection, e.fuel, e.due, e.payout, payoutDateISO, e.notes]);
 
+    await client.query('COMMIT');
     const newWeekStart = getMondayISO(isoDate);
-    if (newWeekStart) {
-      await syncDriverBillingForWeek({ driverName: e.driver, weekStart: newWeekStart, client });
-    }
-
+    if (newWeekStart) deferDriverBillingSync(e.driver, newWeekStart);
     if (previousEntry?.driver && previousEntry?.date) {
       const prevWeekStart = getMondayISO(previousEntry.date);
       const prevDriverKey = normalizeDriver(previousEntry.driver);
       const newDriverKey = normalizeDriver(e.driver);
       if (prevWeekStart && (prevWeekStart !== newWeekStart || prevDriverKey !== newDriverKey)) {
-        await syncDriverBillingForWeek({ driverName: previousEntry.driver, weekStart: prevWeekStart, client });
+        deferDriverBillingSync(previousEntry.driver, prevWeekStart);
       }
     }
-
-    await client.query('COMMIT');
-    await invalidateAggregateCaches();
-    await invalidateDailyEntriesCache();
-    emitLiveUpdate('daily_entries_changed');
     res.json(result.rows[0]);
   } catch (err) {
     if (client) await client.query('ROLLBACK');
@@ -2510,11 +2537,8 @@ app.post('/api/daily-entries/bulk', async (req, res) => {
     });
 
     for (const target of syncTargets.values()) {
-      await syncDriverBillingForWeek(target);
+      deferDriverBillingSync(target.driverName, target.weekStart);
     }
-    await invalidateAggregateCaches();
-    await invalidateDailyEntriesCache();
-    emitLiveUpdate('daily_entries_changed');
     res.json({ success: true });
   } catch (err) {
     if (client) await client.query('ROLLBACK');
@@ -2538,12 +2562,9 @@ app.delete('/api/daily-entries/:id', async (req, res) => {
     if (previous?.driver && previous?.date) {
       const weekStart = getMondayISO(previous.date);
       if (weekStart) {
-        await syncDriverBillingForWeek({ driverName: previous.driver, weekStart });
-      }
+          deferDriverBillingSync(previous.driver, weekStart);
+        }
     }
-    await invalidateAggregateCaches();
-    await invalidateDailyEntriesCache();
-    emitLiveUpdate('daily_entries_changed');
     res.json({ success: true });
   } catch (err) {
     if (err.message && err.message.startsWith('Invalid')) {
@@ -2670,23 +2691,17 @@ app.post('/api/weekly-wallets', async (req, res) => {
     `;
     const result = await client.query(q, [walletId || uuidv4(), w.driver, startISO, endISO || null, w.earnings, w.refund, w.diff, w.cash, w.charges, w.trips, w.walletWeek, w.daysWorkedOverride ?? null, w.rentOverride ?? null, w.adjustments || 0, w.notes]);
 
+    await client.query('COMMIT');
     const newWeekStart = getMondayISO(startISO);
-    if (newWeekStart) {
-      await syncDriverBillingForWeek({ driverName: w.driver, weekStart: newWeekStart, client });
-    }
-
+    if (newWeekStart) deferDriverBillingSync(w.driver, newWeekStart);
     if (previousWallet?.driver && previousWallet?.week_start_date) {
       const prevWeekStart = getMondayISO(previousWallet.week_start_date);
       const prevDriverKey = normalizeDriver(previousWallet.driver);
       const newDriverKey = normalizeDriver(w.driver);
       if (prevWeekStart && (prevWeekStart !== newWeekStart || prevDriverKey !== newDriverKey)) {
-        await syncDriverBillingForWeek({ driverName: previousWallet.driver, weekStart: prevWeekStart, client });
+        deferDriverBillingSync(previousWallet.driver, prevWeekStart);
       }
     }
-
-    await client.query('COMMIT');
-    await invalidateAggregateCaches();
-    await invalidateWeeklyWalletsCache();
 
     const savedWallet = result.rows[0] || {};
     const walletBalance = Number(savedWallet.wallet_week || w.walletWeek || 0);
@@ -2730,12 +2745,9 @@ app.delete('/api/weekly-wallets/:id', async (req, res) => {
     if (previous?.driver && previous?.week_start_date) {
       const weekStart = getMondayISO(previous.week_start_date);
       if (weekStart) {
-        await syncDriverBillingForWeek({ driverName: previous.driver, weekStart });
-      }
+          deferDriverBillingSync(previous.driver, weekStart);
+        }
     }
-    await invalidateAggregateCaches();
-    await invalidateWeeklyWalletsCache();
-    emitLiveUpdate('weekly_wallets_changed');
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

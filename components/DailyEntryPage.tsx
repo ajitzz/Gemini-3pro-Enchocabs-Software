@@ -294,6 +294,7 @@ const DailyEntryPage: React.FC = () => {
   });
 
   const [entries, setEntries] = useState<DailyEntry[]>([]);
+  const [entryProcessingStates, setEntryProcessingStates] = useState<Record<string, 'saving' | 'saved' | 'calculating' | 'updated' | 'error'>>({});
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [leaves, setLeaves] = useState<LeaveRecord[]>([]); // Added Leaves state
   const [weeklyWallets, setWeeklyWallets] = useState<WeeklyWallet[]>([]);
@@ -540,7 +541,24 @@ const DailyEntryPage: React.FC = () => {
 
     liveRefreshTimerRef.current = window.setTimeout(() => {
       const refreshMode = type === 'daily_entries_changed' ? 'entries-only' : 'full';
-      refreshLiveData(refreshMode);
+      refreshLiveData(refreshMode).then(() => {
+        setTimeout(() => {
+          setEntryProcessingStates(prev => {
+            const cleared = { ...prev };
+            Object.keys(cleared).forEach(k => {
+              if (cleared[k] === 'updated') delete cleared[k];
+            });
+            return cleared;
+          });
+        }, 3000);
+        setEntryProcessingStates(prev => {
+          const next = { ...prev };
+          Object.keys(next).forEach(k => {
+            if (next[k] === 'calculating') next[k] = 'updated';
+          });
+          return next;
+        });
+      });
       liveRefreshTimerRef.current = null;
     }, 250);
   });
@@ -690,7 +708,9 @@ const DailyEntryPage: React.FC = () => {
     }
 
     try {
+      setEntryProcessingStates(prev => ({ ...prev, [newEntry.id || 'new']: 'saving' }));
       const savedEntry = await storageService.saveDailyEntry(newEntry);
+      setEntryProcessingStates(prev => ({ ...prev, [savedEntry.id]: 'calculating' }));
       upsertEntry({ ...newEntry, ...savedEntry });
       if (editingId) {
         resetForm();
