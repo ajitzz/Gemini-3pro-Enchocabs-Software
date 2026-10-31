@@ -1,0 +1,165 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" width="100%" height="100%">
+  <defs>
+    <linearGradient id="mpBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#070b14"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="phoneGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="waHeaderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#075e54"/>
+      <stop offset="100%" stop-color="#128c7e"/>
+    </linearGradient>
+    <filter id="phoneShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="16" stdDeviation="24" flood-color="#000" flood-opacity="0.8"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="700" fill="url(#mpBg)"/>
+
+  <!-- Left Header Banner -->
+  <g transform="translate(60, 40)">
+    <text x="0" y="24" fill="#38bdf8" font-family="monospace" font-size="12" font-weight="700" letter-spacing="2">MOBILE ECOSYSTEM &amp; AUTOMATED CRM</text>
+    <text x="0" y="56" fill="#f8fafc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="26" font-weight="800">
+      Driver Self-Service Portal &amp; Zero-Placeholder WhatsApp Dispatch
+    </text>
+    <text x="0" y="80" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13">
+      Empowering drivers with real-time balance transparency while guaranteeing 100% intentional, professional WhatsApp communication.
+    </text>
+  </g>
+
+  <!-- Device 1: Driver Mobile Web Portal (Left Phone) -->
+  <g transform="translate(180, 120)" filter="url(#phoneShadow)">
+    <!-- Phone Outer Body -->
+    <rect x="0" y="0" width="340" height="540" rx="36" fill="#0b1120" stroke="#334155" stroke-width="4"/>
+
+    <!-- Screen Area -->
+    <rect x="12" y="12" width="316" height="516" rx="28" fill="#090e1a"/>
+
+    <!-- Phone Notch -->
+    <rect x="100" y="16" width="140" height="18" rx="9" fill="#0b1120"/>
+    <circle cx="210" cy="25" r="4" fill="#1e293b"/>
+
+    <!-- Portal Content Inside Screen -->
+    <g transform="translate(24, 45)">
+      <!-- Top Driver Profile Header -->
+      <circle cx="20" cy="20" r="18" fill="#6366f1"/>
+      <text x="14" y="26" fill="#ffffff" font-family="sans-serif" font-size="14" font-weight="800">R</text>
+      <text x="48" y="18" fill="#f8fafc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14" font-weight="700">Ramesh Kumar</text>
+      <text x="48" y="32" fill="#34d399" font-family="monospace" font-size="10">Active Driver &bull; Day Shift</text>
+
+      <!-- Vehicle Card -->
+      <g transform="translate(0, 50)">
+        <rect x="0" y="0" width="292" height="60" rx="12" fill="#1e293b" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+        <text x="14" y="24" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600">ASSIGNED VEHICLE &amp; QR</text>
+        <text x="14" y="46" fill="#f8fafc" font-family="monospace" font-size="14" font-weight="800">KA01AB1234</text>
+        <rect x="205" y="16" width="75" height="26" rx="6" fill="rgba(56, 189, 248, 0.15)"/>
+        <text x="215" y="33" fill="#38bdf8" font-family="monospace" font-size="11" font-weight="700">QR-0821</text>
+      </g>
+
+      <!-- Weekly Earnings Radial / Card -->
+      <g transform="translate(0, 122)">
+        <rect x="0" y="0" width="292" height="110" rx="14" fill="#1e293b" stroke="rgba(16, 185, 129, 0.25)" stroke-width="1.5"/>
+        <text x="14" y="24" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600">Current Week Net Balance</text>
+        <text x="14" y="58" fill="#34d399" font-family="monospace" font-size="28" font-weight="900">₹2,850</text>
+        <rect x="14" y="72" width="70" height="20" rx="4" fill="rgba(16, 185, 129, 0.2)"/>
+        <text x="20" y="86" fill="#34d399" font-family="sans-serif" font-size="10" font-weight="700">Credit Payable</text>
+
+        <!-- Rent Tier Pill -->
+        <rect x="180" y="72" width="98" height="20" rx="4" fill="#0f172a"/>
+        <text x="186" y="86" fill="#cbd5e1" font-family="monospace" font-size="10">Tier: ₹1,100/day</text>
+      </g>
+
+      <!-- Quick Stats Grid -->
+      <g transform="translate(0, 244)">
+        <rect x="0" y="0" width="140" height="70" rx="10" fill="#1e293b"/>
+        <text x="12" y="22" fill="#94a3b8" font-family="sans-serif" font-size="10">Days Worked</text>
+        <text x="12" y="48" fill="#38bdf8" font-family="monospace" font-size="18" font-weight="800">6 / 7</text>
+        <text x="12" y="62" fill="#64748b" font-family="sans-serif" font-size="9">Tier Qualified</text>
+
+        <rect x="152" y="0" width="140" height="70" rx="10" fill="#1e293b"/>
+        <text x="12" y="22" fill="#94a3b8" font-family="sans-serif" font-size="10">Fuel Logged</text>
+        <text x="12" y="48" fill="#fbbf24" font-family="monospace" font-size="18" font-weight="800">₹4,800</text>
+        <text x="12" y="62" fill="#64748b" font-family="sans-serif" font-size="9">Reimbursed</text>
+      </g>
+
+      <!-- Bottom Button -->
+      <g transform="translate(0, 326)">
+        <rect x="0" y="0" width="292" height="42" rx="10" fill="#6366f1"/>
+        <text x="80" y="26" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="700">📅 Apply For Leave</text>
+      </g>
+
+      <g transform="translate(0, 376)">
+        <rect x="0" y="0" width="292" height="42" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+        <text x="70" y="26" fill="#cbd5e1" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="600">📥 Download Statement</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Device 2: WhatsApp Chat Screen (Right Phone) -->
+  <g transform="translate(680, 120)" filter="url(#phoneShadow)">
+    <rect x="0" y="0" width="340" height="540" rx="36" fill="#0b1120" stroke="#334155" stroke-width="4"/>
+    <rect x="12" y="12" width="316" height="516" rx="28" fill="#0b141a"/>
+
+    <!-- Notch -->
+    <rect x="100" y="16" width="140" height="18" rx="9" fill="#0b1120"/>
+
+    <!-- WhatsApp Header -->
+    <rect x="12" y="38" width="316" height="50" fill="url(#waHeaderGrad)"/>
+    <circle cx="36" cy="63" r="15" fill="#1e293b"/>
+    <text x="29" y="68" fill="#ffffff" font-family="sans-serif" font-size="13" font-weight="700">EC</text>
+    <text x="60" y="58" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="700">Encho Cabs Finance</text>
+    <text x="60" y="74" fill="#a7f3d0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10">Verified Business Account ✓</text>
+
+    <!-- Chat Wallpaper Background Pattern -->
+    <rect x="12" y="88" width="316" height="440" fill="#081016"/>
+
+    <!-- Chat Bubble (The Perfect Intentional WhatsApp Statement) -->
+    <g transform="translate(24, 105)">
+      <!-- Bubble Card -->
+      <rect x="0" y="0" width="292" height="340" rx="12" fill="#005c4b" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+
+      <!-- Message Text -->
+      <text x="14" y="24" fill="#e9edef" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="700">
+        🚗 ENCHO CABS &bull; WEEKLY SETTLEMENT
+      </text>
+
+      <line x1="14" y1="36" x2="278" y2="36" stroke="rgba(255,255,255,0.15)"/>
+
+      <text x="14" y="54" fill="#d1d7db" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11">Driver: <tspan fill="#ffffff" font-weight="700">Ramesh Kumar</tspan></text>
+      <text x="14" y="70" fill="#d1d7db" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11">Vehicle: <tspan fill="#ffffff">KA01AB1234 (QR: #0821)</tspan></text>
+      <text x="14" y="86" fill="#d1d7db" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11">Week: <tspan fill="#ffffff">Oct 20 &ndash; Oct 26, 2026</tspan></text>
+
+      <rect x="14" y="98" width="264" height="135" rx="8" fill="rgba(0,0,0,0.2)"/>
+      <text x="24" y="118" fill="#aebac1" font-family="monospace" font-size="10">Active Days Worked:  6 Days</text>
+      <text x="24" y="134" fill="#aebac1" font-family="monospace" font-size="10">Applied Rent Rate:   ₹1,100 / day</text>
+      <text x="24" y="150" fill="#aebac1" font-family="monospace" font-size="10">Total Rent Accrued:  ₹6,600</text>
+      <text x="24" y="166" fill="#aebac1" font-family="monospace" font-size="10">Aggregator Wallet:   ₹9,450</text>
+      <text x="24" y="182" fill="#aebac1" font-family="monospace" font-size="10">Daily Due Balance:   +₹200 (Credit)</text>
+      <text x="24" y="198" fill="#aebac1" font-family="monospace" font-size="10">Fuel &amp; Expenses:     ₹0</text>
+      <line x1="24" y1="206" x2="268" y2="206" stroke="rgba(255,255,255,0.15)"/>
+      <text x="24" y="222" fill="#25D366" font-family="monospace" font-size="12" font-weight="800">NET PAYOUT:          ₹2,850 (CREDIT)</text>
+
+      <!-- Attached PDF Preview Inside Chat -->
+      <g transform="translate(14, 245)">
+        <rect x="0" y="0" width="264" height="42" rx="6" fill="#025144"/>
+        <text x="12" y="25" fill="#ffffff" font-family="sans-serif" font-size="14">📄</text>
+        <text x="36" y="20" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600">Settlement_Invoice_Oct26.pdf</text>
+        <text x="36" y="34" fill="#aebac1" font-family="sans-serif" font-size="9">142 KB &bull; Official Audit Receipt</text>
+      </g>
+
+      <!-- Delivery Checkmark & Timestamp -->
+      <text x="235" y="325" fill="#8696a0" font-family="sans-serif" font-size="10">09:14 AM ✓✓</text>
+    </g>
+
+    <!-- Bottom Message Input Bar Mockup -->
+    <g transform="translate(24, 470)">
+      <rect x="0" y="0" width="245" height="36" rx="18" fill="#1f2c34"/>
+      <text x="14" y="23" fill="#8696a0" font-family="sans-serif" font-size="11">Message Encho Cabs...</text>
+      <circle cx="272" cy="18" r="18" fill="#00a884"/>
+      <text x="267" y="22" fill="#ffffff" font-family="sans-serif" font-size="12">🎙</text>
+    </g>
+  </g>
+</svg>

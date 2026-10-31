@@ -1,0 +1,144 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 460" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgLock" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0e1a"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <filter id="lockShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#000" flood-opacity="0.6"/>
+    </filter>
+  </defs>
+
+  <!-- Background Base -->
+  <rect width="1200" height="460" fill="url(#bgLock)"/>
+
+  <!-- Title Header -->
+  <g transform="translate(60, 36)">
+    <text x="0" y="0" fill="#38bdf8" font-family="monospace" font-size="12" font-weight="700" letter-spacing="2">CONCURRENCY &amp; LOCK ARCHITECTURE</text>
+    <text x="0" y="26" fill="#f8fafc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="22" font-weight="800">
+      Dual-Hash PostgreSQL Advisory Locks + Sub-40ms Transaction Decoupling
+    </text>
+  </g>
+
+  <!-- Concurrent Inflow Box (Left) -->
+  <g transform="translate(60, 95)" filter="url(#lockShadow)">
+    <rect x="0" y="0" width="220" height="320" rx="12" fill="#0f172a" stroke="#1e293b" stroke-width="1.5"/>
+    <rect x="0" y="0" width="220" height="34" rx="12" fill="rgba(56, 189, 248, 0.15)"/>
+    <text x="14" y="22" fill="#38bdf8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="700">CONCURRENT BURST</text>
+
+    <g transform="translate(14, 50)">
+      <text x="0" y="16" fill="#f1f5f9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="600">High-Traffic Inflow</text>
+      <text x="0" y="38" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11">Multiple admin tabs &amp;</text>
+      <text x="0" y="52" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11">automated API syncs:</text>
+
+      <!-- Simulated Request Stack -->
+      <g transform="translate(0, 70)">
+        <rect x="0" y="0" width="192" height="32" rx="6" fill="#1e293b" stroke="rgba(255,255,255,0.06)"/>
+        <text x="10" y="20" fill="#cbd5e1" font-family="monospace" font-size="10">POST /daily-entries (R1)</text>
+
+        <rect x="0" y="38" width="192" height="32" rx="6" fill="#1e293b" stroke="rgba(255,255,255,0.06)"/>
+        <text x="10" y="20" fill="#cbd5e1" font-family="monospace" font-size="10">POST /daily-entries (R2)</text>
+
+        <rect x="0" y="76" width="192" height="32" rx="6" fill="#1e293b" stroke="rgba(255,255,255,0.06)"/>
+        <text x="10" y="20" fill="#cbd5e1" font-family="monospace" font-size="10">POST /daily-entries (R3)</text>
+
+        <rect x="0" y="114" width="192" height="32" rx="6" fill="#1e293b" stroke="rgba(255,255,255,0.06)"/>
+        <text x="10" y="20" fill="#cbd5e1" font-family="monospace" font-size="10">POST /daily-entries (R100)</text>
+      </g>
+
+      <rect x="0" y="225" width="192" height="32" rx="6" fill="rgba(245, 158, 11, 0.15)"/>
+      <text x="10" y="20" fill="#fbbf24" font-family="monospace" font-size="10" font-weight="700">100 Simultaneous Threads</text>
+    </g>
+  </g>
+
+  <!-- Arrow -->
+  <path d="M285 240 H325" stroke="#38bdf8" stroke-width="2" fill="none"/>
+
+  <!-- Advisory Lock Serialization Box (Center-Left) -->
+  <g transform="translate(330, 95)" filter="url(#lockShadow)">
+    <rect x="0" y="0" width="280" height="320" rx="12" fill="#0f172a" stroke="#1e293b" stroke-width="1.5"/>
+    <rect x="0" y="0" width="280" height="34" rx="12" fill="rgba(99, 102, 241, 0.15)"/>
+    <text x="14" y="22" fill="#818cf8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="700">DUAL HASH ADVISORY LOCK</text>
+
+    <g transform="translate(14, 50)">
+      <text x="0" y="16" fill="#f1f5f9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="600">Deterministic Key Hashing</text>
+
+      <rect x="0" y="30" width="252" height="60" rx="6" fill="#1e293b"/>
+      <text x="10" y="22" fill="#38bdf8" font-family="monospace" font-size="10">lock1 = int32_hash(driver_name)</text>
+      <text x="10" y="42" fill="#34d399" font-family="monospace" font-size="10">lock2 = int32_hash(iso_date)</text>
+
+      <rect x="0" y="100" width="252" height="85" rx="6" fill="rgba(99, 102, 241, 0.1)"/>
+      <text x="10" y="20" fill="#a5b4fc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="700">pg_advisory_xact_lock($1, $2)</text>
+      <text x="10" y="38" fill="#cbd5e1" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10">• Transactions on same driver+date</text>
+      <text x="10" y="52" fill="#cbd5e1" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10">  are serialized in FIFO order.</text>
+      <text x="10" y="68" fill="#cbd5e1" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10">• Independent drivers execute 100%</text>
+      <text x="10" y="80" fill="#cbd5e1" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10">  in parallel with zero contention!</text>
+
+      <rect x="0" y="195" width="252" height="60" rx="6" fill="#1e293b"/>
+      <text x="10" y="20" fill="#fbbf24" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="700">Auto-Released on Commit/Rollback</text>
+      <text x="10" y="36" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="9">Lock releases immediately when client</text>
+      <text x="10" y="48" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="9">commits, avoiding connection leaks.</text>
+    </g>
+  </g>
+
+  <!-- Arrow -->
+  <path d="M615 240 H655" stroke="#818cf8" stroke-width="2" fill="none"/>
+
+  <!-- Fast DB Commit Box (Center-Right) -->
+  <g transform="translate(660, 95)" filter="url(#lockShadow)">
+    <rect x="0" y="0" width="240" height="320" rx="12" fill="#0f172a" stroke="#1e293b" stroke-width="1.5"/>
+    <rect x="0" y="0" width="240" height="34" rx="12" fill="rgba(16, 185, 129, 0.15)"/>
+    <text x="14" y="22" fill="#34d399" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="700">FAST TRANSACTION PATH</text>
+
+    <g transform="translate(14, 50)">
+      <text x="0" y="16" fill="#f1f5f9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="600">Immediate Commit</text>
+
+      <rect x="0" y="30" width="212" height="75" rx="6" fill="#1e293b"/>
+      <text x="10" y="20" fill="#38bdf8" font-family="monospace" font-size="9">1. Assert leave != true</text>
+      <text x="10" y="36" fill="#38bdf8" font-family="monospace" font-size="9">2. INSERT ON CONFLICT</text>
+      <text x="10" y="52" fill="#38bdf8" font-family="monospace" font-size="9">3. COMMIT TRANSACTION</text>
+      <text x="10" y="68" fill="#34d399" font-family="monospace" font-size="9">4. Release DB Connection</text>
+
+      <rect x="0" y="115" width="212" height="60" rx="6" fill="rgba(16, 185, 129, 0.15)"/>
+      <text x="10" y="24" fill="#34d399" font-family="monospace" font-size="18" font-weight="800">&lt; 38ms Duration</text>
+      <text x="10" y="44" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10">200 OK sent to client instantly</text>
+
+      <rect x="0" y="185" width="212" height="70" rx="6" fill="#1e293b"/>
+      <text x="10" y="20" fill="#cbd5e1" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="700">Zero Ghost Records</text>
+      <text x="10" y="38" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="9">No database starvation or</text>
+      <text x="10" y="50" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="9">lock pile-ups under heavy</text>
+      <text x="10" y="62" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="9">bulk or concurrent imports.</text>
+    </g>
+  </g>
+
+  <!-- Arrow -->
+  <path d="M905 240 H945" stroke="#10b981" stroke-width="2" fill="none"/>
+
+  <!-- Asynchronous Out-of-Band Queue (Right) -->
+  <g transform="translate(950, 95)" filter="url(#lockShadow)">
+    <rect x="0" y="0" width="190" height="320" rx="12" fill="#0f172a" stroke="#1e293b" stroke-width="1.5"/>
+    <rect x="0" y="0" width="190" height="34" rx="12" fill="rgba(245, 158, 11, 0.15)"/>
+    <text x="12" y="22" fill="#fbbf24" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="700">OUT-OF-BAND ENGINE</text>
+
+    <g transform="translate(12, 50)">
+      <text x="0" y="16" fill="#f1f5f9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600">Background Worker</text>
+
+      <rect x="0" y="28" width="166" height="85" rx="6" fill="#1e293b"/>
+      <text x="8" y="18" fill="#fbbf24" font-family="monospace" font-size="9" font-weight="700">deferDriverBillingSync()</text>
+      <text x="8" y="34" fill="#cbd5e1" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="9">• Target Driver &amp; Week</text>
+      <text x="8" y="48" fill="#cbd5e1" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="9">• Upstash QStash job</text>
+      <text x="8" y="62" fill="#cbd5e1" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="9">• EventLoop fallback</text>
+      <text x="8" y="76" fill="#38bdf8" font-family="monospace" font-size="9">Deduplication active</text>
+
+      <rect x="0" y="122" width="166" height="65" rx="6" fill="#1e293b"/>
+      <text x="8" y="18" fill="#a5b4fc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="9" font-weight="700">Cache Eviction</text>
+      <text x="8" y="34" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="9">Invalidates aggregate &amp;</text>
+      <text x="8" y="46" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="9">query-level Redis keys.</text>
+
+      <rect x="0" y="196" width="166" height="60" rx="6" fill="rgba(16, 185, 129, 0.15)"/>
+      <text x="8" y="18" fill="#34d399" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="9" font-weight="700">SSE Live Dispatch</text>
+      <text x="8" y="34" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="8">UI flips badge to</text>
+      <text x="8" y="46" fill="#34d399" font-family="monospace" font-size="9">"Updated" instantly</text>
+    </g>
+  </g>
+</svg>

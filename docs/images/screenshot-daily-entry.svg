@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" width="100%" height="100%">
+  <defs>
+    <linearGradient id="deBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#090e1a"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="cardGrad3" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <filter id="shadowForm" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="16" stdDeviation="24" flood-color="#000" flood-opacity="0.8"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="700" fill="url(#deBg)"/>
+
+  <!-- Background App Screen Preview (Dimmed) -->
+  <g opacity="0.35" transform="translate(60, 40)">
+    <rect x="0" y="0" width="1080" height="620" rx="14" fill="#0b1120" stroke="#1e293b" stroke-width="2"/>
+    <rect x="0" y="0" width="1080" height="40" rx="14" fill="#0f172a"/>
+    <circle cx="20" cy="20" r="5" fill="#ef4444"/>
+    <circle cx="36" cy="20" r="5" fill="#f59e0b"/>
+    <circle cx="52" cy="20" r="5" fill="#10b981"/>
+    <!-- Mocked table rows in background -->
+    <rect x="40" y="70" width="1000" height="35" rx="6" fill="#1e293b"/>
+    <rect x="40" y="115" width="1000" height="35" rx="6" fill="#1e293b"/>
+    <rect x="40" y="160" width="1000" height="35" rx="6" fill="#1e293b"/>
+    <rect x="40" y="205" width="1000" height="35" rx="6" fill="#1e293b"/>
+    <rect x="40" y="250" width="1000" height="35" rx="6" fill="#1e293b"/>
+  </g>
+
+  <!-- High-Fidelity Modal Form (Center Front) -->
+  <g transform="translate(270, 50)" filter="url(#shadowForm)">
+    <rect x="0" y="0" width="660" height="600" rx="18" fill="url(#cardGrad3)" stroke="#334155" stroke-width="2"/>
+
+    <!-- Modal Header -->
+    <g transform="translate(32, 32)">
+      <text x="0" y="18" fill="#f8fafc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="20" font-weight="800">
+        Record Daily Financial Entry
+      </text>
+      <text x="0" y="38" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12">
+        Real-time shift log &bull; Protected by atomic PostgreSQL advisory lock
+      </text>
+
+      <!-- Lock Speed Badge -->
+      <g transform="translate(430, 0)">
+        <rect x="0" y="0" width="165" height="28" rx="14" fill="rgba(16, 185, 129, 0.15)" stroke="rgba(16, 185, 129, 0.3)" stroke-width="1"/>
+        <circle cx="14" cy="14" r="4" fill="#34d399"/>
+        <text x="26" y="18" fill="#34d399" font-family="monospace" font-size="11" font-weight="700">LOCK ACTIVE: 38ms</text>
+      </g>
+    </g>
+
+    <!-- Form Content Fields -->
+    <g transform="translate(32, 95)">
+      <!-- Row 1: Date & Day -->
+      <g transform="translate(0, 0)">
+        <text x="0" y="14" fill="#cbd5e1" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600">DATE</text>
+        <rect x="0" y="22" width="285" height="42" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+        <text x="14" y="48" fill="#f8fafc" font-family="monospace" font-size="13">2026-10-31 (Friday)</text>
+
+        <text x="310" y="14" fill="#cbd5e1" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600">SHIFT</text>
+        <rect x="310" y="22" width="285" height="42" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+        <text x="324" y="48" fill="#f8fafc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13">Day Shift (06:00 &ndash; 18:00)</text>
+      </g>
+
+      <!-- Row 2: Driver & Vehicle -->
+      <g transform="translate(0, 85)">
+        <text x="0" y="14" fill="#cbd5e1" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600">DRIVER</text>
+        <rect x="0" y="22" width="285" height="42" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+        <text x="14" y="48" fill="#f8fafc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13">Ramesh Kumar</text>
+
+        <text x="310" y="14" fill="#cbd5e1" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600">VEHICLE ASSIGNMENT</text>
+        <rect x="310" y="22" width="285" height="42" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+        <text x="324" y="48" fill="#f8fafc" font-family="monospace" font-size="13">KA01AB1234 &bull; QR-0821</text>
+      </g>
+
+      <!-- Row 3: Collection & Fuel -->
+      <g transform="translate(0, 170)">
+        <text x="0" y="14" fill="#34d399" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="700">CASH COLLECTION (₹)</text>
+        <rect x="0" y="22" width="285" height="46" rx="8" fill="#0f172a" stroke="#10b981" stroke-width="1.5"/>
+        <text x="14" y="52" fill="#34d399" font-family="monospace" font-size="20" font-weight="800">₹ 2,500</text>
+
+        <text x="310" y="14" fill="#cbd5e1" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600">FUEL EXPENSE (₹)</text>
+        <rect x="310" y="22" width="285" height="46" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+        <text x="324" y="52" fill="#fbbf24" font-family="monospace" font-size="18" font-weight="700">₹ 800</text>
+      </g>
+
+      <!-- Real-Time Due Calculation Box -->
+      <g transform="translate(0, 260)">
+        <rect x="0" y="0" width="595" height="70" rx="10" fill="#090e1a" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+        <text x="16" y="24" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11">
+          AUTOMATED DUE FORMULA: Collection (₹2,500) - Fuel (₹800) - Base Rent (₹1,100)
+        </text>
+        <text x="16" y="52" fill="#cbd5e1" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="600">
+          Resulting Daily Balance:
+        </text>
+        <rect x="200" y="32" width="110" height="26" rx="6" fill="rgba(16, 185, 129, 0.2)"/>
+        <text x="210" y="50" fill="#34d399" font-family="monospace" font-size="14" font-weight="800">+ ₹600 (Credit)</text>
+        <text x="330" y="50" fill="#64748b" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11">
+          Driver handed in excess cash
+        </text>
+      </g>
+
+      <!-- Action Buttons Row -->
+      <g transform="translate(0, 360)">
+        <rect x="0" y="0" width="130" height="44" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+        <text x="44" y="27" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="600">Cancel</text>
+
+        <!-- Save & Add Next Button -->
+        <rect x="145" y="0" width="220" height="44" rx="10" fill="rgba(99, 102, 241, 0.2)" stroke="rgba(129, 140, 248, 0.4)" stroke-width="1.5"/>
+        <text x="180" y="27" fill="#c7d2fe" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="700">⚡ Save &amp; Add Next</text>
+
+        <!-- Primary Save Button -->
+        <rect x="380" y="0" width="215" height="44" rx="10" fill="#10b981"/>
+        <text x="440" y="27" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="800">Commit Record</text>
+      </g>
+    </g>
+
+    <!-- Bottom Footer Note -->
+    <text x="32" y="565" fill="#64748b" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10">
+      * Instant DB commit in under 38ms. Weekly rent calculation and aggregations are automatically queued in the background.
+    </text>
+  </g>
+</svg>

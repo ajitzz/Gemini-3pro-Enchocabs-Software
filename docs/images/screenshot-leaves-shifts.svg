@@ -1,0 +1,161 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 750" width="100%" height="100%">
+  <defs>
+    <linearGradient id="lsBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0f1d"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="cardGradL" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <filter id="shadowL" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="16" stdDeviation="24" flood-color="#000" flood-opacity="0.75"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="750" fill="url(#lsBg)"/>
+
+  <!-- Browser Frame -->
+  <g transform="translate(40, 30)" filter="url(#shadowL)">
+    <rect x="0" y="0" width="1120" height="690" rx="16" fill="#0b1120" stroke="#1e293b" stroke-width="2"/>
+
+    <!-- Titlebar -->
+    <rect x="0" y="0" width="1120" height="44" rx="16" fill="#0f172a"/>
+    <circle cx="24" cy="22" r="6" fill="#ef4444"/>
+    <circle cx="44" cy="22" r="6" fill="#f59e0b"/>
+    <circle cx="64" cy="22" r="6" fill="#10b981"/>
+
+    <rect x="110" y="9" width="560" height="26" rx="6" fill="#1e293b" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+    <text x="130" y="26" fill="#94a3b8" font-family="monospace" font-size="11">https://encho-cabs.prod/shifts-leaves • Vehicle Pairing &amp; Leave Overlap Engine</text>
+
+    <!-- Page Header -->
+    <g transform="translate(40, 65)">
+      <text x="0" y="24" fill="#f8fafc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="22" font-weight="800">
+        Vehicle Shifts &amp; Sanctioned Leave Management
+      </text>
+      <text x="0" y="46" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12">
+        Enforces 2 drivers per vehicle rule (Day/Night) and PostgreSQL daterange collision checks.
+      </text>
+    </g>
+
+    <!-- Left Box: Vehicle Pairing Roster (Width: 500px) -->
+    <g transform="translate(40, 130)">
+      <rect x="0" y="0" width="500" height="510" rx="12" fill="url(#cardGradL)" stroke="#1e293b" stroke-width="1.5"/>
+      <rect x="0" y="0" width="500" height="42" rx="12" fill="rgba(15, 23, 42, 0.8)"/>
+      <text x="20" y="26" fill="#38bdf8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="700">
+        🚘 VEHICLE PAIRING ROSTER (DAY / NIGHT)
+      </text>
+
+      <!-- Vehicle Card 1: KA01AB1234 -->
+      <g transform="translate(16, 55)">
+        <rect x="0" y="0" width="468" height="95" rx="8" fill="#090e1a" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+        <text x="14" y="24" fill="#f8fafc" font-family="monospace" font-size="13" font-weight="700">KA01AB1234 (Toyota Etios)</text>
+        <rect x="360" y="10" width="95" height="20" rx="4" fill="rgba(16, 185, 129, 0.15)"/>
+        <text x="370" y="24" fill="#34d399" font-family="monospace" font-size="10" font-weight="700">PAIRED 2/2</text>
+
+        <!-- Driver 1 -->
+        <g transform="translate(14, 42)">
+          <rect x="0" y="0" width="210" height="40" rx="6" fill="#1e293b"/>
+          <text x="10" y="18" fill="#cbd5e1" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600">☀️ Day: Ramesh Kumar</text>
+          <text x="10" y="32" fill="#38bdf8" font-family="monospace" font-size="10">QR: #0821 &bull; 06:00 - 18:00</text>
+        </g>
+
+        <!-- Driver 2 -->
+        <g transform="translate(240, 42)">
+          <rect x="0" y="0" width="214" height="40" rx="6" fill="#1e293b"/>
+          <text x="10" y="18" fill="#cbd5e1" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600">🌙 Night: Suresh Verma</text>
+          <text x="10" y="32" fill="#38bdf8" font-family="monospace" font-size="10">QR: #0419 &bull; 18:00 - 06:00</text>
+        </g>
+      </g>
+
+      <!-- Vehicle Card 2: KA03CD5678 -->
+      <g transform="translate(16, 165)">
+        <rect x="0" y="0" width="468" height="95" rx="8" fill="#090e1a" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+        <text x="14" y="24" fill="#f8fafc" font-family="monospace" font-size="13" font-weight="700">KA03CD5678 (Maruti Dzire)</text>
+        <rect x="360" y="10" width="95" height="20" rx="4" fill="rgba(245, 158, 11, 0.15)"/>
+        <text x="372" y="24" fill="#fbbf24" font-family="monospace" font-size="10" font-weight="700">OPEN 1/2</text>
+
+        <g transform="translate(14, 42)">
+          <rect x="0" y="0" width="210" height="40" rx="6" fill="#1e293b"/>
+          <text x="10" y="18" fill="#cbd5e1" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600">☀️ Day: Arun Pillai</text>
+          <text x="10" y="32" fill="#38bdf8" font-family="monospace" font-size="10">QR: #0902 &bull; 06:00 - 18:00</text>
+        </g>
+
+        <g transform="translate(240, 42)">
+          <rect x="0" y="0" width="214" height="40" rx="6" fill="#1e293b" stroke="#f59e0b" stroke-dasharray="3 3"/>
+          <text x="10" y="18" fill="#fbbf24" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600">🌙 Night: Unassigned</text>
+          <text x="10" y="32" fill="#94a3b8" font-family="sans-serif" font-size="10">+ Assign Night Driver</text>
+        </g>
+      </g>
+
+      <!-- Operational Pairing Rule Banner -->
+      <g transform="translate(16, 280)">
+        <rect x="0" y="0" width="468" height="210" rx="8" fill="#090e1a" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+        <text x="16" y="28" fill="#f8fafc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="700">Fleet Sharing Rules Enforced:</text>
+        <text x="16" y="56" fill="#38bdf8" font-family="monospace" font-size="11">&bull; Exactly 1 Day Driver + 1 Night Driver per vehicle</text>
+        <text x="16" y="80" fill="#94a3b8" font-family="sans-serif" font-size="11">Prevents double-booking cars or assigning 2 day drivers to 1 vehicle.</text>
+        <text x="16" y="108" fill="#34d399" font-family="monospace" font-size="11">&bull; Unique QR Code Per Driver</text>
+        <text x="16" y="132" fill="#94a3b8" font-family="sans-serif" font-size="11">Used by passenger UPI stickers to credit collections directly to driver.</text>
+        <text x="16" y="160" fill="#fbbf24" font-family="monospace" font-size="11">&bull; Shift Handover Checkpoints</text>
+        <text x="16" y="184" fill="#94a3b8" font-family="sans-serif" font-size="11">WhatsApp notifies paired driver 2 hours prior to shift change.</text>
+      </g>
+    </g>
+
+    <!-- Right Box: Sanctioned Leaves & Collision Checks (Width: 520px) -->
+    <g transform="translate(560, 130)">
+      <rect x="0" y="0" width="520" height="510" rx="12" fill="url(#cardGradL)" stroke="#1e293b" stroke-width="1.5"/>
+      <rect x="0" y="0" width="520" height="42" rx="12" fill="rgba(15, 23, 42, 0.8)"/>
+      <text x="20" y="26" fill="#c084fc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="700">
+        📅 SANCTIONED LEAVES &amp; COLLISION ENGINE
+      </text>
+
+      <!-- Active Leaves Table -->
+      <g transform="translate(16, 55)">
+        <!-- Leave Item 1 -->
+        <rect x="0" y="0" width="488" height="65" rx="8" fill="#090e1a" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+        <text x="14" y="24" fill="#f8fafc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="700">Ramesh Kumar</text>
+        <rect x="140" y="10" width="95" height="20" rx="4" fill="rgba(168, 85, 247, 0.15)"/>
+        <text x="148" y="24" fill="#c084fc" font-family="monospace" font-size="10" font-weight="700">APPROVED LEAVE</text>
+
+        <text x="14" y="48" fill="#94a3b8" font-family="monospace" font-size="11">Start: 2026-10-15 &rarr; End: 2026-10-17 (3 Days)</text>
+        <text x="320" y="48" fill="#34d399" font-family="sans-serif" font-size="11">Returned: 2026-10-18</text>
+
+        <!-- Leave Item 2 -->
+        <g transform="translate(0, 80)">
+          <rect x="0" y="0" width="488" height="65" rx="8" fill="#090e1a" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+          <text x="14" y="24" fill="#f8fafc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="700">Arun Pillai</text>
+          <rect x="140" y="10" width="95" height="20" rx="4" fill="rgba(168, 85, 247, 0.15)"/>
+          <text x="148" y="24" fill="#c084fc" font-family="monospace" font-size="10" font-weight="700">APPROVED LEAVE</text>
+
+          <text x="14" y="48" fill="#94a3b8" font-family="monospace" font-size="11">Start: 2026-10-22 &rarr; End: 2026-10-24 (3 Days)</text>
+          <text x="320" y="48" fill="#fbbf24" font-family="sans-serif" font-size="11">Reason: Medical check</text>
+        </g>
+      </g>
+
+      <!-- Collision Gate Explanation -->
+      <g transform="translate(16, 220)">
+        <rect x="0" y="0" width="488" height="270" rx="8" fill="#090e1a" stroke="rgba(168, 85, 247, 0.2)" stroke-width="1"/>
+        <text x="16" y="28" fill="#c084fc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="700">
+          PostgreSQL DATERANGE Conflict Gate
+        </text>
+
+        <rect x="16" y="42" width="456" height="55" rx="6" fill="#1e293b"/>
+        <text x="10" y="22" fill="#cbd5e1" font-family="monospace" font-size="10">daterange(start_date, COALESCE(actual_return_date + 1))</text>
+        <text x="10" y="40" fill="#34d399" font-family="monospace" font-size="10">&amp;&amp; daterange($new_start, $new_end)</text>
+
+        <text x="16" y="125" fill="#f8fafc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600">
+          Why this matters in production:
+        </text>
+        <text x="16" y="150" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11">
+          1. <tspan fill="#ffffff">Rent Protection:</tspan> Drivers on sanctioned leave are NOT charged rent for those days. The billing engine subtracts leave dates from total week days.
+        </text>
+        <text x="16" y="190" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11">
+          2. <tspan fill="#ffffff">Duplicate Shift Block:</tspan> If an operator attempts to record a daily collection entry for a driver currently on leave, the API immediately throws HTTP 409: "Driver is on approved leave."
+        </text>
+        <text x="16" y="235" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11">
+          3. <tspan fill="#ffffff">Late Return Tracking:</tspan> If a driver returns 2 days late, actual_return_date tracks the overtime days and automatically applies rent only from the actual resumption date.
+        </text>
+      </g>
+    </g>
+  </g>
+</svg>
