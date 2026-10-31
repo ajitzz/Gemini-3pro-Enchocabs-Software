@@ -15,10 +15,11 @@ export default function Salary() {
           /> */}
           <div className="relative w-full h-full">
             <img
-              src="https://i.ibb.co/fYBPKpR5/Gemini-Generated-Image-n81s2un81s2un81s-1.png"
-              alt="Gemini generated driver support illustration"
-              className="absolute inset-0 h-full w-full object-cover"
+              src="https://enchowhatsappapis3buckets.s3.eu-north-1.amazonaws.com/Encho%20Cabs/3844304_134262_1739958342919.jpeg.webp"
+              alt="Encho Cabs driver support and training"
+              className="absolute inset-0 h-full w-full object-cover rounded-xl"
               loading="lazy"
+              referrerPolicy="no-referrer"
             />
           </div>
           
