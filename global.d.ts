@@ -11,3 +11,8 @@ declare interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 }
+
+declare module './server/index.js' {
+  const app: any;
+  export default app;
+}

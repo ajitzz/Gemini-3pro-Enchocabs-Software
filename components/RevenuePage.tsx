@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { storageService } from '../services/storageService';
 import { CompanyWeeklySummary, DailyEntry, WeeklyWallet, RentalSlab, DriverBillingRecord } from '../types';
-import { Calculator, AlertTriangle, CheckCircle, TrendingUp, TrendingDown, DollarSign, Wallet, ShieldCheck, ShieldAlert, Calendar, RefreshCcw, ArrowRight, Filter, ChevronRight, History, Layers, ChevronDown, Search } from 'lucide-react';
+import { Calculator, AlertTriangle, TrendingUp, TrendingDown, DollarSign, Wallet, ShieldCheck, ShieldAlert, Calendar, RefreshCcw, ArrowRight, Filter, ChevronRight, History, Layers, ChevronDown, Search } from 'lucide-react';
 
 // --- Types for Internal Calculations ---
 interface DriverPendingEntry {
@@ -110,7 +110,9 @@ const RevenuePage: React.FC = () => {
 
   // --- 1. CORE CALCULATION ENGINE ---
   const processedWeeks: ProcessedWeek[] = useMemo(() => {
-    return rawSummaries.map(summary => {
+    const existingSummaryWeeks = new Set<string>();
+    const results: ProcessedWeek[] = rawSummaries.map(summary => {
+      existingSummaryWeeks.add(summary.startDate);
       const startDate = new Date(summary.startDate);
       const endDate = new Date(summary.endDate);
 
@@ -136,8 +138,6 @@ const RevenuePage: React.FC = () => {
       });
       
       // Inputs from Weekly Wallets (Billing History)
-      // Logic: Include wallets that START within this week's range. 
-      // This allows manual bills created in Driver Portal to be picked up even if dates aren't exact strings but fall in range.
       const relevantWallets = weeklyWallets.filter(w => {
           const wStart = new Date(w.weekStartDate);
           return wStart >= startDate && wStart <= endDate;
@@ -155,14 +155,11 @@ const RevenuePage: React.FC = () => {
       let driverPendingTotal = 0;
       let driverPendingBreakdown: DriverPendingEntry[] = [];
 
-      // Use centralized service logic to ensure consistency with Billing History overrides
-      // If a wallet exists in 'relevantWallets', calculateDriverStats will use it (Overrides/Adjustments).
-      // If NOT, it falls back to summing 'relevantDaily' raw values.
       uniqueDrivers.forEach(driver => {
           const stats = storageService.calculateDriverStats(
               driver,
-              relevantDaily, // Scope to this week
-              relevantWallets, // Scope to this week
+              relevantDaily,
+              relevantWallets,
               rentalSlabs
           );
 
@@ -187,20 +184,11 @@ const RevenuePage: React.FC = () => {
           driversPayments = driversPaymentsFromStats;
       }
 
-      // Charges for Fraud Check (Aggregate from relevant wallets)
       const totalCharges = relevantWallets.reduce((sum, w) => sum + w.charges, 0);
-      
-      // Drivers Adjusted for Fraud Check
-      // Logic: driversWalletRaw includes adjustments. Adding charges back allows comparison with Gross-like metrics if needed.
       const driversWalletAdjusted = driversWalletRaw + totalCharges; 
-
-      // Profit / Loss Logic
       const profitLoss = driversPayments - driversWalletRaw - currentOs - ROOM_RENT_PER_WEEK;
-
-      // Validations
       const settlementDiff = Math.abs(currentOs - totalRent);
       const hasSettlementIssue = settlementDiff > 5;
-
       const fraudCheckDiff = driversWalletAdjusted + companyWallet;
       const isWalletSafe = Math.abs(fraudCheckDiff) < 100;
 
@@ -227,7 +215,133 @@ const RevenuePage: React.FC = () => {
         fraudCheckDiff
       };
     });
+
+    // Also collect weeks from driverBillings, weeklyWallets, and dailyEntries not covered in rawSummaries
+    const extraWeekMap = new Map<string, { start: string; end: string }>();
+    const registerWeek = (startStr?: string, endStr?: string) => {
+      if (!startStr) return;
+      const start = startStr.slice(0, 10);
+      if (existingSummaryWeeks.has(start) || extraWeekMap.has(start)) return;
+      const end = endStr ? endStr.slice(0, 10) : (() => {
+        const d = new Date(start);
+        d.setDate(d.getDate() + 6);
+        return d.toISOString().slice(0, 10);
+      })();
+      extraWeekMap.set(start, { start, end });
+    };
+
+    driverBillings.forEach(b => registerWeek(b.weekStartDate, b.weekEndDate));
+    weeklyWallets.forEach(w => registerWeek(w.weekStartDate, w.weekEndDate));
+    dailyEntries.forEach(d => {
+      if (d.date) {
+        const dt = new Date(d.date);
+        const day = dt.getDay();
+        const diff = dt.getDate() - day + (day === 0 ? -6 : 1);
+        dt.setDate(diff);
+        const mon = dt.toISOString().slice(0, 10);
+        registerWeek(mon);
+      }
+    });
+
+    extraWeekMap.forEach(({ start, end }, weekStart) => {
+      const startDate = new Date(start);
+      const endDate = new Date(end);
+
+      const relevantDaily = dailyEntries.filter(d => {
+        const dt = new Date(d.date);
+        return dt >= startDate && dt <= endDate;
+      });
+
+      const relevantBillings = driverBillings.filter(b => {
+        const billWeekStart = new Date(b.weekStartDate);
+        return billWeekStart >= startDate && billWeekStart <= endDate;
+      });
+
+      const relevantWallets = weeklyWallets.filter(w => {
+        const wStart = new Date(w.weekStartDate);
+        return wStart >= startDate && wStart <= endDate;
+      });
+
+      const uniqueDrivers = Array.from(new Set([
+        ...relevantDaily.map(d => d.driver),
+        ...relevantWallets.map(w => w.driver)
+      ]));
+
+      let driversPaymentsFromStats = 0;
+      let driversWalletRaw = 0;
+      uniqueDrivers.forEach(driver => {
+        const stats = storageService.calculateDriverStats(
+          driver,
+          relevantDaily,
+          relevantWallets,
+          rentalSlabs
+        );
+        driversPaymentsFromStats += stats.totalRent;
+        driversWalletRaw += stats.totalWalletWeek;
+      });
+
+      let driversPayments = driversPaymentsFromStats;
+      let driverPendingTotal = 0;
+      let driverPendingBreakdown: DriverPendingEntry[] = [];
+
+      if (relevantBillings.length > 0) {
+        driversPayments = relevantBillings.reduce((sum, bill) => sum + (bill.rentTotal || 0), 0);
+        driverPendingBreakdown = relevantBillings
+          .filter(b => (b.payout || 0) < 0)
+          .map(b => ({
+            driver: b.driverName,
+            qrCode: b.qrCode,
+            pending: Math.abs(b.payout || 0),
+            status: b.status,
+            weekLabel: `${formatDate(b.weekStartDate)} - ${formatDate(b.weekEndDate)}`
+          }));
+        driverPendingTotal = driverPendingBreakdown.reduce((sum, p) => sum + p.pending, 0);
+      }
+
+      const totalCharges = relevantWallets.reduce((sum, w) => sum + w.charges, 0);
+      const driversWalletAdjusted = driversWalletRaw + totalCharges;
+      const vehicleRent = driversPayments;
+      const companyWallet = 0;
+      const currentOs = 0;
+      const totalRent = vehicleRent;
+      const otherHeadSections = 0;
+      const profitLoss = driversPayments - driversWalletRaw - ROOM_RENT_PER_WEEK;
+
+      results.push({
+        id: `week_${weekStart}`,
+        startDate: start,
+        endDate: end,
+        fileName: 'Operational Records (Auto)',
+        label: `${formatDate(start)} - ${formatDate(end)}`,
+        vehicleRent,
+        companyWallet,
+        currentOs,
+        otherHeadSections,
+        driversPayments,
+        driversWalletRaw,
+        driversWalletAdjusted,
+        totalCharges,
+        totalRent,
+        driverPendingTotal,
+        driverPendingBreakdown,
+        profitLoss,
+        hasSettlementIssue: false,
+        isWalletSafe: true,
+        fraudCheckDiff: 0
+      });
+    });
+
+    return results.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
   }, [rawSummaries, dailyEntries, weeklyWallets, rentalSlabs, driverBillings]);
+
+  // Ensure selection defaults to the latest week when processedWeeks becomes available
+  useEffect(() => {
+    if (processedWeeks.length > 0 && !selectedWeekId) {
+      setSelectedWeekId(processedWeeks[0].id);
+      setRangeStartId(processedWeeks[processedWeeks.length - 1].id);
+      setRangeEndId(processedWeeks[0].id);
+    }
+  }, [processedWeeks, selectedWeekId]);
 
   // --- 2. SELECTION LOGIC ---
   const activeWeeks = useMemo(() => {

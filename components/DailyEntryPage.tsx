@@ -454,7 +454,20 @@ const DailyEntryPage: React.FC = () => {
     const dailyParams = showFullHistory ? undefined : { from: recentFromDate };
 
     try {
-      const bootstrap = await storageService.getDailyEntriesBootstrap(dailyParams);
+      let bootstrap = await storageService.getDailyEntriesBootstrap(dailyParams);
+
+      // Auto-fallback: if recent 60-day window has 0 entries, query full history so user data is never hidden
+      if (!showFullHistory && (!bootstrap.entries || bootstrap.entries.length === 0)) {
+        try {
+          const fullBootstrap = await storageService.getDailyEntriesBootstrap(undefined);
+          if (fullBootstrap.entries && fullBootstrap.entries.length > 0) {
+            bootstrap = fullBootstrap;
+            setShowFullHistory(true);
+          }
+        } catch (_fallbackErr) {
+          // Keep current bootstrap
+        }
+      }
 
       setEntries(sortEntriesByDateDesc(bootstrap.entries.map(sanitizeEntryDate)));
       setDrivers(bootstrap.drivers.filter(driver => !driver.terminationDate));
@@ -1103,11 +1116,16 @@ const DailyEntryPage: React.FC = () => {
       return pages;
   }, [filteredEntries]);
 
+  const initialPageSetRef = useRef(false);
   useEffect(() => {
       if (paginatedPages.length === 0) {
           setCurrentPageIndex(0);
-      } else {
+          initialPageSetRef.current = false;
+      } else if (!initialPageSetRef.current) {
           setCurrentPageIndex(paginatedPages.length - 1);
+          initialPageSetRef.current = true;
+      } else {
+          setCurrentPageIndex(prev => Math.min(prev, paginatedPages.length - 1));
       }
   }, [paginatedPages.length]);
 
