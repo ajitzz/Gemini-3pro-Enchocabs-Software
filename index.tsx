@@ -78,14 +78,36 @@ const observeWebVitals = () => {
   }
 };
 
+if (typeof window !== 'undefined') {
+  window.addEventListener('error', (event) => {
+    // Intercept cross-origin Script error from external third-party scripts/iframes
+    if (event.message === 'Script error.' || (!event.filename && event.lineno === 0)) {
+      console.warn('[Isolated] External cross-origin script error intercepted.');
+      event.preventDefault();
+    }
+  });
+
+  window.addEventListener('unhandledrejection', (event) => {
+    if (event.reason && String(event.reason.message || event.reason).includes('Script error')) {
+      event.preventDefault();
+    }
+  });
+}
+
 const root = createRoot(rootElement);
 observeWebVitals();
 
+const hasValidGoogleId = Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_ID !== 'YOUR_GOOGLE_CLIENT_ID_HERE');
+
 root.render(
   <React.StrictMode>
-    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+    {hasValidGoogleId ? (
+      <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+        <App />
+      </GoogleOAuthProvider>
+    ) : (
       <App />
-    </GoogleOAuthProvider>
+    )}
   </React.StrictMode>
 );
 

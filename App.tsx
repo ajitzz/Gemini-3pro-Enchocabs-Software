@@ -1,6 +1,6 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, Navigate, Outlet } from 'react-router-dom';
-import { LayoutDashboard, Calendar, Wallet, Menu, X, Users, Coffee, Upload, Settings, Briefcase, FileText, Calculator, UserCircle, LogOut, Shield, ClipboardList } from 'lucide-react';
+import { LayoutDashboard, Calendar, Wallet, Menu, X, Users, Coffee, Upload, Settings, Briefcase, FileText, Calculator, UserCircle, LogOut, Shield, ClipboardList, Video } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
 
@@ -8,6 +8,7 @@ const HomePage = lazy(() => import('./components/HomePage'));
 const DriversEarningsPublicPage = lazy(() => import('./components/DriversEarningsPublicPage'));
 const LoginPage = lazy(() => import('./components/LoginPage'));
 const DriverPortalPage = lazy(() => import('./components/DriverPortalPage'));
+const InvestorShowcasePage = lazy(() => import('./components/InvestorShowcasePage'));
 const DashboardPage = lazy(() => import('./components/DashboardPage'));
 const DailyEntryPage = lazy(() => import('./components/DailyEntryPage'));
 const WeeklyWalletPage = lazy(() => import('./components/WeeklyWalletPage'));
@@ -26,6 +27,7 @@ const ExpensesPage = lazy(() => import('./components/ExpensesPage'));
 
 const routePrefetchers: Record<string, () => Promise<unknown>> = {
   '/': () => import('./components/HomePage'),
+  '/showcase': () => import('./components/InvestorShowcasePage'),
   '/drivers-earnings': () => import('./components/DriversEarningsPublicPage'),
   '/staff': () => import('./components/LoginPage'),
   '/portal': () => import('./components/DriverPortalPage'),
@@ -177,6 +179,7 @@ const Layout: React.FC = () => {
               <NavItem to="/app" icon={LayoutDashboard} label="Dashboard" end />
               <NavItem to="/app/daily" icon={Calendar} label="Daily Entries" />
               <NavItem to="/app/weekly" icon={Wallet} label="Weekly Wallet" />
+              <NavItem to="/showcase" icon={Video} label="🎬 Investor Showcase" />
             </nav>
           </div>
           

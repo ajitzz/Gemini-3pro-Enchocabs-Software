@@ -20,6 +20,17 @@ const InputField = ({ label, value, onChange, placeholder, type = "text", requir
   </div>
 );
 
+const formatDateSafe = (dateStr?: string | null): string => {
+  if (!dateStr || typeof dateStr !== 'string') return 'N/A';
+  const clean = dateStr.trim();
+  if (!clean) return 'N/A';
+  const parts = clean.split('-');
+  if (parts.length === 3) {
+    return parts.reverse().join('-');
+  }
+  return clean;
+};
+
 const RegistrationPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false); // New saving state
@@ -67,14 +78,21 @@ const RegistrationPage: React.FC = () => {
         storageService.getLeaves(),
         storageService.getDailyEntries({ limit: 5000 }),
       ]);
-      setDrivers(d);
-      setLeaves(l);
+      const safeDrivers = (Array.isArray(d) ? d : []).map(driver => ({
+        ...driver,
+        joinDate: driver.joinDate || (driver as any).join_date || '2026-01-01',
+        terminationDate: driver.terminationDate || (driver as any).termination_date || undefined
+      }));
+      setDrivers(safeDrivers);
+      setLeaves(Array.isArray(l) ? l : []);
 
-      const latestMap = entries.reduce((acc, entry) => {
-        const key = entry.driver.trim().toLowerCase();
+      const safeEntries = Array.isArray(entries) ? entries : [];
+      const latestMap = safeEntries.reduce((acc, entry) => {
+        if (!entry || !entry.driver) return acc;
+        const key = String(entry.driver).trim().toLowerCase();
         if (!key) return acc;
         const existing = acc[key];
-        if (!existing || entry.date > existing.date) {
+        if (!existing || (entry.date && existing.date && entry.date > existing.date)) {
           acc[key] = {
             date: entry.date,
             vehicle: entry.vehicle,
@@ -87,7 +105,6 @@ const RegistrationPage: React.FC = () => {
       setDailyEntryLastByDriver(latestMap);
     } catch (err) {
       console.error("Failed to load drivers", err);
-      // Optional: Add global error toast here
     } finally {
       setLoading(false);
     }
@@ -97,8 +114,10 @@ const RegistrationPage: React.FC = () => {
 
   const calculateDaysLeftForRefund = (driver: Driver) => {
     if (driver.terminationDate) return 'Terminated';
+    if (!driver.joinDate) return 'N/A';
     
     const join = new Date(driver.joinDate);
+    if (isNaN(join.getTime())) return 'N/A';
     // Normalize to midnight to avoid time-of-day discrepancies
     join.setHours(0,0,0,0);
     
@@ -598,7 +617,7 @@ const RegistrationPage: React.FC = () => {
                 />
                 {getLastDailyEntryForFormDriver()?.date ? (
                   <p className="text-[11px] text-rose-500 mt-2 font-medium">
-                    Last daily entry: <span className="font-bold">{getLastDailyEntryForFormDriver()!.date.split('-').reverse().join('-')}</span>. Use this as termination date to close access after that day.
+                    Last daily entry: <span className="font-bold">{formatDateSafe(getLastDailyEntryForFormDriver()?.date)}</span>. Use this as termination date to close access after that day.
                   </p>
                 ) : (
                   <p className="text-[10px] text-rose-400 mt-2 font-medium">No daily entry found for this driver yet.</p>
@@ -607,7 +626,10 @@ const RegistrationPage: React.FC = () => {
                   {getLastDailyEntryForFormDriver()?.date && (
                     <button
                       type="button"
-                      onClick={() => setDriverForm({ ...driverForm, terminationDate: getLastDailyEntryForFormDriver()!.date })}
+                      onClick={() => {
+                        const lastDate = getLastDailyEntryForFormDriver()?.date;
+                        if (lastDate) setDriverForm({ ...driverForm, terminationDate: lastDate });
+                      }}
                       className="px-2.5 py-1 text-[11px] rounded-lg bg-white border border-rose-200 text-rose-600 font-semibold hover:bg-rose-100"
                     >
                       Use Last Entry Date
@@ -790,8 +812,8 @@ const RegistrationPage: React.FC = () => {
                                 <Mail size={12}/> {d.email}
                               </div>
                             )}
-                            <span className="text-xs text-slate-400">Joined: {d.joinDate.split('-').reverse().join('-')}</span>
-                            {d.terminationDate && <span className="text-rose-600 text-xs font-bold">Left: {d.terminationDate.split('-').reverse().join('-')}</span>}
+                            <span className="text-xs text-slate-400">Joined: {formatDateSafe(d.joinDate)}</span>
+                            {d.terminationDate && <span className="text-rose-600 text-xs font-bold">Left: {formatDateSafe(d.terminationDate)}</span>}
                           </div>
                           {d.notes && (
                             <div className="mt-2 text-xs text-slate-400 flex items-center gap-1.5 max-w-xs bg-slate-50 p-1.5 rounded-lg border border-slate-100">

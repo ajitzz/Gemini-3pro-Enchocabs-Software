@@ -19,17 +19,25 @@ const INITIAL_DRIVERS = [
     mobile: '9847000001',
     email: 'muhammed.ubais@example.com',
     join_date: '2026-01-01',
+    joinDate: '2026-01-01',
     termination_date: null,
+    terminationDate: null,
     is_hidden: false,
+    isHidden: false,
     deposit: 5000,
     qr_code: 'TERMINAL 5__ Q558711512',
+    qrCode: 'TERMINAL 5__ Q558711512',
     vehicle: 'KA51AM2010',
     status: 'Active',
     current_shift: 'Day',
+    currentShift: 'Day',
     default_rent: 950,
+    defaultRent: 950,
     notes: '',
     is_manager: false,
-    food_option: false
+    isManager: false,
+    food_option: false,
+    foodOption: false
   },
   {
     id: 'd1000000-0000-0000-0000-000000000002',
@@ -37,17 +45,25 @@ const INITIAL_DRIVERS = [
     mobile: '9847000002',
     email: 'elavattassery@example.com',
     join_date: '2026-01-01',
+    joinDate: '2026-01-01',
     termination_date: null,
+    terminationDate: null,
     is_hidden: false,
+    isHidden: false,
     deposit: 5000,
     qr_code: 'TERMINAL 11__Q037709407',
+    qrCode: 'TERMINAL 11__Q037709407',
     vehicle: 'Unknown',
     status: 'Active',
     current_shift: 'Day',
+    currentShift: 'Day',
     default_rent: 800,
+    defaultRent: 800,
     notes: '',
     is_manager: false,
-    food_option: false
+    isManager: false,
+    food_option: false,
+    foodOption: false
   }
 ];
 
@@ -173,16 +189,47 @@ function executeFallbackQuery(text, params = []) {
 
   // 4. SELECT drivers
   if (lower.includes('from drivers')) {
-    let rows = [...memoryStore.drivers];
+    let rawList = [...memoryStore.drivers];
     if (lower.includes('where lower(email) = lower($1)')) {
       const email = String(params[0] || '').toLowerCase();
-      rows = rows.filter(d => (d.email || '').toLowerCase() === email);
+      rawList = rawList.filter(d => (d.email || '').toLowerCase() === email);
     } else if (lower.includes('where id = $1')) {
-      rows = rows.filter(d => d.id === params[0]);
+      rawList = rawList.filter(d => d.id === params[0]);
     } else if (lower.includes('where lower(name) = lower($1)')) {
       const name = String(params[0] || '').toLowerCase();
-      rows = rows.filter(d => (d.name || '').toLowerCase() === name);
+      rawList = rawList.filter(d => (d.name || '').toLowerCase() === name);
+    } else if (lower.includes('where mobile = $1')) {
+      rawList = rawList.filter(d => String(d.mobile || '') === String(params[0] || ''));
+    } else if (lower.includes('where qr_code = $1')) {
+      rawList = rawList.filter(d => String(d.qr_code || d.qrCode || '') === String(params[0] || ''));
     }
+    const rows = rawList.map(d => ({
+      ...d,
+      id: d.id,
+      name: d.name,
+      mobile: d.mobile || '',
+      email: d.email || '',
+      joinDate: d.joinDate || d.join_date || '2026-01-01',
+      join_date: d.joinDate || d.join_date || '2026-01-01',
+      terminationDate: d.terminationDate || d.termination_date || null,
+      termination_date: d.terminationDate || d.termination_date || null,
+      isHidden: Boolean(d.isHidden ?? d.is_hidden ?? false),
+      is_hidden: Boolean(d.isHidden ?? d.is_hidden ?? false),
+      deposit: Number(d.deposit || 0),
+      qrCode: d.qrCode || d.qr_code || '',
+      qr_code: d.qrCode || d.qr_code || '',
+      vehicle: d.vehicle || '',
+      status: d.status || ((d.terminationDate || d.termination_date) ? 'Terminated' : 'Active'),
+      currentShift: d.currentShift || d.current_shift || 'Day',
+      current_shift: d.currentShift || d.current_shift || 'Day',
+      defaultRent: Number(d.defaultRent ?? d.default_rent ?? 0),
+      default_rent: Number(d.defaultRent ?? d.default_rent ?? 0),
+      notes: d.notes || '',
+      isManager: Boolean(d.isManager ?? d.is_manager ?? false),
+      is_manager: Boolean(d.isManager ?? d.is_manager ?? false),
+      foodOption: Boolean(d.foodOption ?? d.food_option ?? false),
+      food_option: Boolean(d.foodOption ?? d.food_option ?? false)
+    }));
     return { rows, rowCount: rows.length };
   }
 
@@ -307,7 +354,61 @@ function executeFallbackQuery(text, params = []) {
     return { rows: [newWallet], rowCount: 1 };
   }
 
-  // 16. Default safe response for other queries
+  // 16. INSERT INTO drivers
+  if (lower.startsWith('insert into drivers')) {
+    const id = params[0] || uuidv4();
+    const newDriver = {
+      id,
+      name: params[1],
+      mobile: params[2] || '',
+      email: params[3] || '',
+      join_date: params[4] || '2026-01-01',
+      joinDate: params[4] || '2026-01-01',
+      termination_date: params[5] || null,
+      terminationDate: params[5] || null,
+      is_hidden: Boolean(params[6]),
+      isHidden: Boolean(params[6]),
+      deposit: Number(params[7]) || 0,
+      qr_code: params[8] || '',
+      qrCode: params[8] || '',
+      vehicle: params[9] || '',
+      status: params[10] || 'Active',
+      current_shift: params[11] || 'Day',
+      currentShift: params[11] || 'Day',
+      default_rent: Number(params[12]) || 0,
+      defaultRent: Number(params[12]) || 0,
+      notes: params[13] || '',
+      is_manager: Boolean(params[14]),
+      isManager: Boolean(params[14]),
+      food_option: Boolean(params[15]),
+      foodOption: Boolean(params[15])
+    };
+
+    const existingIdx = memoryStore.drivers.findIndex(d => d.id === id || (d.name && d.name.toLowerCase() === (newDriver.name || '').toLowerCase()));
+    if (existingIdx >= 0) {
+      memoryStore.drivers[existingIdx] = { ...memoryStore.drivers[existingIdx], ...newDriver };
+    } else {
+      memoryStore.drivers.push(newDriver);
+    }
+    saveStore(memoryStore);
+    return { rows: [newDriver], rowCount: 1 };
+  }
+
+  // 17. UPDATE drivers
+  if (lower.startsWith('update drivers')) {
+    return { rows: [], rowCount: 1 };
+  }
+
+  // 18. DELETE FROM drivers
+  if (lower.startsWith('delete from drivers')) {
+    if (params[0]) {
+      memoryStore.drivers = memoryStore.drivers.filter(d => d.id !== params[0]);
+      saveStore(memoryStore);
+    }
+    return { rows: [], rowCount: 1 };
+  }
+
+  // 19. Default safe response for other queries
   return { rows: [], rowCount: 0 };
 }
 
