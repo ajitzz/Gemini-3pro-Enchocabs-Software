@@ -50,7 +50,11 @@ const GlobalDriverFilter: React.FC<DriverFilterProps> = ({ drivers, selected, on
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const filtered = drivers.filter(d => d.toLowerCase().includes(search.toLowerCase()));
+  const safeDrivers = (Array.isArray(drivers) ? drivers : []).filter(
+    (d): d is string => typeof d === 'string' && d.trim().length > 0
+  );
+  const searchLower = (search || '').toLowerCase().trim();
+  const filtered = safeDrivers.filter(d => d.toLowerCase().includes(searchLower));
 
   return (
     <div ref={wrapperRef} className="relative min-w-[200px]">
@@ -137,8 +141,9 @@ const ColumnFilter: React.FC<ColumnFilterProps> = ({ columnKey, data, activeFilt
 
   const filteredUniqueValues = uniqueValues.filter(v => {
     // Search against formatted value if formatter exists
-    const displayVal = formatter ? formatter(v) : v;
-    return displayVal.toLowerCase().includes(searchTerm.toLowerCase());
+    const rawVal = formatter ? formatter(v) : v;
+    const displayVal = String(rawVal ?? '').trim();
+    return displayVal.toLowerCase().includes(String(searchTerm || '').toLowerCase().trim());
   });
 
   // Sync internal state when external filters change (e.g. clear all)
@@ -655,9 +660,16 @@ const DailyEntryPage: React.FC = () => {
   }, [entries, weeklyWallets]);
 
   const enteredDrivers = useMemo(() => {
-      const uniqueNames = new Set(entriesWithAdjustments.map(e => e.driver));
-      return Array.from(uniqueNames).sort();
-  }, [entriesWithAdjustments]);
+      const uniqueNames = new Set(
+        entriesWithAdjustments
+          .map(e => (e?.driver ? String(e.driver).trim() : ''))
+          .filter(Boolean)
+      );
+      (drivers || []).forEach(d => {
+        if (d?.name) uniqueNames.add(String(d.name).trim());
+      });
+      return Array.from(uniqueNames).sort((a, b) => a.localeCompare(b));
+  }, [entriesWithAdjustments, drivers]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
